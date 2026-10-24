@@ -4,15 +4,35 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from typer.testing import CliRunner
 
+from ringkeeper.admin_token import TOKEN_PREFIX
 from ringkeeper.api.app import create_app
+from ringkeeper.cli.main import app as cli
 from ringkeeper.services import registry
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "registry.yaml"
 
 
+def cli_api_token(*args: str) -> str:
+    result = CliRunner().invoke(cli, ["auth", "api-token", *args])
+    assert result.exit_code == 0, result.output
+    return result.stdout.strip()
+
+
 @pytest.fixture
-def client(database_url: str) -> Iterator[TestClient]:
+def api_token(data_dir: Path) -> str:
+    return cli_api_token()
+
+
+@pytest.fixture
+def client(database_url: str, api_token: str) -> Iterator[TestClient]:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {api_token}"}) as client:
+        yield client
+
+
+@pytest.fixture
+def anonymous(database_url: str, data_dir: Path) -> Iterator[TestClient]:
     with TestClient(create_app()) as client:
         yield client
 
@@ -33,6 +53,47 @@ def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "database": "ok"}
+
+
+def test_health_needs_no_token(anonymous: TestClient) -> None:
+    assert anonymous.get("/health").status_code == 200
+
+
+PROTECTED = ["/projects", "/projects/acme-web", "/instances"]
+
+
+@pytest.mark.parametrize("path", PROTECTED)
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Basic abc"}, {"Authorization": f"Bearer {TOKEN_PREFIX}wrong"}],
+)
+def test_every_other_endpoint_needs_the_admin_token(
+    anonymous: TestClient, api_token: str, path: str, headers: dict[str, str]
+) -> None:
+    response = anonymous.get(path, headers=headers)
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_api_fails_closed_without_a_stored_token(anonymous: TestClient) -> None:
+    response = anonymous.get("/projects", headers={"Authorization": "Bearer anything"})
+    assert response.status_code == 503
+    assert "ringkeeper auth api-token" in response.json()["detail"]
+
+
+def test_docs_and_schema_are_off(anonymous: TestClient) -> None:
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert anonymous.get(path).status_code == 404
+
+
+def test_api_token_is_stable_until_rotated(client: TestClient, api_token: str) -> None:
+    assert api_token.startswith(TOKEN_PREFIX)
+    assert cli_api_token() == api_token
+    rotated = cli_api_token("--rotate")
+    assert rotated != api_token
+    assert client.get("/projects").status_code == 401  # the old one stops working at once
+    ok = client.get("/projects", headers={"Authorization": f"Bearer {rotated}"})
+    assert ok.status_code == 200
 
 
 def test_health_reports_unreachable_database(monkeypatch: pytest.MonkeyPatch) -> None:

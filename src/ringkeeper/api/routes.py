@@ -1,4 +1,7 @@
-"""Read-only endpoints. Responses use the *Out schemas, which have no secret_ref."""
+"""HTTP endpoints. Responses use the *Out schemas, which have no secret_ref.
+
+Everything but /health needs the admin token (`public` vs `router`).
+"""
 
 from collections.abc import Generator
 from typing import Annotated, Literal
@@ -9,12 +12,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from ringkeeper.api.auth import AdminDep
 from ringkeeper.db import get_engine, session_scope
 from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import BoundInstanceOut, InstanceOut, ProjectDetailOut, ProjectOut
 from ringkeeper.services import bindings, instances, projects
 
-router = APIRouter()
+public = APIRouter()
+router = APIRouter(dependencies=[AdminDep])
 
 
 def get_session() -> Generator[Session]:
@@ -31,7 +36,7 @@ class Health(BaseModel):
     database: Literal["ok", "unreachable"]
 
 
-@router.get("/health")
+@public.get("/health")
 def health(response: Response) -> Health:
     try:
         with get_engine().connect() as connection:

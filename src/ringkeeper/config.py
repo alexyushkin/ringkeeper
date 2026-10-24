@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     claude_auth_mode: AuthMode = AuthMode.API_KEY
     claude_api_key_ref: str = "file://ringkeeper/anthropic-api-key"
     claude_oauth_token_ref: str = "file://ringkeeper/claude-oauth-token"  # noqa: S105 (a ref)
+    # Bearer token for every API endpoint except /health (`ringkeeper auth api-token`).
+    api_token_ref: str = "file://ringkeeper/api-token"  # noqa: S105 (a ref)
 
     # Session manager (runs inside the api service).
     worker_image: str = "ringkeeper-worker:latest"

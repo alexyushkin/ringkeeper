@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ringkeeper import __version__
-from ringkeeper.api.routes import router
+from ringkeeper.api.routes import public, router
 from ringkeeper.config import get_settings
 from ringkeeper.errors import NotFoundError
 from ringkeeper.scrub import install_log_scrubbing
@@ -44,9 +44,14 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Ringkeeper",
         version=__version__,
-        description="Read-only view of Ringkeeper's projects and instances. Never returns secrets.",
+        description="Ringkeeper's projects, messages and inbox. Never returns secrets.",
         lifespan=_lifespan,
+        # The schema and docs pages would be unauthenticated; leave them off.
+        openapi_url=None,
+        docs_url=None,
+        redoc_url=None,
     )
+    app.include_router(public)
     app.include_router(router)
     app.add_exception_handler(NotFoundError, _not_found)
     return app

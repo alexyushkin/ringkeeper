@@ -3,6 +3,7 @@ from typing import Annotated
 
 import typer
 
+from ringkeeper.admin_token import generate_api_token, stored_api_token
 from ringkeeper.claude_auth import (
     ClaudeAuthError,
     check_format,
@@ -15,7 +16,9 @@ from ringkeeper.config import get_settings
 from ringkeeper.models import AuthMode
 from ringkeeper.vault import get_vault
 
-app = typer.Typer(help="The Claude credential workers use.", no_args_is_help=True)
+app = typer.Typer(
+    help="The Claude credential workers use, and the API admin token.", no_args_is_help=True
+)
 
 SUBSCRIPTION_NOTE = (
     "Subscription mode is for personal use on your own Claude account only, per the "
@@ -95,3 +98,24 @@ def status() -> None:
     typer.echo("resolves:   yes")
     if mode is AuthMode.SUBSCRIPTION:
         typer.echo(SUBSCRIPTION_NOTE)
+
+
+@app.command("api-token")
+def api_token(
+    rotate: Annotated[
+        bool, typer.Option("--rotate", help="Replace the token; the old one stops working.")
+    ] = False,
+) -> None:
+    """Print the API admin token, creating it on first use. It goes to stdout only."""
+    with handle_errors():
+        settings = get_settings()
+        vault = get_vault(settings)
+        token = None if rotate else stored_api_token(vault)
+        created = token is None
+        if token is None:
+            token = generate_api_token()
+            vault.store(settings.api_token_ref, token)
+    if created:
+        verb = "rotated" if rotate else "created"
+        typer.echo(f"{verb} the admin token at {settings.api_token_ref}", err=True)
+    typer.echo(token)
