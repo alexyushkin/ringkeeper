@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -53,7 +54,7 @@ def decide(kind: DecisionKind, payload: dict[str, object], task_id: str | None =
         return str(decision.id)
 
 
-def answer(ident: str, *, via: Via = Via.API, **reply: str) -> inbox.Answered:
+def answer(ident: str, *, via: Via = Via.API, **reply: Any) -> inbox.Answered:
     with session_scope() as session:
         result = inbox.answer(session, get_settings(), ident, Answer(**reply), by="alice", via=via)
         session.expunge_all()
@@ -150,8 +151,10 @@ def test_route_answer_creates_the_task_and_remembers_the_phrasing() -> None:
     decision_id = decide(DecisionKind.ROUTE, route_payload("Fix   the THING"))
     with session_scope() as session:
         assert inbox.options(inbox.list_pending(session)[0]) == [
-            "acme-web", "globex-portal", "none",
-        ]  # fmt: skip
+            "acme-web",
+            "globex-portal",
+            "none",
+        ]
     result = answer(decision_id, choice="globex-portal", via=Via.CLI)
 
     assert result.task is not None
@@ -271,8 +274,9 @@ def test_messages_go_into_threads() -> None:
         threads.post_message(session, "again", author="alice", source="cli", thread=str(thread_id))
         assert threads.get_thread(session, str(thread_id)).title == "hello"
         assert [m.body for m in threads.thread_messages(session, thread_id)] == [
-            "hello\nworld", "again",
-        ]  # fmt: skip
+            "hello\nworld",
+            "again",
+        ]
         with pytest.raises(RuleViolationError, match="empty"):
             threads.post_message(session, "  ", author="alice", source="cli")
 

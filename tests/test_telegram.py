@@ -1,9 +1,7 @@
 """The Telegram bridge against a mocked Bot API: summaries, buttons, replies, the allowlist."""
 
 import json
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import httpx2
 import pytest
@@ -30,81 +28,9 @@ from ringkeeper.telegram import api as telegram_api
 from ringkeeper.telegram.api import BotApi
 from ringkeeper.telegram.bridge import Bridge, callback_data
 from ringkeeper.vault import get_vault
-
-BOT_TOKEN = "123456:fake-telegram-bot-token-abcdef"
-ME = 1001  # the allowed chat
-STRANGER = 666
+from tests.fake_telegram import BOT_TOKEN, ME, STRANGER, FakeTelegram
 
 pytestmark = pytest.mark.usefixtures("task_registry")
-
-
-@dataclass
-class FakeTelegram:
-    updates: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    sent: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    edits: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    callbacks: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    offsets: list[int | None] = field(default_factory=list[int | None])
-    paths: list[str] = field(default_factory=list[str])
-    next_id: int = 500
-
-    def handle(self, request: httpx2.Request) -> httpx2.Response:
-        self.paths.append(request.url.path)
-        prefix = f"/bot{BOT_TOKEN}/"
-        if not request.url.path.startswith(prefix):
-            return httpx2.Response(401, json={"ok": False, "description": "Unauthorized"})
-        method = request.url.path.removeprefix(prefix)
-        body: dict[str, Any] = json.loads(request.content or b"{}")
-        match method:
-            case "getMe":
-                return self.ok({"id": 9, "is_bot": True, "username": "ringkeeper_test_bot"})
-            case "getUpdates":
-                self.offsets.append(body.get("offset"))
-                offset = body.get("offset") or 0
-                return self.ok([u for u in self.updates if u["update_id"] >= offset])
-            case "sendMessage":
-                self.next_id += 1
-                self.sent.append({**body, "message_id": self.next_id})
-                return self.ok({"message_id": self.next_id})
-            case "editMessageText":
-                self.edits.append(body)
-                return self.ok(True)
-            case "answerCallbackQuery":
-                self.callbacks.append(body)
-                return self.ok(True)
-            case _:
-                return httpx2.Response(404, json={"ok": False, "description": "Not Found"})
-
-    @staticmethod
-    def ok(result: object) -> httpx2.Response:
-        return httpx2.Response(200, json={"ok": True, "result": result})
-
-    def press(self, data: str, chat: int = ME, user: int = 42) -> None:
-        self.updates.append(
-            {
-                "update_id": len(self.updates) + 1,
-                "callback_query": {
-                    "id": f"cb{len(self.updates)}",
-                    "from": {"id": user, "username": "alice"},
-                    "message": {"message_id": 1, "chat": {"id": chat}},
-                    "data": data,
-                },
-            }
-        )
-
-    def reply(self, to_message: int, text: str, chat: int = ME) -> None:
-        self.updates.append(
-            {
-                "update_id": len(self.updates) + 1,
-                "message": {
-                    "message_id": 900 + len(self.updates),
-                    "from": {"id": 42, "username": "alice"},
-                    "chat": {"id": chat, "type": "private", "first_name": "Alice"},
-                    "text": text,
-                    "reply_to_message": {"message_id": to_message},
-                },
-            }
-        )
 
 
 @pytest.fixture

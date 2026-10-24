@@ -57,6 +57,7 @@ class Via(enum.StrEnum):
 class Answer:
     choice: str | None = None
     text: str | None = None
+    voice: bool = False  # text is a voice note's transcript, confirmed by the user
 
 
 def create(
@@ -134,6 +135,8 @@ def _audit(session: Session, decision: Decision, answer: Answer, by: str, via: V
     details = {"via": via.value, "by": by, "kind": decision.kind.value}
     if answer.choice is not None:
         details["choice"] = answer.choice
+    if answer.voice:
+        details["input"] = "voice"
     session.add(
         AuditEvent(
             project=decision.project,
@@ -159,7 +162,12 @@ def _close(decision: Decision, status: DecisionStatus, by: str, via: Via, answer
     decision.decided_at = datetime.now(UTC)
     decision.decided_by = by
     decision.answered_via = via.value
-    decision.answer = {k: v for k, v in (("choice", answer.choice), ("text", answer.text)) if v}
+    stored: dict[str, Any] = {
+        k: v for k, v in (("choice", answer.choice), ("text", answer.text)) if v
+    }
+    if answer.voice:
+        stored["input"] = "voice"
+    decision.answer = stored
     if status is DecisionStatus.DENIED and answer.text:
         decision.reason = safe_text(answer.text)
 
@@ -233,7 +241,7 @@ def _answer_question(
     reply = (answer.text or answer.choice or "").strip()
     if not reply:
         raise RuleViolationError("a question needs a text answer")
-    answer = Answer(text=reply)
+    answer = Answer(text=reply, voice=answer.voice)
     _close(decision, DecisionStatus.ANSWERED, by, via, answer)
     task = _task_of(session, decision)
     payload = decision.payload or {}

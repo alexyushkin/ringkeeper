@@ -147,7 +147,7 @@ def pending(kind: DecisionKind) -> list[Decision]:
         return found
 
 
-def answer(decision: Decision, **reply: str) -> None:
+def answer(decision: Decision, **reply: Any) -> None:
     with session_scope() as session:
         inbox.answer(
             session, get_settings(), str(decision.id), Answer(**reply), by="alice", via=Via.CLI

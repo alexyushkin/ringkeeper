@@ -18,11 +18,16 @@ class TelegramError(RingkeeperError):
     pass
 
 
+class FileTooLargeError(TelegramError):
+    pass
+
+
 class BotApi:
     def __init__(self, token: str, base_url: str = "https://api.telegram.org") -> None:
         self._http = httpx2.Client(
             base_url=f"{base_url.rstrip('/')}/bot{token}/", timeout=60.0, transport=transport
         )
+        self._files = f"{base_url.rstrip('/')}/file/bot{token}/"
 
     def close(self) -> None:
         self._http.close()
@@ -64,6 +69,29 @@ class BotApi:
 
     def get_me(self) -> dict[str, Any]:
         return cast(dict[str, Any], self.call("getMe"))
+
+    def get_file(self, file_id: str) -> dict[str, Any]:
+        """{file_id, file_size, file_path}: where to download a file from."""
+        return cast(dict[str, Any], self.call("getFile", file_id=file_id))
+
+    def download(self, file_path: str, max_bytes: int) -> bytes:
+        """The file's bytes, in memory only; stops as soon as it passes max_bytes."""
+        chunks: list[bytes] = []
+        size = 0
+        try:
+            with self._http.stream("GET", self._files + file_path) as response:
+                if response.status_code != 200:
+                    raise TelegramError(f"Telegram file download: HTTP {response.status_code}")
+                for chunk in response.iter_bytes():
+                    size += len(chunk)
+                    if size > max_bytes:
+                        chunks.clear()
+                        raise FileTooLargeError(f"the file is larger than {max_bytes} bytes")
+                    chunks.append(chunk)
+        except httpx2.HTTPError as error:
+            # Never include the URL: it carries the bot token.
+            raise TelegramError(f"Telegram file download failed: {type(error).__name__}") from None
+        return b"".join(chunks)
 
 
 def from_vault(vault: "Vault", settings: "Settings") -> BotApi:
