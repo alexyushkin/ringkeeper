@@ -185,10 +185,16 @@ for db in acme_dev:acme/supabase-dev acme_prod:acme/supabase-prod globex_dev:glo
     | uv run ringkeeper secret set "file://${db#*:}"
 done
 uv run ringkeeper registry apply examples/registry.yaml
-claude mcp add --transport http --scope local ringkeeper-supabase \
+claude mcp add --transport http --scope user ringkeeper-supabase \
   http://localhost:8100/mcp/supabase \
   --header "Authorization: Bearer $(uv run ringkeeper token issue --project acme-web --ttl 1h)"
 ```
+
+MCP servers load when a Claude Code session starts, so start a new session
+after adding it. Use `--scope user` for the Claude desktop app, which doesn't
+load `--scope local` servers (the terminal CLI loads either). User scope makes
+the server visible in every project, so remove it when you're done:
+`claude mcp remove ringkeeper-supabase -s user`.
 
 Then, from Claude Code:
 
