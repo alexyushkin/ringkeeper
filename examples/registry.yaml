@@ -1,0 +1,99 @@
+# Example registry for two fictional clients, Acme and Globex.
+# Apply with:  uv run interlock registry apply examples/registry.yaml [--dry-run]
+#
+# secret_ref values are pointers (file:// or aws-sm://), never credentials.
+# All hosts use reserved .example domains.
+
+version: 1
+
+instances:
+  # Acme: three Supabase projects and one n8n host
+  - name: acme-supabase-dev
+    type: supabase
+    env: dev
+    base_url: https://acme-dev.supabase.example
+    secret_ref: file:///run/secrets/acme-supabase-dev
+    owner: acme-platform
+  - name: acme-supabase-staging
+    type: supabase
+    env: staging
+    base_url: https://acme-staging.supabase.example
+    secret_ref: aws-sm://interlock/acme/supabase-staging
+    owner: acme-platform
+  - name: acme-supabase-prod
+    type: supabase
+    env: prod
+    base_url: https://acme-prod.supabase.example
+    secret_ref: aws-sm://interlock/acme/supabase-prod
+    owner: acme-platform
+  - name: acme-n8n
+    type: n8n
+    env: prod
+    base_url: https://n8n.acme.example
+    secret_ref: aws-sm://interlock/acme/n8n
+    owner: acme-ops
+
+  # Globex: one Supabase project, its own n8n host, and a Vercel team
+  - name: globex-supabase-dev
+    type: supabase
+    env: dev
+    base_url: https://globex-dev.supabase.example
+    secret_ref: file:///run/secrets/globex-supabase-dev
+    owner: globex-web
+  - name: globex-n8n-staging
+    type: n8n
+    env: staging
+    base_url: https://n8n-staging.globex.example
+    secret_ref: aws-sm://interlock/globex/n8n-staging
+    owner: globex-web
+  - name: globex-vercel
+    type: vercel
+    env: staging
+    secret_ref: aws-sm://interlock/globex/vercel
+    owner: globex-web
+
+projects:
+  - name: acme-web
+    owner: acme-platform
+    description: Acme customer portal
+    aliases: [acme, acme-portal]
+    repo_url: https://git.example/acme/web
+    worktree_path: /srv/interlock/worktrees/acme-web
+    autonomy: standard
+    bindings:
+      - instance: acme-supabase-dev
+        default: true
+      - instance: acme-supabase-staging
+        allowed_tools: [sql.read, storage.read]
+      # Prod is bound but never default: writes must name it explicitly.
+      - instance: acme-supabase-prod
+        allowed_tools: [sql.read]
+      # A prod n8n host can't be the default either, so it is bound plainly.
+      - instance: acme-n8n
+        allowed_tools: [workflows.read, workflows.run]
+        preapproved_writes: [workflows.run]
+
+  - name: acme-reports
+    owner: acme-ops
+    description: Internal reporting jobs
+    aliases: [acme-bi]
+    autonomy: strict
+    bindings:
+      - instance: acme-supabase-staging
+        default: true
+        allowed_tools: [sql.read]
+
+  - name: globex-portal
+    owner: globex-web
+    description: Globex partner portal
+    aliases: [globex]
+    repo_url: https://git.example/globex/portal
+    autonomy: relaxed
+    bindings:
+      - instance: globex-supabase-dev
+        default: true
+      - instance: globex-n8n-staging
+        default: true
+      - instance: globex-vercel
+        default: true
+        preapproved_writes: [deployments.create]

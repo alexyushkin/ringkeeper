@@ -1,7 +1,7 @@
 import typer
 
 from interlock import __version__, migrate
-from interlock.cli import bindings, instances, projects
+from interlock.cli import bindings, instances, projects, registry
 from interlock.cli.common import handle_errors
 
 app = typer.Typer(
@@ -12,6 +12,7 @@ app = typer.Typer(
 )
 app.add_typer(projects.app, name="project")
 app.add_typer(instances.app, name="instance")
+app.add_typer(registry.app, name="registry")
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)
 
