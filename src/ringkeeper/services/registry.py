@@ -21,7 +21,10 @@ from ringkeeper.models import Instance, Project, ProjectInstance
 from ringkeeper.schemas import BindingIn, CleanList, InstanceIn, ProjectIn, Slug
 from ringkeeper.services import bindings, instances, projects
 
-PROJECT_FIELDS = ("owner", "description", "aliases", "repo_url", "workspace_path", "autonomy")
+PROJECT_FIELDS = (
+    "owner", "description", "aliases", "repo_url", "workspace_path", "autonomy", "checks",
+    "models",
+)  # fmt: skip
 INSTANCE_FIELDS = ("type", "env", "base_url", "secret_ref", "owner")
 BINDING_FIELDS = ("default", "allowed_tools", "preapproved_writes")
 

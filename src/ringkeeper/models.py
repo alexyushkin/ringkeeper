@@ -78,6 +78,14 @@ class DecisionStatus(enum.StrEnum):
     EXECUTED = "executed"
     FAILED = "failed"
     EXPIRED = "expired"
+    ANSWERED = "answered"  # route and question decisions
+
+
+class DecisionKind(enum.StrEnum):
+    ROUTE = "route"  # which project should a message go to
+    APPROVE = "approve"  # a held prod write from the gateway
+    PLAN = "plan"  # an architect's plan, before any code is written
+    QUESTION = "question"  # a worker (or the architect loop) asking the user
 
 
 class AuditOutcome(enum.StrEnum):
@@ -85,9 +93,11 @@ class AuditOutcome(enum.StrEnum):
     HELD = "held"
     EXECUTED = "executed"
     FAILED = "failed"
+    ANSWERED = "answered"  # a decision was answered: who and how are recorded
 
 
 decision_status_enum = Enum(DecisionStatus, name="decision_status", values_callable=_enum_values)
+decision_kind_enum = Enum(DecisionKind, name="decision_kind", values_callable=_enum_values)
 audit_outcome_enum = Enum(AuditOutcome, name="audit_outcome", values_callable=_enum_values)
 
 
@@ -105,6 +115,8 @@ class TaskStatus(enum.StrEnum):
     TIMED_OUT = "timed_out"
     STOPPED = "stopped"
     BUDGET_EXCEEDED = "budget_exceeded"
+    NEEDS_INPUT = "needs_input"  # a worker asked the user something; answering resumes it
+    WAITING = "waiting"  # blocked on a decision (an architect's plan) or another session
 
 
 TERMINAL_STATUSES = frozenset(
@@ -116,9 +128,57 @@ TERMINAL_STATUSES = frozenset(
         TaskStatus.BUDGET_EXCEEDED,
     }
 )
+# Not running and not queued: a task in one of these can be resumed.
+RESUMABLE_STATUSES = TERMINAL_STATUSES | {TaskStatus.NEEDS_INPUT}
+
+
+class TaskKind(enum.StrEnum):
+    FEATURE = "feature"  # goes through the architect loop
+    FIX = "fix"
+    DATA = "data"
+    CONTENT = "content"
+    OPS = "ops"
+
+
+class TaskRisk(enum.StrEnum):
+    READ = "read"
+    WRITE = "write"
+    PROD_WRITE = "prod-write"
+
+
+class Complexity(enum.StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class SessionRole(enum.StrEnum):
+    WORKER = "worker"
+    ARCHITECT = "architect"
+
+
+class ArchitectPhase(enum.StrEnum):
+    PLANNING = "planning"
+    AWAITING_PLAN = "awaiting_plan"
+    BUILDING = "building"
+    REVIEWING = "reviewing"
+    DONE = "done"
+
+
+class MessageRole(enum.StrEnum):
+    USER = "user"
+    ROUTER = "router"
+    SYSTEM = "system"
+
 
 auth_mode_enum = Enum(AuthMode, name="auth_mode", values_callable=_enum_values)
 task_status_enum = Enum(TaskStatus, name="task_status", values_callable=_enum_values)
+task_kind_enum = Enum(TaskKind, name="task_kind", values_callable=_enum_values)
+task_risk_enum = Enum(TaskRisk, name="task_risk", values_callable=_enum_values)
+complexity_enum = Enum(Complexity, name="complexity", values_callable=_enum_values)
+session_role_enum = Enum(SessionRole, name="session_role", values_callable=_enum_values)
+architect_phase_enum = Enum(ArchitectPhase, name="architect_phase", values_callable=_enum_values)
+message_role_enum = Enum(MessageRole, name="message_role", values_callable=_enum_values)
 
 
 class Base(DeclarativeBase):
@@ -148,6 +208,10 @@ class Project(TimestampMixin, Base):
     autonomy: Mapped[Autonomy] = mapped_column(
         autonomy_enum, server_default=Autonomy.STANDARD.value
     )
+    # Commands run in the worker container after each worker turn (architect loop).
+    checks: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    # Model overrides for this project: keys architect, worker, low, medium, high.
+    models: Mapped[dict[str, str]] = mapped_column(JSONB, server_default="{}")
 
     bindings: Mapped[list["ProjectInstance"]] = relationship(
         back_populates="project",
@@ -221,8 +285,13 @@ class ProjectInstance(Base):
 
 
 class Decision(Base):
-    """A held prod write, waiting for a human. Names are stored as text so the
-    history survives later changes to the registry; approval re-checks them."""
+    """Everything waiting for a human: the inbox.
+
+    route: which project(s) a message goes to. approve: a held prod write.
+    plan: an architect's plan. question: a worker asking the user. Names are
+    stored as text so the history survives later registry changes; approval
+    of a held write re-checks them.
+    """
 
     __tablename__ = "decisions"
     __table_args__ = (
@@ -231,25 +300,49 @@ class Decision(Base):
             name="ck_decisions_decided_iff_not_pending",
         ),
         CheckConstraint("expires_at > created_at", name="ck_decisions_expiry_after_creation"),
+        CheckConstraint(
+            "kind <> 'approve' OR (project IS NOT NULL AND session_id IS NOT NULL "
+            "AND token_id IS NOT NULL AND instance IS NOT NULL AND service IS NOT NULL "
+            "AND tool IS NOT NULL AND args IS NOT NULL AND args_hash IS NOT NULL)",
+            name="ck_decisions_approve_has_call",
+        ),
         Index("ix_decisions_status_created_at", "status", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, server_default=text("gen_random_uuid()")
     )
+    kind: Mapped[DecisionKind] = mapped_column(
+        decision_kind_enum, server_default=DecisionKind.APPROVE.value
+    )
     status: Mapped[DecisionStatus] = mapped_column(
         decision_status_enum, server_default=DecisionStatus.PENDING.value
     )
-    project: Mapped[str] = mapped_column(Text)
-    session_id: Mapped[str] = mapped_column(Text)
-    token_id: Mapped[str] = mapped_column(Text)
-    instance: Mapped[str] = mapped_column(Text)
-    service: Mapped[InstanceType] = mapped_column(instance_type_enum)
-    tool: Mapped[str] = mapped_column(Text)
+    project: Mapped[str | None] = mapped_column(Text)
+    session_id: Mapped[str | None] = mapped_column(Text)
+    token_id: Mapped[str | None] = mapped_column(Text)
+    instance: Mapped[str | None] = mapped_column(Text)
+    service: Mapped[InstanceType | None] = mapped_column(instance_type_enum)
+    tool: Mapped[str | None] = mapped_column(Text)
     # Exact arguments, needed to execute on approval. They come from the agent,
     # never from the vault.
-    args: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    args_hash: Mapped[str] = mapped_column(Text)
+    args: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    args_hash: Mapped[str | None] = mapped_column(Text)
+    # route: {"message", "candidates": [{project, confidence}...], "task": {...}};
+    # plan: {"plan", "worker_prompt"}; question: {"question", "open_issues"?}.
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # {"choice": ...} or {"text": ...}; who and how are below.
+    answer: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    answered_via: Mapped[str | None] = mapped_column(Text)  # telegram, cli, api
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL", name="fk_decisions_task")
+    )
+    thread_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("threads.id", ondelete="SET NULL", name="fk_decisions_thread")
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL", name="fk_decisions_message")
+    )
     # State captured at hold time that must still hold at approval (e.g. n8n updatedAt).
     precondition: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     result: Mapped[str | None] = mapped_column(Text)
@@ -302,6 +395,9 @@ class Task(Base):
             "budget_usd IS NULL OR (budget_usd > 0 AND auth_mode = 'api_key')",
             name="ck_tasks_budget_needs_api_key",
         ),
+        CheckConstraint(
+            "review_round >= 0 AND review_round <= 3", name="ck_tasks_review_round_range"
+        ),
         Index("ix_tasks_status_created_at", "status", "created_at"),
     )
 
@@ -325,6 +421,23 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the router created the task.
+    thread_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("threads.id", ondelete="SET NULL", name="fk_tasks_thread")
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL", name="fk_tasks_message")
+    )
+    kind: Mapped[TaskKind | None] = mapped_column(task_kind_enum)
+    risk: Mapped[TaskRisk | None] = mapped_column(task_risk_enum)
+    complexity: Mapped[Complexity | None] = mapped_column(complexity_enum)
+    outcome: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    # Architect loop (kind = feature) only.
+    phase: Mapped[ArchitectPhase | None] = mapped_column(architect_phase_enum)
+    review_round: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    failed_check_rounds: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    worker_prompt: Mapped[str | None] = mapped_column(Text)
 
     sessions: Mapped[list["WorkerSession"]] = relationship(
         back_populates="task", order_by="WorkerSession.ordinal", passive_deletes=True
@@ -351,6 +464,10 @@ class WorkerSession(Base):
     status: Mapped[TaskStatus] = mapped_column(
         task_status_enum, server_default=TaskStatus.QUEUED.value
     )
+    role: Mapped[SessionRole] = mapped_column(
+        session_role_enum, server_default=SessionRole.WORKER.value
+    )
+    model: Mapped[str | None] = mapped_column(Text)
     sdk_session_id: Mapped[str | None] = mapped_column(Text)
     container_id: Mapped[str | None] = mapped_column(Text)
     state_volume: Mapped[str] = mapped_column(Text)
@@ -397,3 +514,103 @@ class TokenRevocation(Base):
     revoked_by: Mapped[str] = mapped_column(Text)
     # After this the token is dead anyway, so the row can be cleaned up.
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Thread(Base):
+    """A conversation with Ringkeeper: the user's messages and the router's replies."""
+
+    __tablename__ = "threads"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    title: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)  # cli, api, telegram
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="thread", order_by="Message.created_at", passive_deletes=True
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_thread_created_at", "thread_id", "created_at"),
+        # The router's queue: user messages not routed yet.
+        Index(
+            "ix_messages_unrouted",
+            "created_at",
+            postgresql_where=text("role = 'user' AND routed_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("threads.id", ondelete="CASCADE", name="fk_messages_thread")
+    )
+    role: Mapped[MessageRole] = mapped_column(message_role_enum)
+    author: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    # The router's validated output for this message.
+    routing: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    routed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    route_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    thread: Mapped[Thread] = relationship(back_populates="messages")
+
+
+class RoutingExample(Base):
+    """A routing answer to remember: this phrasing goes to this project."""
+
+    __tablename__ = "routing_examples"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    # Lowercased, whitespace-collapsed request text; an exact match routes directly.
+    normalized: Mapped[str] = mapped_column(Text, unique=True)
+    text: Mapped[str] = mapped_column(Text)
+    project: Mapped[str] = mapped_column(Text)
+    kind: Mapped[TaskKind | None] = mapped_column(task_kind_enum)
+    decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("decisions.id", ondelete="SET NULL", name="fk_routing_examples_decision")
+    )
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Notification(Base):
+    """A decision sent to a channel (Telegram), so its message can be updated later."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("decision_id", "channel", "chat_id", name="uq_notifications_target"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("decisions.id", ondelete="CASCADE", name="fk_notifications_decision")
+    )
+    channel: Mapped[str] = mapped_column(Text)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    external_id: Mapped[int | None] = mapped_column(BigInteger)  # Telegram message_id
+    status: Mapped[str] = mapped_column(Text)  # sent, failed, closed
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Setting(Base):
+    """Small runtime state (e.g. the Telegram update offset)."""
+
+    __tablename__ = "settings_kv"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB)

@@ -316,9 +316,7 @@ async def approve(ident: str, *, by: str | None = None, vault: Vault) -> Decisio
         decisions.expire_stale(session)
         session.commit()
         decision = decisions.claim_for_approval(session, ident, by)
-        caller = Caller(decision.project, decision.session_id, decision.token_id)
-        call = ToolCall(caller, decision.service, decision.tool, decision.instance, decision.args)
-        return str(decision.id), call, decision.precondition
+        return str(decision.id), decisions.held_call(decision), decision.precondition
 
     decision_id, call, stored_precondition = await _db(claim)
     finish = partial(_finish, decision_id, call)

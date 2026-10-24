@@ -1,7 +1,7 @@
 """Pydantic models for input (CLI, registry files) and output (API, CLI show)."""
 
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
@@ -51,6 +51,11 @@ Slug = Annotated[str, StringConstraints(pattern=SLUG_PATTERN)]
 NonEmpty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 SecretRef = Annotated[str, AfterValidator(validate_secret_ref)]
 CleanList = Annotated[list[str], AfterValidator(_clean_list)]
+# Per-project model overrides: a role (architect, worker) or a worker complexity tier.
+ModelKey = Literal["architect", "worker", "low", "medium", "high"]
+ModelId = Annotated[
+    str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z0-9][a-z0-9.\-]*$")
+]
 
 
 class _Input(BaseModel):
@@ -65,6 +70,9 @@ class ProjectIn(_Input):
     repo_url: str | None = None
     workspace_path: str | None = None
     autonomy: Autonomy = Autonomy.STANDARD
+    # Shell commands run in the worker container after each worker turn.
+    checks: CleanList = Field(default_factory=list[str])
+    models: dict[ModelKey, ModelId] = Field(default_factory=dict[ModelKey, ModelId])
 
 
 class InstanceIn(_Input):
@@ -96,6 +104,8 @@ class ProjectOut(_Output):
     repo_url: str | None
     workspace_path: str | None
     autonomy: Autonomy
+    checks: list[str]
+    models: dict[str, str]
 
 
 class InstanceOut(_Output):

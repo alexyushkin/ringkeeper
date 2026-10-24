@@ -98,8 +98,9 @@ def _clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE session_events, sessions, tasks, token_revocations, audit_events, "
-                "decisions, project_instances, projects, instances CASCADE"
+                "TRUNCATE notifications, routing_examples, settings_kv, session_events, "
+                "sessions, tasks, token_revocations, audit_events, decisions, messages, "
+                "threads, project_instances, projects, instances CASCADE"
             )
         )
 

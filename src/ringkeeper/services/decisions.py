@@ -18,10 +18,10 @@ from typing import Any
 from sqlalchemy import String, cast, select, update
 from sqlalchemy.orm import Session
 
-from ringkeeper.calls import ToolCall, args_hash
+from ringkeeper.calls import Caller, ToolCall, args_hash
 from ringkeeper.config import get_settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Decision, DecisionStatus
+from ringkeeper.models import Decision, DecisionKind, DecisionStatus
 from ringkeeper.services.audit import safe_text
 
 MIN_ID_PREFIX = 8
@@ -55,6 +55,7 @@ def hold(
         tool=call.tool,
         args=call.args,
         args_hash=args_hash(call.args),
+        kind=DecisionKind.APPROVE,
         precondition=precondition,
         created_at=now,
         expires_at=now + timedelta(seconds=get_settings().decision_ttl_seconds),
@@ -135,8 +136,24 @@ def _require_pending(decision: Decision) -> None:
         )
 
 
+def held_call(decision: Decision) -> ToolCall:
+    """The exact call a held-write (approve) decision would run."""
+    if (
+        decision.kind is not DecisionKind.APPROVE
+        or decision.service is None
+        or decision.tool is None
+        or decision.args is None
+    ):
+        raise RuleViolationError(
+            f"decision {decision.id} is a {decision.kind} decision, not a held write"
+        )
+    caller = Caller(decision.project, decision.session_id, decision.token_id)
+    return ToolCall(caller, decision.service, decision.tool, decision.instance, decision.args)
+
+
 def claim_for_approval(session: Session, ident: str, by: str | None = None) -> Decision:
     decision = get_decision(session, ident, lock=True)
+    held_call(decision)  # only held writes are approved here; other kinds are answered
     _require_pending(decision)
     decision.status = DecisionStatus.APPROVED
     decision.decided_at = datetime.now(UTC)
