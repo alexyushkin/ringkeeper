@@ -36,6 +36,10 @@ CI runs the same checks plus a gitleaks scan of the full history.
 - **Adapters** live in `src/ringkeeper/adapters/`, one module per service. Every
   tool is declared `@read`, `@write` or `@guarded_write(precondition)` and gets
   tests against a real or faked service.
+- **The worker** (`worker/ringkeeper_worker`) is its own package and image: it
+  must never import `ringkeeper`, and nothing may add the master key, the data
+  dir or the Docker socket to it. `tests/test_worker_container.py` checks this
+  against real containers.
 - **Schema changes need an Alembic migration** in
   `src/ringkeeper/migrations/versions`, and `tests/test_migrations.py` must stay
   green.

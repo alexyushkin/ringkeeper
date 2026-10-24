@@ -61,7 +61,7 @@ projects:
     description: Acme customer portal
     aliases: [acme, acme-portal]
     repo_url: https://git.example/acme/web
-    workspace_path: /srv/ringkeeper/workspaces/acme-web
+    workspace_path: acme-web  # relative to RINGKEEPER_WORKSPACES_ROOT
     autonomy: standard
     bindings:
       - instance: acme-supabase-dev
@@ -84,6 +84,7 @@ projects:
     owner: acme-ops
     description: Internal reporting jobs
     aliases: [acme-bi]
+    workspace_path: acme-reports
     autonomy: strict
     bindings:
       - instance: acme-supabase-staging
@@ -95,6 +96,7 @@ projects:
     description: Globex partner portal
     aliases: [globex]
     repo_url: https://git.example/globex/portal
+    workspace_path: globex-portal
     autonomy: relaxed
     bindings:
       - instance: globex-supabase-dev

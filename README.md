@@ -2,10 +2,14 @@
 
 Ringkeeper is a self-hosted orchestrator that routes tasks to projects and runs
 coding-agent workers against them. It is MIT licensed and early. So far it
-ships the registries (projects, instances and the bindings between them), a
-vault, an MCP gateway that enforces the bindings, held approvals for prod
-writes, and an append-only audit log. There is no session manager, router or
-UI yet.
+ships:
+- the registries: projects, instances and the bindings between them
+- a vault for credentials
+- an MCP gateway that enforces the bindings
+- held approvals for prod writes, and an append-only audit log
+- a session manager that runs Claude Agent SDK workers in containers
+
+There is no router, inbox UI or architect yet.
 
 ## The idea: instances bound to projects
 
@@ -135,8 +139,13 @@ uv run ringkeeper token issue --project acme-web --ttl 1h
 ```
 
 This prints a signed token that names the project, a session id and an
-expiry. The gateway trusts nothing else about the caller. Tokens are verified
-on every request, so an expired token stops working mid-session.
+expiry; its `jti` goes to stderr. The gateway trusts nothing else about the
+caller. Tokens are verified on every request, so an expired token stops
+working mid-session.
+
+`ringkeeper token revoke <jti>` kills a token before it expires. The gateway
+then refuses it and audits the refusal. Worker sessions revoke their own token
+automatically when they end, whatever the outcome.
 
 ### Decisions and the audit log
 
@@ -157,21 +166,107 @@ holds the time, project, session, instance, tool, outcome (`refused`, `held`,
 `executed` or `failed`), redacted args with their hash, and a truncated
 result. The database itself rejects any `UPDATE` or `DELETE` on it.
 
+## Workers
+
+A task is a prompt for one project. The session manager runs it in a worker
+container: the Claude Agent SDK, working in the project's workspace, with the
+gateway as its only MCP servers.
+
+```bash
+uv run ringkeeper auth login             # store an Anthropic API key (hidden prompt)
+uv run ringkeeper auth status            # mode, and whether the credential resolves
+uv run ringkeeper task run --project acme-web "Summarise the acme customers"
+uv run ringkeeper task list
+uv run ringkeeper task show <id>         # status, turns, cost estimate, changes, last messages
+uv run ringkeeper task resume <id> "Now add that to NOTES.md"
+uv run ringkeeper task stop <id>
+uv run ringkeeper stop-all
+```
+
+`task run` follows the task until it ends; `--detach` returns at once, and
+Ctrl-C detaches without stopping it. Limits per task: `--max-turns` (default
+30), `--max-runtime` (default 30m; the container is killed and the task marked
+`timed_out`), and `--budget` in USD. The budget is the SDK's own cost
+estimate, so leave headroom. A global cap (`RINGKEEPER_MAX_CONCURRENT_WORKERS`,
+default 4) queues anything beyond it.
+
+**What a worker gets, and nothing more:**
+- the project's workspace, read-write at `/workspace`. The workspace path is
+  absolute, or relative to `RINGKEEPER_WORKSPACES_ROOT` as the Docker host sees
+  it; Windows paths are translated for Docker Desktop.
+- a per-task volume for the SDK's own state, so `task resume` continues the
+  same Claude session
+- a gateway token scoped to the project, valid for the task's max runtime and
+  revoked when the session ends
+- exactly one Claude credential: `ANTHROPIC_API_KEY` in `api_key` mode. Its
+  environment is built from an allowlist, so nothing that could switch billing
+  (`ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `ANTHROPIC_BASE_URL`, …)
+  is ever inherited.
+
+It never gets the master key, the data dir or the Docker socket. It runs as a
+non-root user on a read-only root filesystem, with all capabilities dropped and
+memory and process limits. It is on a network that holds only the gateway, so
+it can't reach Postgres or the api by name. Settings files (user, project,
+local) aren't loaded, and the project's `autonomy` removes tools: `strict` has
+no Bash and no web access, `standard` has no web access.
+
+**Git:** if the workspace is a git repo, the worker commits on
+`ringkeeper/<task-id>` and never moves `main`. If the agent moves `main`
+anyway, it's put back and the moved commits are kept on a side branch. Only
+files the worker touched are committed, never your own uncommitted edits.
+Nothing is pushed. Without a repo, the task records the list of changed files.
+
+**The session manager** lives in the api service. It is the only service that
+mounts the Docker socket, which makes it root-equivalent on the host: guard
+the api like root. Build the worker image once with
+`docker compose --profile worker build worker`.
+
+### Known risks (not solved yet)
+
+- **The worker holds the Claude credential in its environment.** A
+  prompt-injected worker with Bash could read it and send it out. Egress
+  allowlisting comes later; until then, prefer `strict` autonomy (no Bash)
+  for anything that reads untrusted content.
+- **Workers have open internet access**, which they need for the Anthropic
+  API.
+- **Host-published ports are reachable by IP.** On Docker Desktop, the
+  host-gateway address forwards to the host's loopback, so a worker that knows
+  that address could reach anything published there, including Postgres.
+  The host name `host.docker.internal` is blocked, but the IP isn't. Set a
+  strong `POSTGRES_PASSWORD` in `.env`.
+
+### Subscription mode: personal use only
+
+`api_key` is the default and the only mode setup offers. Anthropic's Agent
+SDK terms don't allow offering claude.ai (subscription) login in products
+built on the SDK without Anthropic's approval. Subscription mode therefore exists only for running
+Ringkeeper yourself on **your own** Claude account. Never use it to run work
+for anyone else.
+
+If that's your case, set `RINGKEEPER_CLAUDE_AUTH_MODE=subscription` in `.env`
+and store a token from `claude setup-token` with
+`ringkeeper auth login --subscription`. Workers then get
+`CLAUDE_CODE_OAUTH_TOKEN` and never `ANTHROPIC_API_KEY`, so billing can't
+switch silently. Budgets don't apply in this mode.
+
 ## Quick start
 
 Requirements: Docker with Compose, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cp .env.example .env
+cp .env.example .env                # then set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
 uv run ringkeeper secret init        # creates .ringkeeper/master.key: back it up
-docker compose up -d --build        # postgres, api, gateway
+uv run ringkeeper auth login         # the Anthropic API key workers use
+docker compose --profile worker build worker
+docker compose up -d --build        # postgres, api (with the session manager), gateway
 uv run ringkeeper registry apply examples/registry.yaml
 curl http://localhost:8000/health
 curl http://localhost:8100/health
 ```
 
 The API container applies database migrations on start, and the gateway waits
-for it.
+for it. The example registry's workspace paths (`acme-web`, …) are relative,
+so create those folders under `RINGKEEPER_WORKSPACES_ROOT`.
 
 ### Demo: connect Claude Code to the gateway
 
@@ -223,9 +318,13 @@ ringkeeper unbind <project> <instance>
 ringkeeper registry apply <file.yaml> [--dry-run]
 ringkeeper registry export [-o file.yaml]
 ringkeeper secret   init | set <ref> | check <instance>
-ringkeeper token    issue --project <name> [--ttl 1h] [--session <id>]
+ringkeeper token    issue --project <name> [--ttl 1h] [--session <id>] | revoke <jti>
 ringkeeper decision list | show | approve | deny
 ringkeeper audit    list [--project] [--instance] [--outcome] [--since]
+ringkeeper auth     login | status
+ringkeeper task     run --project <name> "<prompt>" [--max-turns] [--max-runtime] [--budget] [--detach]
+ringkeeper task     list | show <id> | stop <id> | resume <id> "<follow-up>"
+ringkeeper stop-all
 ringkeeper db upgrade
 ```
 

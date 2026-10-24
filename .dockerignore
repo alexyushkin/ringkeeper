@@ -10,6 +10,8 @@
 secrets/
 # Vault and master key: back these up, never commit or ship them
 .ringkeeper/
+workspaces/
+worker/
 tests/
 examples/
 docker/

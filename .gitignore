@@ -19,6 +19,8 @@ htmlcov/
 secrets/
 # Vault and master key: back these up, never commit or ship them
 .ringkeeper/
+# Local project workspaces for the demo (RINGKEEPER_WORKSPACES_ROOT)
+workspaces/
 
 # Editors / OS
 .idea/
