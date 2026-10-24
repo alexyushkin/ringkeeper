@@ -72,6 +72,9 @@ def test_options_isolate_the_session() -> None:
         }
     }
     assert options.model == "claude-sonnet-5-5"
+    prompt = cast(dict[str, Any], options.system_prompt)
+    assert (prompt["type"], prompt["preset"]) == ("preset", "claude_code")
+    assert "call the ask_user tool" in prompt["append"]
     assert options.max_turns == 7
     assert options.max_budget_usd == 1.5
     assert options.permission_mode == "bypassPermissions"

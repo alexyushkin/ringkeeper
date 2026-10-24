@@ -7,6 +7,14 @@ from ringkeeper_worker import inbox
 from ringkeeper_worker.config import WorkerConfig
 from ringkeeper_worker.emit import emit, message_type
 
+# Appended to Claude Code's own system prompt. Nobody reads a worker's final
+# message as it happens, so a question asked in prose would go unanswered.
+HEADLESS_NOTE = """\
+You are running unattended inside Ringkeeper. /workspace is the root of your
+project; there is no other project directory. No one reads your messages while
+you work: if you need anything from the operator (a choice, a missing detail,
+confirmation), call the ask_user tool. Don't ask questions in your reply text."""
+
 
 def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> ClaudeAgentOptions:
     servers: dict[str, McpServerConfig] = {
@@ -19,6 +27,7 @@ def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> Cl
     servers[inbox.SERVER_NAME] = ask_server
     return ClaudeAgentOptions(
         cwd=config.workspace,
+        system_prompt={"type": "preset", "preset": "claude_code", "append": HEADLESS_NOTE},
         # The gateway endpoints are the only MCP servers, and no settings files
         # from anywhere (user, project or local) are loaded.
         mcp_servers=servers,  # pyright: ignore[reportArgumentType] (dict invariance)

@@ -53,7 +53,10 @@ Rules:
 - outcome: one sentence saying what done looks like.
 - prompt: complete instructions for the worker who does this task. It sees only
   this prompt and its own project, so restate everything it needs from the
-  message. Don't mention other projects.
+  message. Don't mention other projects. Its working directory is the
+  project's root, so never tell it to look for a project folder. If the
+  operator wants to be asked something first, tell the worker to use its
+  ask_user tool.
 - If the message asks for nothing to be done (a greeting, a question about
   Ringkeeper itself), return no tasks and answer in `reply`.
 - `reply` is one short line for the operator.
