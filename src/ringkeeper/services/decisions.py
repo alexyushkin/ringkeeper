@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, cast, select, update
+from sqlalchemy import String, cast, select, text, update
 from sqlalchemy.orm import Session
 
 from ringkeeper.calls import Caller, ToolCall, args_hash
@@ -25,6 +25,16 @@ from ringkeeper.models import Decision, DecisionKind, DecisionStatus
 from ringkeeper.services.audit import safe_text
 
 MIN_ID_PREFIX = 8
+# New decisions of every kind are announced here (Telegram listens).
+DECISIONS_CHANNEL = "ringkeeper_decisions"
+
+
+def notify_new(session: Session, decision: Decision) -> None:
+    """Delivered when the transaction commits."""
+    session.execute(
+        text("SELECT pg_notify(:channel, :id)"),
+        {"channel": DECISIONS_CHANNEL, "id": str(decision.id)},
+    )
 
 
 def current_user() -> str:
@@ -62,6 +72,8 @@ def hold(
     )
     session.add(decision)
     session.flush()
+    # Notification channels (Telegram) pick new decisions up from here.
+    notify_new(session, decision)
     return decision
 
 

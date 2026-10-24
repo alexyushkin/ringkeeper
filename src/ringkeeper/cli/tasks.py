@@ -169,7 +169,7 @@ def resume(
 ) -> None:
     """Continue a finished task in the same Claude session, with a follow-up prompt."""
     with handle_errors(), session_scope() as session:
-        worker_session = tasks.resume_task(session, task_id, prompt)
+        worker_session = tasks.resume_task(session, get_settings(), task_id, prompt)
         full_id = str(worker_session.task_id)
         ordinal = worker_session.ordinal
     typer.echo(f"queued session {ordinal} of task {full_id}")

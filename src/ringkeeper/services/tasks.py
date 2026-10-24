@@ -10,16 +10,25 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, cast, func, select, text
+from sqlalchemy import String, cast, func, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
+from ringkeeper.model_choice import session_model
 from ringkeeper.models import (
+    RESUMABLE_STATUSES,
     TERMINAL_STATUSES,
+    ArchitectPhase,
     AuthMode,
+    Complexity,
+    Decision,
+    DecisionStatus,
     SessionEvent,
+    SessionRole,
     Task,
+    TaskKind,
+    TaskRisk,
     TaskStatus,
     WorkerSession,
 )
@@ -27,6 +36,8 @@ from ringkeeper.services import projects, revocations
 from ringkeeper.services.decisions import MIN_ID_PREFIX, current_user
 
 NOTIFY_CHANNEL = "ringkeeper_tasks"
+# Not finished, but no container running: stopping just marks them stopped.
+IDLE_STATUSES = (TaskStatus.QUEUED, TaskStatus.NEEDS_INPUT, TaskStatus.WAITING)
 
 
 def notify(session: Session) -> None:
@@ -51,7 +62,15 @@ def create_task(
     max_turns: int | None = None,
     max_runtime_s: int | None = None,
     budget_usd: float | None = None,
+    kind: TaskKind | None = None,
+    risk: TaskRisk | None = None,
+    complexity: Complexity | None = None,
+    outcome: str | None = None,
+    thread_id: uuid.UUID | None = None,
+    message_id: uuid.UUID | None = None,
 ) -> Task:
+    """Queue a task. A feature starts with the architect (plan first), anything
+    else with a worker."""
     record = projects.get_project(session, project)
     if not prompt.strip():
         raise RuleViolationError("the prompt is empty")
@@ -80,15 +99,25 @@ def create_task(
         max_runtime_s=runtime,
         budget_usd=budget_usd,
         changed_files=[],
+        kind=kind,
+        risk=risk,
+        complexity=complexity,
+        outcome=outcome,
+        thread_id=thread_id,
+        message_id=message_id,
+        phase=ArchitectPhase.PLANNING if kind is TaskKind.FEATURE else None,
     )
     session.add(task)
     session.flush()
+    role = SessionRole.ARCHITECT if kind is TaskKind.FEATURE else SessionRole.WORKER
     task.sessions = [
         WorkerSession(
             task_id=task.id,
             ordinal=1,
             prompt=prompt,
             status=TaskStatus.QUEUED,
+            role=role,
+            model=session_model(settings, record, role, complexity),
             state_volume=state_volume_name(task.id),
         )
     ]
@@ -143,34 +172,46 @@ def latest_session(task: Task) -> WorkerSession:
     return max(task.sessions, key=lambda s: s.ordinal)
 
 
-def resume_task(session: Session, ident: str, prompt: str) -> WorkerSession:
-    task = get_task(session, ident, lock=True)
-    if task.status not in TERMINAL_STATUSES:
-        raise RuleViolationError(f"task {task.id} is {task.status}; wait for it to finish first")
-    previous = latest_session(task)
-    sdk_session = next(
+def last_sdk_session(task: Task, role: SessionRole) -> str | None:
+    """The SDK session to resume for a role (a feature task has two: architect and worker)."""
+    return next(
         (
             s.sdk_session_id
             for s in sorted(task.sessions, key=lambda s: -s.ordinal)
-            if s.sdk_session_id
+            if s.sdk_session_id and s.role is role
         ),
         None,
     )
-    if sdk_session is None:
-        raise RuleViolationError(
-            f"task {task.id} never started an SDK session, so there's nothing to resume"
-        )
-    if not prompt.strip():
-        raise RuleViolationError("the follow-up prompt is empty")
+
+
+def add_session(
+    session: Session,
+    settings: Settings,
+    task: Task,
+    prompt: str,
+    role: SessionRole,
+    *,
+    sdk_session_id: str | None = None,
+) -> WorkerSession:
+    """Queue the next session of a task (a resume, or the next architect-loop step)."""
     worker_session = WorkerSession(
         task_id=task.id,
-        ordinal=previous.ordinal + 1,
+        ordinal=latest_session(task).ordinal + 1,
         prompt=prompt,
         status=TaskStatus.QUEUED,
-        sdk_session_id=sdk_session,
-        state_volume=previous.state_volume,
+        role=role,
+        model=session_model(
+            settings,
+            projects.find_project(session, task.project),
+            role,
+            task.complexity,
+            task.failed_check_rounds,
+        ),
+        sdk_session_id=sdk_session_id,
+        state_volume=state_volume_name(task.id),
     )
     session.add(worker_session)
+    task.sessions.append(worker_session)
     task.status = TaskStatus.QUEUED
     task.stop_requested = False
     task.finished_at = None
@@ -178,6 +219,22 @@ def resume_task(session: Session, ident: str, prompt: str) -> WorkerSession:
     session.flush()
     notify(session)
     return worker_session
+
+
+def resume_task(session: Session, settings: Settings, ident: str, prompt: str) -> WorkerSession:
+    """Continue the latest session's SDK conversation with a follow-up prompt."""
+    task = get_task(session, ident, lock=True)
+    if task.status not in RESUMABLE_STATUSES:
+        raise RuleViolationError(f"task {task.id} is {task.status}; wait for it to finish first")
+    role = latest_session(task).role
+    sdk_session = last_sdk_session(task, role)
+    if sdk_session is None:
+        raise RuleViolationError(
+            f"task {task.id} never started an SDK session, so there's nothing to resume"
+        )
+    if not prompt.strip():
+        raise RuleViolationError("the follow-up prompt is empty")
+    return add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)
 
 
 def _stop(session: Session, task: Task, by: str) -> bool:
@@ -195,9 +252,16 @@ def _stop(session: Session, task: Task, by: str) -> bool:
             revocations.revoke(
                 session, worker_session.token_jti, reason=f"task {task.id} stopped", by=by
             )
-    if task.status is TaskStatus.QUEUED:
+    if task.status in IDLE_STATUSES:
         task.status = TaskStatus.STOPPED
         task.finished_at = now
+    # Nothing left to decide for a stopped task.
+    session.execute(
+        update(Decision)
+        .where(Decision.task_id == task.id, Decision.status == DecisionStatus.PENDING)
+        .values(status=DecisionStatus.DENIED, decided_at=now, decided_by=by, reason="task stopped")
+        .execution_options(synchronize_session=False)
+    )
     return True
 
 
@@ -214,7 +278,7 @@ def stop_all(session: Session, by: str | None = None) -> list[Task]:
     active = session.scalars(
         select(Task)
         .options(selectinload(Task.sessions))
-        .where(Task.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]))
+        .where(Task.status.in_([TaskStatus.RUNNING, *IDLE_STATUSES]))
         .with_for_update()
     ).all()
     stopped = [t for t in active if _stop(session, t, by or current_user())]

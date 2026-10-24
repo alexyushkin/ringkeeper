@@ -58,6 +58,30 @@ class Settings(BaseSettings):
     worker_stub: str | None = None
     worker_extra_hosts: dict[str, str] = {}
 
+    # Models by role, and by task complexity for workers the router dispatched.
+    # A project's `models` in the registry overrides any of these for that project.
+    model_router: str = "claude-haiku-5-5"
+    model_architect: str = "claude-opus-5-5"
+    model_worker: str = "claude-sonnet-5-5"  # tasks without a complexity (`task run`)
+    model_low: str = "claude-haiku-5-5"
+    model_medium: str = "claude-sonnet-5-5"
+    model_high: str = "claude-opus-5-5"
+
+    # Router (runs inside the api service, alongside the session manager).
+    router_confidence_threshold: float = 0.8
+    router_recent_messages: int = 10
+    router_examples: int = 20
+    router: bool = False
+
+    # Telegram: a notification channel, not a secure one (bot chats aren't
+    # end-to-end encrypted), so it only ever gets short scrubbed summaries.
+    telegram_bot_token_ref: str = "file://ringkeeper/telegram-bot-token"  # noqa: S105 (a ref)
+    telegram_chat_ids: list[int] = []
+    telegram_summary_chars: int = 160
+    telegram_poll_seconds: int = 25
+    telegram_api_url: str = "https://api.telegram.org"
+    telegram: bool = False
+
     @field_validator("master_key", mode="before")
     @classmethod
     def _empty_key_is_unset(cls, value: object) -> object:

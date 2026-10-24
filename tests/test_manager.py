@@ -308,7 +308,7 @@ def test_resume_continues_the_same_sdk_session() -> None:
     m.tick()
     m.wait_idle()
     with session_scope() as session:
-        tasks.resume_task(session, task_id, "add more notes")
+        tasks.resume_task(session, get_settings(), task_id, "add more notes")
     assert task(task_id).status is TaskStatus.QUEUED
     m.tick()
     m.wait_idle()
@@ -330,7 +330,7 @@ def test_resume_needs_a_finished_task() -> None:
         session_scope() as session,
         pytest.raises(RuleViolationError, match="wait for it to finish"),
     ):
-        tasks.resume_task(session, task_id, "more")
+        tasks.resume_task(session, get_settings(), task_id, "more")
 
 
 # --- Failures and safety ---
