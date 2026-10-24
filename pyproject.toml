@@ -56,7 +56,7 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests", "worker"]
+src = ["src", "tests", "worker", "stt"]
 
 [tool.ruff.lint]
 select = [
@@ -75,19 +75,19 @@ ignore = [
 ban-relative-imports = "all"
 
 [tool.pyright]
-include = ["src", "tests", "worker"]
+include = ["src", "tests", "worker", "stt"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
-extraPaths = ["src", "worker"]
+extraPaths = ["src", "worker", "stt"]
 # The worker only ever runs in its Linux container.
 executionEnvironments = [{ root = "worker", pythonPlatform = "Linux", extraPaths = ["worker"] }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["worker"]
+pythonpath = ["worker", "stt"]
 addopts = "-ra --strict-markers"
-markers = ["container: starts real worker containers (needs Docker)"]
+markers = ["container: starts real worker or stt containers (needs Docker)"]
 # A silently skipped flush (e.g. an object never added) must fail loudly.
 filterwarnings = ["error::sqlalchemy.exc.SAWarning"]

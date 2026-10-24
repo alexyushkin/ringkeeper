@@ -103,6 +103,29 @@ services:
     build: ./worker
     image: ringkeeper-worker:latest
 
+  # Optional: speech to text for Telegram voice notes (faster-whisper, CPU, int8).
+  #   docker compose --profile stt up -d --build
+  # No published port: only the api reaches it, on `internal`. The first start
+  # downloads the model into the stt-models volume; then RINGKEEPER_STT_OFFLINE=1
+  # keeps it from going online at all.
+  stt:
+    profiles: [stt]
+    build: ./stt
+    image: ringkeeper-stt:latest
+    environment:
+      RINGKEEPER_STT_MODEL: ${RINGKEEPER_STT_MODEL:-small}
+      RINGKEEPER_STT_LANGUAGE: ${RINGKEEPER_STT_LANGUAGE:-}
+      RINGKEEPER_STT_MAX_SECONDS: ${RINGKEEPER_STT_MAX_SECONDS:-180}
+      RINGKEEPER_STT_MAX_BYTES: ${RINGKEEPER_STT_MAX_BYTES:-5000000}
+      HF_HUB_OFFLINE: ${RINGKEEPER_STT_OFFLINE:-0}
+    volumes:
+      - stt-models:/models
+    networks: [internal]
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
   # Demo only: three fictional clients' "Supabase" databases (plain Postgres).
   demo-targets:
     profiles: [demo]
@@ -130,3 +153,4 @@ networks:
 
 volumes:
   pgdata:
+  stt-models:

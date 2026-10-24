@@ -12,6 +12,7 @@ secrets/
 .ringkeeper/
 workspaces/
 worker/
+stt/
 tests/
 examples/
 docker/
