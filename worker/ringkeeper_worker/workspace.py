@@ -109,23 +109,34 @@ class Workspace:
                     self._protected = (name, sha)
                     break
         self._base = self._protected[1] if self._protected else _git(self.root, "rev-parse", "HEAD")
+        # Taken after the switch, in git mode too: only files touched during this
+        # run get committed, never edits already in the working tree (or line-ending
+        # noise from a checkout made with different git settings on the host).
+        self._before = _snapshot(self.root)
+
+    def _touched(self) -> list[str]:
+        after = _snapshot(self.root)
+        return sorted(
+            {p for p in after if self._before.get(p) != after[p]}
+            | {p for p in self._before if p not in after}
+        )
 
     def finish(self, message: str) -> Outcome:
         if not self.git:
-            after = _snapshot(self.root)
-            changed = sorted(
-                {p for p in after if self._before.get(p) != after[p]}
-                | {p for p in self._before if p not in after}
-            )
-            return Outcome(git=False, changed_files=changed)
+            return Outcome(git=False, changed_files=self._touched())
 
         outcome = Outcome(git=True, branch=self.branch)
         restored = self._restore_protected()
         current = _git(self.root, "rev-parse", "--abbrev-ref", "HEAD")
         if current != self.branch:
             _git(self.root, "switch", self.branch)
-        _git(self.root, "add", "-A")
-        if _git(self.root, "status", "--porcelain"):
+        touched = self._touched()
+        for start in range(0, len(touched), 200):
+            # -A also stages deletions. Gitignored paths make `add` exit non-zero
+            # while still staging the rest, so that is not an error here.
+            _git(self.root, "add", "-A", "--", *touched[start : start + 200], check=False)
+        staged = _git(self.root, "diff", "--cached", "--name-only")
+        if staged:
             _git(self.root, "commit", "-q", "-m", message)
         outcome.commit = _git(self.root, "rev-parse", self.branch)
         if self._base:

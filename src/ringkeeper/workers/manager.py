@@ -327,6 +327,7 @@ class Manager:
             network=settings.worker_network,
             labels={LABEL_SESSION: str(job.session_id), LABEL_TASK: str(job.task_id)},
             memory=settings.worker_memory,
+            extra_hosts=settings.worker_extra_hosts,
         )
         return spec, claims.token_id
 

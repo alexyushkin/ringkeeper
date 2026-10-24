@@ -43,8 +43,10 @@ class Settings(BaseSettings):
     manager_poll_seconds: float = 1.0
     # Run the session manager in this process (set for the api service only).
     session_manager: bool = False
-    # Tests only: JSON options for the worker's stub agent (no LLM is called).
+    # Tests only: JSON options for the worker's stub agent (no LLM is called),
+    # and extra /etc/hosts entries so a worker can reach a test gateway.
     worker_stub: str | None = None
+    worker_extra_hosts: dict[str, str] = {}
 
     @field_validator("master_key", mode="before")
     @classmethod

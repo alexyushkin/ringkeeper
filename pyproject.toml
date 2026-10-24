@@ -88,5 +88,6 @@ executionEnvironments = [{ root = "worker", pythonPlatform = "Linux", extraPaths
 testpaths = ["tests"]
 pythonpath = ["worker"]
 addopts = "-ra --strict-markers"
+markers = ["container: starts real worker containers (needs Docker)"]
 # A silently skipped flush (e.g. an object never added) must fail loudly.
 filterwarnings = ["error::sqlalchemy.exc.SAWarning"]

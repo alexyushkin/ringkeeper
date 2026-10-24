@@ -1,11 +1,16 @@
 name: ringkeeper
 
-# Local stack: Postgres 16, the read-only API and the MCP gateway.
+# Local stack: Postgres 16, the api (with the session manager) and the MCP gateway.
 # Defaults work without a .env; copy .env.example to .env to change them.
 # Ports are published on 127.0.0.1 only.
 #
+#   docker compose --profile worker build worker  # the worker image, once
 #   docker compose up -d --build                  # postgres, api, gateway
 #   docker compose --profile demo up -d --build   # plus fake client databases
+#
+# Networks: `internal` holds Postgres, the api and the demo databases.
+# `workers` holds only the gateway; worker containers join it and nothing else,
+# so they can reach the gateway but not Postgres or the api.
 
 services:
   postgres:
@@ -18,6 +23,7 @@ services:
       - "127.0.0.1:${RINGKEEPER_DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks: [internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 2s
@@ -26,11 +32,26 @@ services:
 
   api:
     build: .
+    # The session manager starts workers through the Docker socket. Access to
+    # that socket is root on the host, so this service is root-equivalent on
+    # the host: it is the only one that gets the socket.
+    user: "0:0"
     environment:
       RINGKEEPER_DATABASE_URL: >-
         postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:-ringkeeper}@postgres:5432/${POSTGRES_DB:-ringkeeper}
+      RINGKEEPER_SESSION_MANAGER: "1"
+      RINGKEEPER_DATA_DIR: /var/lib/ringkeeper
+      RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
+      RINGKEEPER_CLAUDE_AUTH_MODE: ${RINGKEEPER_CLAUDE_AUTH_MODE:-api_key}
+      RINGKEEPER_WORKSPACES_ROOT: ${RINGKEEPER_WORKSPACES_ROOT:-}
+      RINGKEEPER_MAX_CONCURRENT_WORKERS: ${RINGKEEPER_MAX_CONCURRENT_WORKERS:-4}
+    volumes:
+      # Read-only: the manager reads the Claude credential and signs session tokens.
+      - ./.ringkeeper:/var/lib/ringkeeper:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:${RINGKEEPER_API_PORT:-8000}:8000"
+    networks: [internal]
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +73,7 @@ services:
       - ./.ringkeeper:/var/lib/ringkeeper:ro
     ports:
       - "127.0.0.1:${RINGKEEPER_GATEWAY_PORT:-8100}:8100"
+    networks: [internal, workers]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8100/health').status != 200)"]
       interval: 10s
@@ -61,6 +83,12 @@ services:
       api:
         condition: service_healthy  # the api applies migrations before it is healthy
     restart: unless-stopped
+
+  # Build-only: the image the session manager starts workers from.
+  worker:
+    profiles: [worker]
+    build: ./worker
+    image: ringkeeper-worker:latest
 
   # Demo only: three fictional clients' "Supabase" databases (plain Postgres).
   demo-targets:
@@ -74,11 +102,18 @@ services:
       - "127.0.0.1:${RINGKEEPER_DEMO_DB_PORT:-5433}:5432"
     volumes:
       - ./docker/demo-targets/init.sql:/docker-entrypoint-initdb.d/10-demo.sql:ro
+    networks: [internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U demo -d demo"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+networks:
+  internal: {}
+  workers:
+    # A fixed name: the session manager attaches workers to it by name.
+    name: ringkeeper_workers
 
 volumes:
   pgdata:

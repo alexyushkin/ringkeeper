@@ -181,3 +181,20 @@ def test_no_repo_records_changed_files(tmp_path: Path) -> None:
     outcome = workspace.finish("unused")
     assert not outcome.git
     assert outcome.changed_files == ["edit.txt", "gone.txt", "sub/new.md"]
+
+
+def test_only_files_touched_during_the_run_are_committed(repo: Path) -> None:
+    # The user has an uncommitted edit; it must not be swept into the task branch.
+    (repo / "README.md").write_bytes(b"acme, edited by a human\r\n")
+    (repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-q", "-m", "ignore logs")
+    workspace = Workspace(repo, "ringkeeper/t-1")
+    workspace.start()
+    (repo / "NOTES.md").write_text("notes\n", encoding="utf-8")
+    (repo / "debug.log").write_text("noise\n", encoding="utf-8")  # gitignored
+
+    outcome = workspace.finish("ringkeeper: task t-1 session 1")
+    assert outcome.changed_files == ["NOTES.md"]
+    assert git(repo, "show", "--name-only", "--format=", "ringkeeper/t-1") == "NOTES.md"
+    assert "README.md" in git(repo, "status", "--porcelain")  # still the user's, uncommitted

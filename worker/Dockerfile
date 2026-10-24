@@ -12,7 +12,10 @@ ARG CLAUDE_AGENT_SDK_VERSION=0.2.174
 RUN pip install --no-cache-dir "claude-agent-sdk==${CLAUDE_AGENT_SDK_VERSION}"
 
 # Workspaces are bind mounts owned by someone else; let git work in them.
+# /state is where the per-task volume mounts (the SDK's own state, for resume);
+# owned by the worker here, so a fresh named volume starts out writable.
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin worker \
+    && mkdir -p /state && chown worker:worker /state \
     && printf '[safe]\n\tdirectory = /workspace\n[init]\n\tdefaultBranch = main\n' > /etc/gitconfig
 
 COPY ringkeeper_worker /opt/ringkeeper_worker

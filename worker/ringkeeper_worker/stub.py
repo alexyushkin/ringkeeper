@@ -72,6 +72,15 @@ async def call_gateway(url: str, token: str) -> dict[str, Any]:
         return {"ok": False, "error": f"{type(error).__name__}: {error}"[:300]}
 
 
+async def reachable(host: str, port: int) -> bool:
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3)
+    except (OSError, TimeoutError):
+        return False
+    writer.close()
+    return True
+
+
 async def run(config: WorkerConfig) -> bool:
     stub: dict[str, Any] = config.stub or {}
     emit(
@@ -83,6 +92,8 @@ async def run(config: WorkerConfig) -> bool:
         master_keys=find_files("master.key"),
         workspace_writable=os.access(config.workspace, os.W_OK),
     )
+    for host, port in stub.get("probe", []):
+        emit("stub.probe", host=host, port=port, reachable=await reachable(str(host), int(port)))
     for name, url in config.mcp_servers.items():
         emit("stub.gateway", server=name, **await call_gateway(url, config.gateway_token))
     for relpath, content in stub.get("write", {}).items():

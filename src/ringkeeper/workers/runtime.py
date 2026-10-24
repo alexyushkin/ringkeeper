@@ -52,6 +52,7 @@ class WorkerSpec:
     network: str
     labels: dict[str, str] = field(default_factory=dict[str, str])
     memory: str = "2g"
+    extra_hosts: dict[str, str] = field(default_factory=dict[str, str])
 
 
 class ContainerRuntime(Protocol):
@@ -95,7 +96,7 @@ class DockerRuntime:
                 mem_limit=spec.memory,
                 # Don't let a worker reach host services by name (Postgres is
                 # published on the host's loopback for the CLI).
-                extra_hosts={"host.docker.internal": "127.0.0.1"},
+                extra_hosts={"host.docker.internal": "127.0.0.1", **spec.extra_hosts},
                 labels={LABEL: "worker", **spec.labels},
             )
         except ImageNotFound:
