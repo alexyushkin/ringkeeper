@@ -90,7 +90,7 @@ class Project(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, server_default="")
     aliases: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     repo_url: Mapped[str | None] = mapped_column(Text)
-    worktree_path: Mapped[str | None] = mapped_column(Text)
+    workspace_path: Mapped[str | None] = mapped_column(Text)
     autonomy: Mapped[Autonomy] = mapped_column(
         autonomy_enum, server_default=Autonomy.STANDARD.value
     )

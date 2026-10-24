@@ -21,7 +21,7 @@ from interlock.models import Instance, Project, ProjectInstance
 from interlock.schemas import BindingIn, CleanList, InstanceIn, ProjectIn, Slug
 from interlock.services import bindings, instances, projects
 
-PROJECT_FIELDS = ("owner", "description", "aliases", "repo_url", "worktree_path", "autonomy")
+PROJECT_FIELDS = ("owner", "description", "aliases", "repo_url", "workspace_path", "autonomy")
 INSTANCE_FIELDS = ("type", "env", "base_url", "secret_ref", "owner")
 BINDING_FIELDS = ("default", "allowed_tools", "preapproved_writes")
 

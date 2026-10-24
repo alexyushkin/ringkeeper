@@ -58,7 +58,7 @@ projects:
     description: Acme customer portal
     aliases: [acme, acme-portal]
     repo_url: https://git.example/acme/web
-    worktree_path: /srv/interlock/worktrees/acme-web
+    workspace_path: /srv/interlock/workspaces/acme-web
     autonomy: standard
     bindings:
       - instance: acme-supabase-dev

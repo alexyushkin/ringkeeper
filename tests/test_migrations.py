@@ -27,3 +27,10 @@ def test_downgrade_and_upgrade_round_trip(database_url: str) -> None:
     finally:
         probe.dispose()
     assert {"projects", "instances", "project_instances"} <= tables
+
+
+def test_projects_are_workspaces_and_repo_is_optional(engine: Engine) -> None:
+    columns = {c["name"]: c for c in inspect(engine).get_columns("projects")}
+    assert "worktree_path" not in columns
+    assert columns["workspace_path"]["nullable"] is True
+    assert columns["repo_url"]["nullable"] is True

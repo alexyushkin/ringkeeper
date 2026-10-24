@@ -20,7 +20,7 @@ def add(
         list[str] | None, typer.Option(help="Other names for routing. Repeatable or a,b.")
     ] = None,
     repo_url: Annotated[str | None, typer.Option()] = None,
-    worktree_path: Annotated[str | None, typer.Option()] = None,
+    workspace_path: Annotated[str | None, typer.Option()] = None,
     autonomy: Annotated[Autonomy, typer.Option()] = Autonomy.STANDARD,
 ) -> None:
     """Add a project."""
@@ -31,7 +31,7 @@ def add(
             description=description,
             aliases=split_list(alias),
             repo_url=repo_url,
-            worktree_path=worktree_path,
+            workspace_path=workspace_path,
             autonomy=autonomy,
         )
         with session_scope() as session:
@@ -61,7 +61,7 @@ def show(name: Annotated[str, typer.Argument()]) -> None:
             ("description", project.description or "-"),
             ("aliases", join(project.aliases)),
             ("repo_url", project.repo_url or "-"),
-            ("worktree_path", project.worktree_path or "-"),
+            ("workspace_path", project.workspace_path or "-"),
             ("autonomy", project.autonomy.value),
         ]
         rows = [
@@ -76,7 +76,7 @@ def show(name: Annotated[str, typer.Argument()]) -> None:
             for b in bindings.sorted_bindings(project)
         ]
     for key, value in details:
-        typer.echo(f"{key + ':':<15}{value}")
+        typer.echo(f"{key + ':':<16}{value}")
     typer.echo("")
     echo_table(
         ["INSTANCE", "TYPE", "ENV", "DEFAULT", "TOOLS", "PREAPPROVED"],

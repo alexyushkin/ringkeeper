@@ -63,7 +63,7 @@ class ProjectIn(_Input):
     description: str = ""
     aliases: CleanList = Field(default_factory=list[str])
     repo_url: str | None = None
-    worktree_path: str | None = None
+    workspace_path: str | None = None
     autonomy: Autonomy = Autonomy.STANDARD
 
 
@@ -94,7 +94,7 @@ class ProjectOut(_Output):
     description: str
     aliases: list[str]
     repo_url: str | None
-    worktree_path: str | None
+    workspace_path: str | None
     autonomy: Autonomy
 
 
