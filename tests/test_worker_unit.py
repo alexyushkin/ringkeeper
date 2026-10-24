@@ -211,6 +211,44 @@ def test_resume_reuses_the_task_branch(repo: Path) -> None:
     assert outcome.protected_branch == "main"
 
 
+def test_a_new_task_branch_starts_from_main_not_from_an_earlier_task(repo: Path) -> None:
+    earlier = Workspace(repo, "ringkeeper/t-1")
+    earlier.start()
+    (repo / "plans.py").write_text("def format_plan(): ...\n", encoding="utf-8")
+    earlier.finish("session 1")
+    # The checkout is left on t-1, which nobody merged.
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "ringkeeper/t-1"
+
+    later = Workspace(repo, "ringkeeper/t-2")
+    later.start()
+    assert git(repo, "merge-base", "main", "HEAD") == git(repo, "rev-parse", "main")
+    assert not (repo / "plans.py").exists()
+    (repo / "NOTES.md").write_text("voice works\n", encoding="utf-8")
+    outcome = later.finish("session 1")
+    assert outcome.changed_files == ["NOTES.md"]
+    assert outcome.protected_branch == "main"
+    assert git(repo, "rev-list", "--count", "main..ringkeeper/t-2") == "1"
+
+
+def test_a_resume_diffs_against_where_the_branch_left_main(repo: Path) -> None:
+    first = Workspace(repo, "ringkeeper/t-1")
+    first.start()
+    (repo / "NOTES.md").write_text("one\n", encoding="utf-8")
+    first.finish("session 1")
+    # Meanwhile main moves on (someone merged other work).
+    git(repo, "switch", "-q", "main")
+    (repo / "OTHER.md").write_text("other\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "other work")
+
+    second = Workspace(repo, "ringkeeper/t-1")
+    second.start()
+    (repo / "NOTES.md").write_text("one\ntwo\n", encoding="utf-8")
+    outcome = second.finish("session 2")
+    assert outcome.changed_files == ["NOTES.md"]
+    assert "OTHER.md" not in (second.diff() or "")
+
+
 def test_no_repo_records_changed_files(tmp_path: Path) -> None:
     (tmp_path / "keep.txt").write_text("same", encoding="utf-8")
     (tmp_path / "edit.txt").write_text("before", encoding="utf-8")

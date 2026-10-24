@@ -1,8 +1,9 @@
 """What changed in /workspace, and the git rules.
 
 With a git repo: work happens on the task branch (`ringkeeper/<task-id>`),
-which is created on the first session and reused by resumes. The branch the
-repo was on (normally main) is never moved: if the agent moved it anyway,
+which is created from the default branch (origin's HEAD, else main or master)
+on the first session and reused by resumes, never from whatever happens to be
+checked out. The default branch is never moved: if the agent moved it anyway,
 its new tip is kept on `<task branch>-from-<name>` and the branch is put back.
 Nothing is pushed. Without a repo: a before/after snapshot gives the changed
 paths.
@@ -84,31 +85,47 @@ class Workspace:
         self._protected: tuple[str, str] | None = None  # (branch, sha) at start
         self._base: str | None = None
 
+    def _sha(self, ref: str) -> str:
+        return _git(self.root, "rev-parse", "--verify", "--quiet", ref, check=False)
+
+    def _default_branch(self) -> tuple[str, str] | None:
+        """The repo's default branch and its tip: origin's HEAD if known, else main or master."""
+        origin = _git(
+            self.root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", check=False
+        )
+        names = [origin.removeprefix("origin/")] if origin else []
+        for name in [*names, "main", "master"]:
+            if sha := self._sha(f"refs/heads/{name}"):
+                return name, sha
+        return None
+
     def start(self) -> None:
         if not self.git:
             self._before = _snapshot(self.root)
             return
         current = _git(self.root, "rev-parse", "--abbrev-ref", "HEAD")
-        exists = _git(
-            self.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{self.branch}", check=False
-        )
+        exists = self._sha(f"refs/heads/{self.branch}")
+        default = self._default_branch()
+        if default:
+            self._protected = default
+        elif current not in ("HEAD", self.branch):  # no default branch: protect what's out
+            self._protected = (current, _git(self.root, "rev-parse", "HEAD"))
         if current != self.branch:
-            if current != "HEAD":  # not detached: remember what must not move
-                self._protected = (current, _git(self.root, "rev-parse", "HEAD"))
             if exists:
                 _git(self.root, "switch", self.branch)
+            elif default:
+                # Always from the default branch, never from whatever was checked out
+                # (e.g. an earlier task's branch that hasn't been merged).
+                _git(self.root, "switch", "-c", self.branch, default[0])
             else:
                 _git(self.root, "switch", "-c", self.branch)
+        if default:
+            # Where the task branch left the default branch, so the diff is only its own work.
+            self._base = _git(self.root, "merge-base", default[1], "HEAD")
+        elif self._protected:
+            self._base = self._protected[1]
         else:
-            # Resuming while already on the task branch: protect the default branch.
-            for name in ("main", "master"):
-                sha = _git(
-                    self.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}", check=False
-                )
-                if sha:
-                    self._protected = (name, sha)
-                    break
-        self._base = self._protected[1] if self._protected else _git(self.root, "rev-parse", "HEAD")
+            self._base = _git(self.root, "rev-parse", "HEAD")
         # Taken after the switch, in git mode too: only files touched during this
         # run get committed, never edits already in the working tree (or line-ending
         # noise from a checkout made with different git settings on the host).
