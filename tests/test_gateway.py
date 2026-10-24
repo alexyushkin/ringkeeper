@@ -1,15 +1,10 @@
 """End to end: a real MCP client over Streamable HTTP against the running gateway."""
 
-import socket
-import threading
-import time
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx2
 import pytest
-import uvicorn
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from sqlalchemy import select
@@ -19,32 +14,8 @@ from interlock.gateway.app import create_app
 from interlock.keys import MasterKeyError
 from interlock.models import AuditEvent, AuditOutcome
 from interlock.tokens import issue_token
-from interlock.vault import Vault
 
 pytestmark = pytest.mark.anyio
-
-
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
-@pytest.fixture
-def gateway(registry: None, vault: Vault) -> Iterator[str]:
-    port = _free_port()
-    config = uvicorn.Config(create_app(vault), host="127.0.0.1", port=port, log_level="warning")
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started:
-        if time.monotonic() > deadline:
-            raise RuntimeError("gateway did not start")
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=10)
 
 
 def token(project: str = "acme-web", **kwargs: Any) -> str:

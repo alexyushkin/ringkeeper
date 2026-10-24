@@ -1,9 +1,13 @@
 import os
+import socket
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
 import psycopg
 import pytest
+import uvicorn
 from sqlalchemy import Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
@@ -11,6 +15,7 @@ from testcontainers.community.postgres import PostgresContainer
 from interlock import migrate, scrub
 from interlock.adapters import n8n
 from interlock.db import session_scope
+from interlock.gateway.app import create_app
 from interlock.models import Env, InstanceType
 from interlock.vault import Vault, get_vault
 from tests.fake_n8n import API_KEY, FakeN8n
@@ -149,3 +154,26 @@ def registry(database_url: str, target_dsn: str, vault: Vault) -> Iterator[None]
     yield
     with psycopg.connect(target_dsn, autocommit=True) as conn:
         conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+@pytest.fixture
+def gateway(registry: None, vault: Vault) -> Iterator[str]:
+    port = _free_port()
+    config = uvicorn.Config(create_app(vault), host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        if time.monotonic() > deadline:
+            raise RuntimeError("gateway did not start")
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(timeout=10)

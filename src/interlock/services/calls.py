@@ -208,6 +208,14 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
             )
         raise
 
+    if scrub_obj(call.args) != call.args:
+        # Held decisions keep args verbatim, so a secret must never get in there.
+        reason = "arguments contain a secret value"
+        await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.REFUSED, reason=reason))
+        raise RefusalError(
+            "the arguments contain a secret value from the vault; refusing the call", reason
+        )
+
     if not is_write:
         return scrub_obj(await _invoke(spec.handler, target, call.args, call.tool))
 
