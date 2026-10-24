@@ -24,6 +24,7 @@ class WorkerConfig:
     disallowed_tools: list[str] = field(default_factory=list[str])
     max_budget_usd: float | None = None
     resume: str | None = None  # SDK session id to continue
+    model: str | None = None
     stub: dict[str, Any] | None = None  # integration tests only: no LLM
     workspace: str = WORKSPACE
 
@@ -47,6 +48,7 @@ def load(env: dict[str, str] | None = None) -> WorkerConfig:
             disallowed_tools=[str(t) for t in data.get("disallowed_tools", [])],
             max_budget_usd=data.get("max_budget_usd"),
             resume=data.get("resume"),
+            model=data.get("model"),
             stub=data.get("stub"),
             workspace=str(data.get("workspace", WORKSPACE)),
         )

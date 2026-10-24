@@ -24,8 +24,15 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
-from ringkeeper.models import AuthMode, Autonomy, TaskStatus, WorkerSession
-from ringkeeper.services import projects, revocations, tasks
+from ringkeeper.models import (
+    AuthMode,
+    Autonomy,
+    DecisionKind,
+    SessionRole,
+    TaskStatus,
+    WorkerSession,
+)
+from ringkeeper.services import inbox, projects, revocations, tasks
 from ringkeeper.tokens import issue_token
 from ringkeeper.vault import Vault
 from ringkeeper.workers.env import worker_env
@@ -58,6 +65,8 @@ class Job:
     sdk_session_id: str | None
     state_volume: str
     started_at: datetime
+    role: SessionRole = SessionRole.WORKER
+    model: str | None = None
 
     @classmethod
     def of(cls, row: WorkerSession) -> "Job":
@@ -75,6 +84,8 @@ class Job:
             sdk_session_id=row.sdk_session_id,
             state_volume=row.state_volume,
             started_at=row.started_at or datetime.now(UTC),
+            role=row.role,
+            model=row.model,
         )
 
 
@@ -86,6 +97,7 @@ class Collected:
     workspace: dict[str, Any] | None = None
     errors: list[str] | None = None
     exit_code: int | None = None
+    question: str | None = None  # the worker called ask_user
 
 
 def resolve_workspace(path: str | None, root: str | None) -> str:
@@ -115,6 +127,8 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
         return killed, f"exceeded the max runtime of {job.max_runtime_s}s; the worker was killed"
     if killed is TaskStatus.STOPPED:
         return killed, "stopped on request"
+    if collected.question:
+        return TaskStatus.NEEDS_INPUT, None
     result = collected.result
     errors = "; ".join(collected.errors or [])
     if result is None:
@@ -305,6 +319,7 @@ class Manager:
             "disallowed_tools": DISALLOWED_TOOLS[autonomy],
             "max_budget_usd": job.budget_usd if job.auth_mode is AuthMode.API_KEY else None,
             "resume": job.sdk_session_id,
+            "model": job.model,
         }
         if settings.worker_stub:
             task["stub"] = json.loads(settings.worker_stub)
@@ -341,6 +356,8 @@ class Manager:
                 collected.result = cast(dict[str, Any], event["message"])
             elif event_type == "ringkeeper.workspace":
                 collected.workspace = event
+            elif event_type == "ringkeeper.ask_user" and not collected.question:
+                collected.question = str(event.get("question", "")) or None
             elif event_type == "ringkeeper.error":
                 cast(list[str], collected.errors).append(str(event.get("message", "")))
             seq += 1
@@ -380,6 +397,16 @@ class Manager:
                     task.changed_files = changed  # the branch's diff is cumulative
                 else:
                     task.changed_files = sorted(set(task.changed_files) | set(changed))
+                if status is TaskStatus.NEEDS_INPUT:
+                    payload = {"question": collected.question, "role": job.role.value}
+                    inbox.create(
+                        session,
+                        self.settings,
+                        DecisionKind.QUESTION,
+                        payload,
+                        project=task.project,
+                        task=task,
+                    )
             if jti:
                 revocations.revoke(
                     session,

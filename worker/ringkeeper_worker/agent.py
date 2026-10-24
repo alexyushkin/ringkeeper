@@ -3,17 +3,20 @@
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import McpHttpServerConfig, McpServerConfig
 
+from ringkeeper_worker import inbox
 from ringkeeper_worker.config import WorkerConfig
 from ringkeeper_worker.emit import emit, message_type
 
 
-def build_options(config: WorkerConfig) -> ClaudeAgentOptions:
+def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> ClaudeAgentOptions:
     servers: dict[str, McpServerConfig] = {
         name: McpHttpServerConfig(
             type="http", url=url, headers={"Authorization": f"Bearer {config.gateway_token}"}
         )
         for name, url in config.mcp_servers.items()
     }
+    ask_server, hooks = inbox.build(ask or inbox.AskState())
+    servers[inbox.SERVER_NAME] = ask_server
     return ClaudeAgentOptions(
         cwd=config.workspace,
         # The gateway endpoints are the only MCP servers, and no settings files
@@ -24,6 +27,8 @@ def build_options(config: WorkerConfig) -> ClaudeAgentOptions:
         max_turns=config.max_turns,
         max_budget_usd=config.max_budget_usd,
         resume=config.resume,
+        model=config.model,
+        hooks=hooks,  # pyright: ignore[reportArgumentType] (dict invariance)
         # The container is the sandbox; the project's autonomy decides which tools exist.
         permission_mode="bypassPermissions",
         disallowed_tools=config.disallowed_tools,
@@ -34,7 +39,8 @@ def build_options(config: WorkerConfig) -> ClaudeAgentOptions:
 async def run(config: WorkerConfig) -> bool:
     """Returns True if the SDK reported success."""
     ok = False
-    async with ClaudeSDKClient(options=build_options(config)) as client:
+    ask = inbox.AskState()
+    async with ClaudeSDKClient(options=build_options(config, ask)) as client:
         await client.query(config.prompt)
         async for message in client.receive_response():
             kind = message_type(message)

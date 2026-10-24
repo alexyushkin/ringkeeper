@@ -102,6 +102,8 @@ async def run(config: WorkerConfig) -> bool:
         target.write_text(content, encoding="utf-8")
     if seconds := float(stub.get("sleep", 0)):
         await asyncio.sleep(seconds)
+    if (question := stub.get("ask_user")) and not config.resume:
+        emit("ringkeeper.ask_user", question=str(question))
     session_id = config.resume or str(uuid.uuid4())
     subtype = str(stub.get("subtype", "success"))
     emit(
@@ -116,6 +118,7 @@ async def run(config: WorkerConfig) -> bool:
             "usage": {"input_tokens": 0, "output_tokens": 0},
             "model_usage": None,
             "result": "stub done",
+            "model": config.model,
         },
     )
     return subtype == "success"

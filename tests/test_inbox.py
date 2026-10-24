@@ -1,5 +1,6 @@
 """The inbox service: answering each decision kind, and what that sets in motion."""
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -22,8 +23,12 @@ from ringkeeper.models import (
     TaskKind,
     TaskStatus,
 )
-from ringkeeper.services import examples, inbox, tasks, threads
+from ringkeeper.services import examples, inbox, revocations, tasks, threads
 from ringkeeper.services.inbox import Answer, Via
+from ringkeeper.vault import get_vault
+from ringkeeper.workers.manager import Manager
+from ringkeeper.workers.runtime import WorkerSpec
+from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
 
 pytestmark = pytest.mark.usefixtures("task_registry")
 
@@ -270,3 +275,52 @@ def test_messages_go_into_threads() -> None:
         ]  # fmt: skip
         with pytest.raises(RuleViolationError, match="empty"):
             threads.post_message(session, "  ", author="alice", source="cli")
+
+
+# --- ask_user round trip through the session manager (fake runtime) ---
+
+
+def test_ask_user_round_trip_resumes_the_same_session() -> None:
+    def script(spec: WorkerSpec) -> Script:
+        config = json.loads(spec.env["RINGKEEPER_TASK"])
+        if config["resume"] is None:
+            return Script(
+                after=[
+                    line("ringkeeper.ask_user", question="Which column holds the plan?"),
+                    result_line(session_id="sdk-ask"),
+                    workspace_line([]),
+                ]
+            )
+        return Script(after=[result_line(session_id="sdk-ask"), workspace_line(["plan.py"])])
+
+    runtime = FakeRuntime(script)
+    manager = Manager(runtime, get_vault())
+    with session_scope() as session:
+        task_id = str(
+            tasks.create_task(session, get_settings(), project="acme-web", prompt="go").id
+        )
+    manager.tick()
+    manager.wait_idle()
+
+    waiting = load(Task, task_id)
+    assert waiting.status is TaskStatus.NEEDS_INPUT
+    with session_scope() as session:
+        [question] = inbox.list_pending(session, kind=DecisionKind.QUESTION)
+        assert question.payload == {"question": "Which column holds the plan?", "role": "worker"}
+        assert (question.project, str(question.task_id)) == ("acme-web", task_id)
+        first = tasks.get_task(session, task_id).sessions[0]
+        assert first.status is TaskStatus.NEEDS_INPUT
+        assert revocations.is_revoked(session, str(first.token_jti))
+        question_id = str(question.id)
+    assert json.loads(runtime.started[0].env["RINGKEEPER_TASK"])["model"] == "claude-sonnet-5-5"
+
+    answer(question_id, text="plan_name", via=Via.CLI)
+    manager.tick()
+    manager.wait_idle()
+
+    config = json.loads(runtime.started[1].env["RINGKEEPER_TASK"])
+    assert config["resume"] == "sdk-ask"
+    assert "plan_name" in config["prompt"]
+    done = load(Task, task_id)
+    assert done.status is TaskStatus.SUCCEEDED
+    assert done.changed_files == ["plan.py"]

@@ -4,11 +4,13 @@ import io
 import json
 import subprocess
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from ringkeeper_worker import emit as emitter
+from ringkeeper_worker import inbox
 from ringkeeper_worker.agent import build_options
 from ringkeeper_worker.config import ConfigError, WorkerConfig, load
 from ringkeeper_worker.workspace import Workspace
@@ -54,22 +56,58 @@ def test_config_errors(env: dict[str, str]) -> None:
 
 
 def test_options_isolate_the_session() -> None:
-    options = build_options(config())
+    options = build_options(config(model="claude-sonnet-5-5"))
     assert options.cwd == "/workspace"
     assert options.setting_sources == []  # no user, project or local settings
     assert options.strict_mcp_config is True
-    assert options.mcp_servers == {
+    servers = dict(cast(dict[str, Any], options.mcp_servers))
+    assert servers.pop(inbox.SERVER_NAME)["type"] == "sdk"  # ask_user, in-process
+    assert servers == {
         "ringkeeper-supabase": {
             "type": "http",
             "url": "http://gateway:8100/mcp/supabase",
             "headers": {"Authorization": "Bearer gw-token"},
         }
     }
+    assert options.model == "claude-sonnet-5-5"
     assert options.max_turns == 7
     assert options.max_budget_usd == 1.5
     assert options.permission_mode == "bypassPermissions"
     assert options.disallowed_tools == ["WebFetch", "WebSearch"]
     assert options.resume is None
+
+
+@pytest.mark.anyio
+async def test_ask_user_records_the_question_then_blocks_every_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = io.StringIO()
+    monkeypatch.setattr(emitter, "_stream", out)
+    tools: list[Any] = []
+    real_server = inbox.create_sdk_mcp_server
+
+    def capture(name: str, tools: list[Any]) -> Any:
+        captured.extend(tools)
+        return real_server(name, tools=tools)
+
+    captured = tools
+    monkeypatch.setattr(inbox, "create_sdk_mcp_server", capture)
+    state = inbox.AskState()
+    _, hooks = inbox.build(state)
+    [hook] = hooks["PreToolUse"][0].hooks
+    handler = tools[0].handler
+    context = cast(Any, {"signal": None})
+
+    assert await hook(cast(Any, {}), "t1", context) == {}  # tools run normally before asking
+    empty = await handler({"question": "  "})
+    assert empty["is_error"] is True
+    reply = await handler({"question": "Which column?"})
+    assert "End your turn now" in reply["content"][0]["text"]
+    await handler({"question": "And another?"})  # only the first question counts
+    assert state.question == "Which column?"
+    assert [json.loads(x)["question"] for x in out.getvalue().splitlines()] == ["Which column?"]
+    blocked = cast(dict[str, Any], await hook(cast(Any, {}), "t2", context))
+    assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 # --- Output ---
