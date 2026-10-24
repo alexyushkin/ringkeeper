@@ -5,6 +5,7 @@ nothing else about a caller: no token, no access; the project comes only from
 a token whose signature, audience, issuer and expiry all check out.
 """
 
+import enum
 import re
 import uuid
 from dataclasses import dataclass
@@ -30,6 +31,13 @@ class TokenError(RingkeeperError):
     pass
 
 
+class TokenRole(enum.StrEnum):
+    """worker: the service endpoints. architect: only /mcp/architect."""
+
+    WORKER = "worker"
+    ARCHITECT = "architect"
+
+
 @dataclass(frozen=True)
 class WorkerClaims:
     project: str
@@ -37,6 +45,7 @@ class WorkerClaims:
     token_id: str
     issued_at: datetime
     expires_at: datetime
+    role: TokenRole = TokenRole.WORKER
 
 
 def parse_ttl(text: str) -> timedelta:
@@ -55,6 +64,7 @@ def issue_token(
     ttl: timedelta,
     *,
     session_id: str | None = None,
+    role: TokenRole = TokenRole.WORKER,
     settings: Settings | None = None,
     now: datetime | None = None,
 ) -> tuple[str, WorkerClaims]:
@@ -69,6 +79,7 @@ def issue_token(
         token_id=str(uuid.uuid4()),
         issued_at=issued,
         expires_at=issued + ttl,
+        role=role,
     )
     payload = {
         "iss": ISSUER,
@@ -78,6 +89,7 @@ def issue_token(
         "jti": claims.token_id,
         "iat": int(claims.issued_at.timestamp()),
         "exp": int(claims.expires_at.timestamp()),
+        "role": role.value,
     }
     return jwt.encode(payload, _key(settings), algorithm=ALGORITHM), claims
 
@@ -108,10 +120,15 @@ def verify_token(token: str, *, settings: Settings | None = None) -> WorkerClaim
         raise TokenError("worker token lifetime exceeds the allowed maximum")
     if not all(isinstance(payload[k], str) and payload[k] for k in ("sub", "sid", "jti")):
         raise TokenError("worker token is malformed or not an Ringkeeper token")
+    try:
+        role = TokenRole(payload.get("role", TokenRole.WORKER.value))
+    except ValueError:
+        raise TokenError("worker token has an unknown role") from None
     return WorkerClaims(
         project=payload["sub"],
         session_id=payload["sid"],
         token_id=payload["jti"],
         issued_at=issued,
         expires_at=expires,
+        role=role,
     )

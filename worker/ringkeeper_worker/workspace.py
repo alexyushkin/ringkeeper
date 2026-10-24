@@ -147,6 +147,13 @@ class Workspace:
         outcome.restored = restored
         return outcome
 
+    def diff(self, limit: int = 60_000) -> str | None:
+        """The task branch's cumulative diff against where it started (git only)."""
+        if not self.git or not self._base:
+            return None
+        text = _git(self.root, "diff", "--no-color", self._base, self.branch, check=False)
+        return text if len(text) <= limit else text[:limit] + "\n… [diff truncated]"
+
     def _restore_protected(self) -> str | None:
         if not self._protected:
             return None

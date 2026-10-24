@@ -37,6 +37,7 @@ from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway.approvals import approval_loop
+from ringkeeper.gateway.architect import build_architect_server
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
@@ -46,7 +47,7 @@ from ringkeeper.services.calls import (
     token_revoked,
     unauthenticated,
 )
-from ringkeeper.tokens import TokenError, verify_token
+from ringkeeper.tokens import TokenError, TokenRole, verify_token
 from ringkeeper.vault import Vault, get_vault
 
 CALLER_KEY = "ringkeeper_caller"
@@ -65,9 +66,12 @@ InstanceArg = Annotated[
 class WorkerTokenAuth:
     """ASGI middleware: verify the bearer worker token, or answer 401 with the reason."""
 
-    def __init__(self, app: ASGIApp, service: InstanceType) -> None:
+    def __init__(
+        self, app: ASGIApp, service: InstanceType | None, role: TokenRole = TokenRole.WORKER
+    ) -> None:
         self.app = app
-        self.service = service
+        self.service = service  # None: the architect endpoint
+        self.role = role
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -83,8 +87,16 @@ class WorkerTokenAuth:
                 reason = str(error)
             else:
                 caller = Caller(claims.project, claims.session_id, claims.token_id)
-                if await anyio.to_thread.run_sync(token_revoked, claims.token_id):
+                reason = None
+                if claims.role is not self.role:
+                    reason = (
+                        "this endpoint needs an architect token"
+                        if self.role is TokenRole.ARCHITECT
+                        else "an architect token can only use /mcp/architect"
+                    )
+                elif await anyio.to_thread.run_sync(token_revoked, claims.token_id):
                     reason = "worker token has been revoked"
+                if reason is not None:
                     await anyio.to_thread.run_sync(unauthenticated, self.service, reason, caller)
                     await self._refuse(reason, scope, receive, send)
                     return
@@ -211,6 +223,18 @@ def create_app(vault: Vault | None = None) -> Starlette:
         routes.append(
             Route(path, endpoint=WorkerTokenAuth(app, service), methods=["GET", "POST", "DELETE"])
         )
+
+    architect_app = build_architect_server(current_caller).http_app(
+        path="/mcp/architect", stateless_http=True, json_response=True
+    )
+    apps.append(architect_app)
+    routes.append(
+        Route(
+            "/mcp/architect",
+            endpoint=WorkerTokenAuth(architect_app, None, TokenRole.ARCHITECT),
+            methods=["GET", "POST", "DELETE"],
+        )
+    )
 
     @asynccontextmanager
     async def lifespan(_app: Starlette) -> AsyncGenerator[None]:

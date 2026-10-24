@@ -3,6 +3,7 @@
 import io
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,6 +13,7 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from ringkeeper_worker import emit as emitter
 from ringkeeper_worker import inbox
 from ringkeeper_worker.agent import build_options
+from ringkeeper_worker.checks import run_checks
 from ringkeeper_worker.config import ConfigError, WorkerConfig, load
 from ringkeeper_worker.workspace import Workspace
 
@@ -236,3 +238,27 @@ def test_only_files_touched_during_the_run_are_committed(repo: Path) -> None:
     assert outcome.changed_files == ["NOTES.md"]
     assert git(repo, "show", "--name-only", "--format=", "ringkeeper/t-1") == "NOTES.md"
     assert "README.md" in git(repo, "status", "--porcelain")  # still the user's, uncommitted
+
+
+def test_checks_run_without_secrets_and_report_each_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    out = io.StringIO()
+    monkeypatch.setattr(emitter, "_stream", out)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-must-not-leak")
+    monkeypatch.setenv("RINGKEEPER_GATEWAY_TOKEN", "gw-must-not-leak")
+    python = f'"{sys.executable}"'
+    leak = (
+        f'{python} -c "import os, sys; '
+        "print(os.environ.get('ANTHROPIC_API_KEY'), os.environ.get('RINGKEEPER_GATEWAY_TOKEN'));"
+        ' sys.exit(3)"'
+    )
+    summary = run_checks([f'{python} -c "print(1)"', leak], str(tmp_path))
+    assert summary["passed"] is False
+    first, second = cast(list[dict[str, Any]], summary["results"])
+    assert (first["passed"], first["exit_code"]) == (True, 0)
+    assert (second["passed"], second["exit_code"]) == (False, 3)
+    assert "None None" in second["output"]
+    assert "must-not-leak" not in out.getvalue()
+    [event] = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert event["type"] == "ringkeeper.checks"

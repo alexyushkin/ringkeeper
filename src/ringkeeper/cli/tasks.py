@@ -68,6 +68,14 @@ def render_event(event_type: str, payload: dict[str, Any]) -> str | None:  # noq
         restored = f" ({payload['restored']})" if payload.get("restored") else ""
         changed = join(cast(list[str], payload.get("changed_files") or []))
         return f"changes on {where}: {changed}{restored}"
+    if event_type == "ringkeeper.checks":
+        results = cast(list[dict[str, Any]], payload.get("results") or [])
+        marks = ", ".join(
+            f"{r.get('command')}: {'ok' if r.get('passed') else 'FAIL'}" for r in results
+        )
+        return f"checks {'passed' if payload.get('passed') else 'FAILED'}: {marks}"
+    if event_type == "ringkeeper.ask_user":
+        return f"asked: {_short(str(payload.get('question', '')))}"
     if event_type == "ringkeeper.error":
         return f"error: {_short(str(payload.get('message', '')))}"
     if event_type == "worker.raw":
@@ -231,9 +239,19 @@ def show(
             ("finished", _when(task.finished_at)),
             ("prompt", _short(task.prompt)),
         ]  # fmt: skip
+        if task.kind is not None:
+            routed = f"{task.kind}, {task.risk or '-'} risk, {task.complexity or '-'} complexity"
+            details.insert(3, ("kind", routed))
+        if task.phase is not None:
+            loop = f"{task.phase}, review {task.review_round}, "
+            loop += f"{task.failed_check_rounds} failed check round(s)"
+            details.insert(4, ("loop", loop))
+        if task.summary:
+            details.append(("summary", task.summary))
         session_rows = [
             [
-                str(s.ordinal), s.status.value, str(s.turns if s.turns is not None else "-"),
+                str(s.ordinal), s.role.value, s.model or "-", s.status.value,
+                str(s.turns if s.turns is not None else "-"),
                 f"{s.cost_usd:.4f}" if s.cost_usd is not None else "-",
                 _when(s.started_at), _when(s.finished_at), _short(s.prompt, 40),
             ]
@@ -252,7 +270,7 @@ def show(
         typer.echo(f"{key + ':':<11}{value}")
     typer.echo("")
     echo_table(
-        ["SESSION", "STATUS", "TURNS", "COST", "STARTED", "FINISHED", "PROMPT"],
+        ["SESSION", "ROLE", "MODEL", "STATUS", "TURNS", "COST", "STARTED", "FINISHED", "PROMPT"],
         session_rows,
         empty="",
     )

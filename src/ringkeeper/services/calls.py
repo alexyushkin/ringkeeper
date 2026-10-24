@@ -32,6 +32,7 @@ from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import (
+    AuditEvent,
     AuditOutcome,
     Decision,
     Env,
@@ -184,16 +185,28 @@ async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], 
         raise ToolError(f"'{tool}' failed unexpectedly; see the gateway log") from None
 
 
-def unauthenticated(service: InstanceType, reason: str, caller: Caller | None = None) -> None:
-    """Audit a request refused at the token check.
+def unauthenticated(
+    service: InstanceType | None, reason: str, caller: Caller | None = None
+) -> None:
+    """Audit a request refused at the token check (service None: the architect endpoint).
 
     `caller` is set only for an authentic but revoked token: then we know who it was.
     """
-    _record(
-        ToolCall(caller or Caller(None, None, None), service, "", None),
-        AuditOutcome.REFUSED,
-        reason=reason,
-    )
+    who = caller or Caller(None, None, None)
+    if service is not None:
+        _record(ToolCall(who, service, "", None), AuditOutcome.REFUSED, reason=reason)
+        return
+    with session_scope() as session:
+        session.add(
+            AuditEvent(
+                project=who.project,
+                session_id=who.session_id,
+                token_id=who.token_id,
+                tool="architect",
+                outcome=AuditOutcome.REFUSED,
+                reason=reason,
+            )
+        )
 
 
 def bound_instances(caller: Caller) -> list[dict[str, Any]]:

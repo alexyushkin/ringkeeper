@@ -33,6 +33,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.services import projects, revocations
+from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, current_user
 
 NOTIFY_CHANNEL = "ringkeeper_tasks"
@@ -110,11 +111,12 @@ def create_task(
     session.add(task)
     session.flush()
     role = SessionRole.ARCHITECT if kind is TaskKind.FEATURE else SessionRole.WORKER
+    first_prompt = brief(record.name, prompt, outcome) if role is SessionRole.ARCHITECT else prompt
     task.sessions = [
         WorkerSession(
             task_id=task.id,
             ordinal=1,
-            prompt=prompt,
+            prompt=first_prompt,
             status=TaskStatus.QUEUED,
             role=role,
             model=session_model(settings, record, role, complexity),

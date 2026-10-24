@@ -468,6 +468,10 @@ class WorkerSession(Base):
         session_role_enum, server_default=SessionRole.WORKER.value
     )
     model: Mapped[str | None] = mapped_column(Text)
+    # Architect sessions: the loop step they asked for (submit_plan, dispatch_worker, ...).
+    action: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Worker turns in the architect loop: {"passed": bool, "results": [...]}.
+    checks: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     sdk_session_id: Mapped[str | None] = mapped_column(Text)
     container_id: Mapped[str | None] = mapped_column(Text)
     state_volume: Mapped[str] = mapped_column(Text)

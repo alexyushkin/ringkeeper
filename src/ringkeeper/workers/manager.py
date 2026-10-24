@@ -29,11 +29,12 @@ from ringkeeper.models import (
     Autonomy,
     DecisionKind,
     SessionRole,
+    TaskKind,
     TaskStatus,
     WorkerSession,
 )
-from ringkeeper.services import inbox, projects, revocations, tasks
-from ringkeeper.tokens import issue_token
+from ringkeeper.services import architect, architect_loop, inbox, projects, revocations, tasks
+from ringkeeper.tokens import TokenRole, issue_token
 from ringkeeper.vault import Vault
 from ringkeeper.workers.env import worker_env
 from ringkeeper.workers.runtime import LABEL_SESSION, LABEL_TASK, ContainerRuntime, WorkerSpec
@@ -67,6 +68,7 @@ class Job:
     started_at: datetime
     role: SessionRole = SessionRole.WORKER
     model: str | None = None
+    feature: bool = False  # the task runs the architect loop
 
     @classmethod
     def of(cls, row: WorkerSession) -> "Job":
@@ -86,6 +88,7 @@ class Job:
             started_at=row.started_at or datetime.now(UTC),
             role=row.role,
             model=row.model,
+            feature=task.kind is TaskKind.FEATURE,
         )
 
 
@@ -98,6 +101,8 @@ class Collected:
     errors: list[str] | None = None
     exit_code: int | None = None
     question: str | None = None  # the worker called ask_user
+    checks: dict[str, Any] | None = None  # architect loop: this worker turn's checks
+    diff: str | None = None
 
 
 def resolve_workspace(path: str | None, root: str | None) -> str:
@@ -300,11 +305,14 @@ class Manager:
             project = projects.get_project(session, job.project)
             workspace = resolve_workspace(project.workspace_path, settings.workspaces_root)
             autonomy = project.autonomy
+            checks = list(project.checks)
+        architect_role = job.role is SessionRole.ARCHITECT
         credential = resolve_credential(self.vault, settings, job.auth_mode)
         token, claims = issue_token(
             job.project,
             timedelta(seconds=job.max_runtime_s),
             session_id=str(job.session_id),
+            role=TokenRole.ARCHITECT if architect_role else TokenRole.WORKER,
             settings=settings,
         )
         scrub.register(token)  # never store it in events, even if the agent prints env
@@ -315,8 +323,16 @@ class Manager:
             "prompt": job.prompt,
             "max_turns": job.max_turns,
             "branch": tasks.branch_name(job.task_id),
-            "mcp_servers": {f"ringkeeper-{svc}": f"{base}/mcp/{svc}" for svc in ADAPTERS},
-            "disallowed_tools": DISALLOWED_TOOLS[autonomy],
+            "mcp_servers": (
+                {"ringkeeper-architect": f"{base}/mcp/architect"}
+                if architect_role
+                else {f"ringkeeper-{svc}": f"{base}/mcp/{svc}" for svc in ADAPTERS}
+            ),
+            "disallowed_tools": (
+                architect.DISALLOWED_TOOLS if architect_role else DISALLOWED_TOOLS[autonomy]
+            ),
+            "role": job.role.value,
+            "checks": checks if job.feature and not architect_role else [],
             "max_budget_usd": job.budget_usd if job.auth_mode is AuthMode.API_KEY else None,
             "resume": job.sdk_session_id,
             "model": job.model,
@@ -333,6 +349,7 @@ class Manager:
             labels={LABEL_SESSION: str(job.session_id), LABEL_TASK: str(job.task_id)},
             memory=settings.worker_memory,
             extra_hosts=settings.worker_extra_hosts,
+            workspace_read_only=architect_role,
         )
         return spec, claims.token_id
 
@@ -356,6 +373,13 @@ class Manager:
                 collected.result = cast(dict[str, Any], event["message"])
             elif event_type == "ringkeeper.workspace":
                 collected.workspace = event
+            elif event_type == "ringkeeper.checks":
+                collected.checks = {
+                    "passed": bool(event.get("passed")),
+                    "results": event.get("results", []),
+                }
+            elif event_type == "ringkeeper.diff":
+                collected.diff = str(event.get("text") or "")
             elif event_type == "ringkeeper.ask_user" and not collected.question:
                 collected.question = str(event.get("question", "")) or None
             elif event_type == "ringkeeper.error":
@@ -397,6 +421,15 @@ class Manager:
                     task.changed_files = changed  # the branch's diff is cumulative
                 else:
                     task.changed_files = sorted(set(task.changed_files) | set(changed))
+                if job.feature:
+                    row.checks = collected.checks
+                    review = {
+                        "checks": collected.checks,
+                        "diff": collected.diff,
+                        "result": result.get("result"),
+                        "error": error,
+                    }
+                    architect_loop.advance(session, self.settings, row, status, review)
                 if status is TaskStatus.NEEDS_INPUT:
                     payload = {"question": collected.question, "role": job.role.value}
                     inbox.create(

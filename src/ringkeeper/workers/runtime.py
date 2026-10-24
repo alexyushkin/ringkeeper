@@ -53,6 +53,7 @@ class WorkerSpec:
     labels: dict[str, str] = field(default_factory=dict[str, str])
     memory: str = "2g"
     extra_hosts: dict[str, str] = field(default_factory=dict[str, str])
+    workspace_read_only: bool = False  # architect sessions read, never write
 
 
 class ContainerRuntime(Protocol):
@@ -76,7 +77,12 @@ class DockerRuntime:
 
         mounts = [
             # The project's workspace is the only host directory a worker sees.
-            Mount(WORKSPACE, daemon_path(spec.workspace), type="bind"),
+            Mount(
+                WORKSPACE,
+                daemon_path(spec.workspace),
+                type="bind",
+                read_only=spec.workspace_read_only,
+            ),
             Mount(STATE_DIR, spec.state_volume, type="volume"),
         ]
         try:

@@ -199,11 +199,16 @@ def upgrade() -> None:
         sa.Column[str]("role", session_role, server_default="worker", nullable=False),
     )
     op.add_column("sessions", sa.Column("model", sa.Text(), nullable=True))
+    # Architect loop: what an architect session asked for, and a worker turn's checks.
+    op.add_column("sessions", sa.Column("action", postgresql.JSONB(), nullable=True))
+    op.add_column("sessions", sa.Column("checks", postgresql.JSONB(), nullable=True))
 
 
 def downgrade() -> None:
     # Values added to existing enums (answered, needs_input, waiting) stay:
     # Postgres can't drop enum values, and unused values are harmless.
+    op.drop_column("sessions", "checks")
+    op.drop_column("sessions", "action")
     op.drop_column("sessions", "model")
     op.drop_column("sessions", "role")
     op.drop_constraint("ck_tasks_review_round_range", "tasks")

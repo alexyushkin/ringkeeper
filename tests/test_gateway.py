@@ -19,7 +19,7 @@ from ringkeeper.gateway.app import create_app
 from ringkeeper.keys import MasterKeyError
 from ringkeeper.models import AuditEvent, AuditOutcome, Decision, DecisionStatus
 from ringkeeper.services import inbox, revocations
-from ringkeeper.tokens import issue_token, verify_token
+from ringkeeper.tokens import TokenRole, issue_token, verify_token
 
 pytestmark = pytest.mark.anyio
 
@@ -244,3 +244,37 @@ async def test_a_held_write_approved_remotely_is_run_by_the_gateway(gateway: str
         assert decision is not None
         assert decision.decided_by == "telegram:42"
         assert decision.answered_via == "telegram"
+
+
+async def test_only_architect_tokens_reach_the_architect_endpoint(gateway: str) -> None:
+    worker = token()
+    boss = token(role=TokenRole.ARCHITECT)
+    body: dict[str, object] = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+    accept = {"Accept": "application/json, text/event-stream"}
+    async with httpx2.AsyncClient() as http:
+        refused = await http.post(
+            f"{gateway}/mcp/architect", json=body,
+            headers={**accept, "Authorization": f"Bearer {worker}"},
+        )  # fmt: skip
+        assert refused.status_code == 401
+        assert refused.json()["error_description"] == "this endpoint needs an architect token"
+        crossed = await http.post(
+            f"{gateway}/mcp/supabase", json=body,
+            headers={**accept, "Authorization": f"Bearer {boss}"},
+        )  # fmt: skip
+        assert crossed.status_code == 401
+        assert "only use /mcp/architect" in crossed.json()["error_description"]
+
+    async with client(gateway, boss, service="architect") as architect:
+        names = {t.name for t in await architect.list_tools()}
+        assert names == {
+            "submit_plan", "dispatch_worker", "continue_worker", "approve_work", "list_instances",
+        }  # fmt: skip
+        # A token not tied to a running architect session can't take steps.
+        result = await architect.call_tool(
+            "dispatch_worker", {"prompt": "go"}, raise_on_error=False
+        )
+        assert result.is_error
+        assert "isn't tied to an architect session" in "".join(
+            getattr(b, "text", "") for b in result.content
+        )

@@ -39,6 +39,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import examples, projects, tasks
+from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
 
@@ -237,8 +238,10 @@ def _answer_question(
     task = _task_of(session, decision)
     payload = decision.payload or {}
     if payload.get("escalation"):
-        # The architect loop hit its review cap: the answer goes to the architect.
+        # The architect loop hit its review cap: the answer goes to the architect,
+        # and answering grants one more worker round.
         role = SessionRole.ARCHITECT
+        task.review_round = min(task.review_round, MAX_REVIEWS - 1)
     else:
         role = SessionRole(payload.get("role", SessionRole.WORKER.value))
     sdk_session = tasks.last_sdk_session(task, role)
