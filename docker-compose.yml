@@ -1,0 +1,35 @@
+# Local stack: Postgres 16 and the read-only API.
+# Defaults work without a .env; copy .env.example to .env to change them.
+# Ports are published on 127.0.0.1 only.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-interlock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-interlock}
+      POSTGRES_DB: ${POSTGRES_DB:-interlock}
+    ports:
+      - "127.0.0.1:${INTERLOCK_DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: .
+    environment:
+      INTERLOCK_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-interlock}:${POSTGRES_PASSWORD:-interlock}@postgres:5432/${POSTGRES_DB:-interlock}
+    ports:
+      - "127.0.0.1:${INTERLOCK_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
