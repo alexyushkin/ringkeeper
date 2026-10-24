@@ -6,6 +6,7 @@ from ringkeeper.claude_auth import (
     CREDENTIAL_ENV,
     ClaudeAuthError,
     check_format,
+    normalize,
     resolve,
 )
 from ringkeeper.cli.main import app
@@ -120,3 +121,84 @@ def test_missing_subscription_credential_points_at_subscription_login() -> None:
     settings = Settings(claude_auth_mode=AuthMode.SUBSCRIPTION)
     with pytest.raises(ClaudeAuthError, match="run `ringkeeper auth login --subscription`"):
         resolve(get_vault(settings), settings)
+
+
+# --- Reading pasted or piped credentials ---
+
+WRAPPED = {
+    "crlf from PowerShell": OAUTH_TOKEN + "\r\n",
+    "wrapped lines": OAUTH_TOKEN[:12] + "\r\n" + OAUTH_TOKEN[12:20] + "\n" + OAUTH_TOKEN[20:],
+    "spaces and tabs": "  " + OAUTH_TOKEN[:10] + " \t" + OAUTH_TOKEN[10:] + "  ",
+    "utf-8 bom": "\ufeff" + OAUTH_TOKEN + "\n",
+}
+
+
+@pytest.mark.parametrize("raw", WRAPPED.values(), ids=WRAPPED.keys())
+def test_normalize_strips_all_whitespace(raw: str) -> None:
+    assert normalize(raw) == OAUTH_TOKEN
+
+
+@pytest.mark.parametrize("raw", WRAPPED.values(), ids=WRAPPED.keys())
+def test_subscription_login_from_stdin_stores_the_clean_token(raw: str) -> None:
+    result = runner.invoke(app, ["auth", "login", "--subscription"], input=raw)
+    assert result.exit_code == 0, result.output
+    settings = Settings(claude_auth_mode=AuthMode.SUBSCRIPTION)
+    assert resolve(get_vault(settings), settings).secret.reveal() == OAUTH_TOKEN
+    assert OAUTH_TOKEN not in result.output
+
+
+@pytest.mark.parametrize("flags", [[], ["--api-key"]])
+def test_api_key_login_from_stdin_strips_line_breaks(flags: list[str]) -> None:
+    wrapped = API_KEY[:15] + "\r\n" + API_KEY[15:] + "\r\n"
+    result = runner.invoke(app, ["auth", "login", *flags], input=wrapped)
+    assert result.exit_code == 0, result.output
+    settings = Settings()
+    assert resolve(get_vault(settings), settings).secret.reveal() == API_KEY
+
+
+@pytest.mark.parametrize(
+    ("flags", "value", "expected", "found"),
+    [
+        (["--subscription"], API_KEY, "sk-ant-oat", "looks like an Anthropic API key"),
+        ([], OAUTH_TOKEN, "sk-ant-api", "looks like an OAuth token"),
+        (["--api-key"], OAUTH_TOKEN, "sk-ant-api", "looks like an OAuth token"),
+        (["--subscription"], "sk-ant-sid01-fake-0001", "sk-ant-oat", "isn't either kind"),
+        ([], "pasted-garbage-0001", "sk-ant-api", "doesn't start with sk-ant-"),
+    ],
+)
+def test_shape_mismatch_is_clear_and_never_echoes(
+    flags: list[str], value: str, expected: str, found: str
+) -> None:
+    result = runner.invoke(app, ["auth", "login", *flags], input=value + "\r\n")
+    assert result.exit_code == 1
+    assert f"expected a value starting with {expected}" in result.stderr
+    assert found in result.stderr
+    assert f"({len(value)} characters after removing whitespace)" in result.stderr
+    assert value not in result.output
+    assert value[10:] not in result.output
+
+
+@pytest.mark.parametrize("raw", ["", "\r\n", "   \t\n"])
+def test_whitespace_only_input_stores_nothing(raw: str) -> None:
+    result = runner.invoke(app, ["auth", "login", "--subscription"], input=raw)
+    assert result.exit_code == 1
+    assert "no value given" in result.stderr
+
+
+def test_interactive_login_asks_once_without_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_prompt(text: str, **kwargs: object) -> str:
+        calls.append({"text": text, **kwargs})
+        return OAUTH_TOKEN[:20] + "\r\n" + OAUTH_TOKEN[20:]  # a wrapped paste
+
+    monkeypatch.setattr("ringkeeper.cli.auth._interactive", lambda: True)
+    monkeypatch.setattr("ringkeeper.cli.auth.typer.prompt", fake_prompt)
+    result = runner.invoke(app, ["auth", "login", "--subscription"])
+    assert result.exit_code == 0, result.output
+    [call] = calls
+    assert call["hide_input"] is True
+    assert not call.get("confirmation_prompt")
+    assert "Get-Clipboard -Raw" in result.stderr
+    settings = Settings(claude_auth_mode=AuthMode.SUBSCRIPTION)
+    assert resolve(get_vault(settings), settings).secret.reveal() == OAUTH_TOKEN

@@ -50,12 +50,33 @@ def credential_ref(settings: Settings, mode: AuthMode) -> str:
     return settings.claude_oauth_token_ref
 
 
+def normalize(value: str) -> str:
+    """Drop a BOM and every whitespace character.
+
+    Credentials never contain whitespace, but copies of long tokens often do:
+    a terminal wraps the line, or PowerShell appends a CRLF when piping.
+    """
+    return "".join(value.removeprefix("﻿").split())
+
+
 def check_format(mode: AuthMode, value: str) -> None:
-    """Catch a pasted value of the wrong kind (it would bill the wrong way)."""
-    if not value.startswith(_PREFIXES[mode]):
-        other = AuthMode.SUBSCRIPTION if mode is AuthMode.API_KEY else AuthMode.API_KEY
-        hint = f"; that looks like {_LABELS[other]}" if value.startswith(_PREFIXES[other]) else ""
-        raise ClaudeAuthError(f"this is not {_LABELS[mode]} (expected {_PREFIXES[mode]}…){hint}")
+    """Catch a pasted value of the wrong kind (it would bill the wrong way).
+
+    Error messages describe the value's shape, never the value itself.
+    """
+    if value.startswith(_PREFIXES[mode]):
+        return
+    other = AuthMode.SUBSCRIPTION if mode is AuthMode.API_KEY else AuthMode.API_KEY
+    if value.startswith(_PREFIXES[other]):
+        found = f"it looks like {_LABELS[other]} ({_PREFIXES[other]}...)"
+    elif value.startswith("sk-ant-"):
+        found = "it starts with sk-ant- but isn't either kind"
+    else:
+        found = "it doesn't start with sk-ant-"
+    raise ClaudeAuthError(
+        f"this is not {_LABELS[mode]}: expected a value starting with {_PREFIXES[mode]}..., "
+        f"but {found} ({len(value)} characters after removing whitespace)"
+    )
 
 
 @dataclass(frozen=True)

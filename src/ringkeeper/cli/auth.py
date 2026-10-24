@@ -1,10 +1,16 @@
+import sys
 from typing import Annotated
 
 import typer
 
-from ringkeeper.claude_auth import ClaudeAuthError, check_format, credential_ref, resolve
+from ringkeeper.claude_auth import (
+    ClaudeAuthError,
+    check_format,
+    credential_ref,
+    normalize,
+    resolve,
+)
 from ringkeeper.cli.common import handle_errors
-from ringkeeper.cli.secrets import read_secret_value
 from ringkeeper.config import get_settings
 from ringkeeper.models import AuthMode
 from ringkeeper.vault import get_vault
@@ -17,6 +23,29 @@ SUBSCRIPTION_NOTE = (
 )
 
 
+def _interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def read_credential(label: str) -> str:
+    """Piped stdin if there is any, else one hidden prompt. Never argv.
+
+    No confirmation prompt: retyping a 100-character token doesn't catch
+    mistakes, and on Windows a pasted copy and its confirmation often differ
+    by a wrapped line break. The shape check after this catches bad pastes.
+    """
+    if _interactive():
+        typer.echo(
+            "Paste it below (hidden). If pasting misbehaves, pipe it instead, e.g. "
+            "`Get-Clipboard -Raw | uv run ringkeeper auth login ...` in PowerShell.",
+            err=True,
+        )
+        raw: str = typer.prompt(label, hide_input=True, default="", show_default=False)
+    else:
+        raw = sys.stdin.read()
+    return normalize(raw)
+
+
 @app.command("login")
 def login(
     # Accepted for clarity; storing an API key is what login does by default.
@@ -24,18 +53,19 @@ def login(
     # Personal installs only, so deliberately absent from --help and the README setup.
     subscription: Annotated[bool, typer.Option("--subscription", hidden=True)] = False,
 ) -> None:
-    """Store the Anthropic API key workers use (hidden prompt or stdin, never argv)."""
+    """Store the Anthropic API key workers use (piped stdin or a hidden prompt, never argv)."""
     mode = AuthMode.SUBSCRIPTION if subscription else AuthMode.API_KEY
     settings = get_settings()
     if subscription:
         typer.echo(SUBSCRIPTION_NOTE, err=True)
         typer.echo(
-            "Run `claude setup-token` in another terminal, sign in, then paste the token "
-            "it prints here.",
+            "Run `claude setup-token` in another terminal and copy the token it prints. "
+            "Pipe it in (e.g. `Get-Clipboard -Raw | uv run ringkeeper auth login "
+            "--subscription`) or paste it at the prompt.",
             err=True,
         )
     with handle_errors():
-        value = read_secret_value("OAuth token" if subscription else "Anthropic API key")
+        value = read_credential("OAuth token" if subscription else "Anthropic API key")
         if not value:
             raise ClaudeAuthError("no value given; nothing stored")
         check_format(mode, value)
