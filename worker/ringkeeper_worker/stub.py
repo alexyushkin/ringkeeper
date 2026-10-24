@@ -53,7 +53,9 @@ def find_files(name: str, roots: tuple[str, ...] = ("/",)) -> list[str]:
     return found
 
 
-async def call_gateway(url: str, token: str) -> dict[str, Any]:
+async def call_gateway(
+    url: str, token: str, tool: str | None = None, args: dict[str, Any] | None = None
+) -> dict[str, Any]:
     import httpx2  # noqa: PLC0415 (only the stub needs these)
     from mcp import ClientSession  # noqa: PLC0415
     from mcp.client.streamable_http import streamable_http_client  # noqa: PLC0415
@@ -67,7 +69,16 @@ async def call_gateway(url: str, token: str) -> dict[str, Any]:
         ):
             await session.initialize()
             tools = await session.list_tools()
-            return {"ok": True, "tools": sorted(t.name for t in tools.tools)}
+            report: dict[str, Any] = {"ok": True, "tools": sorted(t.name for t in tools.tools)}
+            if tool is not None:
+                result = await session.call_tool(tool, args or {})
+                report["called"] = tool
+                # The field name differs across mcp versions (is_error / isError).
+                report["is_error"] = bool(
+                    getattr(result, "is_error", None) or getattr(result, "isError", False)
+                )
+                report["text"] = " ".join(getattr(c, "text", "") for c in result.content)[:500]
+            return report
     except Exception as error:
         return {"ok": False, "error": f"{type(error).__name__}: {error}"[:300]}
 
@@ -82,7 +93,11 @@ async def reachable(host: str, port: int) -> bool:
 
 
 async def run(config: WorkerConfig) -> bool:
-    stub: dict[str, Any] = config.stub or {}
+    # Options can be given per role ({"architect": {...}, "worker": {...}}), and a
+    # gateway tool call per session ordinal ({"calls": {"1": {"tool", "args"}}}).
+    raw: dict[str, Any] = config.stub or {}
+    stub: dict[str, Any] = {**raw, **raw.get(config.role, {})}
+    call: dict[str, Any] = stub.get("calls", {}).get(str(config.session_ordinal), {})
     emit(
         "stub.environment",
         uid=current_uid(),
@@ -95,7 +110,8 @@ async def run(config: WorkerConfig) -> bool:
     for host, port in stub.get("probe", []):
         emit("stub.probe", host=host, port=port, reachable=await reachable(str(host), int(port)))
     for name, url in config.mcp_servers.items():
-        emit("stub.gateway", server=name, **await call_gateway(url, config.gateway_token))
+        report = await call_gateway(url, config.gateway_token, call.get("tool"), call.get("args"))
+        emit("stub.gateway", server=name, **report)
     for relpath, content in stub.get("write", {}).items():
         target = Path(config.workspace) / relpath
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -9,6 +9,7 @@ import platform
 import subprocess
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,8 +25,15 @@ from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.gateway.app import create_app
-from ringkeeper.models import Project, SessionEvent, TaskStatus
-from ringkeeper.services import tasks
+from ringkeeper.models import (
+    Complexity,
+    DecisionKind,
+    Project,
+    SessionEvent,
+    TaskKind,
+    TaskStatus,
+)
+from ringkeeper.services import inbox, tasks
 from ringkeeper.vault import Vault, get_vault
 from ringkeeper.workers.manager import Manager
 from ringkeeper.workers.runtime import LABEL_SESSION, DockerRuntime, WorkerSpec
@@ -289,3 +297,99 @@ def test_max_runtime_kills_a_real_worker(
     ):
         assert time.monotonic() < deadline
         time.sleep(0.5)
+
+
+def test_feature_loop_in_real_containers_with_real_checks(
+    worker_setup: Callable[..., Run], workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Architect (read-only, architect token) -> plan -> worker -> pytest check -> approve."""
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(workspace), *args], check=True, capture_output=True)  # noqa: S603, S607
+
+    (workspace / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\npythonpath = ["src"]\n', encoding="utf-8"
+    )
+    (workspace / "src" / "acme_web").mkdir(parents=True)
+    (workspace / "src" / "acme_web" / "__init__.py").write_text("", encoding="utf-8")
+    git("init", "-q", "-b", "main")
+    git("-c", "user.email=d@example.com", "-c", "user.name=Dev", "add", "-A")
+    git("-c", "user.email=d@example.com", "-c", "user.name=Dev", "commit", "-q", "-m", "init")
+    for path in [workspace, *workspace.rglob("*")]:
+        path.chmod(0o777)
+    with session_scope() as session:
+        session.execute(
+            update(Project)
+            .where(Project.name == "acme-web")
+            .values(checks=["python -m pytest -q -p no:cacheprovider"])
+        )
+
+    plan = {"title": "Add format_plan", "plan": "p", "worker_prompt": "write it"}
+    stub = {
+        "architect": {
+            "calls": {
+                "1": {"tool": "submit_plan", "args": plan},
+                "2": {"tool": "dispatch_worker", "args": {"prompt": "write it"}},
+                "4": {"tool": "approve_work", "args": {"summary": "format_plan() with a test"}},
+            }
+        },
+        "worker": {
+            "write": {
+                "src/acme_web/plans.py": "def format_plan(name):\n    return name.title()\n",
+                "tests/test_plans.py": (
+                    "from acme_web.plans import format_plan\n\n\n"
+                    "def test_format_plan():\n    assert format_plan('gold') == 'Gold'\n"
+                ),
+            }
+        },
+    }
+    monkeypatch.setenv("RINGKEEPER_WORKER_STUB", json.dumps(stub))
+    with session_scope() as session:
+        task = tasks.create_task(
+            session, get_settings(), project="acme-web", prompt="add format_plan",
+            kind=TaskKind.FEATURE, complexity=Complexity.LOW,
+        )  # fmt: skip
+        task_id = str(task.id)
+    runtime = RecordingRuntime()
+    manager = Manager(runtime, get_vault())
+
+    def step() -> None:
+        manager.tick()
+        manager.wait_idle(180)
+
+    step()  # architect: plan
+    with session_scope() as session:
+        [decision] = inbox.list_pending(session, kind=DecisionKind.PLAN)
+        inbox.answer(
+            session, get_settings(), str(decision.id), inbox.Answer(choice="approve"),
+            by="test", via=inbox.Via.CLI,
+        )  # fmt: skip
+    step()  # architect: dispatch
+    step()  # worker: build + checks
+    step()  # architect: review + approve
+
+    events = events_of(task_id)
+    assert status_of(task_id) is TaskStatus.SUCCEEDED, events.get("ringkeeper.error")
+    roles = [json.loads(s.env["RINGKEEPER_TASK"])["role"] for s in runtime.specs]
+    assert roles == ["architect", "architect", "worker", "architect"]
+    reports = events["stub.environment"]
+    assert [r["workspace_writable"] for r in reports] == [False, False, True, False]
+    calls = [g for g in events["stub.gateway"] if g.get("called")]
+    assert [(c["server"], c["called"], c["is_error"]) for c in calls] == [
+        ("ringkeeper-architect", "submit_plan", False),
+        ("ringkeeper-architect", "dispatch_worker", False),
+        ("ringkeeper-architect", "approve_work", False),
+    ]
+    [checks] = events["ringkeeper.checks"]
+    assert checks["passed"] is True, checks
+    assert "1 passed" in checks["results"][0]["output"]
+    [diff] = events["ringkeeper.diff"]
+    assert "+def format_plan(name):" in diff["text"]
+    with session_scope() as session:
+        done = tasks.get_task(session, task_id)
+        assert done.summary == "format_plan() with a test"
+        assert done.git_branch == f"ringkeeper/{task_id}"
+        assert done.changed_files == ["src/acme_web/plans.py", "tests/test_plans.py"]
+    for name in {tasks.state_volume_name(uuid.UUID(task_id))}:
+        for volume in docker.from_env().volumes.list(filters={"name": name}):
+            volume.remove(force=True)
