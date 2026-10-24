@@ -8,12 +8,18 @@ SQL, arguments, diffs or plan text: full details stay in the CLI and API.
 Only chats in `telegram_chat_ids` get notifications, and updates from any
 other chat are ignored. Every answer is audited as via=telegram with the
 Telegram user who pressed the button or replied.
+
+A voice reply to a question is transcribed by the stt service and echoed as
+"I heard: ..." with Confirm and Redo; Confirm answers exactly like a typed
+reply. Audio is never stored, only the transcript, which is cleared once the
+confirmation is resolved or expires (`telegram_confirm_minutes`).
 """
 
 import logging
 import threading
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -24,17 +30,29 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
-from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Notification, Setting
+from ringkeeper.models import (
+    Decision,
+    DecisionKind,
+    DecisionStatus,
+    Notification,
+    Setting,
+    VoiceConfirmation,
+)
 from ringkeeper.scrub import scrub
 from ringkeeper.services import inbox
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.telegram.api import BotApi, TelegramError
+from ringkeeper.voice import SttClient, VoiceError, VoiceNote
+from ringkeeper.voice import transcribe as transcribe_voice
 
 logger = logging.getLogger(__name__)
 
 CHANNEL = "telegram"
 OFFSET_KEY = "telegram.offset"
 CALLBACK_PREFIX = "rk"
+CONFIRM_PREFIX = "rv"  # 'rv:<confirmation uuid>:c' (Confirm) or ':r' (Redo)
+CONFIRM, REDO = "c", "r"
+HEARD_CHARS = 3500  # Telegram caps a message at 4096 characters
 # sent -> running (an approved held write the gateway hasn't run yet) -> closed
 SENT, RUNNING, CLOSED, FAILED = "sent", "running", "closed", "failed"
 KIND_LABELS = {
@@ -48,10 +66,12 @@ WELCOME = (
     "Hi! This is Ringkeeper. Decisions that need you will show up here: "
     "press a button, or reply to a question."
 )
-NOT_A_REPLY = (
-    "Ringkeeper only takes answers here: press a button, or reply to a question. "
-    "Send new requests with `ringkeeper ask`."
+REQUESTS_OFF = (
+    "Requests from Telegram are turned off on this install. Turn on "
+    "RINGKEEPER_TELEGRAM_REQUESTS to send requests here, or use the Ringkeeper app."
 )
+TEXT_OR_VOICE = "Reply to the question with text or a voice note."
+EXPIRED = "⌛ Expired. Send it again."
 
 
 def callback_data(decision: Decision, index: int) -> str:
@@ -93,6 +113,16 @@ def outcome_line(decision: Decision) -> str:
             return f"✔ {choice} (by {who})"
         case _:
             return f"✔ {decision.status} (by {who})"
+
+
+def heard(transcript: str, question: str = "") -> str:
+    shown = transcript if len(transcript) <= HEARD_CHARS else transcript[:HEARD_CHARS] + "…"
+    return f"I heard: {shown}" + (f"\n\n{question}" if question else "")
+
+
+def _close_confirmation(row: VoiceConfirmation, status: str) -> None:
+    # The transcript lives on in the answer or message it became, if any.
+    row.status, row.transcript, row.resolved_at = status, None, datetime.now(UTC)
 
 
 def _who(user: dict[str, Any]) -> str:
@@ -192,9 +222,13 @@ class Bridge:
         if not self._allowed(cast(dict[str, Any] | None, message.get("chat"))):
             return  # not ours to answer, and nothing is said back
         parts = str(callback.get("data", "")).split(":")
+        user = cast(dict[str, Any], callback["from"])
+        chat_id = int(cast(dict[str, Any], message["chat"])["id"])
         feedback = "Unknown button"
         if len(parts) == 3 and parts[0] == CALLBACK_PREFIX:
-            feedback = self._press(parts[1], parts[2], cast(dict[str, Any], callback["from"]))
+            feedback = self._press(parts[1], parts[2], user)
+        elif len(parts) == 3 and parts[0] == CONFIRM_PREFIX:
+            feedback = self._resolve(parts[1], parts[2], chat_id, user)
         try:
             self.api.answer_callback(str(callback["id"]), scrub(feedback))
         except TelegramError as error:
@@ -219,16 +253,21 @@ class Bridge:
         chat_id = int(cast(dict[str, Any], chat)["id"])
         replied = cast(dict[str, Any] | None, message.get("reply_to_message"))
         text = str(message.get("text") or "").strip()
+        note = VoiceNote.from_message(message)
+        user = cast(dict[str, Any], message.get("from") or {})
         if not replied and text.split("@")[0].split(" ")[0] == "/start":
             self._say(chat_id, WELCOME)
             return
         decision_id = self._question_for(chat_id, replied) if replied else None
-        if decision_id is None or not text:
-            self._say(chat_id, NOT_A_REPLY)
-            return
-        user = cast(dict[str, Any], message.get("from") or {})
-        self._say(chat_id, self._answer(decision_id, inbox.Answer(text=text), user))
-        self.close_finished()
+        if decision_id is None:
+            self._say(chat_id, REQUESTS_OFF)
+        elif note is not None:
+            self._hear(chat_id, user, note, decision_id)
+        elif text:
+            self._say(chat_id, self._answer(decision_id, inbox.Answer(text=text), user))
+            self.close_finished()
+        else:
+            self._say(chat_id, TEXT_OR_VOICE)
 
     def _question_for(self, chat_id: int, replied: dict[str, Any]) -> str | None:
         with session_scope() as session:
@@ -243,6 +282,117 @@ class Bridge:
                 )
             ).one_or_none()
             return str(note.decision_id) if note else None
+
+    # --- Voice: "I heard: ..." with Confirm and Redo ---
+
+    def _open_question(self, decision_id: str) -> str | None:
+        """Why a question can't take an answer any more, if it can't."""
+        with session_scope() as session:
+            decision = session.get(Decision, decision_id)
+            if decision is None:
+                return "Not done: that question is gone"
+            if decision.status is not DecisionStatus.PENDING:
+                return f"Not done: that question is already {decision.status}"
+            return None
+
+    def _hear(self, chat_id: int, user: dict[str, Any], note: VoiceNote, decision_id: str) -> None:
+        """Transcribe a voice note and ask the user to confirm what was heard."""
+        if refusal := self._open_question(decision_id):
+            self._say(chat_id, refusal)
+            return
+        try:
+            stt = SttClient(self.settings)
+            try:
+                transcript = transcribe_voice(self.api, stt, note, self.settings)
+            finally:
+                stt.close()
+        except VoiceError as error:
+            self._say(chat_id, str(error))
+            return
+        expires = datetime.now(UTC) + timedelta(minutes=self.settings.telegram_confirm_minutes)
+        with session_scope() as session:
+            row = VoiceConfirmation(
+                kind="answer", chat_id=chat_id, author=_who(user),
+                decision_id=uuid.UUID(decision_id), transcript=transcript, expires_at=expires,
+            )  # fmt: skip
+            session.add(row)
+            session.flush()
+            ident = str(row.id)
+        buttons = [
+            {"text": "✅ Confirm", "callback_data": f"{CONFIRM_PREFIX}:{ident}:{CONFIRM}"},
+            {"text": "🔁 Redo", "callback_data": f"{CONFIRM_PREFIX}:{ident}:{REDO}"},
+        ]
+        text = heard(transcript, f"Answer question {decision_id[:8]} with this?")
+        try:
+            sent = self.api.send_message(chat_id, text, {"inline_keyboard": [buttons]})
+        except TelegramError as error:
+            logger.warning("could not send a voice confirmation: %s", error)
+            return
+        with session_scope() as session:
+            session.get_one(VoiceConfirmation, ident).external_id = sent
+
+    def _resolve(self, ident: str, action: str, chat_id: int, user: dict[str, Any]) -> str:
+        """Confirm or Redo pressed. Each confirmation works once."""
+        try:
+            uuid.UUID(ident)
+        except ValueError:
+            return "This button is out of date"
+        try:
+            with session_scope() as session:
+                row = session.get(VoiceConfirmation, ident, with_for_update=True)
+                if row is None or row.chat_id != chat_id or action not in (CONFIRM, REDO):
+                    return "This button is out of date"
+                if row.status != "pending":
+                    return f"Already {row.status}"
+                transcript, external_id = row.transcript or "", row.external_id
+                if row.expires_at <= datetime.now(UTC):
+                    _close_confirmation(row, "expired")
+                    outcome, feedback = EXPIRED, "This expired; send it again."
+                elif action == REDO:
+                    _close_confirmation(row, "redone")
+                    outcome = "🔁 Redo: reply to the question again with a new voice note."
+                    feedback = "Send it again"
+                else:
+                    reply = inbox.Answer(text=transcript, voice=True)
+                    answered = inbox.answer(
+                        session, self.settings, str(row.decision_id), reply, by=_who(user),
+                        via=inbox.Via.TELEGRAM, expected_kind=DecisionKind.QUESTION,
+                    )  # fmt: skip
+                    _close_confirmation(row, "confirmed")
+                    outcome = "✔ Confirmed"
+                    feedback = f"Done: {answered.decision.kind} {answered.decision.status}"
+        except RingkeeperError as error:
+            return f"Not done: {error}"
+        text = EXPIRED if outcome == EXPIRED else f"{heard(transcript)}\n{outcome}"
+        self._edit(chat_id, external_id, text)
+        self.close_finished()
+        return feedback
+
+    def expire_confirmations(self) -> int:
+        """Close confirmations nobody answered in time; their transcripts are cleared."""
+        with session_scope() as session:
+            rows = session.scalars(
+                select(VoiceConfirmation)
+                .where(
+                    VoiceConfirmation.status == "pending",
+                    VoiceConfirmation.expires_at <= datetime.now(UTC),
+                )
+                .with_for_update(skip_locked=True)
+            ).all()
+            done = [(row.chat_id, row.external_id) for row in rows]
+            for row in rows:
+                _close_confirmation(row, "expired")
+        for chat_id, external_id in done:
+            self._edit(chat_id, external_id, EXPIRED)
+        return len(done)
+
+    def _edit(self, chat_id: int, message_id: int | None, text: str) -> None:
+        if message_id is None:
+            return
+        try:
+            self.api.edit_message(chat_id, message_id, scrub(text))
+        except TelegramError as error:
+            logger.warning("could not update Telegram message: %s", error)
 
     def _say(self, chat_id: int, text: str) -> None:
         try:
@@ -291,6 +441,7 @@ class Bridge:
             try:
                 self.send_new()
                 self.close_finished()
+                self.expire_confirmations()
             except Exception:
                 logger.exception("Telegram notification pass failed")
             wake.wait(5.0)

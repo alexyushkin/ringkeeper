@@ -240,7 +240,7 @@ def test_a_question_is_answered_by_replying(telegram: FakeTelegram) -> None:
 def test_plain_messages_get_a_hint(telegram: FakeTelegram) -> None:
     telegram.reply(12345, "please count customers")  # a reply to nothing we sent
     bridge().poll_once(0)
-    assert "ringkeeper ask" in telegram.sent[-1]["text"]
+    assert telegram.sent[-1]["text"].startswith("Requests from Telegram are turned off")
 
 
 def test_telegram_cli_login_and_chats(telegram: FakeTelegram) -> None:
