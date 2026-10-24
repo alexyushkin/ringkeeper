@@ -12,7 +12,6 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
-    Autonomy,
     SessionEvent,
     Task,
     TaskStatus,
@@ -23,26 +22,8 @@ from ringkeeper.services import revocations, tasks
 from ringkeeper.vault import get_vault
 from ringkeeper.workers.manager import Manager, resolve_workspace
 from ringkeeper.workers.runtime import WorkerSpec, daemon_path
+from tests.conftest import CLAUDE_API_KEY as API_KEY
 from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
-from tests.helpers import make_project
-
-API_KEY = "sk-ant-api03-fake-manager-key-0001"
-OAUTH_TOKEN = "sk-ant-oat01-fake-manager-token-0001"
-
-
-@pytest.fixture
-def setup(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RINGKEEPER_WORKSPACES_ROOT", "/srv/workspaces")
-    monkeypatch.setenv("RINGKEEPER_MAX_CONCURRENT_WORKERS", "4")
-    settings = get_settings()
-    vault = get_vault(settings)
-    vault.store(settings.claude_api_key_ref, API_KEY)
-    vault.store(settings.claude_oauth_token_ref, OAUTH_TOKEN)
-    with session_scope() as session:
-        make_project(session, "acme-web", workspace_path="acme-web", autonomy=Autonomy.STANDARD)
-        make_project(
-            session, "globex-portal", workspace_path="/abs/globex", autonomy=Autonomy.STRICT
-        )
 
 
 def manager(script: Callable[[WorkerSpec], Script] | None = None) -> tuple[Manager, FakeRuntime]:
@@ -102,7 +83,7 @@ def task_env(spec: WorkerSpec) -> dict[str, object]:
 # --- The happy path ---
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_a_task_runs_and_everything_is_recorded() -> None:
     m, runtime = manager(
         lambda _spec: Script(
@@ -143,7 +124,7 @@ def test_a_task_runs_and_everything_is_recorded() -> None:
     assert runtime.removed  # containers are cleaned up
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_worker_gets_the_session_config() -> None:
     m, runtime = manager()
     task_id = run_task(max_turns=9)
@@ -170,7 +151,7 @@ def test_worker_gets_the_session_config() -> None:
 # --- Exactly one Claude credential ---
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_api_key_mode_gives_only_the_api_key() -> None:
     m, runtime = manager()
     run_task()
@@ -182,7 +163,7 @@ def test_api_key_mode_gives_only_the_api_key() -> None:
     assert env["ANTHROPIC_API_KEY"] == API_KEY
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_subscription_mode_never_includes_an_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_CLAUDE_AUTH_MODE", "subscription")
     m, runtime = manager()
@@ -194,7 +175,7 @@ def test_subscription_mode_never_includes_an_api_key(monkeypatch: pytest.MonkeyP
     assert "ANTHROPIC_API_KEY" not in env
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_worker_env_is_an_allowlist() -> None:
     m, runtime = manager()
     run_task()
@@ -211,7 +192,7 @@ def test_worker_env_is_an_allowlist() -> None:
 # --- Guardrails ---
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_concurrency_cap_queues_extra_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_MAX_CONCURRENT_WORKERS", "2")
     m, runtime = manager(lambda _spec: Script(delay=0.6))
@@ -228,7 +209,7 @@ def test_concurrency_cap_queues_extra_tasks(monkeypatch: pytest.MonkeyPatch) -> 
     assert len(runtime.started) == 3
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_max_runtime_kills_the_worker() -> None:
     m, runtime = manager(lambda _spec: Script(delay=30))
     task_id = run_task(max_runtime_s=1)
@@ -240,7 +221,7 @@ def test_max_runtime_kills_the_worker() -> None:
     assert revoked(session_of(task_id).token_jti)
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_stop_kills_and_revokes() -> None:
     m, runtime = manager(lambda _spec: Script(delay=30))
     task_id = run_task()
@@ -254,7 +235,7 @@ def test_stop_kills_and_revokes() -> None:
     assert runtime.killed
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_stop_all_kills_running_and_cancels_queued(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_MAX_CONCURRENT_WORKERS", "1")
     m, runtime = manager(lambda _spec: Script(delay=30))
@@ -270,7 +251,7 @@ def test_stop_all_kills_running_and_cancels_queued(monkeypatch: pytest.MonkeyPat
     assert revoked(session_of(running).token_jti)
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_budget_exceeded_by_the_sdk() -> None:
     m, _ = manager(
         lambda _spec: Script(after=[result_line(subtype="error_max_budget_usd", cost=1.2)])
@@ -281,7 +262,7 @@ def test_budget_exceeded_by_the_sdk() -> None:
     assert task(task_id).status is TaskStatus.BUDGET_EXCEEDED
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_budget_overrun_is_caught_after_the_fact() -> None:
     m, runtime = manager(lambda _spec: Script(after=[result_line(cost=3.5)]))
     task_id = run_task(budget_usd=1.0)
@@ -291,14 +272,14 @@ def test_budget_overrun_is_caught_after_the_fact() -> None:
     assert task_env(runtime.started[0])["max_budget_usd"] == 1.0
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_budget_needs_api_key_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_CLAUDE_AUTH_MODE", "subscription")
     with pytest.raises(RuleViolationError, match="only applies in api_key mode"):
         run_task(budget_usd=1.0)
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_max_turns_is_reported() -> None:
     m, _ = manager(lambda _spec: Script(after=[result_line(subtype="error_max_turns", turns=5)]))
     task_id = run_task(max_turns=5)
@@ -309,7 +290,7 @@ def test_max_turns_is_reported() -> None:
     assert done.error == "reached the max of 5 turns"
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_limits_are_validated() -> None:
     with pytest.raises(RuleViolationError, match="max runtime"):
         run_task(max_runtime_s=10 * 24 * 3600)
@@ -320,7 +301,7 @@ def test_limits_are_validated() -> None:
 # --- Resume ---
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_resume_continues_the_same_sdk_session() -> None:
     m, runtime = manager()
     task_id = run_task()
@@ -342,7 +323,7 @@ def test_resume_continues_the_same_sdk_session() -> None:
     assert session_of(task_id, 1).token_jti != second.token_jti
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_resume_needs_a_finished_task() -> None:
     task_id = run_task()
     with (
@@ -355,7 +336,7 @@ def test_resume_needs_a_finished_task() -> None:
 # --- Failures and safety ---
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_missing_credential_fails_without_starting_a_worker() -> None:
     settings = get_settings()
     get_vault().store(settings.claude_api_key_ref, "not-a-key")
@@ -370,7 +351,7 @@ def test_missing_credential_fails_without_starting_a_worker() -> None:
     assert runtime.started == []
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_start_failure_still_revokes_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_WORKER_IMAGE", "missing-image")
     m, _ = manager()
@@ -381,7 +362,7 @@ def test_start_failure_still_revokes_the_token(monkeypatch: pytest.MonkeyPatch) 
     assert revoked(session_of(task_id).token_jti)
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_secrets_never_reach_session_events() -> None:
     def leaky(spec: WorkerSpec) -> Script:
         token = spec.env["RINGKEEPER_GATEWAY_TOKEN"]
@@ -403,7 +384,7 @@ def test_secrets_never_reach_session_events() -> None:
     assert "[redacted]" in text
 
 
-@pytest.mark.usefixtures("setup")
+@pytest.mark.usefixtures("task_registry")
 def test_recover_marks_orphaned_sessions_failed() -> None:
     with session_scope() as session:
         task_id = str(tasks.create_task(session, get_settings(), project="acme-web", prompt="x").id)

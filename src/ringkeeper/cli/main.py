@@ -10,6 +10,7 @@ from ringkeeper.cli import (
     projects,
     registry,
     secrets,
+    tasks,
     tokens,
 )
 from ringkeeper.cli.common import handle_errors
@@ -31,6 +32,8 @@ app.add_typer(tokens.app, name="token")
 app.add_typer(decisions.app, name="decision")
 app.add_typer(audit.app, name="audit")
 app.add_typer(auth.app, name="auth")
+app.add_typer(tasks.app, name="task")
+app.command("stop-all")(tasks.stop_all)
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)
 

@@ -14,9 +14,10 @@ from testcontainers.community.postgres import PostgresContainer
 
 from ringkeeper import migrate, scrub
 from ringkeeper.adapters import n8n
+from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.gateway.app import create_app
-from ringkeeper.models import Env, InstanceType
+from ringkeeper.models import Autonomy, Env, InstanceType
 from ringkeeper.vault import Vault, get_vault
 from tests.fake_n8n import API_KEY, FakeN8n
 from tests.helpers import bind, make_instance, make_project
@@ -180,3 +181,22 @@ def gateway(registry: None, vault: Vault) -> Iterator[str]:
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
     thread.join(timeout=10)
+
+
+CLAUDE_API_KEY = "sk-ant-api03-fake-manager-key-0001"  # fakes: right prefix, nowhere near
+CLAUDE_OAUTH_TOKEN = "sk-ant-oat01-fake-manager-token-0001"  # a real credential's length
+
+
+@pytest.fixture
+def task_registry(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RINGKEEPER_WORKSPACES_ROOT", "/srv/workspaces")
+    monkeypatch.setenv("RINGKEEPER_MAX_CONCURRENT_WORKERS", "4")
+    settings = get_settings()
+    vault = get_vault(settings)
+    vault.store(settings.claude_api_key_ref, CLAUDE_API_KEY)
+    vault.store(settings.claude_oauth_token_ref, CLAUDE_OAUTH_TOKEN)
+    with session_scope() as session:
+        make_project(session, "acme-web", workspace_path="acme-web", autonomy=Autonomy.STANDARD)
+        make_project(
+            session, "globex-portal", workspace_path="/abs/globex", autonomy=Autonomy.STRICT
+        )
