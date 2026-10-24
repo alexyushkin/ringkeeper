@@ -359,7 +359,8 @@ includes SQL, arguments, diffs or plan text; those stay in the CLI and API.
 
 - held writes and plans: **Approve** / **Deny**
 - routes: one button per candidate, plus **None of these**
-- questions: reply to the message with your answer
+- questions: reply to the message with your answer, typed or as a voice note
+  (see [Voice input](#voice-input))
 
 ```bash
 uv run ringkeeper telegram login          # the bot token from @BotFather (hidden prompt)
@@ -373,6 +374,53 @@ docker compose up -d                      # the api service runs the bridge (lon
 Only chats in `RINGKEEPER_TELEGRAM_CHAT_IDS` get notifications, and button
 presses or replies from any other chat are ignored. Anyone in an allowed chat
 can answer, so allow only your private chat with the bot, or groups you trust.
+
+### Requests from Telegram
+
+By default the bot only takes answers. Any other message gets a hint that
+requests are turned off, and nothing runs. With `RINGKEEPER_TELEGRAM_REQUESTS=1`,
+a message that isn't an answer is a new request. It goes through the same
+router as `ringkeeper ask`, recorded with `source=telegram` and `input=text`
+or `voice`. The bot then sends short notices: what the router did (projects,
+task ids and kinds) and when each task ends (project, id, status). Results and
+summaries stay in the CLI and API.
+
+> **Privacy:** turning this on sends your client requests, typed or spoken,
+> through Telegram's servers. Telegram bot chats aren't end-to-end encrypted,
+> so Telegram can read them. Leave it off for anything you wouldn't put in a
+> regular Telegram chat.
+
+### Voice input
+
+With the optional `stt` service running, you can reply to a question with a
+voice note, and, if requests are on, send a request as one. The bot
+transcribes it and answers **I heard: ...** with **Confirm** and **Redo**.
+Confirm answers the question (or sends the request) exactly as if you had
+typed the text, recorded as `input: voice`. Redo throws the transcript away.
+Unanswered confirmations expire after 10 minutes
+(`RINGKEEPER_TELEGRAM_CONFIRM_MINUTES`).
+
+```bash
+docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
+```
+
+- **No audio is kept.** The api downloads the voice note into memory, sends it
+  to `stt`, and drops it whether transcription works or not. Neither service
+  writes it to disk (`stt` runs with a read-only root filesystem) or logs it.
+  Only the transcript is stored, and a pending one is cleared on Redo or
+  expiry. Telegram itself keeps the voice note in your chat history, outside
+  Ringkeeper.
+- **Limits:** `RINGKEEPER_STT_MAX_SECONDS` (default 180) and
+  `RINGKEEPER_STT_MAX_BYTES` (default 5 MB). They're checked from Telegram's
+  metadata before downloading, during the download, and on the decoded audio.
+  A note over a limit gets a message saying so.
+- **Model:** `RINGKEEPER_STT_MODEL` (default `small`) and
+  `RINGKEEPER_STT_LANGUAGE` (empty: detect it). The first start downloads the
+  model from Hugging Face into the `stt-models` volume. After that,
+  `RINGKEEPER_STT_OFFLINE=1` keeps the service offline.
+- **Network:** `stt` has no published port. It's on the `internal` network,
+  where only the api calls it (`RINGKEEPER_STT_URL`, default `http://stt:9000`;
+  empty turns voice off).
 
 ## Quick start
 
