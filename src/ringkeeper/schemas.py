@@ -1,7 +1,9 @@
 """Pydantic models for input (CLI, registry files) and output (API, CLI show)."""
 
 import re
-from typing import Annotated, Literal
+import uuid
+from datetime import datetime
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
@@ -126,3 +128,63 @@ class BoundInstanceOut(InstanceOut):
 
 class ProjectDetailOut(ProjectOut):
     instances: list[BoundInstanceOut]
+
+
+class MessageIn(_Input):
+    body: NonEmpty
+    thread_id: str | None = None
+    author: NonEmpty = "api"
+
+
+class MessageAccepted(BaseModel):
+    message_id: str
+    thread_id: str
+
+
+class MessageOut(_Output):
+    id: uuid.UUID
+    role: str
+    author: str
+    source: str
+    body: str
+    routing: dict[str, Any] | None
+    routed_at: datetime | None
+    route_error: str | None
+    created_at: datetime
+
+
+class ThreadOut(_Output):
+    id: uuid.UUID
+    title: str
+    source: str
+    created_at: datetime
+    messages: list[MessageOut]
+
+
+class AnswerIn(_Input):
+    choice: str | None = None
+    text: str | None = None
+    by: NonEmpty = "api"
+
+
+class DecisionOut(_Output):
+    """Full details: only the admin-authenticated API and the CLI see these."""
+
+    id: uuid.UUID
+    kind: str
+    status: str
+    summary: str
+    options: list[str]
+    project: str | None
+    instance: str | None
+    tool: str | None
+    args: dict[str, Any] | None
+    payload: dict[str, Any] | None
+    answer: dict[str, Any] | None
+    answered_via: str | None
+    decided_by: str | None
+    task_id: uuid.UUID | None
+    thread_id: uuid.UUID | None
+    created_at: datetime
+    expires_at: datetime
+    decided_at: datetime | None

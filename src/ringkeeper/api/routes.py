@@ -13,22 +13,40 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ringkeeper.api.auth import AdminDep
+from ringkeeper.config import get_settings
 from ringkeeper.db import get_engine, session_scope
-from ringkeeper.models import Env, InstanceType
-from ringkeeper.schemas import BoundInstanceOut, InstanceOut, ProjectDetailOut, ProjectOut
-from ringkeeper.services import bindings, instances, projects
+from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Env, InstanceType
+from ringkeeper.schemas import (
+    AnswerIn,
+    BoundInstanceOut,
+    DecisionOut,
+    InstanceOut,
+    MessageAccepted,
+    MessageIn,
+    MessageOut,
+    ProjectDetailOut,
+    ProjectOut,
+    ThreadOut,
+)
+from ringkeeper.services import bindings, decisions, inbox, instances, projects, threads
 
 public = APIRouter()
 router = APIRouter(dependencies=[AdminDep])
 
 
 def get_session() -> Generator[Session]:
-    # Read-only API: never commit.
+    # Reads never commit.
     with session_scope(commit=False) as session:
         yield session
 
 
+def get_write_session() -> Generator[Session]:
+    with session_scope() as session:
+        yield session
+
+
 SessionDep = Annotated[Session, Depends(get_session)]
+WriteSessionDep = Annotated[Session, Depends(get_write_session)]
 
 
 class Health(BaseModel):
@@ -74,3 +92,71 @@ def list_instances(
     return [
         InstanceOut.model_validate(i) for i in instances.list_instances(session, type=type, env=env)
     ]
+
+
+@router.post("/messages", status_code=202)
+def post_message(data: MessageIn, session: WriteSessionDep) -> MessageAccepted:
+    """Queue a message for the router. Its reply lands in the thread."""
+    message = threads.post_message(
+        session, data.body, author=data.author, source="api", thread=data.thread_id
+    )
+    return MessageAccepted(message_id=str(message.id), thread_id=str(message.thread_id))
+
+
+@router.get("/threads/{thread_id}")
+def get_thread(thread_id: str, session: SessionDep) -> ThreadOut:
+    thread = threads.get_thread(session, thread_id)
+    messages = [MessageOut.model_validate(m) for m in threads.thread_messages(session, thread.id)]
+    return ThreadOut(
+        id=thread.id,
+        title=thread.title,
+        source=thread.source,
+        created_at=thread.created_at,
+        messages=messages,
+    )
+
+
+def _decision_out(decision: Decision) -> DecisionOut:
+    return DecisionOut.model_validate(
+        {
+            **{c: getattr(decision, c) for c in DecisionOut.model_fields if hasattr(decision, c)},
+            "kind": decision.kind.value,
+            "status": decision.status.value,
+            "summary": inbox.summary(decision),
+            "options": inbox.options(decision),
+        }
+    )
+
+
+@router.get("/decisions")
+def list_decisions(
+    session: WriteSessionDep,
+    status: DecisionStatus | None = DecisionStatus.PENDING,
+    kind: DecisionKind | None = None,
+    project: str | None = None,
+    limit: int = 50,
+) -> list[DecisionOut]:
+    # A write session: listing marks stale decisions expired first.
+    found = inbox.list_decisions(
+        session, status=status, kind=kind, project=project, limit=min(max(limit, 1), 1000)
+    )
+    return [_decision_out(d) for d in found]
+
+
+@router.get("/decisions/{decision_id}")
+def get_decision(decision_id: str, session: SessionDep) -> DecisionOut:
+    return _decision_out(decisions.get_decision(session, decision_id))
+
+
+@router.post("/decisions/{decision_id}/answer")
+def answer_decision(decision_id: str, data: AnswerIn, session: WriteSessionDep) -> DecisionOut:
+    """Answer a decision. An approved held write is run by the gateway, not here."""
+    answered = inbox.answer(
+        session,
+        get_settings(),
+        decision_id,
+        inbox.Answer(choice=data.choice, text=data.text),
+        by=f"api:{data.by}",
+        via=inbox.Via.API,
+    )
+    return _decision_out(answered.decision)

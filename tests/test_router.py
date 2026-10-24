@@ -1,10 +1,7 @@
 """The router on a fake model: splitting, thresholds, cross-owner splits,
 retries, routing examples and model choice."""
 
-import json
 import uuid
-from dataclasses import dataclass, field
-from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -31,45 +28,8 @@ from ringkeeper.router.service import Router, route_next
 from ringkeeper.services import examples, inbox, threads
 from ringkeeper.services.inbox import Answer, Via
 from ringkeeper.vault import Secret
+from tests.fake_router import FakeModel, output, routed
 from tests.helpers import bind, make_instance, make_project
-
-
-@dataclass
-class FakeModel:
-    """Answers with scripted outputs, one per call, and records every call."""
-
-    answers: list[str | dict[str, Any]]
-    calls: list[tuple[str, str, str]] = field(default_factory=list[tuple[str, str, str]])
-
-    def complete(self, system: str, prompt: str, model: str) -> Completion:
-        self.calls.append((system, prompt, model))
-        answer = self.answers.pop(0)
-        return Completion(answer if isinstance(answer, str) else json.dumps(answer), 0.001)
-
-
-def routed(
-    project: str,
-    confidence: float = 0.95,
-    *,
-    kind: str = "data",
-    complexity: str = "low",
-    prompt: str | None = None,
-    **extra: Any,
-) -> dict[str, Any]:
-    return {
-        "project": project,
-        "confidence": confidence,
-        "kind": kind,
-        "risk": "read",
-        "complexity": complexity,
-        "outcome": f"done in {project}",
-        "prompt": prompt or f"Work in {project}.",
-        **extra,
-    }
-
-
-def output(*tasks: dict[str, Any], reply: str = "") -> dict[str, Any]:
-    return {"tasks": list(tasks), "reply": reply}
 
 
 @pytest.fixture(autouse=True)

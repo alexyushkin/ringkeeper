@@ -8,6 +8,7 @@ from ringkeeper.cli import (
     auth,
     bindings,
     decisions,
+    inbox,
     instances,
     projects,
     registry,
@@ -55,6 +56,8 @@ app.add_typer(audit.app, name="audit")
 app.add_typer(auth.app, name="auth")
 app.add_typer(tasks.app, name="task")
 app.add_typer(routing.app, name="routing")
+app.add_typer(inbox.app, name="inbox")
+app.command("ask")(inbox.ask)
 app.command("stop-all")(tasks.stop_all)
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)

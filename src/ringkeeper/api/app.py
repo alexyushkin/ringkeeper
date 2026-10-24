@@ -8,12 +8,16 @@ from fastapi.responses import JSONResponse
 from ringkeeper import __version__
 from ringkeeper.api.routes import public, router
 from ringkeeper.config import get_settings
-from ringkeeper.errors import NotFoundError
+from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.scrub import install_log_scrubbing
 
 
 async def _not_found(_request: Request, error: Exception) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(error)})
+
+
+async def _rule_violation(_request: Request, error: Exception) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
 @asynccontextmanager
@@ -65,4 +69,5 @@ def create_app() -> FastAPI:
     app.include_router(public)
     app.include_router(router)
     app.add_exception_handler(NotFoundError, _not_found)
+    app.add_exception_handler(RuleViolationError, _rule_violation)
     return app

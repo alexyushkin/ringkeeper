@@ -37,7 +37,7 @@ from ringkeeper.models import (
     TaskRisk,
     TaskStatus,
 )
-from ringkeeper.scrub import scrub_obj
+from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import examples, projects, tasks
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -336,3 +336,27 @@ def pending_approvals(session: Session) -> Sequence[Decision]:
         )
         .order_by(Decision.created_at)
     ).all()
+
+
+def _one_line(text: str, limit: int) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: max(limit - 1, 1)] + "…"
+
+
+def summary(decision: Decision, limit: int = 160) -> str:
+    """A short, scrubbed description: never SQL, arguments, diffs or plan text.
+
+    This is all Telegram ever gets; full details stay in the CLI and API.
+    """
+    payload = decision.payload or {}
+    match decision.kind:
+        case DecisionKind.APPROVE:
+            text = f"{decision.tool} on {decision.instance} (prod write held)"
+        case DecisionKind.ROUTE:
+            names = " or ".join(c["project"] for c in payload.get("candidates", []))
+            text = f"Which project ({names})? {payload.get('task', {}).get('outcome', '')}"
+        case DecisionKind.PLAN:
+            text = f"Plan ready: {payload.get('title') or 'review the plan'}"
+        case DecisionKind.QUESTION:
+            text = str(payload.get("question", ""))
+    return _one_line(scrub(text), limit)

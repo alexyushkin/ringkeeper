@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import anyio
 import httpx2
 import pytest
 from fastmcp import Client
@@ -12,11 +13,12 @@ from sqlalchemy import select
 from typer.testing import CliRunner
 
 from ringkeeper.cli.main import app
+from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.gateway.app import create_app
 from ringkeeper.keys import MasterKeyError
-from ringkeeper.models import AuditEvent, AuditOutcome
-from ringkeeper.services import revocations
+from ringkeeper.models import AuditEvent, AuditOutcome, Decision, DecisionStatus
+from ringkeeper.services import inbox, revocations
 from ringkeeper.tokens import issue_token, verify_token
 
 pytestmark = pytest.mark.anyio
@@ -208,3 +210,37 @@ async def test_list_instances_shows_only_the_projects_own(gateway: str, service:
     assert "globex" not in text
     assert "secret_ref" not in text
     assert "file://" not in text
+
+
+async def test_a_held_write_approved_remotely_is_run_by_the_gateway(gateway: str) -> None:
+    async with client(gateway, token()) as mcp:
+        held = await mcp.call_tool(
+            "execute",
+            {
+                "sql": "INSERT INTO notes (body) VALUES ('approved')",
+                "instance": "acme-supabase-prod",
+            },
+        )
+    assert held.structured_content is not None
+    decision_id = held.structured_content["decision_id"]
+    with session_scope() as session:
+        inbox.answer(
+            session, get_settings(), decision_id, inbox.Answer(choice="approve"),
+            by="telegram:42", via=inbox.Via.TELEGRAM,
+        )  # fmt: skip
+
+    def status() -> DecisionStatus:
+        with session_scope() as session:
+            decision = session.get(Decision, decision_id)
+            assert decision is not None
+            return decision.status
+
+    with anyio.fail_after(15):
+        while status() is DecisionStatus.PENDING:
+            await anyio.sleep(0.1)
+    assert status() is DecisionStatus.EXECUTED
+    with session_scope() as session:
+        decision = session.get(Decision, decision_id)
+        assert decision is not None
+        assert decision.decided_by == "telegram:42"
+        assert decision.answered_via == "telegram"

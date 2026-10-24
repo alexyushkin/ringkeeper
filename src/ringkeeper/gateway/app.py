@@ -10,10 +10,12 @@ the tool call then goes through `services.calls.run_call`.
 """
 
 import inspect
+import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Annotated, Any, get_type_hints
 
+import anyio
 import anyio.to_thread
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError as McpToolError
@@ -34,6 +36,7 @@ from ringkeeper.adapters.base import Adapter, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.errors import RingkeeperError
+from ringkeeper.gateway.approvals import approval_loop
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
@@ -213,9 +216,15 @@ def create_app(vault: Vault | None = None) -> Starlette:
     async def lifespan(_app: Starlette) -> AsyncGenerator[None]:
         # Each FastMCP app has its own session manager; nested lifespans don't run
         # by themselves, so start them all here.
-        async with AsyncExitStack() as stack:
+        stop = threading.Event()
+        async with AsyncExitStack() as stack, anyio.create_task_group() as group:
             for app in apps:
                 await stack.enter_async_context(app.lifespan(app))
-            yield
+            group.start_soon(approval_loop, vault, get_settings(), stop)
+            try:
+                yield
+            finally:
+                stop.set()
+                group.cancel_scope.cancel()
 
     return Starlette(routes=routes, lifespan=lifespan)
