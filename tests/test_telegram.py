@@ -341,3 +341,28 @@ def test_network_errors_never_show_the_token(monkeypatch: pytest.MonkeyPatch) ->
         BotApi(BOT_TOKEN).get_me()
     assert BOT_TOKEN not in str(raised.value)
     assert "ConnectError" in str(raised.value)
+
+
+@pytest.mark.parametrize("command", ["/start", "/start@ringkeeper_test_bot", "/start abc"])
+def test_start_gets_a_welcome_not_the_hint(telegram: FakeTelegram, command: str) -> None:
+    telegram.updates.append(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 7, "from": {"id": 42}, "chat": {"id": ME, "type": "private"},
+                "text": command,
+            },
+        }
+    )  # fmt: skip
+    bridge().poll_once(0)
+    [sent] = telegram.sent
+    assert sent["text"].startswith("Hi! This is Ringkeeper.")
+    assert "ringkeeper ask" not in sent["text"]
+
+
+def test_start_from_a_stranger_gets_nothing(telegram: FakeTelegram) -> None:
+    telegram.updates.append(
+        {"update_id": 1, "message": {"message_id": 7, "chat": {"id": STRANGER}, "text": "/start"}}
+    )
+    bridge().poll_once(0)
+    assert telegram.sent == []

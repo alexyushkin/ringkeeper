@@ -44,6 +44,10 @@ KIND_LABELS = {
     DecisionKind.QUESTION: "Question",
 }
 BUTTON_LABELS = {"approve": "✅ Approve", "deny": "❌ Deny", inbox.NO_PROJECT: "None of these"}
+WELCOME = (
+    "Hi! This is Ringkeeper. Decisions that need you will show up here: "
+    "press a button, or reply to a question."
+)
 NOT_A_REPLY = (
     "Ringkeeper only takes answers here: press a button, or reply to a question. "
     "Send new requests with `ringkeeper ask`."
@@ -212,6 +216,9 @@ class Bridge:
         chat_id = int(cast(dict[str, Any], chat)["id"])
         replied = cast(dict[str, Any] | None, message.get("reply_to_message"))
         text = str(message.get("text") or "").strip()
+        if not replied and text.split("@")[0].split(" ")[0] == "/start":
+            self._say(chat_id, WELCOME)
+            return
         decision_id = self._question_for(chat_id, replied) if replied else None
         if decision_id is None or not text:
             self._say(chat_id, NOT_A_REPLY)
