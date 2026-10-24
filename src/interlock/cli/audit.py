@@ -34,7 +34,8 @@ def _short(text: str | None) -> str:
     if not text:
         return "-"
     text = " ".join(text.split())
-    return text if len(text) <= SUMMARY_WIDTH else text[: SUMMARY_WIDTH - 1] + "…"
+    # ASCII on purpose: Windows consoles may not render an ellipsis.
+    return text if len(text) <= SUMMARY_WIDTH else text[: SUMMARY_WIDTH - 3] + "..."
 
 
 @app.command("list")
