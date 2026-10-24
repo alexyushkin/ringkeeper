@@ -53,14 +53,36 @@ def scrub_obj(value: object) -> Any:
     return value
 
 
+def _leaks(value: object) -> bool:
+    text = str(value)
+    return scrub(text) != text
+
+
+def _scrub_arg(value: object) -> object:
+    """Strings are scrubbed; other values keep their type unless their text leaks."""
+    if isinstance(value, str):
+        return scrub(value)
+    if value is None or isinstance(value, int | float):
+        return value
+    return scrub(str(value)) if _leaks(value) else value
+
+
 class _ScrubbingRecordFactory:
     def __init__(self, inner: Callable[..., logging.LogRecord]) -> None:
         self.inner = inner
 
     def __call__(self, *args: Any, **kwargs: Any) -> logging.LogRecord:
         record = self.inner(*args, **kwargs)
-        record.msg = scrub(record.getMessage())
-        record.args = None
+        # Scrub msg and each arg in place rather than pre-formatting: some
+        # formatters (uvicorn's access log) read record.args themselves.
+        if isinstance(record.msg, str):
+            record.msg = scrub(record.msg)
+        elif _leaks(record.msg):
+            record.msg = scrub(str(record.msg))
+        if isinstance(record.args, tuple):
+            record.args = tuple(_scrub_arg(a) for a in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {k: _scrub_arg(v) for k, v in record.args.items()}
         if record.exc_info and not record.exc_text:
             record.exc_text = scrub(logging.Formatter().formatException(record.exc_info))
         if record.stack_info:

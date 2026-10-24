@@ -192,3 +192,26 @@ def test_secret_init_creates_the_key_once(data_dir: Path) -> None:
     assert (data_dir / "master.key").exists()
     again = runner.invoke(app, ["secret", "init"])
     assert "master key already exists" in again.stdout
+
+
+def test_log_scrubbing_keeps_formatters_that_read_args_working() -> None:
+    from uvicorn.logging import AccessFormatter  # noqa: PLC0415
+
+    scrub.install_log_scrubbing()
+    Secret("file://x", CANARY)
+    record = logging.getLogger("uvicorn.access").makeRecord(
+        "uvicorn.access", logging.INFO, __file__, 1,
+        '%s - "%s %s HTTP/%s" %d', ("127.0.0.1:1", "GET", f"/x?k={CANARY}", "1.1", 200),
+        None,
+    )  # fmt: skip
+    line = AccessFormatter("%(client_addr)s %(request_line)s %(status_code)s").format(record)
+    assert line == "127.0.0.1:1 GET /x?k=[redacted] HTTP/1.1 200 OK"
+
+    class Leaky:
+        def __str__(self) -> str:
+            return f"conn {CANARY}"
+
+    leaky = logging.getLogger("x").makeRecord(
+        "x", logging.INFO, __file__, 1, "%s", (Leaky(),), None
+    )
+    assert leaky.getMessage() == "conn [redacted]"
