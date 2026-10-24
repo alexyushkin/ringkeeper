@@ -73,3 +73,5 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+# A silently skipped flush (e.g. an object never added) must fail loudly.
+filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
