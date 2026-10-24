@@ -39,6 +39,16 @@ async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         threading.Thread(
             target=router.run_forever, args=(stop,), daemon=True, name="rk-router"
         ).start()
+    if settings.telegram:
+        from ringkeeper.telegram.api import from_vault  # noqa: PLC0415
+        from ringkeeper.telegram.bridge import Bridge  # noqa: PLC0415
+        from ringkeeper.vault import get_vault  # noqa: PLC0415
+
+        install_log_scrubbing()
+        bridge = Bridge(from_vault(get_vault(settings), settings), settings)
+        threading.Thread(
+            target=bridge.run_forever, args=(stop,), daemon=True, name="rk-telegram"
+        ).start()
     if settings.session_manager:
         from ringkeeper.vault import get_vault  # noqa: PLC0415 (Docker and the vault: only here)
         from ringkeeper.workers.manager import Manager  # noqa: PLC0415
