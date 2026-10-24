@@ -146,6 +146,7 @@ class MessageOut(_Output):
     role: str
     author: str
     source: str
+    input: str  # text, or voice (a confirmed transcript)
     body: str
     routing: dict[str, Any] | None
     routed_at: datetime | None

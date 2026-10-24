@@ -13,6 +13,12 @@ A voice reply to a question is transcribed by the stt service and echoed as
 "I heard: ..." with Confirm and Redo; Confirm answers exactly like a typed
 reply. Audio is never stored, only the transcript, which is cleared once the
 confirmation is resolved or expires (`telegram_confirm_minutes`).
+
+With `telegram_requests` on, other messages are new requests: typed ones go
+straight to the router (the same path as `ringkeeper ask`), voice notes after
+the same "I heard" step. Their threads then get two kinds of short notices:
+what the router did, and each task's end (project, id, status; results stay
+in the CLI and API). With it off, they get a hint and nothing runs.
 """
 
 import logging
@@ -31,15 +37,21 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
 from ringkeeper.models import (
+    TERMINAL_STATUSES,
     Decision,
     DecisionKind,
     DecisionStatus,
+    Message,
+    MessageRole,
     Notification,
     Setting,
+    Task,
+    TaskStatus,
+    Thread,
     VoiceConfirmation,
 )
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox
+from ringkeeper.services import inbox, threads
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.voice import SttClient, VoiceError, VoiceNote
@@ -52,6 +64,7 @@ OFFSET_KEY = "telegram.offset"
 CALLBACK_PREFIX = "rk"
 CONFIRM_PREFIX = "rv"  # 'rv:<confirmation uuid>:c' (Confirm) or ':r' (Redo)
 CONFIRM, REDO = "c", "r"
+ANSWER, REQUEST = "answer", "request"  # what a confirmed transcript becomes
 HEARD_CHARS = 3500  # Telegram caps a message at 4096 characters
 # sent -> running (an approved held write the gateway hasn't run yet) -> closed
 SENT, RUNNING, CLOSED, FAILED = "sent", "running", "closed", "failed"
@@ -71,6 +84,7 @@ REQUESTS_OFF = (
     "RINGKEEPER_TELEGRAM_REQUESTS to send requests here, or use the Ringkeeper app."
 )
 TEXT_OR_VOICE = "Reply to the question with text or a voice note."
+TEXT_OR_VOICE_REQUEST = "Send a request as a text message or a voice note."
 EXPIRED = "⌛ Expired. Send it again."
 
 
@@ -113,6 +127,36 @@ def outcome_line(decision: Decision) -> str:
             return f"✔ {choice} (by {who})"
         case _:
             return f"✔ {decision.status} (by {who})"
+
+
+def _one_line(text: str, limit: int) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: max(limit - 1, 1)] + "…"
+
+
+def routed_text(session: Session, message: Message, limit: int) -> str:
+    """Projects, task ids and kinds only: never the worker prompt or outcome."""
+    head = f"Request {str(message.thread_id)[:8]}"
+    if message.route_error:
+        return f"{head}: I couldn't route it."
+    routing = message.routing or {}
+    lines: list[str] = []
+    for ident in routing.get("tasks", []):
+        task = session.get(Task, ident)
+        if task is not None:
+            lines.append(f"→ {task.project}: task {ident[:8]} ({task.kind or 'task'})")
+    for ident in routing.get("decisions", []):
+        lines.append(f"? which project: decision {ident[:8]}, sent separately")
+    if not lines:
+        output = cast(dict[str, Any], routing.get("output") or {})
+        reply = output.get("reply") or "Nothing to do."
+        lines.append(_one_line(scrub(str(reply)), limit))
+    return "\n".join([f"{head}:", *lines])
+
+
+def finished_text(task: Task) -> str:
+    mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
+    return f"{mark} {task.project} · task {str(task.id)[:8]} {task.status}"
 
 
 def heard(transcript: str, question: str = "") -> str:
@@ -196,6 +240,57 @@ class Bridge:
                     closed += 1
         return closed
 
+    def _notify(self, session: Session, text: str, **subject: uuid.UUID) -> int:
+        sent = 0
+        for chat in sorted(self.chats):
+            note = Notification(channel=CHANNEL, chat_id=chat, **subject)
+            try:
+                note.external_id = self.api.send_message(chat, scrub(text))
+                note.status = CLOSED  # nothing to update later
+                sent += 1
+            except TelegramError as error:
+                note.status, note.error = FAILED, str(error)
+            session.add(note)
+        session.flush()
+        return sent
+
+    def send_notices(self) -> int:
+        """For requests from Telegram: what the router did, and when each task ends."""
+        sent = 0
+        with session_scope() as session:
+            noticed = select(Notification.message_id).where(
+                Notification.channel == CHANNEL, Notification.message_id.is_not(None)
+            )
+            routed = session.scalars(
+                select(Message)
+                .where(
+                    Message.source == CHANNEL,
+                    Message.role == MessageRole.USER,
+                    Message.routed_at.is_not(None),
+                    Message.id.not_in(noticed),
+                )
+                .order_by(Message.created_at)
+            ).all()
+            for message in routed:
+                text = routed_text(session, message, self.settings.telegram_summary_chars)
+                sent += self._notify(session, text, message_id=message.id)
+            ended = select(Notification.task_id).where(
+                Notification.channel == CHANNEL, Notification.task_id.is_not(None)
+            )
+            finished = session.scalars(
+                select(Task)
+                .join(Thread, Thread.id == Task.thread_id)
+                .where(
+                    Thread.source == CHANNEL,
+                    Task.status.in_(list(TERMINAL_STATUSES)),
+                    Task.id.not_in(ended),
+                )
+                .order_by(Task.finished_at)
+            ).all()
+            for task in finished:
+                sent += self._notify(session, finished_text(task), task_id=task.id)
+        return sent
+
     # --- Incoming ---
 
     def handle(self, update: dict[str, Any]) -> None:
@@ -260,7 +355,15 @@ class Bridge:
             return
         decision_id = self._question_for(chat_id, replied) if replied else None
         if decision_id is None:
-            self._say(chat_id, REQUESTS_OFF)
+            # Not an answer: a new request, if requests from Telegram are on.
+            if not self.settings.telegram_requests:
+                self._say(chat_id, REQUESTS_OFF)  # and a voice note is never downloaded
+            elif note is not None:
+                self._hear(chat_id, user, note, None)
+            elif text:
+                self._say(chat_id, self._request(text, user, "text"))
+            else:
+                self._say(chat_id, TEXT_OR_VOICE_REQUEST)
         elif note is not None:
             self._hear(chat_id, user, note, decision_id)
         elif text:
@@ -295,9 +398,26 @@ class Bridge:
                 return f"Not done: that question is already {decision.status}"
             return None
 
-    def _hear(self, chat_id: int, user: dict[str, Any], note: VoiceNote, decision_id: str) -> None:
-        """Transcribe a voice note and ask the user to confirm what was heard."""
-        if refusal := self._open_question(decision_id):
+    def _request(self, body: str, user: dict[str, Any], input_kind: str) -> str:
+        """Post a request for the router, the same path as `ringkeeper ask`."""
+        try:
+            with session_scope() as session:
+                message = threads.post_message(
+                    session, body, author=_who(user), source=CHANNEL, input_kind=input_kind
+                )
+                thread = str(message.thread_id)[:8]
+        except RingkeeperError as error:
+            return f"Not sent: {error}"
+        return f"Got it. Routing it now (thread {thread})."
+
+    def _hear(
+        self, chat_id: int, user: dict[str, Any], note: VoiceNote, decision_id: str | None
+    ) -> None:
+        """Transcribe a voice note and ask the user to confirm what was heard.
+
+        With a decision it's an answer to that question; without, a new request.
+        """
+        if decision_id and (refusal := self._open_question(decision_id)):
             self._say(chat_id, refusal)
             return
         try:
@@ -312,8 +432,9 @@ class Bridge:
         expires = datetime.now(UTC) + timedelta(minutes=self.settings.telegram_confirm_minutes)
         with session_scope() as session:
             row = VoiceConfirmation(
-                kind="answer", chat_id=chat_id, author=_who(user),
-                decision_id=uuid.UUID(decision_id), transcript=transcript, expires_at=expires,
+                kind=ANSWER if decision_id else REQUEST, chat_id=chat_id, author=_who(user),
+                decision_id=uuid.UUID(decision_id) if decision_id else None,
+                transcript=transcript, expires_at=expires,
             )  # fmt: skip
             session.add(row)
             session.flush()
@@ -322,7 +443,10 @@ class Bridge:
             {"text": "✅ Confirm", "callback_data": f"{CONFIRM_PREFIX}:{ident}:{CONFIRM}"},
             {"text": "🔁 Redo", "callback_data": f"{CONFIRM_PREFIX}:{ident}:{REDO}"},
         ]
-        text = heard(transcript, f"Answer question {decision_id[:8]} with this?")
+        question = (
+            f"Answer question {decision_id[:8]} with this?" if decision_id else "Send this request?"
+        )
+        text = heard(transcript, question)
         try:
             sent = self.api.send_message(chat_id, text, {"inline_keyboard": [buttons]})
         except TelegramError as error:
@@ -350,8 +474,20 @@ class Bridge:
                     outcome, feedback = EXPIRED, "This expired; send it again."
                 elif action == REDO:
                     _close_confirmation(row, "redone")
-                    outcome = "🔁 Redo: reply to the question again with a new voice note."
+                    outcome = (
+                        "🔁 Redo: reply to the question again with a new voice note."
+                        if row.kind == ANSWER
+                        else "🔁 Redo: send a new voice note."
+                    )
                     feedback = "Send it again"
+                elif row.kind == REQUEST:
+                    message = threads.post_message(
+                        session, transcript, author=row.author, source=CHANNEL, input_kind="voice"
+                    )
+                    _close_confirmation(row, "confirmed")
+                    thread = str(message.thread_id)[:8]
+                    outcome = f"✔ Sent. Routing it now (thread {thread})."
+                    feedback = "Sent"
                 else:
                     reply = inbox.Answer(text=transcript, voice=True)
                     answered = inbox.answer(
@@ -442,6 +578,7 @@ class Bridge:
                 self.send_new()
                 self.close_finished()
                 self.expire_confirmations()
+                self.send_notices()
             except Exception:
                 logger.exception("Telegram notification pass failed")
             wake.wait(5.0)
