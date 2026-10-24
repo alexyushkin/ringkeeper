@@ -121,6 +121,11 @@ def expire_stale(session: Session) -> int:
 
 
 def _require_pending(decision: Decision) -> None:
+    if decision.status == DecisionStatus.EXPIRED:
+        raise RuleViolationError(
+            f"decision {decision.id} expired at {decision.expires_at.isoformat()} and can no "
+            "longer be approved; ask the agent to retry the call"
+        )
     if decision.status != DecisionStatus.PENDING:
         raise RuleViolationError(f"decision {decision.id} is already {decision.status}")
     if decision.expires_at <= datetime.now(UTC):

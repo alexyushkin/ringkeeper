@@ -47,7 +47,7 @@ def record(
         token_id=call.caller.token_id,
         instance=call.instance,
         service=call.service,
-        tool=call.tool,
+        tool=call.tool or None,
         outcome=outcome,
         reason=None if reason is None else safe_text(reason),
         args=scrub_obj(call.args),

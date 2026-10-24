@@ -15,6 +15,7 @@ def make_instance(
     name: str,
     type: InstanceType = InstanceType.SUPABASE,
     env: Env = Env.DEV,
+    secret_ref: str | None = None,
     **fields: object,
 ) -> Instance:
     data = InstanceIn.model_validate(
@@ -22,7 +23,7 @@ def make_instance(
             "name": name,
             "type": type,
             "env": env,
-            "secret_ref": f"aws-sm://interlock/{name}",
+            "secret_ref": secret_ref or f"aws-sm://interlock/{name}",
             "owner": "acme",
             **fields,
         }
