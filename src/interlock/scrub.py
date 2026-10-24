@@ -22,6 +22,12 @@ def register(*fragments: str) -> None:
         _fragments.update(f for f in fragments if len(f) >= MIN_FRAGMENT_LENGTH)
 
 
+def clear() -> None:
+    """Forget every registered fragment. For tests only."""
+    with _lock:
+        _fragments.clear()
+
+
 def _snapshot() -> list[str]:
     with _lock:
         # Longest first, so a fragment inside a longer one doesn't leave a tail.
