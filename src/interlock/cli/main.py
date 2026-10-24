@@ -1,7 +1,7 @@
 import typer
 
 from interlock import __version__, migrate
-from interlock.cli import bindings, instances, projects, registry, secrets
+from interlock.cli import bindings, instances, projects, registry, secrets, tokens
 from interlock.cli.common import handle_errors
 from interlock.scrub import install_log_scrubbing
 
@@ -17,6 +17,7 @@ app.add_typer(projects.app, name="project")
 app.add_typer(instances.app, name="instance")
 app.add_typer(registry.app, name="registry")
 app.add_typer(secrets.app, name="secret")
+app.add_typer(tokens.app, name="token")
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)
 
