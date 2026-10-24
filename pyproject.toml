@@ -54,6 +54,7 @@ select = [
 ]
 ignore = [
     "PLR0913", # CLI commands naturally take many options
+    "PLR0917", # ...and Typer options are positional parameters
     "PLR2004", # magic values are fine in tests and status codes
 ]
 
