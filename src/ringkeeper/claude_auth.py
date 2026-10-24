@@ -76,7 +76,8 @@ def resolve(vault: Vault, settings: Settings, mode: AuthMode | None = None) -> C
         secret = vault.resolve(ref)
     except RingkeeperError as error:
         raise ClaudeAuthError(
-            f"no Claude credential for {mode} mode ({error}); run `ringkeeper auth login`"
+            f"no Claude credential for {mode} mode ({error}); run `ringkeeper auth login"
+            f"{' --subscription' if mode is AuthMode.SUBSCRIPTION else ''}`"
         ) from None
     check_format(mode, secret.reveal())
     return ClaudeCredential(mode, ref, secret)

@@ -114,3 +114,9 @@ def test_status_without_credential_fails() -> None:
     status = runner.invoke(app, ["auth", "status"])
     assert status.exit_code == 1
     assert "resolves:   no" in status.stdout
+
+
+def test_missing_subscription_credential_points_at_subscription_login() -> None:
+    settings = Settings(claude_auth_mode=AuthMode.SUBSCRIPTION)
+    with pytest.raises(ClaudeAuthError, match="run `ringkeeper auth login --subscription`"):
+        resolve(get_vault(settings), settings)

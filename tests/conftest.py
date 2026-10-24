@@ -1,4 +1,9 @@
 import os
+
+# Never read a developer's .env: it may switch auth modes or paths. This must
+# run before ringkeeper is imported (Settings reads the choice at import time).
+os.environ["RINGKEEPER_ENV_FILE"] = ""
+
 import socket
 import threading
 import time

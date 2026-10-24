@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic import SecretStr, field_validator
@@ -6,8 +7,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ringkeeper.models import AuthMode
 
 
+def _env_file() -> str | None:
+    """`.env` by default; RINGKEEPER_ENV_FILE picks another, or "" for none (tests)."""
+    return os.environ.get("RINGKEEPER_ENV_FILE", ".env") or None
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="RINGKEEPER_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="RINGKEEPER_", env_file=_env_file(), extra="ignore"
+    )
 
     database_url: str = "postgresql+psycopg://ringkeeper:ringkeeper@localhost:5432/ringkeeper"
     # Seconds; fail fast instead of hanging when the database is down.
