@@ -13,8 +13,10 @@ default", including when an instance is later changed to prod.
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -28,7 +30,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
@@ -65,6 +67,26 @@ def _enum_values(enum_cls: type[enum.StrEnum]) -> list[str]:
 autonomy_enum = Enum(Autonomy, name="autonomy", values_callable=_enum_values)
 instance_type_enum = Enum(InstanceType, name="instance_type", values_callable=_enum_values)
 instance_env_enum = Enum(Env, name="instance_env", values_callable=_enum_values)
+
+
+class DecisionStatus(enum.StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"  # claimed by an approver; execution in progress or interrupted
+    DENIED = "denied"
+    EXECUTED = "executed"
+    FAILED = "failed"
+    EXPIRED = "expired"
+
+
+class AuditOutcome(enum.StrEnum):
+    REFUSED = "refused"
+    HELD = "held"
+    EXECUTED = "executed"
+    FAILED = "failed"
+
+
+decision_status_enum = Enum(DecisionStatus, name="decision_status", values_callable=_enum_values)
+audit_outcome_enum = Enum(AuditOutcome, name="audit_outcome", values_callable=_enum_values)
 
 
 class Base(DeclarativeBase):
@@ -164,3 +186,74 @@ class ProjectInstance(Base):
 
     project: Mapped[Project] = relationship(back_populates="bindings")
     instance: Mapped[Instance] = relationship(back_populates="bindings")
+
+
+class Decision(Base):
+    """A held prod write, waiting for a human. Names are stored as text so the
+    history survives later changes to the registry; approval re-checks them."""
+
+    __tablename__ = "decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "(status = 'pending') = (decided_at IS NULL)",
+            name="ck_decisions_decided_iff_not_pending",
+        ),
+        CheckConstraint("expires_at > created_at", name="ck_decisions_expiry_after_creation"),
+        Index("ix_decisions_status_created_at", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    status: Mapped[DecisionStatus] = mapped_column(
+        decision_status_enum, server_default=DecisionStatus.PENDING.value
+    )
+    project: Mapped[str] = mapped_column(Text)
+    session_id: Mapped[str] = mapped_column(Text)
+    token_id: Mapped[str] = mapped_column(Text)
+    instance: Mapped[str] = mapped_column(Text)
+    service: Mapped[InstanceType] = mapped_column(instance_type_enum)
+    tool: Mapped[str] = mapped_column(Text)
+    # Exact arguments, needed to execute on approval. They come from the agent,
+    # never from the vault.
+    args: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    args_hash: Mapped[str] = mapped_column(Text)
+    # State captured at hold time that must still hold at approval (e.g. n8n updatedAt).
+    precondition: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    result: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEvent(Base):
+    """Append-only (a trigger rejects UPDATE and DELETE). Args are redacted."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_project_at", "project", "at"),
+        Index("ix_audit_events_instance_at", "instance", "at"),
+        Index("ix_audit_events_outcome_at", "outcome", "at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Null only when the token itself was refused: an unverified token names no one.
+    project: Mapped[str | None] = mapped_column(Text)
+    session_id: Mapped[str | None] = mapped_column(Text)
+    token_id: Mapped[str | None] = mapped_column(Text)
+    instance: Mapped[str | None] = mapped_column(Text)
+    service: Mapped[InstanceType | None] = mapped_column(instance_type_enum)
+    tool: Mapped[str | None] = mapped_column(Text)
+    outcome: Mapped[AuditOutcome] = mapped_column(audit_outcome_enum)
+    reason: Mapped[str | None] = mapped_column(Text)
+    args: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    args_hash: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[str | None] = mapped_column(Text)
+    decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("decisions.id", name="fk_audit_events_decision")
+    )

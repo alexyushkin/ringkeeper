@@ -58,7 +58,9 @@ def _clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     if engine is None:
         return
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE project_instances, projects, instances CASCADE"))
+        connection.execute(
+            text("TRUNCATE audit_events, decisions, project_instances, projects, instances CASCADE")
+        )
 
 
 @pytest.fixture
