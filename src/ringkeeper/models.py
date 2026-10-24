@@ -24,6 +24,8 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -87,6 +89,36 @@ class AuditOutcome(enum.StrEnum):
 
 decision_status_enum = Enum(DecisionStatus, name="decision_status", values_callable=_enum_values)
 audit_outcome_enum = Enum(AuditOutcome, name="audit_outcome", values_callable=_enum_values)
+
+
+class AuthMode(enum.StrEnum):
+    API_KEY = "api_key"
+    # For the operator's own install only (Agent SDK terms): never the default.
+    SUBSCRIPTION = "subscription"
+
+
+class TaskStatus(enum.StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    STOPPED = "stopped"
+    BUDGET_EXCEEDED = "budget_exceeded"
+
+
+TERMINAL_STATUSES = frozenset(
+    {
+        TaskStatus.SUCCEEDED,
+        TaskStatus.FAILED,
+        TaskStatus.TIMED_OUT,
+        TaskStatus.STOPPED,
+        TaskStatus.BUDGET_EXCEEDED,
+    }
+)
+
+auth_mode_enum = Enum(AuthMode, name="auth_mode", values_callable=_enum_values)
+task_status_enum = Enum(TaskStatus, name="task_status", values_callable=_enum_values)
 
 
 class Base(DeclarativeBase):
@@ -257,3 +289,111 @@ class AuditEvent(Base):
     decision_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("decisions.id", name="fk_audit_events_decision")
     )
+
+
+class Task(Base):
+    """A unit of work for one project. Each run (initial or resume) is a WorkerSession."""
+
+    __tablename__ = "tasks"
+    __table_args__ = (
+        CheckConstraint("max_turns > 0", name="ck_tasks_max_turns_positive"),
+        CheckConstraint("max_runtime_s > 0", name="ck_tasks_max_runtime_positive"),
+        CheckConstraint(
+            "budget_usd IS NULL OR (budget_usd > 0 AND auth_mode = 'api_key')",
+            name="ck_tasks_budget_needs_api_key",
+        ),
+        Index("ix_tasks_status_created_at", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project: Mapped[str] = mapped_column(Text)
+    prompt: Mapped[str] = mapped_column(Text)
+    status: Mapped[TaskStatus] = mapped_column(
+        task_status_enum, server_default=TaskStatus.QUEUED.value
+    )
+    auth_mode: Mapped[AuthMode] = mapped_column(auth_mode_enum)
+    max_turns: Mapped[int] = mapped_column(Integer)
+    max_runtime_s: Mapped[int] = mapped_column(Integer)
+    budget_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
+    git_branch: Mapped[str | None] = mapped_column(Text)
+    git_commit: Mapped[str | None] = mapped_column(Text)
+    changed_files: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    error: Mapped[str | None] = mapped_column(Text)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    sessions: Mapped[list["WorkerSession"]] = relationship(
+        back_populates="task", order_by="WorkerSession.ordinal", passive_deletes=True
+    )
+
+
+class WorkerSession(Base):
+    """One worker container run. A resume adds a row with the same sdk_session_id."""
+
+    __tablename__ = "sessions"
+    __table_args__ = (
+        UniqueConstraint("task_id", "ordinal", name="uq_sessions_task_ordinal"),
+        Index("ix_sessions_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE", name="fk_sessions_task")
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    prompt: Mapped[str] = mapped_column(Text)
+    status: Mapped[TaskStatus] = mapped_column(
+        task_status_enum, server_default=TaskStatus.QUEUED.value
+    )
+    sdk_session_id: Mapped[str | None] = mapped_column(Text)
+    container_id: Mapped[str | None] = mapped_column(Text)
+    state_volume: Mapped[str] = mapped_column(Text)
+    token_jti: Mapped[str | None] = mapped_column(Text)
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    turns: Mapped[int | None] = mapped_column(Integer)
+    # The SDK's own estimate from list prices; not billing data.
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6, asdecimal=False))
+    usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    model_usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    result_subtype: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    task: Mapped[Task] = relationship(back_populates="sessions")
+
+
+class SessionEvent(Base):
+    """One JSON line from a worker's stdout, scrubbed."""
+
+    __tablename__ = "session_events"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_session_events_seq"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sessions.id", ondelete="CASCADE", name="fk_session_events_session")
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    type: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class TokenRevocation(Base):
+    """Revoked worker tokens, by jti. The gateway refuses any token listed here."""
+
+    __tablename__ = "token_revocations"
+
+    jti: Mapped[str] = mapped_column(Text, primary_key=True)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reason: Mapped[str] = mapped_column(Text)
+    revoked_by: Mapped[str] = mapped_column(Text)
+    # After this the token is dead anyway, so the row can be cleaned up.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
