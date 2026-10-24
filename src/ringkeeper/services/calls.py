@@ -196,6 +196,31 @@ def unauthenticated(service: InstanceType, reason: str, caller: Caller | None = 
     )
 
 
+def bound_instances(caller: Caller) -> list[dict[str, Any]]:
+    """The calling project's own instances, for the list_instances tool. No secrets."""
+    if caller.project is None:
+        raise RefusalError("a valid worker token is required", "no verified caller")
+    with session_scope() as session:
+        project = session.scalars(
+            select(Project).where(Project.name == caller.project)
+        ).one_or_none()
+        if project is None:
+            raise RefusalError(
+                f"project '{caller.project}' from the worker token no longer exists",
+                "token project does not exist",
+            )
+        return [
+            {
+                "name": b.instance.name,
+                "type": b.instance.type.value,
+                "env": b.instance.env.value,
+                "is_default": b.is_default,
+                "allowed_tools": list(b.allowed_tools) or "all",
+            }
+            for b in sorted(project.bindings, key=lambda b: (b.instance.type, b.instance.name))
+        ]
+
+
 def token_revoked(jti: str) -> bool:
     with session_scope() as session:
         return revocations.is_revoked(session, jti)

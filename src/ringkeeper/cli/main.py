@@ -1,3 +1,5 @@
+import sys
+
 import typer
 
 from ringkeeper import __version__, migrate
@@ -17,6 +19,24 @@ from ringkeeper.cli.common import handle_errors
 from ringkeeper.scrub import install_log_scrubbing
 
 install_log_scrubbing()
+
+
+def _utf8_when_piped() -> None:
+    """Agent output is often non-ASCII (…, quotes, names).
+
+    A real console already gets Unicode through the Windows console API, but a
+    pipe or capture falls back to the locale code page (cp1252), which mangles
+    it. Use UTF-8 there instead.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        if encoding != "utf8" and not stream.isatty():
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                reconfigure(encoding="utf-8", errors="replace")
+
+
+_utf8_when_piped()
 
 app = typer.Typer(
     name="ringkeeper",

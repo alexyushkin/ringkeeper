@@ -1,5 +1,6 @@
 """End to end: a real MCP client over Streamable HTTP against the running gateway."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -49,7 +50,8 @@ async def test_health(gateway: str) -> None:
 async def test_every_tool_takes_instance_and_declares_its_kind(gateway: str) -> None:
     async with client(gateway, token()) as mcp:
         tools = {t.name: t for t in await mcp.list_tools()}
-    assert set(tools) == {"list_tables", "describe_table", "query", "execute"}
+    assert set(tools) == {"list_tables", "describe_table", "query", "execute", "list_instances"}
+    assert tools.pop("list_instances").input_schema.get("properties", {}) == {}
     for tool in tools.values():
         assert "instance" in tool.input_schema["properties"]
         assert "instance" not in tool.input_schema.get("required", [])
@@ -186,3 +188,23 @@ async def test_other_tokens_still_work_after_a_revocation(gateway: str) -> None:
         revocations.revoke(db, "some-other-jti", reason="test", by="test")
     async with client(gateway, token()) as mcp:
         assert await mcp.list_tools()
+
+
+@pytest.mark.parametrize("service", ["supabase", "n8n"])
+async def test_list_instances_shows_only_the_projects_own(gateway: str, service: str) -> None:
+    async with client(gateway, token(), service=service) as mcp:
+        result = await mcp.call_tool("list_instances", {})
+    assert result.structured_content is not None
+    instances = result.structured_content["instances"]
+    assert {i["name"] for i in instances} == {
+        "acme-n8n", "acme-supabase-dev", "acme-supabase-prod", "acme-supabase-staging",
+    }  # fmt: skip
+    staging = next(i for i in instances if i["name"] == "acme-supabase-staging")
+    assert staging == {
+        "name": "acme-supabase-staging", "type": "supabase", "env": "staging",
+        "is_default": False, "allowed_tools": ["query", "list_tables"],
+    }  # fmt: skip
+    text = text_of(result) + json.dumps(result.structured_content)
+    assert "globex" not in text
+    assert "secret_ref" not in text
+    assert "file://" not in text

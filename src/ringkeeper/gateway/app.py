@@ -37,7 +37,12 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
-from ringkeeper.services.calls import run_call, token_revoked, unauthenticated
+from ringkeeper.services.calls import (
+    bound_instances,
+    run_call,
+    token_revoked,
+    unauthenticated,
+)
 from ringkeeper.tokens import TokenError, verify_token
 from ringkeeper.vault import Vault, get_vault
 
@@ -152,6 +157,21 @@ def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
             "your project. Refusals explain why; relay them rather than retrying."
         ),
         mask_error_details=True,  # unexpected exceptions never reach the agent
+    )
+
+    async def list_instances() -> dict[str, Any]:
+        """List the instances your project can use, on every service: name, type, env,
+        whether it's the default for its type, and the tools allowed on it."""
+        try:
+            instances = await anyio.to_thread.run_sync(bound_instances, current_caller())
+        except RingkeeperError as error:
+            raise McpToolError(scrub(str(error))) from None
+        return {"instances": instances}
+
+    server.tool(
+        list_instances,
+        name="list_instances",
+        annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False),
     )
     for spec in adapter.tools:
         is_read = spec.kind is ToolKind.READ
