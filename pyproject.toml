@@ -35,6 +35,7 @@ ringkeeper = "ringkeeper.cli.main:app"
 
 [dependency-groups]
 dev = [
+    "claude-agent-sdk==0.2.174",
     "httpx2>=2.16.0",
     "moto[secretsmanager]>=5.2.4",
     "pre-commit>=3.7",
@@ -53,7 +54,7 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "worker"]
 
 [tool.ruff.lint]
 select = [
@@ -72,14 +73,18 @@ ignore = [
 ban-relative-imports = "all"
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "worker"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+extraPaths = ["src", "worker"]
+# The worker only ever runs in its Linux container.
+executionEnvironments = [{ root = "worker", pythonPlatform = "Linux", extraPaths = ["worker"] }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["worker"]
 addopts = "-ra --strict-markers"
 # A silently skipped flush (e.g. an object never added) must fail loudly.
 filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
