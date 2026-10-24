@@ -29,6 +29,23 @@ class Settings(BaseSettings):
     claude_api_key_ref: str = "file://ringkeeper/anthropic-api-key"
     claude_oauth_token_ref: str = "file://ringkeeper/claude-oauth-token"  # noqa: S105 (a ref)
 
+    # Session manager (runs inside the api service).
+    worker_image: str = "ringkeeper-worker:latest"
+    # The network workers join. Only the gateway is on it, not Postgres or the api.
+    worker_network: str = "ringkeeper_workers"
+    gateway_internal_url: str = "http://gateway:8100"
+    worker_memory: str = "2g"
+    max_concurrent_workers: int = 4
+    default_max_turns: int = 30
+    default_max_runtime_seconds: int = 30 * 60
+    # Relative workspace_path values resolve against this, as the Docker host sees it.
+    workspaces_root: str | None = None
+    manager_poll_seconds: float = 1.0
+    # Run the session manager in this process (set for the api service only).
+    session_manager: bool = False
+    # Tests only: JSON options for the worker's stub agent (no LLM is called).
+    worker_stub: str | None = None
+
     @field_validator("master_key", mode="before")
     @classmethod
     def _empty_key_is_unset(cls, value: object) -> object:
