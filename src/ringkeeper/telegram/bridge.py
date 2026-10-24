@@ -53,6 +53,7 @@ from ringkeeper.models import (
 from ringkeeper.scrub import scrub
 from ringkeeper.services import inbox, threads
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
+from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.voice import SttClient, VoiceError, VoiceNote
 from ringkeeper.voice import transcribe as transcribe_voice
@@ -93,13 +94,18 @@ def callback_data(decision: Decision, index: int) -> str:
     return f"{CALLBACK_PREFIX}:{decision.id}:{index}"
 
 
-def render(decision: Decision, limit: int) -> str:
+def render(decision: Decision, settings: Settings) -> str:
     head = [KIND_LABELS[decision.kind]]
     if decision.project:
         head.append(decision.project)
     if decision.instance:
         head.append(decision.instance)
-    lines = [" · ".join(head), inbox.summary(decision, limit), f"id {str(decision.id)[:8]}"]
+    shown = telegram_text.body(
+        decision, settings.telegram_summary_chars, settings.telegram_question_chars
+    )
+    lines = [" · ".join(head), shown.text, f"id {str(decision.id)[:8]}"]
+    if shown.cut:
+        lines.append(telegram_text.SHORTENED)
     if decision.kind is DecisionKind.QUESTION:
         lines.append("Reply to this message with your answer.")
     return scrub("\n".join(lines))
@@ -199,7 +205,7 @@ class Bridge:
         with session_scope() as session:
             inbox.list_pending(session)  # expires stale ones first
             for decision in self._unsent(session):
-                text = render(decision, self.settings.telegram_summary_chars)
+                text = render(decision, self.settings)
                 for chat in sorted(self.chats):
                     note = Notification(decision_id=decision.id, channel=CHANNEL, chat_id=chat)
                     try:
@@ -227,7 +233,7 @@ class Bridge:
                     continue
                 if note.external_id is None or (running and note.status == RUNNING):
                     continue
-                text = f"{render(decision, self.settings.telegram_summary_chars)}\n"
+                text = f"{render(decision, self.settings)}\n"
                 text += outcome_line(decision)
                 try:
                     self.api.edit_message(note.chat_id, note.external_id, scrub(text))

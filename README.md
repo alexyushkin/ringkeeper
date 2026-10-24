@@ -353,9 +353,15 @@ records the model it ran on (`ringkeeper task show`).
 
 Telegram bot chats aren't end-to-end encrypted, so Ringkeeper treats Telegram
 as a **notification channel** only. Each new decision goes out as a short,
-scrubbed summary: kind, project, instance and one line (at most
-`RINGKEEPER_TELEGRAM_SUMMARY_CHARS`, default 160), with buttons. It never
-includes SQL, arguments, diffs or plan text; those stay in the CLI and API.
+scrubbed message: kind, project, instance and a description, with buttons.
+Approvals, plans and routes get one line (at most
+`RINGKEEPER_TELEGRAM_SUMMARY_CHARS`, default 160). A worker's question gets
+more room (`RINGKEEPER_TELEGRAM_QUESTION_CHARS`, default 1000) and keeps its
+line breaks, since you have to be able to read it to answer it. Neither ever
+includes SQL, tool arguments, diffs or plan text: SQL statements and code
+blocks in a question are replaced with "[SQL: see the app]". Anything cut or
+hidden ends with "Shortened for Telegram. The full text is in the Ringkeeper
+app." The full details stay in the CLI and API.
 
 - held writes and plans: **Approve** / **Deny**
 - routes: one button per candidate, plus **None of these**

@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     # end-to-end encrypted), so it only ever gets short scrubbed summaries.
     telegram_bot_token_ref: str = "file://ringkeeper/telegram-bot-token"  # noqa: S105 (a ref)
     telegram_chat_ids: list[int] = []
-    telegram_summary_chars: int = 160
+    telegram_summary_chars: int = 160  # approvals, plans, routes: one line
+    telegram_question_chars: int = 1000  # questions must be readable to be answered
     telegram_poll_seconds: int = 25
     telegram_api_url: str = "https://api.telegram.org"
     telegram: bool = False
