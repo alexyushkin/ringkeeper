@@ -74,7 +74,7 @@ def test_get_project_includes_bound_instances_without_secrets(
         "base_url": "https://acme-prod.supabase.example",
         "owner": "acme-platform",
         "is_default": False,
-        "allowed_tools": ["sql.read"],
+        "allowed_tools": ["list_tables", "describe_table", "query", "execute"],
         "preapproved_writes": [],
     }
     # Another client's instances are nowhere in this project's view.

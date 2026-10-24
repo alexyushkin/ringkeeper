@@ -182,3 +182,13 @@ def test_secret_check(database_url: str) -> None:
     assert ok.exit_code == 0, ok.output
     assert "ok: secret for acme-supabase-dev resolves" in ok.stdout
     assert CANARY not in ok.output
+
+
+def test_secret_init_creates_the_key_once(data_dir: Path) -> None:
+    first = runner.invoke(app, ["secret", "init"])
+    assert first.exit_code == 0, first.output
+    assert "created master key" in first.stdout
+    assert "Back it up now" in first.stdout
+    assert (data_dir / "master.key").exists()
+    again = runner.invoke(app, ["secret", "init"])
+    assert "master key already exists" in again.stdout

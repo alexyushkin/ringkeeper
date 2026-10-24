@@ -4,7 +4,9 @@ from typing import Annotated
 import typer
 
 from interlock.cli.common import handle_errors
+from interlock.config import get_settings
 from interlock.db import session_scope
+from interlock.keys import key_file_path, load_master_key
 from interlock.services import instances
 from interlock.vault import VaultError, get_vault
 
@@ -17,6 +19,25 @@ def _read_value() -> str:
     value = sys.stdin.read()
     # Drop exactly one trailing newline from `echo` or a file; keep anything else.
     return value.removesuffix("\n").removesuffix("\r")
+
+
+@app.command("init")
+def init() -> None:
+    """Create the master key if there isn't one yet, and say where it lives."""
+    settings = get_settings()
+    with handle_errors():
+        if settings.master_key is not None:
+            load_master_key(settings)
+            typer.echo("using the master key from INTERLOCK_MASTER_KEY")
+            return
+        path = key_file_path(settings)
+        existed = path.exists()
+        load_master_key(settings)
+    typer.echo(f"{'master key already exists' if existed else 'created master key'}: {path}")
+    typer.echo(
+        "Back it up now: losing it loses the vault and every worker token. "
+        "Never give it (or its directory) to a worker."
+    )
 
 
 @app.command("set")

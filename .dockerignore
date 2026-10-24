@@ -12,3 +12,4 @@ secrets/
 .interlock/
 tests/
 examples/
+docker/

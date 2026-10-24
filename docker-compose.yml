@@ -1,6 +1,9 @@
-# Local stack: Postgres 16 and the read-only API.
+# Local stack: Postgres 16, the read-only API and the MCP gateway.
 # Defaults work without a .env; copy .env.example to .env to change them.
 # Ports are published on 127.0.0.1 only.
+#
+#   docker compose up -d --build                  # postgres, api, gateway
+#   docker compose --profile demo up -d --build   # plus fake client databases
 
 services:
   postgres:
@@ -56,6 +59,24 @@ services:
       api:
         condition: service_healthy  # the api applies migrations before it is healthy
     restart: unless-stopped
+
+  # Demo only: three fictional clients' "Supabase" databases (plain Postgres).
+  demo-targets:
+    profiles: [demo]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo-local-only
+      POSTGRES_DB: demo
+    ports:
+      - "127.0.0.1:${INTERLOCK_DEMO_DB_PORT:-5433}:5432"
+    volumes:
+      - ./docker/demo-targets/init.sql:/docker-entrypoint-initdb.d/10-demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
 volumes:
   pgdata:

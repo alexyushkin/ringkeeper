@@ -2,7 +2,10 @@
 # Apply with:  uv run interlock registry apply examples/registry.yaml [--dry-run]
 #
 # secret_ref values are pointers (file:// or aws-sm://), never credentials.
-# All hosts use reserved .example domains.
+# Store the values themselves with `interlock secret set <ref>`.
+# All hosts use reserved .example domains. Tool names are the gateway's own
+# (see `interlock` README: Gateway); prod writes not listed in
+# preapproved_writes are held for a human.
 
 version: 1
 
@@ -12,7 +15,7 @@ instances:
     type: supabase
     env: dev
     base_url: https://acme-dev.supabase.example
-    secret_ref: file:///run/secrets/acme-supabase-dev
+    secret_ref: file://acme/supabase-dev
     owner: acme-platform
   - name: acme-supabase-staging
     type: supabase
@@ -24,7 +27,7 @@ instances:
     type: supabase
     env: prod
     base_url: https://acme-prod.supabase.example
-    secret_ref: aws-sm://interlock/acme/supabase-prod
+    secret_ref: file://acme/supabase-prod
     owner: acme-platform
   - name: acme-n8n
     type: n8n
@@ -38,7 +41,7 @@ instances:
     type: supabase
     env: dev
     base_url: https://globex-dev.supabase.example
-    secret_ref: file:///run/secrets/globex-supabase-dev
+    secret_ref: file://globex/supabase-dev
     owner: globex-web
   - name: globex-n8n-staging
     type: n8n
@@ -64,14 +67,18 @@ projects:
       - instance: acme-supabase-dev
         default: true
       - instance: acme-supabase-staging
-        allowed_tools: [sql.read, storage.read]
-      # Prod is bound but never default: writes must name it explicitly.
+        allowed_tools: [list_tables, describe_table, query]
+      # Prod is bound but never default: writes must name it explicitly, and
+      # execute is held for approval because it isn't preapproved.
       - instance: acme-supabase-prod
-        allowed_tools: [sql.read]
-      # A prod n8n host can't be the default either, so it is bound plainly.
+        allowed_tools: [list_tables, describe_table, query, execute]
+      # A prod n8n host can't be the default either. Switching a workflow off
+      # is preapproved (an incident lever); every other write waits for a human.
       - instance: acme-n8n
-        allowed_tools: [workflows.read, workflows.run]
-        preapproved_writes: [workflows.run]
+        allowed_tools:
+          [list_workflows, get_workflow, list_executions, get_execution,
+           activate_workflow, deactivate_workflow, update_workflow]
+        preapproved_writes: [deactivate_workflow]
 
   - name: acme-reports
     owner: acme-ops
@@ -81,7 +88,7 @@ projects:
     bindings:
       - instance: acme-supabase-staging
         default: true
-        allowed_tools: [sql.read]
+        allowed_tools: [list_tables, describe_table, query]
 
   - name: globex-portal
     owner: globex-web
@@ -94,6 +101,6 @@ projects:
         default: true
       - instance: globex-n8n-staging
         default: true
+      # No vercel adapter yet (M2 ships supabase and n8n); bound for later.
       - instance: globex-vercel
         default: true
-        preapproved_writes: [deployments.create]
