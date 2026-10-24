@@ -18,13 +18,24 @@ async def _not_found(_request: Request, error: Exception) -> JSONResponse:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """Run the session manager alongside the API when this process is configured to.
+    """Run the session manager and router alongside the API when configured to.
 
     Only the api service sets RINGKEEPER_SESSION_MANAGER, and only it mounts the
     Docker socket (which makes it root-equivalent on the host).
     """
     stop = threading.Event()
-    if get_settings().session_manager:
+    settings = get_settings()
+    if settings.router:
+        from ringkeeper.router.model import AgentSdkModel  # noqa: PLC0415 (Agent SDK: only here)
+        from ringkeeper.router.service import Router  # noqa: PLC0415
+        from ringkeeper.vault import get_vault  # noqa: PLC0415
+
+        install_log_scrubbing()
+        router = Router(AgentSdkModel(get_vault(settings), settings), settings)
+        threading.Thread(
+            target=router.run_forever, args=(stop,), daemon=True, name="rk-router"
+        ).start()
+    if settings.session_manager:
         from ringkeeper.vault import get_vault  # noqa: PLC0415 (Docker and the vault: only here)
         from ringkeeper.workers.manager import Manager  # noqa: PLC0415
         from ringkeeper.workers.runtime import DockerRuntime  # noqa: PLC0415

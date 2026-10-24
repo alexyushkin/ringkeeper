@@ -11,6 +11,7 @@ from ringkeeper.cli import (
     instances,
     projects,
     registry,
+    routing,
     secrets,
     tasks,
     tokens,
@@ -53,6 +54,7 @@ app.add_typer(decisions.app, name="decision")
 app.add_typer(audit.app, name="audit")
 app.add_typer(auth.app, name="auth")
 app.add_typer(tasks.app, name="task")
+app.add_typer(routing.app, name="routing")
 app.command("stop-all")(tasks.stop_all)
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)

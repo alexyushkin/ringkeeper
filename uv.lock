@@ -1697,6 +1697,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "boto3" },
+    { name = "claude-agent-sdk" },
     { name = "cryptography" },
     { name = "docker" },
     { name = "fastapi" },
@@ -1714,7 +1715,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "claude-agent-sdk" },
     { name = "httpx2" },
     { name = "moto" },
     { name = "pre-commit" },
@@ -1731,6 +1731,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "boto3", specifier = ">=1.43.118" },
+    { name = "claude-agent-sdk", specifier = "==0.2.174" },
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "docker", specifier = ">=7.2.0" },
     { name = "fastapi", specifier = ">=0.115" },
@@ -1748,7 +1749,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "claude-agent-sdk", specifier = "==0.2.174" },
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "moto", extras = ["secretsmanager"], specifier = ">=5.2.4" },
     { name = "pre-commit", specifier = ">=3.7" },

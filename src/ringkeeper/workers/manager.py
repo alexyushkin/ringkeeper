@@ -17,14 +17,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
-import psycopg
-
 from ringkeeper import scrub
 from ringkeeper.adapters import ADAPTERS
 from ringkeeper.claude_auth import resolve as resolve_credential
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
+from ringkeeper.listen import start_listener
 from ringkeeper.models import AuthMode, Autonomy, TaskStatus, WorkerSession
 from ringkeeper.services import projects, revocations, tasks
 from ringkeeper.tokens import issue_token
@@ -162,7 +161,7 @@ class Manager:
 
     def run_forever(self, stop: threading.Event) -> None:
         self.recover()
-        threading.Thread(target=self._listen, args=(stop,), daemon=True, name="rk-listen").start()
+        start_listener(self.settings, [tasks.NOTIFY_CHANNEL], self._on_notify, stop, "rk-listen")
         while not stop.is_set():
             try:
                 self.tick()
@@ -174,17 +173,8 @@ class Manager:
     def wake(self) -> None:
         self._wake.set()
 
-    def _listen(self, stop: threading.Event) -> None:
-        url = self.settings.database_url.replace("postgresql+psycopg://", "postgresql://")
-        while not stop.is_set():
-            try:
-                with psycopg.connect(url, autocommit=True) as conn:
-                    conn.execute(f"LISTEN {tasks.NOTIFY_CHANNEL}")
-                    while not stop.is_set():
-                        for _ in conn.notifies(timeout=5.0):
-                            self._wake.set()
-            except psycopg.Error:
-                stop.wait(5.0)  # the poll keeps things moving meanwhile
+    def _on_notify(self, _channel: str, _payload: str) -> None:
+        self._wake.set()
 
     def tick(self) -> None:
         self._enforce_limits()

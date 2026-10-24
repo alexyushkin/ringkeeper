@@ -16,6 +16,7 @@ classifiers = [
 dependencies = [
     "alembic>=1.13",
     "boto3>=1.43.118",
+    "claude-agent-sdk==0.2.174",
     "cryptography>=50.0.2",
     "docker>=7.2.0",
     "fastapi>=0.115",
@@ -36,7 +37,6 @@ ringkeeper = "ringkeeper.cli.main:app"
 
 [dependency-groups]
 dev = [
-    "claude-agent-sdk==0.2.174",
     "httpx2>=2.16.0",
     "moto[secretsmanager]>=5.2.4",
     "pre-commit>=3.7",
