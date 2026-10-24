@@ -108,6 +108,7 @@ def test_cli_issue(database_url: str) -> None:
     token = result.stdout.strip()
     assert verify_token(token).project == "acme-web"
     assert "expires" in result.stderr
+    assert f"jti {verify_token(token).token_id}" in result.stderr
 
 
 def test_cli_issue_unknown_project(database_url: str) -> None:

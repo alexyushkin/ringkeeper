@@ -8,12 +8,15 @@ import pytest
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from sqlalchemy import select
+from typer.testing import CliRunner
 
+from ringkeeper.cli.main import app
 from ringkeeper.db import session_scope
 from ringkeeper.gateway.app import create_app
 from ringkeeper.keys import MasterKeyError
 from ringkeeper.models import AuditEvent, AuditOutcome
-from ringkeeper.tokens import issue_token
+from ringkeeper.services import revocations
+from ringkeeper.tokens import issue_token, verify_token
 
 pytestmark = pytest.mark.anyio
 
@@ -151,3 +154,35 @@ async def test_n8n_endpoint_is_separate(gateway: str) -> None:
 def test_gateway_refuses_to_start_without_a_master_key() -> None:
     with pytest.raises(MasterKeyError, match="no master key"):
         create_app()
+
+
+async def test_revoked_token_is_refused_and_audited(gateway: str) -> None:
+
+    bearer = token()
+    jti = verify_token(bearer).token_id
+    async with client(gateway, bearer) as mcp:
+        assert await mcp.list_tools()  # works before
+
+    result = CliRunner().invoke(app, ["token", "revoke", jti, "--reason", "test"])
+    assert result.exit_code == 0, result.output
+    assert f"revoked {jti}" in result.stdout
+    again = CliRunner().invoke(app, ["token", "revoke", jti])
+    assert "already revoked" in again.stdout
+
+    response = await http_post(gateway, {"Authorization": f"Bearer {bearer}"})
+    assert response.status_code == 401
+    assert response.json()["error_description"] == "worker token has been revoked"
+    event = audit_rows()[-1]
+    assert (event.outcome, event.project, event.token_id) == (
+        AuditOutcome.REFUSED,
+        "acme-web",
+        jti,
+    )
+    assert event.reason == "worker token has been revoked"
+
+
+async def test_other_tokens_still_work_after_a_revocation(gateway: str) -> None:
+    with session_scope() as db:
+        revocations.revoke(db, "some-other-jti", reason="test", by="test")
+    async with client(gateway, token()) as mcp:
+        assert await mcp.list_tools()

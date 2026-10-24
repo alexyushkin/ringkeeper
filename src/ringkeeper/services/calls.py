@@ -41,7 +41,7 @@ from ringkeeper.models import (
     ProjectInstance,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import audit, decisions
+from ringkeeper.services import audit, decisions, revocations
 from ringkeeper.vault import Vault, VaultError
 
 logger = logging.getLogger(__name__)
@@ -184,11 +184,21 @@ async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], 
         raise ToolError(f"'{tool}' failed unexpectedly; see the gateway log") from None
 
 
-def unauthenticated(service: InstanceType, reason: str) -> None:
-    """Audit a request refused at the token check (no verified caller to name)."""
+def unauthenticated(service: InstanceType, reason: str, caller: Caller | None = None) -> None:
+    """Audit a request refused at the token check.
+
+    `caller` is set only for an authentic but revoked token: then we know who it was.
+    """
     _record(
-        ToolCall(Caller(None, None, None), service, "", None), AuditOutcome.REFUSED, reason=reason
+        ToolCall(caller or Caller(None, None, None), service, "", None),
+        AuditOutcome.REFUSED,
+        reason=reason,
     )
+
+
+def token_revoked(jti: str) -> bool:
+    with session_scope() as session:
+        return revocations.is_revoked(session, jti)
 
 
 async def run_call(call: ToolCall, vault: Vault) -> JSON:

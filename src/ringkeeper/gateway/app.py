@@ -37,7 +37,7 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
-from ringkeeper.services.calls import run_call, unauthenticated
+from ringkeeper.services.calls import run_call, token_revoked, unauthenticated
 from ringkeeper.tokens import TokenError, verify_token
 from ringkeeper.vault import Vault, get_vault
 
@@ -75,10 +75,18 @@ class WorkerTokenAuth:
                 reason = str(error)
             else:
                 caller = Caller(claims.project, claims.session_id, claims.token_id)
+                if await anyio.to_thread.run_sync(token_revoked, claims.token_id):
+                    reason = "worker token has been revoked"
+                    await anyio.to_thread.run_sync(unauthenticated, self.service, reason, caller)
+                    await self._refuse(reason, scope, receive, send)
+                    return
                 scope.setdefault("state", {})[CALLER_KEY] = caller
                 await self.app(scope, receive, send)
                 return
         await anyio.to_thread.run_sync(unauthenticated, self.service, reason)
+        await self._refuse(reason, scope, receive, send)
+
+    async def _refuse(self, reason: str, scope: Scope, receive: Receive, send: Send) -> None:
         response = JSONResponse(
             {"error": "invalid_token", "error_description": reason},
             status_code=401,
