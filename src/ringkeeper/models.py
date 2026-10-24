@@ -550,6 +550,7 @@ class Message(Base):
             "created_at",
             postgresql_where=text("role = 'user' AND routed_at IS NULL"),
         ),
+        CheckConstraint("input IN ('text', 'voice')", name="ck_messages_input"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -562,6 +563,8 @@ class Message(Base):
     author: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
+    # How the user gave it: typed, or a voice note (only its transcript is kept).
+    input: Mapped[str] = mapped_column(Text, server_default=text("'text'"))
     # The router's validated output for this message.
     routing: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     routed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -592,22 +595,85 @@ class RoutingExample(Base):
 
 
 class Notification(Base):
-    """A decision sent to a channel (Telegram), so its message can be updated later."""
+    """Something sent to a channel (Telegram), so it's sent once and can be updated later.
+
+    About exactly one of: a decision, a routed message (what the router did
+    with a Telegram request) or a finished task (from a Telegram request).
+    """
 
     __tablename__ = "notifications"
     __table_args__ = (
         UniqueConstraint("decision_id", "channel", "chat_id", name="uq_notifications_target"),
+        UniqueConstraint("message_id", "channel", "chat_id", name="uq_notifications_message"),
+        UniqueConstraint("task_id", "channel", "chat_id", name="uq_notifications_task"),
+        CheckConstraint(
+            "num_nonnulls(decision_id, message_id, task_id) = 1",
+            name="ck_notifications_one_subject",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    decision_id: Mapped[uuid.UUID] = mapped_column(
+    decision_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("decisions.id", ondelete="CASCADE", name="fk_notifications_decision")
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE", name="fk_notifications_message")
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE", name="fk_notifications_task")
     )
     channel: Mapped[str] = mapped_column(Text)
     chat_id: Mapped[int] = mapped_column(BigInteger)
     external_id: Mapped[int | None] = mapped_column(BigInteger)  # Telegram message_id
     status: Mapped[str] = mapped_column(Text)  # sent, failed, closed
     error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VoiceConfirmation(Base):
+    """An "I heard: ..." waiting for Confirm or Redo on Telegram.
+
+    Only the transcript is stored, never audio, and it is cleared once the
+    confirmation is redone or expires. A confirmed answer lives on in its
+    decision, a confirmed request in its message.
+    """
+
+    __tablename__ = "voice_confirmations"
+    __table_args__ = (
+        CheckConstraint("kind IN ('answer', 'request')", name="ck_voice_confirmations_kind"),
+        CheckConstraint(
+            "(kind = 'answer') = (decision_id IS NOT NULL)",
+            name="ck_voice_confirmations_answer_has_decision",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'redone', 'expired')",
+            name="ck_voice_confirmations_status",
+        ),
+        CheckConstraint(
+            "(status = 'pending') = (resolved_at IS NULL)",
+            name="ck_voice_confirmations_resolved_iff_not_pending",
+        ),
+        Index(
+            "ix_voice_confirmations_pending",
+            "expires_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    kind: Mapped[str] = mapped_column(Text)  # answer (to a question), request (a new message)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    author: Mapped[str] = mapped_column(Text)  # telegram:<id> (@handle)
+    decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("decisions.id", ondelete="CASCADE", name="fk_voice_confirmations_decision")
+    )
+    transcript: Mapped[str | None] = mapped_column(Text)
+    external_id: Mapped[int | None] = mapped_column(BigInteger)  # the "I heard" message
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

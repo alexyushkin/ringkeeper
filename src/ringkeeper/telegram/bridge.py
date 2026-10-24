@@ -109,7 +109,10 @@ class Bridge:
     # --- Outgoing ---
 
     def _unsent(self, session: Session) -> Sequence[Decision]:
-        sent = select(Notification.decision_id).where(Notification.channel == CHANNEL)
+        # Non-null only: NOT IN over a NULL matches nothing.
+        sent = select(Notification.decision_id).where(
+            Notification.channel == CHANNEL, Notification.decision_id.is_not(None)
+        )
         return session.scalars(
             select(Decision)
             .where(Decision.status == DecisionStatus.PENDING, Decision.id.not_in(sent))

@@ -81,6 +81,18 @@ class Settings(BaseSettings):
     telegram_poll_seconds: int = 25
     telegram_api_url: str = "https://api.telegram.org"
     telegram: bool = False
+    # New requests from Telegram (typed or voice). Off by default: requests then
+    # pass through Telegram's servers, which aren't end-to-end encrypted.
+    telegram_requests: bool = False
+    # How long an "I heard: ..." waits for Confirm or Redo.
+    telegram_confirm_minutes: int = 10
+
+    # Speech to text for voice notes (the optional `stt` compose service).
+    # Empty turns voice off. Audio is never stored: only the transcript.
+    stt_url: str = "http://stt:9000"
+    stt_max_seconds: int = 180
+    stt_max_bytes: int = 5_000_000
+    stt_timeout_seconds: float = 120.0
 
     @field_validator("master_key", mode="before")
     @classmethod

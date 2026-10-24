@@ -19,6 +19,7 @@ from ringkeeper.services.decisions import MIN_ID_PREFIX
 
 MESSAGES_CHANNEL = "ringkeeper_messages"
 SOURCES = frozenset({"cli", "api", "telegram"})
+INPUTS = frozenset({"text", "voice"})  # voice: a transcript, confirmed by the user
 TITLE_CHARS = 80
 MAX_MESSAGE_CHARS = 20_000
 
@@ -56,7 +57,13 @@ def list_threads(session: Session, *, limit: int = 20) -> Sequence[Thread]:
 
 
 def post_message(
-    session: Session, body: str, *, author: str, source: str, thread: str | None = None
+    session: Session,
+    body: str,
+    *,
+    author: str,
+    source: str,
+    thread: str | None = None,
+    input_kind: str = "text",
 ) -> Message:
     """Store a user message (in a new thread unless one is given) for the router."""
     body = body.strip()
@@ -66,6 +73,8 @@ def post_message(
         raise RuleViolationError(f"the message is longer than {MAX_MESSAGE_CHARS} characters")
     if source not in SOURCES:
         raise RuleViolationError(f"unknown message source '{source}'")
+    if input_kind not in INPUTS:
+        raise RuleViolationError(f"unknown message input '{input_kind}'")
     if thread is None:
         title = body.splitlines()[0][:TITLE_CHARS]
         target = Thread(title=title, source=source)
@@ -75,8 +84,9 @@ def post_message(
         target = get_thread(session, thread)
         target.updated_at = datetime.now(UTC)
     message = Message(
-        thread_id=target.id, role=MessageRole.USER, author=author, source=source, body=body
-    )
+        thread_id=target.id, role=MessageRole.USER, author=author, source=source, body=body,
+        input=input_kind,
+    )  # fmt: skip
     session.add(message)
     session.flush()
     notify_router(session)
