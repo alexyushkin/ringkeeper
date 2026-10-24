@@ -13,9 +13,10 @@ from ringkeeper.vault import VaultError, get_vault
 app = typer.Typer(help="Store and check secrets. Values are never printed.", no_args_is_help=True)
 
 
-def _read_value() -> str:
+def read_secret_value(label: str = "Secret value") -> str:
+    """A hidden prompt, or stdin when piped. Never argv."""
     if sys.stdin.isatty():
-        return typer.prompt("Secret value", hide_input=True, confirmation_prompt=True)
+        return typer.prompt(label, hide_input=True, confirmation_prompt=True)
     value = sys.stdin.read()
     # Drop exactly one trailing newline from `echo` or a file; keep anything else.
     return value.removesuffix("\n").removesuffix("\r")
@@ -50,7 +51,7 @@ def set_(
     in shell history and process listings.
     """
     with handle_errors():
-        value = _read_value()
+        value = read_secret_value()
         if not value:
             raise VaultError("no value given; nothing stored")
         get_vault().store(ref, value)

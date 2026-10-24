@@ -3,6 +3,8 @@ from pathlib import Path
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ringkeeper.models import AuthMode
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="RINGKEEPER_", env_file=".env", extra="ignore")
@@ -19,6 +21,13 @@ class Settings(BaseSettings):
 
     token_max_ttl_seconds: int = 24 * 3600
     decision_ttl_seconds: int = 24 * 3600
+
+    # How workers authenticate to Claude. api_key is the default and the only
+    # mode offered in setup; subscription is for your own install on your own
+    # account (Agent SDK terms) and must be switched on explicitly.
+    claude_auth_mode: AuthMode = AuthMode.API_KEY
+    claude_api_key_ref: str = "file://ringkeeper/anthropic-api-key"
+    claude_oauth_token_ref: str = "file://ringkeeper/claude-oauth-token"  # noqa: S105 (a ref)
 
     @field_validator("master_key", mode="before")
     @classmethod

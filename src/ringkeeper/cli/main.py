@@ -3,6 +3,7 @@ import typer
 from ringkeeper import __version__, migrate
 from ringkeeper.cli import (
     audit,
+    auth,
     bindings,
     decisions,
     instances,
@@ -29,6 +30,7 @@ app.add_typer(secrets.app, name="secret")
 app.add_typer(tokens.app, name="token")
 app.add_typer(decisions.app, name="decision")
 app.add_typer(audit.app, name="audit")
+app.add_typer(auth.app, name="auth")
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)
 
