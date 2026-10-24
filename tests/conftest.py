@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, create_engine, text
@@ -32,6 +33,15 @@ def engine(database_url: str) -> Iterator[Engine]:
     engine = create_engine(database_url)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Never touch the real ./.interlock: each test gets its own vault and key."""
+    data_dir = tmp_path / "interlock-data"
+    monkeypatch.setenv("INTERLOCK_DATA_DIR", str(data_dir))
+    monkeypatch.delenv("INTERLOCK_MASTER_KEY", raising=False)
+    return data_dir
 
 
 @pytest.fixture(autouse=True)

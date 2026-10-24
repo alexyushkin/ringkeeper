@@ -8,5 +8,7 @@
 .env.*
 !.env.example
 secrets/
+# Vault and master key: back these up, never commit or ship them
+.interlock/
 tests/
 examples/
