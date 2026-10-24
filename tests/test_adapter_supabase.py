@@ -3,11 +3,11 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
-from interlock import scrub
-from interlock.adapters import supabase
-from interlock.adapters.base import Target, ToolError
-from interlock.models import Env
-from interlock.vault import Secret
+from ringkeeper import scrub
+from ringkeeper.adapters import supabase
+from ringkeeper.adapters.base import Target, ToolError
+from ringkeeper.models import Env
+from ringkeeper.vault import Secret
 from tests.conftest import TARGET_PASSWORD
 
 pytestmark = pytest.mark.anyio

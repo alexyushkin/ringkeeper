@@ -3,11 +3,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
-from interlock import scrub
-from interlock.calls import Caller, ToolCall, args_hash
-from interlock.errors import NotFoundError, RuleViolationError
-from interlock.models import AuditOutcome, DecisionStatus, InstanceType
-from interlock.services import audit, decisions
+from ringkeeper import scrub
+from ringkeeper.calls import Caller, ToolCall, args_hash
+from ringkeeper.errors import NotFoundError, RuleViolationError
+from ringkeeper.models import AuditOutcome, DecisionStatus, InstanceType
+from ringkeeper.services import audit, decisions
 
 CALLER = Caller(project="acme-web", session_id="s-1", token_id="t-1")
 CANARY = "canary-aud1t-5e3f"
@@ -142,7 +142,7 @@ def test_expire_stale_marks_old_pending_only(session: Session) -> None:
 
 
 def test_decision_ttl_is_configurable(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("INTERLOCK_DECISION_TTL_SECONDS", "600")
+    monkeypatch.setenv("RINGKEEPER_DECISION_TTL_SECONDS", "600")
     held = decisions.hold(session, call(), "acme-supabase-prod")
     assert (held.expires_at - held.created_at).total_seconds() == 600
 

@@ -6,10 +6,10 @@ import pytest
 from pydantic import SecretStr
 from typer.testing import CliRunner
 
-from interlock.cli.main import app
-from interlock.config import Settings
-from interlock.keys import generate_master_key
-from interlock.tokens import TokenError, issue_token, parse_ttl, verify_token
+from ringkeeper.cli.main import app
+from ringkeeper.config import Settings
+from ringkeeper.keys import generate_master_key
+from ringkeeper.tokens import TokenError, issue_token, parse_ttl, verify_token
 from tests.helpers import make_project
 
 runner = CliRunner()
@@ -64,8 +64,8 @@ def _b64(data: dict[str, object]) -> str:
 
 def test_alg_none_is_refused() -> None:
     claims: dict[str, object] = {
-        "sub": "acme-web", "sid": "s", "jti": "j", "iss": "interlock",
-        "aud": "interlock-gateway", "iat": 0, "exp": 2**33,
+        "sub": "acme-web", "sid": "s", "jti": "j", "iss": "ringkeeper",
+        "aud": "ringkeeper-gateway", "iat": 0, "exp": 2**33,
     }  # fmt: skip
     unsigned = f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64(claims)}."
     with pytest.raises(TokenError, match="malformed"):
@@ -99,7 +99,7 @@ def test_parse_ttl_rejects_nonsense() -> None:
 
 
 def test_cli_issue(database_url: str) -> None:
-    from interlock.db import session_scope  # noqa: PLC0415
+    from ringkeeper.db import session_scope  # noqa: PLC0415
 
     with session_scope() as session:
         make_project(session, "acme-web")

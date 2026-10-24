@@ -2,10 +2,10 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from interlock.db import session_scope
-from interlock.models import Env, Instance, InstanceType, Project
-from interlock.schemas import BindingIn, InstanceIn, ProjectIn
-from interlock.services import bindings, instances, projects
+from ringkeeper.db import session_scope
+from ringkeeper.models import Env, Instance, InstanceType, Project
+from ringkeeper.schemas import BindingIn, InstanceIn, ProjectIn
+from ringkeeper.services import bindings, instances, projects
 
 
 def make_project(session: Session, name: str = "acme-web", **fields: object) -> Project:
@@ -26,7 +26,7 @@ def make_instance(
             "name": name,
             "type": type,
             "env": env,
-            "secret_ref": secret_ref or f"aws-sm://interlock/{name}",
+            "secret_ref": secret_ref or f"aws-sm://ringkeeper/{name}",
             "owner": "acme",
             **fields,
         }

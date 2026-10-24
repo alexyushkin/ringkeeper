@@ -1,6 +1,6 @@
-# Interlock
+# Ringkeeper
 
-Interlock is a self-hosted orchestrator that routes tasks to projects and runs
+Ringkeeper is a self-hosted orchestrator that routes tasks to projects and runs
 coding-agent workers against them. It is MIT licensed and early. So far it
 ships the registries (projects, instances and the bindings between them), a
 vault, an MCP gateway that enforces the bindings, held approvals for prod
@@ -14,7 +14,7 @@ service: three Supabase projects, two n8n hosts, a couple of Vercel teams. An
 agent that can reach "Supabase" can reach all of them, and one wrong project
 ref is all it takes to write to the wrong client's database.
 
-Interlock models each account as an **instance** and binds instances to
+Ringkeeper models each account as an **instance** and binds instances to
 **projects**:
 
 ```
@@ -70,39 +70,39 @@ audit log records the precise reason.
 ## The vault and the master key
 
 **Losing `master.key` means losing the vault and every worker token.**
-Interlock has one 32-byte master key. It derives two keys from it: the key
+Ringkeeper has one 32-byte master key. It derives two keys from it: the key
 that encrypts the `file://` vault, and the key that signs worker tokens.
 Without the master key the vault can't be decrypted, and every outstanding
 token stops verifying. There is no recovery: you would have to re-enter every
 secret and issue new tokens.
 
-The key lives in `INTERLOCK_MASTER_KEY` if that is set. Otherwise it lives in
+The key lives in `RINGKEEPER_MASTER_KEY` if that is set. Otherwise it lives in
 `<data dir>/master.key`, which the CLI creates on first use. The data dir is
-`./.interlock` by default and holds `vault.json` too.
+`./.ringkeeper` by default and holds `vault.json` too.
 
 **Back it up** like any other root credential:
 
-- Copy `.interlock/master.key` (or your `INTERLOCK_MASTER_KEY` value) into a
+- Copy `.ringkeeper/master.key` (or your `RINGKEEPER_MASTER_KEY` value) into a
   password manager or a secrets store you already trust. A backup of
   `vault.json` is useless without it.
-- Back up `.interlock/vault.json` whenever you change secrets. It is encrypted,
+- Back up `.ringkeeper/vault.json` whenever you change secrets. It is encrypted,
   so it can go with your normal backups, as long as the key isn't stored
   beside it.
 - To restore, put both files back in the data dir, or set
-  `INTERLOCK_MASTER_KEY` and restore only `vault.json`.
+  `RINGKEEPER_MASTER_KEY` and restore only `vault.json`.
 
 **Workers must never receive the master key or the data dir.** Only the
-gateway and the CLI read them. The compose file mounts `.interlock` into the
+gateway and the CLI read them. The compose file mounts `.ringkeeper` into the
 gateway read-only and into nothing else. Don't mount it into a worker's
-container or workspace, and don't put `INTERLOCK_MASTER_KEY` in a worker's
+container or workspace, and don't put `RINGKEEPER_MASTER_KEY` in a worker's
 environment. A worker gets exactly one thing: a short-lived token for its
 project. The gateway refuses to start without an existing key, so it can
 never silently mint a new one and orphan the vault.
 
 ```bash
-printf '%s' 'postgresql://…' | uv run interlock secret set file://acme/supabase-dev
-uv run interlock secret set aws-sm://interlock/acme/n8n   # hidden prompt
-uv run interlock secret check acme-supabase-dev           # never prints the value
+printf '%s' 'postgresql://…' | uv run ringkeeper secret set file://acme/supabase-dev
+uv run ringkeeper secret set aws-sm://ringkeeper/acme/n8n   # hidden prompt
+uv run ringkeeper secret check acme-supabase-dev           # never prints the value
 ```
 
 There is deliberately no way to pass a secret value as an argument, because
@@ -131,7 +131,7 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 ### Worker tokens
 
 ```bash
-uv run interlock token issue --project acme-web --ttl 1h
+uv run ringkeeper token issue --project acme-web --ttl 1h
 ```
 
 This prints a signed token that names the project, a session id and an
@@ -141,11 +141,11 @@ on every request, so an expired token stops working mid-session.
 ### Decisions and the audit log
 
 ```bash
-uv run interlock decision list                 # pending by default
-uv run interlock decision show <id>            # exact args it would run
-uv run interlock decision approve <id>         # re-check, run, record result
-uv run interlock decision deny <id> --reason "…"
-uv run interlock audit list --project acme-web --outcome held --since 1d
+uv run ringkeeper decision list                 # pending by default
+uv run ringkeeper decision show <id>            # exact args it would run
+uv run ringkeeper decision approve <id>         # re-check, run, record result
+uv run ringkeeper decision deny <id> --reason "…"
+uv run ringkeeper audit list --project acme-web --outcome held --since 1d
 ```
 
 `approve` runs the stored call from the process you run it in, so it needs
@@ -163,9 +163,9 @@ Requirements: Docker with Compose, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 cp .env.example .env
-uv run interlock secret init        # creates .interlock/master.key: back it up
+uv run ringkeeper secret init        # creates .ringkeeper/master.key: back it up
 docker compose up -d --build        # postgres, api, gateway
-uv run interlock registry apply examples/registry.yaml
+uv run ringkeeper registry apply examples/registry.yaml
 curl http://localhost:8000/health
 curl http://localhost:8100/health
 ```
@@ -182,12 +182,12 @@ projects:
 docker compose --profile demo up -d --build
 for db in acme_dev:acme/supabase-dev acme_prod:acme/supabase-prod globex_dev:globex/supabase-dev; do
   printf '%s' "postgresql://demo:demo-local-only@demo-targets:5432/${db%%:*}" \
-    | uv run interlock secret set "file://${db#*:}"
+    | uv run ringkeeper secret set "file://${db#*:}"
 done
-uv run interlock registry apply examples/registry.yaml
-claude mcp add --transport http --scope local interlock-supabase \
+uv run ringkeeper registry apply examples/registry.yaml
+claude mcp add --transport http --scope local ringkeeper-supabase \
   http://localhost:8100/mcp/supabase \
-  --header "Authorization: Bearer $(uv run interlock token issue --project acme-web --ttl 1h)"
+  --header "Authorization: Bearer $(uv run ringkeeper token issue --project acme-web --ttl 1h)"
 ```
 
 Then, from Claude Code:
@@ -203,24 +203,24 @@ Then, from Claude Code:
 Approve the held write and check the audit log:
 
 ```bash
-docker compose exec gateway interlock decision approve <id>
-uv run interlock audit list
+docker compose exec gateway ringkeeper decision approve <id>
+uv run ringkeeper audit list
 ```
 
 ## CLI
 
 ```
-interlock project  add | list | show | remove
-interlock instance add | list | show | remove [--force]
-interlock bind <project> <instance> [--default] [--tools a,b] [--preapprove x,y]
-interlock unbind <project> <instance>
-interlock registry apply <file.yaml> [--dry-run]
-interlock registry export [-o file.yaml]
-interlock secret   init | set <ref> | check <instance>
-interlock token    issue --project <name> [--ttl 1h] [--session <id>]
-interlock decision list | show | approve | deny
-interlock audit    list [--project] [--instance] [--outcome] [--since]
-interlock db upgrade
+ringkeeper project  add | list | show | remove
+ringkeeper instance add | list | show | remove [--force]
+ringkeeper bind <project> <instance> [--default] [--tools a,b] [--preapprove x,y]
+ringkeeper unbind <project> <instance>
+ringkeeper registry apply <file.yaml> [--dry-run]
+ringkeeper registry export [-o file.yaml]
+ringkeeper secret   init | set <ref> | check <instance>
+ringkeeper token    issue --project <name> [--ttl 1h] [--session <id>]
+ringkeeper decision list | show | approve | deny
+ringkeeper audit    list [--project] [--instance] [--outcome] [--since]
+ringkeeper db upgrade
 ```
 
 - `bind` sets the binding to exactly the flags given, so running it again on
@@ -249,7 +249,7 @@ uv run pyright
 uv run pytest            # starts a throwaway Postgres 16 with testcontainers
 ```
 
-Adding a service means one module in `src/interlock/adapters/` (tools declared
+Adding a service means one module in `src/ringkeeper/adapters/` (tools declared
 `@read` or `@write`), one entry in `adapters/__init__.py`, and tests. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 

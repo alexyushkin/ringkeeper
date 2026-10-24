@@ -9,11 +9,11 @@ from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from sqlalchemy import select
 
-from interlock.db import session_scope
-from interlock.gateway.app import create_app
-from interlock.keys import MasterKeyError
-from interlock.models import AuditEvent, AuditOutcome
-from interlock.tokens import issue_token
+from ringkeeper.db import session_scope
+from ringkeeper.gateway.app import create_app
+from ringkeeper.keys import MasterKeyError
+from ringkeeper.models import AuditEvent, AuditOutcome
+from ringkeeper.tokens import issue_token
 
 pytestmark = pytest.mark.anyio
 

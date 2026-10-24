@@ -6,12 +6,12 @@ import pytest
 from sqlalchemy import text
 from typer.testing import CliRunner, Result
 
-from interlock.calls import Caller, ToolCall
-from interlock.cli.main import app
-from interlock.db import session_scope
-from interlock.models import InstanceType
-from interlock.services.calls import run_call
-from interlock.vault import Vault
+from ringkeeper.calls import Caller, ToolCall
+from ringkeeper.cli.main import app
+from ringkeeper.db import session_scope
+from ringkeeper.models import InstanceType
+from ringkeeper.services.calls import run_call
+from ringkeeper.vault import Vault
 
 runner = CliRunner()
 INSERT = "INSERT INTO notes (body) VALUES ('approved write')"

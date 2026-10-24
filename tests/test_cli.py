@@ -1,7 +1,7 @@
 import pytest
 from typer.testing import CliRunner, Result
 
-from interlock.cli.main import app
+from ringkeeper.cli.main import app
 
 runner = CliRunner()
 
@@ -32,7 +32,7 @@ def seeded(database_url: str) -> None:
     )  # fmt: skip
     ok(
         "instance", "add", "acme-supabase-prod", "--type", "supabase", "--env", "prod",
-        "--secret-ref", "aws-sm://interlock/acme/supabase-prod", "--owner", "acme",
+        "--secret-ref", "aws-sm://ringkeeper/acme/supabase-prod", "--owner", "acme",
         "--base-url", "https://acme-prod.supabase.example",
     )  # fmt: skip
 
@@ -65,7 +65,7 @@ def test_project_and_instance_lifecycle(seeded: None) -> None:
     assert "a, b" in shown
 
     instance = ok("instance", "show", "acme-supabase-prod")
-    assert "aws-sm://interlock/acme/supabase-prod" in instance
+    assert "aws-sm://ringkeeper/acme/supabase-prod" in instance
     assert "bound to:   acme-web" in instance
 
     ok("unbind", "acme-web", "acme-supabase-prod")
@@ -97,7 +97,7 @@ def test_prod_cannot_be_default(seeded: None) -> None:
 def test_second_default_rejected(seeded: None) -> None:
     ok(
         "instance", "add", "acme-supabase-staging", "--type", "supabase", "--env", "staging",
-        "--secret-ref", "aws-sm://interlock/acme/staging", "--owner", "acme",
+        "--secret-ref", "aws-sm://ringkeeper/acme/staging", "--owner", "acme",
     )  # fmt: skip
     ok("bind", "acme-web", "acme-supabase-dev", "--default")
     error = fails("bind", "acme-web", "acme-supabase-staging", "--default")
@@ -132,9 +132,9 @@ def test_show_missing(database_url: str) -> None:
 
 def test_unreachable_database_hides_password(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
-        "INTERLOCK_DATABASE_URL", "postgresql+psycopg://someone:hunter2@127.0.0.1:1/nowhere"
+        "RINGKEEPER_DATABASE_URL", "postgresql+psycopg://someone:hunter2@127.0.0.1:1/nowhere"
     )
-    monkeypatch.setenv("INTERLOCK_DATABASE_CONNECT_TIMEOUT", "2")
+    monkeypatch.setenv("RINGKEEPER_DATABASE_CONNECT_TIMEOUT", "2")
     error = fails("project", "list")
     assert "cannot reach the database" in error
     assert "hunter2" not in error

@@ -1,4 +1,4 @@
-# Contributing to Interlock
+# Contributing to Ringkeeper
 
 Thanks for your interest! The project is at an early stage, so this guide is
 short and will grow.
@@ -26,20 +26,20 @@ CI runs the same checks plus a gitleaks scan of the full history.
 - **No secrets, ever.** Not in code, tests, fixtures or examples. Instances
   hold a `secret_ref` pointer only. Use fictional names (`acme`, `globex`)
   and `.example` domains in examples and tests.
-- **Rules live in the services layer** (`src/interlock/services`). The CLI,
+- **Rules live in the services layer** (`src/ringkeeper/services`). The CLI,
   API and gateway call services; they never write to the database directly.
   Every gateway call and approval goes through `services/calls.py`.
 - **Secret values never leave the process.** Resolve them through the vault,
   use `Secret.reveal()` only at the point of use, and never put one in an
   exception message, log call or return value. `tests/test_no_leaks.py` must
   stay green; extend it when you add a new output path.
-- **Adapters** live in `src/interlock/adapters/`, one module per service. Every
+- **Adapters** live in `src/ringkeeper/adapters/`, one module per service. Every
   tool is declared `@read`, `@write` or `@guarded_write(precondition)` and gets
   tests against a real or faked service.
 - **Schema changes need an Alembic migration** in
-  `src/interlock/migrations/versions`, and `tests/test_migrations.py` must stay
+  `src/ringkeeper/migrations/versions`, and `tests/test_migrations.py` must stay
   green.
 - Keep pyright strict. If a library's types get in the way, use a targeted
   `# pyright: ignore[rule]` on the line, not a global relaxation.
 - Small, focused commits with clear messages.
-- Never commit `.interlock/` (the vault and master key) or a real `.env`.
+- Never commit `.ringkeeper/` (the vault and master key) or a real `.env`.

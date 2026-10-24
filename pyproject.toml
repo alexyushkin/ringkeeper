@@ -1,12 +1,12 @@
 [project]
-name = "interlock"
+name = "ringkeeper"
 version = "0.1.0"
 description = "Self-hosted orchestrator that binds each project to its own service instances."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-authors = [{ name = "Interlock contributors" }]
+authors = [{ name = "Ringkeeper contributors" }]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python :: 3",
@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.scripts]
-interlock = "interlock.cli.main:app"
+ringkeeper = "ringkeeper.cli.main:app"
 
 [dependency-groups]
 dev = [

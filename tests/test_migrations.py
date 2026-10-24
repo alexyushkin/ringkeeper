@@ -2,9 +2,9 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import Engine, create_engine, inspect
 
-from interlock import migrate
-from interlock.db import dispose_engines
-from interlock.models import Base
+from ringkeeper import migrate
+from ringkeeper.db import dispose_engines
+from ringkeeper.models import Base
 
 
 def test_migrations_match_models(engine: Engine) -> None:

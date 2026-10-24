@@ -1,3 +1,5 @@
+name: ringkeeper
+
 # Local stack: Postgres 16, the read-only API and the MCP gateway.
 # Defaults work without a .env; copy .env.example to .env to change them.
 # Ports are published on 127.0.0.1 only.
@@ -9,11 +11,11 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-interlock}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-interlock}
-      POSTGRES_DB: ${POSTGRES_DB:-interlock}
+      POSTGRES_USER: ${POSTGRES_USER:-ringkeeper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ringkeeper}
+      POSTGRES_DB: ${POSTGRES_DB:-ringkeeper}
     ports:
-      - "127.0.0.1:${INTERLOCK_DB_PORT:-5432}:5432"
+      - "127.0.0.1:${RINGKEEPER_DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,10 +27,10 @@ services:
   api:
     build: .
     environment:
-      INTERLOCK_DATABASE_URL: >-
-        postgresql+psycopg://${POSTGRES_USER:-interlock}:${POSTGRES_PASSWORD:-interlock}@postgres:5432/${POSTGRES_DB:-interlock}
+      RINGKEEPER_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:-ringkeeper}@postgres:5432/${POSTGRES_DB:-ringkeeper}
     ports:
-      - "127.0.0.1:${INTERLOCK_API_PORT:-8000}:8000"
+      - "127.0.0.1:${RINGKEEPER_API_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,19 +39,19 @@ services:
   gateway:
     build: .
     command:
-      ["uvicorn", "interlock.gateway.app:create_app", "--factory",
+      ["uvicorn", "ringkeeper.gateway.app:create_app", "--factory",
        "--host", "0.0.0.0", "--port", "8100"]
     environment:
-      INTERLOCK_DATABASE_URL: >-
-        postgresql+psycopg://${POSTGRES_USER:-interlock}:${POSTGRES_PASSWORD:-interlock}@postgres:5432/${POSTGRES_DB:-interlock}
-      INTERLOCK_DATA_DIR: /var/lib/interlock
-      INTERLOCK_MASTER_KEY: ${INTERLOCK_MASTER_KEY:-}
+      RINGKEEPER_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:-ringkeeper}@postgres:5432/${POSTGRES_DB:-ringkeeper}
+      RINGKEEPER_DATA_DIR: /var/lib/ringkeeper
+      RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
     # The vault and master.key, shared with the host CLI. Read-only: the gateway
     # never writes secrets. Workers must never get this directory.
     volumes:
-      - ./.interlock:/var/lib/interlock:ro
+      - ./.ringkeeper:/var/lib/ringkeeper:ro
     ports:
-      - "127.0.0.1:${INTERLOCK_GATEWAY_PORT:-8100}:8100"
+      - "127.0.0.1:${RINGKEEPER_GATEWAY_PORT:-8100}:8100"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8100/health').status != 200)"]
       interval: 10s
@@ -69,7 +71,7 @@ services:
       POSTGRES_PASSWORD: demo-local-only
       POSTGRES_DB: demo
     ports:
-      - "127.0.0.1:${INTERLOCK_DEMO_DB_PORT:-5433}:5432"
+      - "127.0.0.1:${RINGKEEPER_DEMO_DB_PORT:-5433}:5432"
     volumes:
       - ./docker/demo-targets/init.sql:/docker-entrypoint-initdb.d/10-demo.sql:ro
     healthcheck:

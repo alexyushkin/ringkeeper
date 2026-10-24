@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from interlock.api.app import create_app
-from interlock.services import registry
+from ringkeeper.api.app import create_app
+from ringkeeper.services import registry
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "registry.yaml"
 
@@ -36,8 +36,8 @@ def test_health(client: TestClient) -> None:
 
 
 def test_health_reports_unreachable_database(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("INTERLOCK_DATABASE_URL", "postgresql+psycopg://x:y@127.0.0.1:1/nowhere")
-    monkeypatch.setenv("INTERLOCK_DATABASE_CONNECT_TIMEOUT", "2")
+    monkeypatch.setenv("RINGKEEPER_DATABASE_URL", "postgresql+psycopg://x:y@127.0.0.1:1/nowhere")
+    monkeypatch.setenv("RINGKEEPER_DATABASE_CONNECT_TIMEOUT", "2")
     with TestClient(create_app()) as client:
         response = client.get("/health")
     assert response.status_code == 503

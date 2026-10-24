@@ -9,13 +9,13 @@ from moto import mock_aws
 from pydantic import SecretStr
 from typer.testing import CliRunner
 
-from interlock import scrub
-from interlock.cli.main import app
-from interlock.config import Settings
-from interlock.keys import MasterKeyError, derive_key, generate_master_key, load_master_key
-from interlock.vault import Secret, Vault, VaultError, get_vault
-from interlock.vault.aws import AwsSecretsManagerBackend
-from interlock.vault.file import FileBackend
+from ringkeeper import scrub
+from ringkeeper.cli.main import app
+from ringkeeper.config import Settings
+from ringkeeper.keys import MasterKeyError, derive_key, generate_master_key, load_master_key
+from ringkeeper.vault import Secret, Vault, VaultError, get_vault
+from ringkeeper.vault.aws import AwsSecretsManagerBackend
+from ringkeeper.vault.file import FileBackend
 from tests.helpers import make_instance
 
 runner = CliRunner()
@@ -40,7 +40,7 @@ def test_env_key_wins_over_file() -> None:
 
 @pytest.mark.parametrize("bad", ["not base64 !!", "c2hvcnQ="])
 def test_invalid_env_key(bad: str) -> None:
-    with pytest.raises(MasterKeyError, match="INTERLOCK_MASTER_KEY"):
+    with pytest.raises(MasterKeyError, match="RINGKEEPER_MASTER_KEY"):
         load_master_key(Settings(master_key=SecretStr(bad)))
 
 
@@ -110,14 +110,14 @@ def aws(monkeypatch: pytest.MonkeyPatch) -> Iterator[AwsSecretsManagerBackend]:
 
 def test_aws_create_update_and_read(aws: AwsSecretsManagerBackend) -> None:
     vault = Vault({"aws-sm": lambda: aws})
-    vault.store("aws-sm://interlock/acme/n8n", "first-value")
-    vault.store("aws-sm://interlock/acme/n8n", CANARY)
-    assert vault.resolve("aws-sm://interlock/acme/n8n").reveal() == CANARY
+    vault.store("aws-sm://ringkeeper/acme/n8n", "first-value")
+    vault.store("aws-sm://ringkeeper/acme/n8n", CANARY)
+    assert vault.resolve("aws-sm://ringkeeper/acme/n8n").reveal() == CANARY
 
 
 def test_aws_missing_secret_shows_code_only(aws: AwsSecretsManagerBackend) -> None:
     with pytest.raises(VaultError, match="ResourceNotFoundException"):
-        aws.get("aws-sm://interlock/missing")
+        aws.get("aws-sm://ringkeeper/missing")
 
 
 # --- Secret handling ---
@@ -134,7 +134,7 @@ def test_secret_never_prints_its_value() -> None:
 def test_log_records_are_scrubbed(caplog: pytest.LogCaptureFixture) -> None:
     scrub.install_log_scrubbing()
     Secret("file://x", CANARY)
-    logger = logging.getLogger("interlock.test")
+    logger = logging.getLogger("ringkeeper.test")
     with caplog.at_level(logging.INFO):
         logger.info("value is %s", CANARY)
         try:
@@ -169,7 +169,7 @@ def test_secret_set_rejects_empty_value() -> None:
 
 
 def test_secret_check(database_url: str) -> None:
-    from interlock.db import session_scope  # noqa: PLC0415
+    from ringkeeper.db import session_scope  # noqa: PLC0415
 
     with session_scope() as session:
         make_instance(session, "acme-supabase-dev", secret_ref="file://acme/supabase-dev")

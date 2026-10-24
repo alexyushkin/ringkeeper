@@ -6,13 +6,13 @@ import psycopg
 import pytest
 from sqlalchemy import select, text
 
-from interlock.calls import Caller, ToolCall
-from interlock.db import session_scope
-from interlock.errors import RuleViolationError
-from interlock.models import AuditEvent, AuditOutcome, DecisionStatus, InstanceType
-from interlock.services import bindings, decisions, projects
-from interlock.services.calls import RefusalError, approve, deny, run_call
-from interlock.vault import Vault
+from ringkeeper.calls import Caller, ToolCall
+from ringkeeper.db import session_scope
+from ringkeeper.errors import RuleViolationError
+from ringkeeper.models import AuditEvent, AuditOutcome, DecisionStatus, InstanceType
+from ringkeeper.services import bindings, decisions, projects
+from ringkeeper.services.calls import RefusalError, approve, deny, run_call
+from ringkeeper.vault import Vault
 from tests.fake_n8n import FakeN8n
 from tests.helpers import bind
 

@@ -4,12 +4,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from interlock.schemas import SECRET_REF_ERROR, InstanceIn, validate_secret_ref
+from ringkeeper.schemas import SECRET_REF_ERROR, InstanceIn, validate_secret_ref
 
 VALID = [
     "file:///run/secrets/acme-supabase-dev",
     "file://secrets/acme.json",
-    "aws-sm://interlock/acme/supabase-dev",
+    "aws-sm://ringkeeper/acme/supabase-dev",
     "aws-sm://arn:aws:secretsmanager:eu-west-1:000000000000:secret:acme-dev",
 ]
 
@@ -26,11 +26,11 @@ INVALID = [
     "file://",
     "file:///",
     "aws-sm://",
-    "aws-sm:/interlock/acme",
-    "aws-sm://user:pass@interlock/acme",  # userinfo
+    "aws-sm:/ringkeeper/acme",
+    "aws-sm://user:pass@ringkeeper/acme",  # userinfo
     "file:///run/secrets/x?token=abc",  # query
     "file:///run/secrets/x#abc",  # fragment
-    "aws-sm://interlock/acme dev",  # whitespace
+    "aws-sm://ringkeeper/acme dev",  # whitespace
     "aws-sm://" + "a" * 2000,  # absurdly long
 ]
 

@@ -3,11 +3,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from interlock.errors import NotFoundError, RuleViolationError
-from interlock.models import Env, InstanceType, ProjectInstance
-from interlock.schemas import BindingIn, InstanceIn
-from interlock.services import bindings, instances
-from interlock.services.projects import get_project
+from ringkeeper.errors import NotFoundError, RuleViolationError
+from ringkeeper.models import Env, InstanceType, ProjectInstance
+from ringkeeper.schemas import BindingIn, InstanceIn
+from ringkeeper.services import bindings, instances
+from ringkeeper.services.projects import get_project
 from tests.helpers import make_instance, make_project
 
 
@@ -107,7 +107,7 @@ def test_default_instance_cannot_be_changed_to_prod(session: Session) -> None:
             "name": "acme-supabase-dev",
             "type": "supabase",
             "env": "prod",
-            "secret_ref": "aws-sm://interlock/acme-supabase-dev",
+            "secret_ref": "aws-sm://ringkeeper/acme-supabase-dev",
             "owner": "acme",
         }
     )
@@ -124,7 +124,7 @@ def test_non_default_binding_follows_env_change(session: Session) -> None:
             "name": "acme-supabase-x",
             "type": "supabase",
             "env": "prod",
-            "secret_ref": "aws-sm://interlock/acme-supabase-x",
+            "secret_ref": "aws-sm://ringkeeper/acme-supabase-x",
             "owner": "acme",
         }
     )

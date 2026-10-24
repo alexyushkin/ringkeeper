@@ -12,12 +12,12 @@ from sqlalchemy import Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
-from interlock import migrate, scrub
-from interlock.adapters import n8n
-from interlock.db import session_scope
-from interlock.gateway.app import create_app
-from interlock.models import Env, InstanceType
-from interlock.vault import Vault, get_vault
+from ringkeeper import migrate, scrub
+from ringkeeper.adapters import n8n
+from ringkeeper.db import session_scope
+from ringkeeper.gateway.app import create_app
+from ringkeeper.models import Env, InstanceType
+from ringkeeper.vault import Vault, get_vault
 from tests.fake_n8n import API_KEY, FakeN8n
 from tests.helpers import bind, make_instance, make_project
 
@@ -31,13 +31,13 @@ def database_url() -> Iterator[str]:
         url: str = postgres.get_connection_url()
         migrate.upgrade(url)
         # The CLI and API resolve their engine from settings, so point them here too.
-        previous = os.environ.get("INTERLOCK_DATABASE_URL")
-        os.environ["INTERLOCK_DATABASE_URL"] = url
+        previous = os.environ.get("RINGKEEPER_DATABASE_URL")
+        os.environ["RINGKEEPER_DATABASE_URL"] = url
         yield url
         if previous is None:
-            os.environ.pop("INTERLOCK_DATABASE_URL", None)
+            os.environ.pop("RINGKEEPER_DATABASE_URL", None)
         else:
-            os.environ["INTERLOCK_DATABASE_URL"] = previous
+            os.environ["RINGKEEPER_DATABASE_URL"] = previous
 
 
 @pytest.fixture(scope="session")
@@ -69,10 +69,10 @@ def target_dsn(database_url: str) -> str:
 
 @pytest.fixture(autouse=True)
 def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Never touch the real ./.interlock: each test gets its own vault and key."""
-    data_dir = tmp_path / "interlock-data"
-    monkeypatch.setenv("INTERLOCK_DATA_DIR", str(data_dir))
-    monkeypatch.delenv("INTERLOCK_MASTER_KEY", raising=False)
+    """Never touch the real ./.ringkeeper: each test gets its own vault and key."""
+    data_dir = tmp_path / "ringkeeper-data"
+    monkeypatch.setenv("RINGKEEPER_DATA_DIR", str(data_dir))
+    monkeypatch.delenv("RINGKEEPER_MASTER_KEY", raising=False)
     return data_dir
 
 

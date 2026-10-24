@@ -14,10 +14,10 @@ from fastmcp.client.transports import StreamableHttpTransport
 from sqlalchemy import text
 from typer.testing import CliRunner
 
-from interlock.adapters import supabase
-from interlock.cli.main import app
-from interlock.db import session_scope
-from interlock.tokens import issue_token
+from ringkeeper.adapters import supabase
+from ringkeeper.cli.main import app
+from ringkeeper.db import session_scope
+from ringkeeper.tokens import issue_token
 from tests.conftest import TARGET_PASSWORD
 from tests.fake_n8n import API_KEY
 

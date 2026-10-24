@@ -1,10 +1,10 @@
 import pytest
 
-from interlock import scrub
-from interlock.adapters import n8n
-from interlock.adapters.base import Target, ToolError
-from interlock.models import Env
-from interlock.vault import Secret
+from ringkeeper import scrub
+from ringkeeper.adapters import n8n
+from ringkeeper.adapters.base import Target, ToolError
+from ringkeeper.models import Env
+from ringkeeper.vault import Secret
 from tests.fake_n8n import API_KEY, FakeN8n
 
 pytestmark = pytest.mark.anyio

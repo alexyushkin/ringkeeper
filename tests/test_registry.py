@@ -6,8 +6,8 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
-from interlock.cli.main import app
-from interlock.services import projects, registry
+from ringkeeper.cli.main import app
+from ringkeeper.services import projects, registry
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "registry.yaml"
 runner = CliRunner()
@@ -32,7 +32,7 @@ def instance(
         "name": name,
         "type": type,
         "env": env,
-        "secret_ref": f"aws-sm://interlock/{name}",
+        "secret_ref": f"aws-sm://ringkeeper/{name}",
         "owner": "acme",
         **extra,
     }

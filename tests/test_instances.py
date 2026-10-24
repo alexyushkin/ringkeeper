@@ -3,10 +3,10 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from interlock.errors import AlreadyExistsError, NotFoundError, RuleViolationError
-from interlock.models import Env, InstanceType, ProjectInstance
-from interlock.schemas import BindingIn, InstanceIn
-from interlock.services import bindings, instances, projects
+from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
+from ringkeeper.models import Env, InstanceType, ProjectInstance
+from ringkeeper.schemas import BindingIn, InstanceIn
+from ringkeeper.services import bindings, instances, projects
 from tests.helpers import make_instance, make_project
 
 
@@ -83,7 +83,7 @@ def test_type_cannot_change_while_bound(session: Session) -> None:
         name="acme-x",
         type=InstanceType.NEON,
         env=Env.DEV,
-        secret_ref="aws-sm://interlock/acme-x",
+        secret_ref="aws-sm://ringkeeper/acme-x",
         owner="acme",
     )
     with pytest.raises(RuleViolationError, match="cannot change the type"):
