@@ -249,6 +249,131 @@ and store a token from `claude setup-token` with
 `CLAUDE_CODE_OAUTH_TOKEN` and never `ANTHROPIC_API_KEY`, so billing can't
 switch silently. Budgets don't apply in this mode.
 
+## Messages, the router and the inbox
+
+Instead of picking a project yourself, you can just say what you want:
+
+```bash
+uv run ringkeeper ask "In acme-web add a plan formatter, with tests. Also how many customers has globex?"
+uv run ringkeeper ask --thread <id> "and the same for acme"
+```
+
+The **router** (in the api service, `RINGKEEPER_ROUTER=1`) handles one message
+at a time with one Claude call and every tool turned off. It sees the project
+cards (name, owner, description, aliases, bound instance names and types), the
+thread so far, open tasks, pending decisions and saved routing examples, and
+never secrets. It answers with a list of tasks, each with a project, a
+confidence, a kind (`feature`, `fix`, `data`, `content`, `ops`), a risk
+(`read`, `write`, `prod-write`), a complexity (`low`, `medium`, `high`), an
+outcome and the worker prompt. The answer is validated (one retry on invalid
+output), and a task is never given to projects with different owners: it must
+be split.
+
+A task that touches one project with a confidence of at least 0.8
+(`RINGKEEPER_ROUTER_CONFIDENCE_THRESHOLD`) is dispatched. Anything else becomes
+a **route decision** with the top two candidates. Your answer is saved as a
+routing example: the same message (ignoring case and spacing) then routes
+without asking, and similar ones get it as a hint. Remove a wrong one with
+`ringkeeper routing examples list` and `delete <id>`.
+
+The **inbox** holds every decision waiting for you:
+
+| Kind       | What                                  | Answer                          |
+| ---------- | ------------------------------------- | ------------------------------- |
+| `route`    | which project a task belongs to       | a project, or `none`            |
+| `approve`  | a held prod write                     | `approve` / `deny`              |
+| `plan`     | an architect's plan (feature tasks)   | `approve` / `deny` (+ `--note`) |
+| `question` | a worker asked you something          | your answer, as text            |
+
+```bash
+uv run ringkeeper inbox list
+uv run ringkeeper inbox show <id>       # full details: plan text, held arguments
+uv run ringkeeper inbox answer <id> approve
+uv run ringkeeper inbox answer <id> "Use the plans table"
+```
+
+Workers get an `ask_user` tool. Calling it ends the session with status
+`needs_input` and opens a question; answering resumes the same Claude session
+with your answer. Every answer is audited with who answered and how (`cli`,
+`api` or `telegram`). Approving a held write from the CLI runs it from your
+machine; from the API or Telegram, the gateway runs it, since it can reach the
+instances.
+
+## The architect loop (feature tasks)
+
+A `feature` task starts with an **architect** session, not a worker. It runs
+in the worker image with the workspace mounted read-only and no write tools
+(no Write, Edit or Bash). Its token is an architect token, which only opens
+the gateway's `/mcp/architect` endpoint: a worker token can't call it, and an
+architect token can't reach the service endpoints.
+
+1. The architect reads the code and calls `submit_plan(title, plan,
+   worker_prompt)`. The plan becomes a `plan` decision.
+2. Once you approve, it calls `dispatch_worker(prompt)`, and a worker builds
+   on the task branch.
+3. After each worker turn, the runner runs the project's `checks` inside the
+   worker container, without the Claude credential or the gateway token in
+   their environment, and reports them with the branch diff. The architect is
+   resumed with both and calls `approve_work(summary)` or
+   `continue_worker(feedback)`, which resumes the same worker session. It
+   can't approve while checks fail.
+4. After 3 reviews, `continue_worker` asks you instead (a `question`).
+   Answering grants one more round.
+
+Each tool call records one step and ends the architect's turn, so the
+architect holds no container or slot while a worker runs. On approval the task
+succeeds with the branch ready and a summary. Nothing is pushed or merged.
+
+Add checks per project in the registry:
+
+```yaml
+  - name: acme-web
+    checks: ["python -m pytest -q -p no:cacheprovider"]
+```
+
+The worker image includes pytest and uv.
+
+## Models
+
+| Role                          | Default             | Setting                       |
+| ----------------------------- | ------------------- | ----------------------------- |
+| router                        | `claude-haiku-5-5`  | `RINGKEEPER_MODEL_ROUTER`     |
+| architect                     | `claude-opus-5-5`   | `RINGKEEPER_MODEL_ARCHITECT`  |
+| worker (no complexity)        | `claude-sonnet-5-5` | `RINGKEEPER_MODEL_WORKER`     |
+| worker, `low` complexity      | `claude-haiku-5-5`  | `RINGKEEPER_MODEL_LOW`        |
+| worker, `medium` complexity   | `claude-sonnet-5-5` | `RINGKEEPER_MODEL_MEDIUM`     |
+| worker, `high` complexity     | `claude-opus-5-5`   | `RINGKEEPER_MODEL_HIGH`       |
+
+The router sets each task's complexity. After two failed check rounds in the
+architect loop, the worker moves up one tier. A project can override any of
+these in the registry (`models: {architect: ..., low: ...}`), and each session
+records the model it ran on (`ringkeeper task show`).
+
+## Telegram
+
+Telegram bot chats aren't end-to-end encrypted, so Ringkeeper treats Telegram
+as a **notification channel** only. Each new decision goes out as a short,
+scrubbed summary: kind, project, instance and one line (at most
+`RINGKEEPER_TELEGRAM_SUMMARY_CHARS`, default 160), with buttons. It never
+includes SQL, arguments, diffs or plan text; those stay in the CLI and API.
+
+- held writes and plans: **Approve** / **Deny**
+- routes: one button per candidate, plus **None of these**
+- questions: reply to the message with your answer
+
+```bash
+uv run ringkeeper telegram login          # the bot token from @BotFather (hidden prompt)
+# message the bot from your phone, then:
+uv run ringkeeper telegram chats          # find your chat id
+# .env: RINGKEEPER_TELEGRAM=1 and RINGKEEPER_TELEGRAM_CHAT_IDS='[123456789]'
+uv run ringkeeper telegram test
+docker compose up -d                      # the api service runs the bridge (long polling)
+```
+
+Only chats in `RINGKEEPER_TELEGRAM_CHAT_IDS` get notifications, and button
+presses or replies from any other chat are ignored. Anyone in an allowed chat
+can answer, so allow only your private chat with the bot, or groups you trust.
+
 ## Quick start
 
 Requirements: Docker with Compose, and [uv](https://docs.astral.sh/uv/).
@@ -256,12 +381,13 @@ Requirements: Docker with Compose, and [uv](https://docs.astral.sh/uv/).
 ```bash
 cp .env.example .env                # then set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
 uv run ringkeeper secret init        # creates .ringkeeper/master.key: back it up
-uv run ringkeeper auth login         # the Anthropic API key workers use
+uv run ringkeeper auth login         # the Anthropic API key workers and the router use
 docker compose --profile worker build worker
-docker compose up -d --build        # postgres, api (with the session manager), gateway
+docker compose up -d --build        # postgres, api (session manager, router), gateway
 uv run ringkeeper registry apply examples/registry.yaml
 curl http://localhost:8000/health
 curl http://localhost:8100/health
+curl -H "Authorization: Bearer $(uv run ringkeeper auth api-token)" http://localhost:8000/projects
 ```
 
 The API container applies database migrations on start, and the gateway waits
@@ -321,7 +447,11 @@ ringkeeper secret   init | set <ref> | check <instance>
 ringkeeper token    issue --project <name> [--ttl 1h] [--session <id>] | revoke <jti>
 ringkeeper decision list | show | approve | deny
 ringkeeper audit    list [--project] [--instance] [--outcome] [--since]
-ringkeeper auth     login | status
+ringkeeper auth     login | status | api-token [--rotate]
+ringkeeper ask      "<message>" [--thread <id>] [--no-wait]
+ringkeeper inbox    list [--kind] | show <id> | answer <id> <reply> [--note]
+ringkeeper routing  examples list | examples delete <id>
+ringkeeper telegram login | chats | test
 ringkeeper task     run --project <name> "<prompt>" [--max-turns] [--max-runtime] [--budget] [--detach]
 ringkeeper task     list | show <id> | stop <id> | resume <id> "<follow-up>"
 ringkeeper stop-all
@@ -333,14 +463,29 @@ ringkeeper db upgrade
 - `registry apply` creates and updates, and never deletes anything missing
   from the file.
 
-## API (read-only)
+## API
 
-| Endpoint                | Returns                                   |
-| ----------------------- | ----------------------------------------- |
-| `GET /health`           | `{"status": "ok", "database": "ok"}`      |
-| `GET /projects`         | all projects                              |
-| `GET /projects/{name}`  | one project with its bound instances      |
-| `GET /instances`        | all instances                             |
+Every endpoint except `/health` needs the admin token, reads included, because
+project names, decisions and audit rows are client data.
+`ringkeeper auth api-token` prints it, creating a random one in the vault on
+first use; `--rotate` replaces it, and the old one stops working at once. The
+OpenAPI schema and docs pages are off.
+
+| Endpoint                              | Does                                         |
+| ------------------------------------- | -------------------------------------------- |
+| `GET /health`                         | `{"status": "ok", "database": "ok"}` (open)  |
+| `GET /projects`, `/projects/{name}`   | projects, one with its bound instances       |
+| `GET /instances`                      | all instances                                |
+| `POST /messages`                      | queue a message for the router (`202`)       |
+| `GET /threads/{id}`                   | a thread's messages and routing results      |
+| `GET /decisions`, `/decisions/{id}`   | the inbox (`?status=`, `?kind=`), in full    |
+| `POST /decisions/{id}/answer`         | `{"choice": ..., "text": ..., "by": ...}`    |
+
+```bash
+TOKEN=$(uv run ringkeeper auth api-token)
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"body": "How many customers has globex?"}' http://localhost:8000/messages
+```
 
 The API never returns `secret_ref`.
 

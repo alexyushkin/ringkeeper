@@ -63,6 +63,8 @@ projects:
     repo_url: https://git.example/acme/web
     workspace_path: acme-web  # relative to RINGKEEPER_WORKSPACES_ROOT
     autonomy: standard
+    # Run in the worker container after each worker turn of a feature task.
+    checks: ["python -m pytest -q -p no:cacheprovider"]
     bindings:
       - instance: acme-supabase-dev
         default: true
