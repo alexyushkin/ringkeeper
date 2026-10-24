@@ -93,8 +93,11 @@ def _summary(task: Task) -> str:
     return ", ".join(parts)
 
 
-def follow(task_id: str) -> int:
-    """Print the task's events until it finishes. Ctrl-C detaches; the task keeps running."""
+def follow(task_id: str, *, from_session: int = 1) -> int:
+    """Print the task's events until it finishes. Ctrl-C detaches; the task keeps running.
+
+    `from_session` skips earlier sessions, so a resume shows only the new run.
+    """
     last_id = 0
     queued_since = time.monotonic()
     hinted = False
@@ -102,9 +105,8 @@ def follow(task_id: str) -> int:
         while True:
             with session_scope() as session:
                 task = tasks.get_task(session, task_id)
-                new: Sequence[SessionEvent] = tasks.events(
-                    session, _session_ids(task), after_id=last_id
-                )
+                ids = [s.id for s in task.sessions if s.ordinal >= from_session]
+                new: Sequence[SessionEvent] = tasks.events(session, ids, after_id=last_id)
                 rendered = [(e.id, render_event(e.type, e.payload)) for e in new]
                 status = task.status
                 summary = _summary(task)
@@ -172,7 +174,7 @@ def resume(
         ordinal = worker_session.ordinal
     typer.echo(f"queued session {ordinal} of task {full_id}")
     if not detach:
-        raise typer.Exit(code=follow(full_id))
+        raise typer.Exit(code=follow(full_id, from_session=ordinal))
 
 
 @app.command("list")

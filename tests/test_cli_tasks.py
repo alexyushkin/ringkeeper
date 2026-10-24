@@ -153,6 +153,8 @@ def test_resume(live: Callable[[Callable[[WorkerSpec], Script]], FakeRuntime]) -
     resumed = cli("task", "resume", task_id[:8], "add a line to the notes")
     assert resumed.exit_code == 0, resumed.output
     assert "queued session 2 of task" in resumed.stdout
+    # Only the new session's events, not session 1's again.
+    assert resumed.stdout.count("result: success") == 1
     assert len(runtime.started) == 2
     shown = cli("task", "show", task_id).stdout
     assert "turns:     10" in shown  # both sessions
