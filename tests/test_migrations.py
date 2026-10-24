@@ -3,6 +3,7 @@ from alembic.migration import MigrationContext
 from sqlalchemy import Engine, create_engine, inspect
 
 from interlock import migrate
+from interlock.db import dispose_engines
 from interlock.models import Base
 
 
@@ -20,6 +21,8 @@ def test_downgrade_and_upgrade_round_trip(database_url: str) -> None:
     finally:
         probe.dispose()
         migrate.upgrade(database_url)
+        # Pooled connections hold prepared statements for the dropped tables.
+        dispose_engines()
 
     probe = create_engine(database_url)
     try:

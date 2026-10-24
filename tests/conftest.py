@@ -9,6 +9,12 @@ from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
 from interlock import migrate, scrub
+from interlock.adapters import n8n
+from interlock.db import session_scope
+from interlock.models import Env, InstanceType
+from interlock.vault import Vault, get_vault
+from tests.fake_n8n import API_KEY, FakeN8n
+from tests.helpers import bind, make_instance, make_project
 
 POSTGRES_IMAGE = "postgres:16-alpine"
 
@@ -94,3 +100,52 @@ def session(engine: Engine) -> Iterator[Session]:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture
+def vault(target_dsn: str) -> Vault:
+    vault = get_vault()
+    vault.store("file://acme/supabase", target_dsn)
+    vault.store("file://globex/supabase", target_dsn)
+    vault.store("file://acme/n8n", API_KEY)
+    return vault
+
+
+@pytest.fixture
+def fake_n8n(monkeypatch: pytest.MonkeyPatch) -> FakeN8n:
+    fake = FakeN8n()
+    fake.add_workflow("wf1", "Sync leads", active=True)
+    monkeypatch.setattr(n8n, "transport", fake.transport())
+    return fake
+
+
+@pytest.fixture
+def registry(database_url: str, target_dsn: str, vault: Vault) -> Iterator[None]:
+    with session_scope() as session:
+        make_project(session, "acme-web")
+        make_project(session, "globex-portal", owner="globex")
+        supabase_ref = "file://acme/supabase"
+        make_instance(session, "acme-supabase-dev", secret_ref=supabase_ref)
+        make_instance(session, "acme-supabase-staging", env=Env.STAGING, secret_ref=supabase_ref)
+        make_instance(session, "acme-supabase-prod", env=Env.PROD, secret_ref=supabase_ref)
+        make_instance(
+            session,
+            "acme-n8n",
+            type=InstanceType.N8N,
+            env=Env.PROD,
+            secret_ref="file://acme/n8n",
+            base_url="https://n8n.acme.example",
+        )
+        make_instance(session, "globex-supabase-dev", secret_ref="file://globex/supabase")
+        make_instance(session, "acme-supabase-unbound", secret_ref=supabase_ref)
+    bind("acme-web", "acme-supabase-dev", is_default=True)
+    bind("acme-web", "acme-supabase-staging", allowed_tools=["query", "list_tables"])
+    bind("acme-web", "acme-supabase-prod")
+    bind("acme-web", "acme-n8n")
+    bind("globex-portal", "globex-supabase-dev", is_default=True)
+    with psycopg.connect(target_dsn, autocommit=True) as conn:
+        conn.execute("CREATE TABLE notes (id serial PRIMARY KEY, body text)")
+        conn.execute("INSERT INTO notes (body) VALUES ('hello')")
+    yield
+    with psycopg.connect(target_dsn, autocommit=True) as conn:
+        conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")

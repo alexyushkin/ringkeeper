@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,12 @@ class Settings(BaseSettings):
 
     token_max_ttl_seconds: int = 24 * 3600
     decision_ttl_seconds: int = 24 * 3600
+
+    @field_validator("master_key", mode="before")
+    @classmethod
+    def _empty_key_is_unset(cls, value: object) -> object:
+        # Compose passes INTERLOCK_MASTER_KEY="" when it isn't set in .env.
+        return None if value == "" else value
 
 
 def get_settings() -> Settings:

@@ -31,5 +31,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  gateway:
+    build: .
+    command:
+      ["uvicorn", "interlock.gateway.app:create_app", "--factory",
+       "--host", "0.0.0.0", "--port", "8100"]
+    environment:
+      INTERLOCK_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-interlock}:${POSTGRES_PASSWORD:-interlock}@postgres:5432/${POSTGRES_DB:-interlock}
+      INTERLOCK_DATA_DIR: /var/lib/interlock
+      INTERLOCK_MASTER_KEY: ${INTERLOCK_MASTER_KEY:-}
+    # The vault and master.key, shared with the host CLI. Read-only: the gateway
+    # never writes secrets. Workers must never get this directory.
+    volumes:
+      - ./.interlock:/var/lib/interlock:ro
+    ports:
+      - "127.0.0.1:${INTERLOCK_GATEWAY_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8100/health').status != 200)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_healthy  # the api applies migrations before it is healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:

@@ -1,8 +1,11 @@
+from typing import Any
+
 from sqlalchemy.orm import Session
 
+from interlock.db import session_scope
 from interlock.models import Env, Instance, InstanceType, Project
-from interlock.schemas import InstanceIn, ProjectIn
-from interlock.services import instances, projects
+from interlock.schemas import BindingIn, InstanceIn, ProjectIn
+from interlock.services import bindings, instances, projects
 
 
 def make_project(session: Session, name: str = "acme-web", **fields: object) -> Project:
@@ -29,3 +32,8 @@ def make_instance(
         }
     )
     return instances.create_instance(session, data)
+
+
+def bind(project: str, instance: str, **fields: Any) -> None:
+    with session_scope() as session:
+        bindings.set_binding(session, BindingIn(project=project, instance=instance, **fields))

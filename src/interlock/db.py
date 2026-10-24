@@ -1,16 +1,27 @@
 from collections.abc import Generator
 from contextlib import contextmanager
-from functools import cache
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
 from interlock.config import get_settings
 
+_engines: dict[tuple[str, int], Engine] = {}
 
-@cache
+
 def _engine_for(url: str, connect_timeout: int) -> Engine:
-    return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": connect_timeout})
+    key = (url, connect_timeout)
+    if key not in _engines:
+        _engines[key] = create_engine(
+            url, pool_pre_ping=True, connect_args={"connect_timeout": connect_timeout}
+        )
+    return _engines[key]
+
+
+def dispose_engines() -> None:
+    """Close every pooled connection (e.g. after a schema change under them)."""
+    for engine in _engines.values():
+        engine.dispose()
 
 
 def get_engine() -> Engine:
