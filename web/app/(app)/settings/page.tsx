@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
 import { download } from "@/lib/client/words";
 
 interface Settings {
@@ -24,6 +25,7 @@ interface Settings {
     max_concurrent_workers: number;
     retention_days: number;
     paused: boolean;
+    start_at_login: boolean;
   };
   overridden: string[];
   services: Record<string, { running: boolean; error: string | null }>;
@@ -92,6 +94,8 @@ export default function SettingsPage() {
           </Button>
         )}
       </Card>
+
+      {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
 
       <ClaudeCard settings={settings.data} onSaved={settings.reload} />
 
@@ -214,6 +218,22 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
       </Button>
       {message ? <Alert tone="good">{message}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
+    </Card>
+  );
+}
+
+function ThisComputer({ startAtLogin, onChange }: { startAtLogin: boolean; onChange: (on: boolean) => void }) {
+  const [signIn, setSignIn] = useState("sign in");
+  useEffect(() => setSignIn(navigator.userAgent.includes("Windows") ? "sign in to Windows" : "log in"), []);
+  return (
+    <Card className="mb-4 space-y-3">
+      <h2 className="font-semibold">This computer</h2>
+      <Toggle
+        label={`Start Ringkeeper when I ${signIn}`}
+        checked={startAtLogin}
+        onChange={onChange}
+        hint="It waits in the tray, so requests and approvals keep coming in. Closing the window keeps it running; to stop it, right-click the tray icon and choose Quit."
+      />
     </Card>
   );
 }
