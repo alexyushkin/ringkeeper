@@ -91,7 +91,10 @@ def test_expired_cannot_be_approved(vault: Vault) -> None:
 @pytest.mark.usefixtures("registry")
 def test_failed_approval_exits_nonzero(vault: Vault) -> None:
     decision_id = held(vault, sql="DELETE FROM missing_table")
-    result = cli("decision", "approve", decision_id)
+    unconfirmed = cli("decision", "approve", decision_id)
+    assert unconfirmed.exit_code == 1
+    assert "type the connection's name (acme-supabase-prod)" in unconfirmed.stderr
+    result = cli("decision", "approve", decision_id, "--confirm", "acme-supabase-prod")
     assert result.exit_code == 1
     assert "failed" in result.stderr
     assert "does not exist" in result.stderr

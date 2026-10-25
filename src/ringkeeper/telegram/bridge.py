@@ -108,15 +108,20 @@ def render(decision: Decision, settings: Settings) -> str:
         lines.append(telegram_text.SHORTENED)
     if decision.kind is DecisionKind.QUESTION:
         lines.append("Reply to this message with your answer.")
+    if why := inbox.destructive_reason(decision):
+        lines.append(f"This write {why}: approve it in the Ringkeeper app. You can deny it here.")
     return scrub("\n".join(lines))
 
 
 def keyboard(decision: Decision) -> dict[str, Any]:
     if decision.kind is DecisionKind.QUESTION:
         return {"force_reply": True, "input_field_placeholder": "Your answer"}
+    # A write that deletes or drops data can only be denied here (approve it in the app).
+    blocked = {"approve"} if inbox.destructive_reason(decision) else set[str]()
     buttons = [
         {"text": BUTTON_LABELS.get(option, option), "callback_data": callback_data(decision, i)}
         for i, option in enumerate(inbox.options(decision))
+        if option not in blocked
     ]
     return {"inline_keyboard": [buttons[i : i + 2] for i in range(0, len(buttons), 2)]}
 

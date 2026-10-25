@@ -8,7 +8,7 @@ import typer
 from ringkeeper.cli.common import echo_table, fail, handle_errors
 from ringkeeper.db import session_scope
 from ringkeeper.models import Decision, DecisionStatus
-from ringkeeper.services import calls, decisions
+from ringkeeper.services import calls, decisions, inbox
 from ringkeeper.vault import get_vault
 
 app = typer.Typer(help="Review held prod writes: list, show, approve, deny.", no_args_is_help=True)
@@ -91,9 +91,19 @@ def show(decision_id: Annotated[str, typer.Argument(help="Full id or 8+ char pre
 def approve(
     decision_id: Annotated[str, typer.Argument(help="Full id or 8+ char prefix.")],
     by: Annotated[str | None, typer.Option(help="Approver name (default: OS user).")] = None,
+    confirm: Annotated[
+        str | None,
+        typer.Option(
+            "--confirm",
+            help="The connection's name, to approve a held write that deletes or drops data.",
+        ),
+    ] = None,
 ) -> None:
     """Approve a pending decision: re-check it, run the stored call, record the result."""
     with handle_errors():
+        with session_scope() as session:
+            held = decisions.get_decision(session, decision_id)
+            inbox.check_destructive_confirmation(held, confirm, inbox.Via.CLI)
         vault = get_vault()
 
         async def run() -> Decision:

@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import String, cast, select, text, update
 from sqlalchemy.orm import Session
 
+from ringkeeper import destructive
 from ringkeeper.calls import Caller, ToolCall, args_hash
 from ringkeeper.config import get_settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
@@ -67,6 +68,10 @@ def hold(
         args_hash=args_hash(call.args),
         kind=DecisionKind.APPROVE,
         precondition=precondition,
+        # Deleting or dropping data needs the connection's name typed to approve.
+        payload={"destructive": why}
+        if (why := destructive.reason(call.service, call.tool, call.args))
+        else None,
         created_at=now,
         expires_at=now + timedelta(seconds=get_settings().decision_ttl_seconds),
     )

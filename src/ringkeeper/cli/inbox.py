@@ -119,6 +119,13 @@ def answer(
         typer.Option("--note", "-m", help="Feedback for a plan, or why you denied."),
     ] = None,
     by: Annotated[str | None, typer.Option(help="Name to record (default: OS user).")] = None,
+    confirm: Annotated[
+        str | None,
+        typer.Option(
+            "--confirm",
+            help="The connection's name, to approve a held write that deletes or drops data.",
+        ),
+    ] = None,
 ) -> None:
     """Answer a decision. Approving a held write runs it from here."""
     who = by or current_user()
@@ -128,7 +135,7 @@ def answer(
             reply_obj = (
                 inbox.Answer(text=reply)
                 if decision.kind is DecisionKind.QUESTION
-                else inbox.Answer(choice=reply, text=note)
+                else inbox.Answer(choice=reply, text=note, confirm=confirm)
             )
             answered = inbox.answer(
                 session, get_settings(), decision_id, reply_obj, by=who, via=inbox.Via.CLI
