@@ -112,6 +112,40 @@ jobs:
           RINGKEEPER_TEST_NO_DOCKER: "1"
           RINGKEEPER_EXPECT_SHELL: PowerShell
 
+  desktop-shell:
+    # The app shell (shell/, Tauri): lint, unit tests, then the real thing
+    # with the real backend: crash restart, reattach after a shell crash, and
+    # a Quit that leaves nothing running. No installer here: that's on tags.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Rust (stable, with clippy and rustfmt)
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shell/target
+          key: shell-${{ runner.os }}-${{ hashFiles('shell/Cargo.lock') }}
+      - run: cargo fmt --check
+        working-directory: shell
+      - run: cargo clippy --all-targets --locked -- -D warnings
+        working-directory: shell
+      - run: cargo test --locked
+        working-directory: shell
+      - run: cargo build --locked
+        working-directory: shell
+      - run: uv run pytest tests/test_desktop_shell.py -p no:cacheprovider
+        env:
+          RINGKEEPER_TEST_DB: sqlite
+          RINGKEEPER_SHELL_EXE: ${{ github.workspace }}\shell\target\debug\ringkeeper.exe
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:
