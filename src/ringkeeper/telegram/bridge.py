@@ -55,7 +55,7 @@ from ringkeeper.services import inbox, threads
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
-from ringkeeper.voice import SttClient, VoiceError, VoiceNote
+from ringkeeper.voice import SttClient, VoiceError, VoiceNote, vocabulary
 from ringkeeper.voice import transcribe as transcribe_voice
 
 logger = logging.getLogger(__name__)
@@ -135,11 +135,6 @@ def outcome_line(decision: Decision) -> str:
             return f"✔ {decision.status} (by {who})"
 
 
-def _one_line(text: str, limit: int) -> str:
-    flat = " ".join(text.split())
-    return flat if len(flat) <= limit else flat[: max(limit - 1, 1)] + "…"
-
-
 def routed_text(session: Session, message: Message, limit: int) -> str:
     """Projects, task ids and kinds only: never the worker prompt or outcome."""
     head = f"Request {str(message.thread_id)[:8]}"
@@ -154,9 +149,13 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
     for ident in routing.get("decisions", []):
         lines.append(f"? which project: decision {ident[:8]}, sent separately")
     if not lines:
+        # The router answered instead of making tasks: meant to be read, so it gets
+        # the room a question gets, with the same rules (no SQL or code).
         output = cast(dict[str, Any], routing.get("output") or {})
-        reply = output.get("reply") or "Nothing to do."
-        lines.append(_one_line(scrub(str(reply)), limit))
+        shown = telegram_text.question(str(output.get("reply") or "Nothing to do."), limit)
+        lines.append(shown.text)
+        if shown.cut:
+            lines.append(telegram_text.SHORTENED)
     return "\n".join([f"{head}:", *lines])
 
 
@@ -278,7 +277,7 @@ class Bridge:
                 .order_by(Message.created_at)
             ).all()
             for message in routed:
-                text = routed_text(session, message, self.settings.telegram_summary_chars)
+                text = routed_text(session, message, self.settings.telegram_question_chars)
                 sent += self._notify(session, text, message_id=message.id)
             ended = select(Notification.task_id).where(
                 Notification.channel == CHANNEL, Notification.task_id.is_not(None)
@@ -360,6 +359,8 @@ class Bridge:
             self._say(chat_id, WELCOME)
             return
         decision_id = self._question_for(chat_id, replied) if replied else None
+        if decision_id is None and not replied:
+            decision_id = self._redo_target(chat_id)
         if decision_id is None:
             # Not an answer: a new request, if requests from Telegram are on.
             if not self.settings.telegram_requests:
@@ -393,6 +394,27 @@ class Bridge:
             return str(note.decision_id) if note else None
 
     # --- Voice: "I heard: ..." with Confirm and Redo ---
+
+    def _redo_target(self, chat_id: int) -> str | None:
+        """After Redo on an answer, the next message in that chat answers the same
+        question (within the confirmation window), no Telegram reply needed."""
+        window = timedelta(minutes=self.settings.telegram_confirm_minutes)
+        with session_scope() as session:
+            latest = session.scalars(
+                select(VoiceConfirmation)
+                .where(VoiceConfirmation.chat_id == chat_id)
+                .order_by(VoiceConfirmation.created_at.desc())
+                .limit(1)
+            ).one_or_none()
+            if (
+                latest is None
+                or latest.kind != ANSWER
+                or latest.status != "redone"
+                or latest.resolved_at is None
+                or latest.resolved_at < datetime.now(UTC) - window
+            ):
+                return None
+            return str(latest.decision_id)
 
     def _open_question(self, decision_id: str) -> str | None:
         """Why a question can't take an answer any more, if it can't."""
@@ -429,7 +451,9 @@ class Bridge:
         try:
             stt = SttClient(self.settings)
             try:
-                transcript = transcribe_voice(self.api, stt, note, self.settings)
+                with session_scope() as session:
+                    hint = vocabulary(session)
+                transcript = transcribe_voice(self.api, stt, note, self.settings, hint)
             finally:
                 stt.close()
         except VoiceError as error:
@@ -481,7 +505,8 @@ class Bridge:
                 elif action == REDO:
                     _close_confirmation(row, "redone")
                     outcome = (
-                        "🔁 Redo: reply to the question again with a new voice note."
+                        "🔁 Redo: send a new voice note (or type the answer). "
+                        "It will answer the same question."
                         if row.kind == ANSWER
                         else "🔁 Redo: send a new voice note."
                     )

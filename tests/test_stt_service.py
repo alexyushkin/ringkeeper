@@ -24,6 +24,7 @@ class FakeEngine:
     def __init__(self, seconds: float = 2.0) -> None:
         self.seconds = seconds
         self.decoded: list[int] = []
+        self.hints: list[str | None] = []
 
     def decode(self, data: bytes) -> Decoded:
         if not data.startswith(b"OggS"):
@@ -31,7 +32,8 @@ class FakeEngine:
         self.decoded.append(len(data))
         return Decoded(samples=None, seconds=self.seconds)
 
-    def transcribe(self, audio: Decoded) -> Transcript:
+    def transcribe(self, audio: Decoded, hint: str | None = None) -> Transcript:
+        self.hints.append(hint)
         return Transcript(text="voice works", language="en")
 
 
@@ -62,11 +64,14 @@ def test_transcribe_and_limits(fake_stt: tuple[str, FakeEngine]) -> None:
         ok = http.post("/transcribe", content=b"OggS" + b"x" * 10)
         assert ok.status_code == 200
         assert ok.json() == {"text": "voice works", "language": "en", "duration": 2.0}
+        hinted = http.post("/transcribe", params={"hint": "acme-web, n8n"}, content=b"OggS")
+        assert hinted.status_code == 200
+        assert engine.hints == [None, "acme-web, n8n"]
 
         # Too big: refused from Content-Length alone, never decoded.
         big = http.post("/transcribe", content=b"OggS" + b"x" * 2000)
         assert (big.status_code, big.json()["error"]) == (413, "too_large")
-        assert engine.decoded == [14]
+        assert engine.decoded == [14, 4]
 
         engine.seconds = 61.0
         long = http.post("/transcribe", content=b"OggS")

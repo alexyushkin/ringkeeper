@@ -161,6 +161,39 @@ def test_redo_discards_the_transcript_and_a_new_voice_note_can_be_confirmed(
     assert [c.status for c in confirmations()] == ["redone", "confirmed"]
 
 
+def test_after_redo_the_next_voice_note_answers_the_same_question_without_a_reply(
+    bridge: Bridge, telegram: FakeTelegram, stt: FakeStt
+) -> None:
+    question_id, message_id = ask_question(bridge, telegram)
+    hear(bridge, telegram, message_id)
+    telegram.press(buttons(telegram.sent[-1])["🔁 Redo"])
+    bridge.poll_once(0)
+    assert "It will answer the same question." in telegram.edits[-1]["text"]
+
+    telegram.voice("v2")  # not a Telegram reply
+    bridge.poll_once(0)
+    sent = telegram.sent[-1]
+    assert sent["text"].endswith(f"Answer question {question_id[:8]} with this?")
+    telegram.press(buttons(sent)["✅ Confirm"])
+    bridge.poll_once(0)
+    assert decision(question_id).status is DecisionStatus.ANSWERED
+
+    telegram.voice("v3")  # the question is answered: back to the usual rules
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == REQUESTS_OFF
+
+
+def test_the_speech_model_gets_project_and_connection_names_as_a_hint(
+    bridge: Bridge, telegram: FakeTelegram, stt: FakeStt
+) -> None:
+    _, message_id = ask_question(bridge, telegram)
+    hear(bridge, telegram, message_id)
+    [hint] = stt.hints
+    assert hint is not None
+    names = hint.split(", ")
+    assert {"acme-web", "globex-portal", "n8n", "Supabase"} <= set(names)
+
+
 def test_confirmations_expire(
     bridge: Bridge, telegram: FakeTelegram, stt: FakeStt, monkeypatch: pytest.MonkeyPatch
 ) -> None:

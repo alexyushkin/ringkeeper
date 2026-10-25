@@ -15,6 +15,7 @@ from ringkeeper.models import Message, Task, TaskStatus, Thread, VoiceConfirmati
 from ringkeeper.router.service import route_next
 from ringkeeper.services import threads
 from ringkeeper.telegram import api as telegram_api
+from ringkeeper.telegram import text
 from ringkeeper.telegram.api import BotApi
 from ringkeeper.telegram.bridge import EXPIRED, TEXT_OR_VOICE_REQUEST, Bridge
 from tests.fake_router import FakeModel, output, routed
@@ -182,6 +183,16 @@ def test_a_request_with_nothing_to_do_gets_the_routers_reply(
     route_next(get_settings(), FakeModel([output(reply="Hi! Nothing to do.")]))
     bridge.send_notices()
     assert telegram.sent[-1]["text"].endswith(":\nHi! Nothing to do.")
+
+
+def test_a_long_router_reply_is_shown_in_full(bridge: Bridge, telegram: FakeTelegram) -> None:
+    telegram.text("why?")
+    bridge.poll_once(0)
+    reply = ("I only sort requests into project tasks. " * 8).strip()  # ~330 characters
+    route_next(get_settings(), FakeModel([output(reply=reply)]))
+    bridge.send_notices()
+    assert reply in telegram.sent[-1]["text"]
+    assert text.SHORTENED not in telegram.sent[-1]["text"]
 
 
 def test_requests_from_elsewhere_get_no_notices(bridge: Bridge, telegram: FakeTelegram) -> None:

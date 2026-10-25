@@ -402,9 +402,10 @@ With the optional `stt` service running, you can reply to a question with a
 voice note, and, if requests are on, send a request as one. The bot
 transcribes it and answers **I heard: ...** with **Confirm** and **Redo**.
 Confirm answers the question (or sends the request) exactly as if you had
-typed the text, recorded as `input: voice`. Redo throws the transcript away.
-Unanswered confirmations expire after 10 minutes
-(`RINGKEEPER_TELEGRAM_CONFIRM_MINUTES`).
+typed the text, recorded as `input: voice`. Redo throws the transcript away,
+and your next voice note (or typed message) answers the same question, so you
+don't need to use Telegram's Reply again. Unanswered confirmations expire after
+10 minutes (`RINGKEEPER_TELEGRAM_CONFIRM_MINUTES`).
 
 ```bash
 docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
@@ -420,10 +421,18 @@ docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
   `RINGKEEPER_STT_MAX_BYTES` (default 5 MB). They're checked from Telegram's
   metadata before downloading, during the download, and on the decoded audio.
   A note over a limit gets a message saying so.
-- **Model:** `RINGKEEPER_STT_MODEL` (default `small`) and
-  `RINGKEEPER_STT_LANGUAGE` (empty: detect it). The first start downloads the
-  model from Hugging Face into the `stt-models` volume. After that,
-  `RINGKEEPER_STT_OFFLINE=1` keeps the service offline.
+- **Language: set it.** `RINGKEEPER_STT_LANGUAGE` (for example `en`) defaults
+  to empty, which means detect it. Detection doubles the time (about 3 s
+  instead of 1.4 s for 10 s of speech with `small`). On short or accented
+  clips it can also pick the wrong language and write the transcript in that
+  language.
+- **Names:** the api passes your project, alias and connection names (and
+  words like n8n and Supabase) to the model as a hint, so they come out
+  spelled right.
+- **Model:** `RINGKEEPER_STT_MODEL` (default `small`). The first start
+  downloads the model from Hugging Face into the `stt-models` volume. After
+  that, `RINGKEEPER_STT_OFFLINE=1` keeps the service offline. onnxruntime's
+  telemetry (used for silence detection) is turned off.
 - **Network:** `stt` has no published port. It's on the `internal` network,
   where only the api calls it (`RINGKEEPER_STT_URL`, default `http://stt:9000`;
   empty turns voice off).

@@ -132,6 +132,7 @@ class FakeStt:
     error: str | None = None
     seconds: float = 3.0
     received: list[bytes] = field(default_factory=list[bytes])
+    hints: list[str | None] = field(default_factory=list[str | None])
     down: bool = False
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
@@ -139,6 +140,7 @@ class FakeStt:
             raise httpx2.ConnectError("stt is down")
         assert request.url.path == "/transcribe"
         self.received.append(request.content)
+        self.hints.append(request.url.params.get("hint"))
         if self.status != 200:
             body: dict[str, Any] = {"error": self.error}
             if self.error == "too_long":

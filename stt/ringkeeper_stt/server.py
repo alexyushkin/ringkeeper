@@ -11,10 +11,13 @@ import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol
+from urllib.parse import parse_qs, urlsplit
 
 from ringkeeper_stt.config import SttConfig
 
 logger = logging.getLogger(__name__)
+
+MAX_HINT_CHARS = 500
 
 
 class DecodeError(Exception):
@@ -36,7 +39,7 @@ class Transcript:
 class Engine(Protocol):
     def decode(self, data: bytes) -> Decoded: ...
 
-    def transcribe(self, audio: Decoded) -> Transcript: ...
+    def transcribe(self, audio: Decoded, hint: str | None = None) -> Transcript: ...
 
 
 class Service:
@@ -47,7 +50,7 @@ class Service:
         self.config = config
         self._lock = threading.Lock()
 
-    def transcribe(self, data: bytes) -> tuple[int, dict[str, Any]]:
+    def transcribe(self, data: bytes, hint: str | None = None) -> tuple[int, dict[str, Any]]:
         if len(data) > self.config.max_bytes:
             return 413, {"error": "too_large", "max_bytes": self.config.max_bytes}
         try:
@@ -62,7 +65,7 @@ class Service:
                 "error": "too_long", "seconds": seconds, "max_seconds": self.config.max_seconds,
             }  # fmt: skip
         with self._lock:
-            result = self.engine.transcribe(audio)
+            result = self.engine.transcribe(audio, (hint or "")[:MAX_HINT_CHARS] or None)
         return 200, {"text": result.text, "language": result.language, "duration": seconds}
 
 
@@ -86,7 +89,8 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
                 self._send(404, {"error": "not_found"})
 
         def do_POST(self) -> None:
-            if self.path != "/transcribe":
+            url = urlsplit(self.path)
+            if url.path != "/transcribe":
                 self._send(404, {"error": "not_found"})
                 return
             try:
@@ -100,14 +104,15 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
                 self._send(413, {"error": "too_large", "max_bytes": service.config.max_bytes})
                 return
             try:
-                status, body = service.transcribe(self.rfile.read(length))
+                hint = parse_qs(url.query).get("hint", [""])[0]
+                status, body = service.transcribe(self.rfile.read(length), hint)
             except Exception:
                 logger.exception("transcription failed")
                 status, body = 500, {"error": "failed"}
             self._send(status, body)
 
         def log_message(self, format: str, *args: Any) -> None:
-            logger.info("%s %s", self.command, self.path)
+            logger.info("%s %s", self.command, urlsplit(self.path).path)  # never the hint
 
     return Handler
 

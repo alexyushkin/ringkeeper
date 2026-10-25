@@ -11,9 +11,12 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx2
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError
+from ringkeeper.models import Instance, Project
 from ringkeeper.telegram.api import BotApi, FileTooLargeError, TelegramError
 
 # Tests swap in httpx2.MockTransport.
@@ -23,6 +26,9 @@ NOT_SET_UP = "Voice isn't set up on this install. Type it instead."
 UNREACHABLE = "I couldn't transcribe that right now. Try again in a minute, or type it."
 UNREADABLE = "I couldn't read that audio. Try recording it again."
 SILENT = "I couldn't hear anything in that. Try again."
+# Words the speech model wouldn't know how to spell, besides project and connection names.
+COMMON_WORDS = ("Ringkeeper", "n8n", "Supabase", "README")
+HINT_CHARS = 500
 
 
 class VoiceError(RingkeeperError):
@@ -78,10 +84,13 @@ class SttClient:
     def close(self) -> None:
         self._http.close()
 
-    def transcribe(self, audio: bytes) -> str:
+    def transcribe(self, audio: bytes, hint: str | None = None) -> str:
         try:
             response = self._http.post(
-                "/transcribe", content=audio, headers={"Content-Type": "application/octet-stream"}
+                "/transcribe",
+                content=audio,
+                params={"hint": hint} if hint else None,
+                headers={"Content-Type": "application/octet-stream"},
             )
             body = cast(dict[str, Any], response.json())
         except (httpx2.HTTPError, ValueError):
@@ -102,6 +111,17 @@ class SttClient:
                 raise VoiceError(UNREACHABLE)
 
 
+def vocabulary(session: Session) -> str:
+    """Names the speaker is likely to say, as a hint for the speech model."""
+    names: list[str] = []
+    for project in session.scalars(select(Project).order_by(Project.name)):
+        names += [project.name, *project.aliases]
+    names += session.scalars(select(Instance.name).order_by(Instance.name))
+    names += COMMON_WORDS
+    hint = ", ".join(dict.fromkeys(n for n in names if n))
+    return hint[:HINT_CHARS].rsplit(", ", 1)[0] if len(hint) > HINT_CHARS else hint
+
+
 def check_limits(note: VoiceNote, settings: Settings) -> None:
     """From Telegram's metadata alone, before a byte is downloaded."""
     if note.seconds > settings.stt_max_seconds:
@@ -110,7 +130,9 @@ def check_limits(note: VoiceNote, settings: Settings) -> None:
         raise too_big(note.size, settings.stt_max_bytes)
 
 
-def transcribe(api: BotApi, stt: SttClient, note: VoiceNote, settings: Settings) -> str:
+def transcribe(
+    api: BotApi, stt: SttClient, note: VoiceNote, settings: Settings, hint: str | None = None
+) -> str:
     check_limits(note, settings)
     try:
         info = api.get_file(note.file_id)
@@ -123,6 +145,6 @@ def transcribe(api: BotApi, stt: SttClient, note: VoiceNote, settings: Settings)
     except (TelegramError, KeyError):
         raise VoiceError("I couldn't download that voice note from Telegram. Try again.") from None
     try:
-        return stt.transcribe(audio)
+        return stt.transcribe(audio, hint)
     finally:
         del audio
