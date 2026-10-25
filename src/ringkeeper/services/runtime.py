@@ -50,6 +50,7 @@ class RuntimeIn(Input):
     max_concurrent_workers: Annotated[int, Field(ge=1, le=64)] | None = None
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None
     paused: bool | None = None
+    start_at_login: bool | None = None  # desktop mode only
 
 
 EDITABLE = tuple(RuntimeIn.model_fields)

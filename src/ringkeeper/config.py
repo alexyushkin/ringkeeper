@@ -9,7 +9,14 @@ from ringkeeper.models import AuthMode
 
 
 def _env_file() -> str | None:
-    """`.env` by default; RINGKEEPER_ENV_FILE picks another, or "" for none (tests)."""
+    """`.env` by default; RINGKEEPER_ENV_FILE picks another, or "" for none (tests).
+
+    Never in desktop mode: the app's settings live in its data folder, and a
+    `.env` that happens to sit in the working folder (a Docker install's, say)
+    must not point it at another database or workspaces folder.
+    """
+    if os.environ.get("RINGKEEPER_MODE") == "desktop":
+        return None
     return os.environ.get("RINGKEEPER_ENV_FILE", ".env") or None
 
 
@@ -124,6 +131,8 @@ class Settings(BaseSettings):
     retention_days: int = 90
     # "Stop everything": no new sessions start and the router waits.
     paused: bool = False
+    # Desktop mode: the app shell starts Ringkeeper when the user signs in.
+    start_at_login: bool = True
 
     # The web app (M5). The api writes the admin token here for the web service
     # (a volume only the two of them mount), and the setup code into data_dir.
@@ -153,4 +162,4 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     # Not cached: tests and the CLI may point at a different database via env.
-    return Settings()
+    return Settings(_env_file=_env_file())  # pyright: ignore[reportCallIssue]

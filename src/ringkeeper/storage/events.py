@@ -62,6 +62,7 @@ class _PostgresSubscription:
 
 
 # The in-process bus (SQLite).
+_CLOSED: Notification = ("", "")
 _subscribers: set["_LocalSubscription"] = set()
 _lock = threading.Lock()
 
@@ -85,11 +86,13 @@ class _LocalSubscription:
             try:
                 found.append(self._queue.get_nowait())
             except queue.Empty:
-                return found
+                return [item for item in found if item is not _CLOSED]
 
     def close(self) -> None:
+        """Also wakes a get() waiting in another thread, so shutting down doesn't wait for it."""
         with _lock:
             _subscribers.discard(self)
+        self._queue.put(_CLOSED)
 
 
 def publish(items: Iterable[Notification]) -> None:

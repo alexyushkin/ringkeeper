@@ -104,6 +104,17 @@ def list_pending(session: Session, *, kind: DecisionKind | None = None) -> Seque
     return session.scalars(query).all()
 
 
+def list_waiting(session: Session) -> Sequence[Decision]:
+    """Pending and not yet past expiry, without marking anything: a read for polling."""
+    now = datetime.now(UTC)
+    query = (
+        select(Decision)
+        .where(Decision.status == DecisionStatus.PENDING, Decision.expires_at > now)
+        .order_by(Decision.created_at)
+    )
+    return session.scalars(query).all()
+
+
 def list_decisions(
     session: Session,
     *,

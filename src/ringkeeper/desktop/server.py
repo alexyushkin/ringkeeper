@@ -9,8 +9,11 @@ The front door (`FrontDoor`) is the only thing listening for the app:
 - it answers only on its own address (127.0.0.1 / localhost and its port),
   so a web page can't reach it through DNS rebinding (421 otherwise);
 - the shell trades the launch secret for a one-time start code
-  (POST /desktop/codes), and opens the window at /desktop/start?code=...;
-  that sets an httpOnly, SameSite=Strict cookie for this launch;
+  (POST /desktop/codes), and opens the window at /desktop/start?code=...
+  (&next=/a/page to land there); that sets an httpOnly, SameSite=Strict
+  cookie for this launch;
+- with the same secret the shell reaches the API (/desktop/api/...: the
+  tray's status, pausing) and stops Ringkeeper (POST /desktop/shutdown);
 - /bff/... is the API, for a request carrying that cookie, and for changes
   also the CSRF header (the web app's own scheme) and our own Origin;
 - everything else is the web app's static files, if there are any.
@@ -32,10 +35,11 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import IO, Any
+from urllib.parse import unquote
 
 import uvicorn
 from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Response
@@ -111,14 +115,29 @@ def _cookies(headers: dict[bytes, bytes]) -> dict[str, str]:
     return {name: morsel.value for name, morsel in jar.items()}
 
 
+def _local_path(path: str) -> str:
+    """Where to go after /desktop/start: a page of this app, never another site."""
+    if path.startswith("/") and not path.startswith("//") and "\\" not in path:
+        return path
+    return "/"
+
+
 def _same(a: str | None, b: str) -> bool:
     return a is not None and hmac.compare_digest(a.encode(), b.encode())
 
 
 class FrontDoor:
-    def __init__(self, api: ASGIApp, launch: Launch, port: int, web_dir: Path | None) -> None:
+    def __init__(
+        self,
+        api: ASGIApp,
+        launch: Launch,
+        port: int,
+        web_dir: Path | None,
+        shutdown: Callable[[], None] | None = None,
+    ) -> None:
         self.api = api
         self.launch = launch
+        self.shutdown = shutdown
         self.web_dir = web_dir.resolve() if web_dir else None
         self.hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
         self.origins = {f"http://{host}" for host in self.hosts}
@@ -140,13 +159,20 @@ class FrontDoor:
         if path == "/desktop/health":
             response: Response = JSONResponse({"status": "ok"})
         elif path == "/desktop/codes" and method == "POST":
-            response = self._codes(headers)
+            response = self._codes() if self._from_shell(headers) else self._no_secret()
+        elif path == "/desktop/shutdown" and method == "POST":
+            response = self._shutdown() if self._from_shell(headers) else self._no_secret()
+        elif path.startswith("/desktop/api/"):
+            if self._from_shell(headers):
+                await self.api(self._to_api(scope, path, "/desktop/api"), receive, send)
+                return
+            response = self._no_secret()
         elif path == "/desktop/start" and method == "GET":
             response = self._start(scope)
         elif path == "/bff" or path.startswith("/bff/"):
             refusal = self._refuse_bff(method, headers)
             if refusal is None:
-                await self.api(self._to_api(scope, path), receive, send)
+                await self.api(self._to_api(scope, path, "/bff"), receive, send)
                 return
             response = refusal
         else:
@@ -155,12 +181,23 @@ class FrontDoor:
 
     # --- The shell and the window ---
 
-    def _codes(self, headers: dict[bytes, bytes]) -> Response:
+    def _from_shell(self, headers: dict[bytes, bytes]) -> bool:
         auth = headers.get(b"authorization", b"").decode("latin-1")
         scheme, _, presented = auth.partition(" ")
-        if scheme.lower() != "bearer" or not self.launch.is_secret(presented.strip()):
-            return JSONResponse({"detail": "the launch secret is required"}, status_code=401)
+        return scheme.lower() == "bearer" and self.launch.is_secret(presented.strip())
+
+    @staticmethod
+    def _no_secret() -> Response:
+        return JSONResponse({"detail": "the launch secret is required"}, status_code=401)
+
+    def _codes(self) -> Response:
         return JSONResponse({"code": self.launch.new_code()})
+
+    def _shutdown(self) -> Response:
+        if self.shutdown is None:
+            return JSONResponse({"detail": "this instance can't be stopped this way"}, 409)
+        self.shutdown()
+        return JSONResponse({"stopping": True}, status_code=202)
 
     def _start(self, scope: Scope) -> Response:
         query = dict(
@@ -169,7 +206,7 @@ class FrontDoor:
         )  # fmt: skip
         if not self.launch.take_code(query.get("code", "")):
             return self._plain(403, "This link has expired. Open Ringkeeper again.")
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse(_local_path(unquote(query.get("next", ""))), status_code=303)
         response.set_cookie(
             SESSION_COOKIE, self.launch.session, httponly=True, samesite="strict", path="/"
         )
@@ -195,8 +232,8 @@ class FrontDoor:
         return None
 
     @staticmethod
-    def _to_api(scope: Scope, path: str) -> Scope:
-        inner = path.removeprefix("/bff") or "/"
+    def _to_api(scope: Scope, path: str, prefix: str) -> Scope:
+        inner = path.removeprefix(prefix) or "/"
         state = dict(scope.get("state") or {})
         state[DESKTOP_MARK] = True
         return {
@@ -313,11 +350,15 @@ def run(
         migrate.upgrade(settings.database_url)
         bootstrap.run(settings)  # the keychain's master key, before the gateway needs it
         launch = Launch()
-        front = FrontDoor(create_app(), launch, api_port, web_dir)
+        stopping = stop or threading.Event()  # set by the caller or the shell
+        front = FrontDoor(create_app(), launch, api_port, web_dir, shutdown=stopping.set)
         gateway = uvicorn.Server(
             uvicorn.Config(create_gateway(), log_level="warning", lifespan="on")
         )
-        api = uvicorn.Server(uvicorn.Config(front, log_level="warning", lifespan="on"))
+        # The window's live-updates stream stays open; don't let it hold up Quit.
+        api = uvicorn.Server(
+            uvicorn.Config(front, log_level="warning", lifespan="on", timeout_graceful_shutdown=3)
+        )
         gateway_thread = threading.Thread(
             target=lambda: asyncio.run(gateway.serve(sockets=[gateway_sock])),
             daemon=True, name="rk-gateway",
@@ -326,10 +367,9 @@ def run(
         runtime: Path | None = None
 
         async def watch_stop() -> None:
-            while stop is not None and not stop.is_set():
+            while not stopping.is_set():
                 await asyncio.sleep(0.1)
-            if stop is not None:
-                api.should_exit = True
+            api.should_exit = True
 
         async def serve() -> None:
             nonlocal runtime

@@ -9,7 +9,13 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ringkeeper import __version__
-from ringkeeper.api import live_routes, manage_routes, owner_routes, work_routes
+from ringkeeper.api import (
+    desktop_routes,
+    live_routes,
+    manage_routes,
+    owner_routes,
+    work_routes,
+)
 from ringkeeper.api.routes import public, router
 from ringkeeper.api.supervisor import Supervisor
 from ringkeeper.config import Settings, get_settings
@@ -154,6 +160,8 @@ def create_app() -> FastAPI:
     app.include_router(manage_routes.router)
     app.include_router(work_routes.router)
     app.include_router(live_routes.router)
+    if get_settings().mode == "desktop":
+        app.include_router(desktop_routes.router)
     app.add_middleware(BodyLimit)
     app.add_exception_handler(RequestValidationError, _invalid)
     app.add_exception_handler(NotFoundError, _not_found)

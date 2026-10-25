@@ -18,8 +18,8 @@ import pytest
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
-from ringkeeper.models import TaskStatus
-from ringkeeper.services import tasks
+from ringkeeper.models import DecisionKind, TaskStatus
+from ringkeeper.services import inbox, tasks
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
 from tests.test_vault import MemoryKeyring
@@ -70,6 +70,13 @@ def window(info: dict[str, Any]) -> httpx2.Client:
     csrf = client.cookies[server.CSRF_COOKIE]
     client.headers[server.CSRF_HEADER.decode()] = csrf
     return client
+
+
+def shell(info: dict[str, Any]) -> httpx2.Client:
+    """The app shell itself: the launch secret on every call, no cookies."""
+    return httpx2.Client(
+        base_url=info["url"], timeout=30, headers={"Authorization": f"Bearer {info['secret']}"}
+    )
 
 
 def test_it_runs_on_localhost_with_sqlite_and_the_keychain(desktop: dict[str, Any]) -> None:
@@ -148,3 +155,85 @@ def test_the_front_door_serves_the_exported_app(tmp_path: Path) -> None:
     assert client.get("/../secret.txt").text != "outside"
     assert client.get("/%2e%2e/secret.txt").text != "outside"
     assert client.get("/", headers={"Host": "127.0.0.1:9999"}).status_code == 421
+
+
+def test_the_shell_reads_the_tray_state_and_pauses(desktop: dict[str, Any]) -> None:
+    tray = shell(desktop)
+    assert tray.get("/desktop/api/desktop/status").json() == {
+        "paused": False, "start_at_login": True, "waiting": [],
+    }  # fmt: skip
+    with session_scope() as session:
+        inbox.create(
+            session, get_settings(), DecisionKind.QUESTION,
+            {"question": "Which table has the plans?\n```sql\nselect * from plans;\n```",
+             "role": "worker"},
+            project="acme-web",
+        )  # fmt: skip
+    waiting = tray.get("/desktop/api/desktop/status").json()["waiting"]
+    assert [(w["kind"], w["project"]) for w in waiting] == [("question", "acme-web")]
+    assert "select" not in waiting[0]["summary"].lower()  # never raw SQL in a notification
+    assert len(waiting[0]["summary"]) <= 160
+
+    assert tray.patch("/desktop/api/settings", json={"paused": True}).status_code == 200
+    assert tray.get("/desktop/api/desktop/status").json()["paused"] is True
+
+    anyone = httpx2.Client(base_url=desktop["url"], timeout=30)
+    assert anyone.get("/desktop/api/desktop/status").status_code == 401
+    guess = anyone.get("/desktop/api/settings", headers={"Authorization": "Bearer guess"})
+    assert guess.status_code == 401
+    assert window(desktop).get("/desktop/api/desktop/status").status_code == 401  # cookie isn't it
+
+
+def test_the_shell_stops_everything(desktop: dict[str, Any]) -> None:
+    anyone = httpx2.Client(base_url=desktop["url"], timeout=30)
+    assert anyone.post("/desktop/shutdown").status_code == 401
+    assert shell(desktop).post("/desktop/shutdown").status_code == 202
+    runtime = desktop["data_dir"] / server.RUNTIME_FILE
+    deadline = time.monotonic() + 30
+    while runtime.exists():  # the last thing run() does on the way out
+        assert time.monotonic() < deadline, "still running after shutdown"
+        time.sleep(0.1)
+    with pytest.raises(httpx2.TransportError):
+        anyone.get("/desktop/health")
+
+
+def test_desktop_mode_ignores_a_stray_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text(
+        "RINGKEEPER_DATABASE_URL=postgresql+psycopg://elsewhere/db\n"
+        "RINGKEEPER_WORKSPACES_ROOT=/srv/other\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    for name in ("RINGKEEPER_ENV_FILE", "RINGKEEPER_DATABASE_URL", "RINGKEEPER_WORKSPACES_ROOT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("RINGKEEPER_MODE", "server")
+    assert get_settings().workspaces_root == "/srv/other"  # server mode reads it, as before
+    monkeypatch.setenv("RINGKEEPER_MODE", "desktop")
+    monkeypatch.setenv("RINGKEEPER_DATA_DIR", str(tmp_path / "data"))
+    settings = get_settings()
+    assert settings.database_url.startswith("sqlite:///")
+    assert settings.workspaces_root is None
+
+
+def test_the_start_link_opens_a_page_of_this_app_only() -> None:
+    from starlette.applications import Starlette  # noqa: PLC0415
+    from starlette.testclient import TestClient  # noqa: PLC0415
+
+    launch = server.Launch()
+    client = TestClient(
+        server.FrontDoor(Starlette(), launch, 8765, None),
+        base_url="http://127.0.0.1:8765",
+        follow_redirects=False,
+    )
+    for given, expected in [
+        ("/approvals", "/approvals"),
+        ("%2Fapprovals", "/approvals"),
+        ("//evil.example", "/"),
+        ("https://evil.example", "/"),
+        ("/%5Cevil.example", "/"),
+        ("", "/"),
+    ]:
+        opened = client.get(f"/desktop/start?code={launch.new_code()}&next={given}")
+        assert (opened.status_code, opened.headers["location"]) == (303, expected), given
