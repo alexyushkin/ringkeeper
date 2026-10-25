@@ -3,6 +3,11 @@
 One 32-byte master key protects everything: the file vault's encryption key
 and the worker-token signing key are both derived from it with HKDF, each with
 its own label. Lose it and both the vault and every outstanding token are gone.
+
+Where it lives: RINGKEEPER_MASTER_KEY if set; otherwise data_dir/master.key
+in server mode, or one item in the OS keychain in desktop mode (Windows
+Credential Manager, macOS Keychain). Only the key goes in the keychain; the
+secrets stay in the encrypted vault file.
 """
 
 import base64
@@ -20,6 +25,7 @@ from ringkeeper.errors import RingkeeperError
 
 KEY_BYTES = 32
 KEY_FILE_NAME = "master.key"
+KEYCHAIN_ACCOUNT = "master-key"
 
 
 class MasterKeyError(RingkeeperError):
@@ -44,10 +50,40 @@ def key_file_path(settings: Settings) -> Path:
     return settings.data_dir / KEY_FILE_NAME
 
 
+def key_location(settings: Settings) -> str:
+    """Where the master key is, in words (for the CLI)."""
+    if settings.master_key is not None:
+        return "RINGKEEPER_MASTER_KEY"
+    if settings.mode == "desktop":
+        return f"the system keychain ({settings.keychain_service} / {KEYCHAIN_ACCOUNT})"
+    return str(key_file_path(settings))
+
+
+def _from_keychain(settings: Settings, *, create: bool) -> bytes:
+    import keyring  # noqa: PLC0415 (desktop mode only)
+    from keyring.errors import KeyringError  # noqa: PLC0415
+
+    source = "the master key in the system keychain"
+    try:
+        stored = keyring.get_password(settings.keychain_service, KEYCHAIN_ACCOUNT)
+        if stored is None:
+            if not create:
+                raise MasterKeyError("no master key in the system keychain yet")
+            keyring.set_password(settings.keychain_service, KEYCHAIN_ACCOUNT, generate_master_key())
+            stored = keyring.get_password(settings.keychain_service, KEYCHAIN_ACCOUNT)
+    except KeyringError as error:
+        raise MasterKeyError(f"the system keychain isn't available: {error}") from None
+    if stored is None:
+        raise MasterKeyError("the system keychain didn't keep the master key")
+    return _decode(stored, source)
+
+
 def load_master_key(settings: Settings, *, create: bool = True) -> bytes:
-    """RINGKEEPER_MASTER_KEY if set, else data_dir/master.key (created on first use)."""
+    """RINGKEEPER_MASTER_KEY if set, else the file or keychain item (created on first use)."""
     if settings.master_key is not None:
         return _decode(settings.master_key.get_secret_value(), "RINGKEEPER_MASTER_KEY")
+    if settings.mode == "desktop":
+        return _from_keychain(settings, create=create)
     path = key_file_path(settings)
     if not path.exists():
         if not create:

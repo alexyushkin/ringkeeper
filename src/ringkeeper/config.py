@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
+from typing import Literal, Self
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ringkeeper.models import AuthMode
@@ -17,6 +18,12 @@ class Settings(BaseSettings):
         env_prefix="RINGKEEPER_", env_file=_env_file(), extra="ignore"
     )
 
+    # server: the Docker install (Postgres, worker containers, owner sign-in).
+    # desktop: the desktop app (SQLite in data_dir, the master key in the OS
+    # keychain). Same core either way; see docs/DESKTOP_PLAN.md.
+    mode: Literal["server", "desktop"] = "server"
+
+    # Desktop mode defaults to data_dir/ringkeeper.db when this isn't set.
     database_url: str = "postgresql+psycopg://ringkeeper:ringkeeper@localhost:5432/ringkeeper"
     # Seconds; fail fast instead of hanging when the database is down.
     database_connect_timeout: int = 10
@@ -24,8 +31,12 @@ class Settings(BaseSettings):
     # Holds vault.json and, unless RINGKEEPER_MASTER_KEY is set, master.key.
     # Only the gateway and the CLI may see this directory; workers never do.
     data_dir: Path = Path(".ringkeeper")
-    # Base64 (32 bytes). Overrides data_dir/master.key when set.
+    # Base64 (32 bytes). Overrides data_dir/master.key (or, in desktop mode,
+    # the keychain item) when set.
     master_key: SecretStr | None = None
+    # Desktop mode: the OS keychain entry (Windows Credential Manager, macOS
+    # Keychain) holding the master key. The secrets themselves stay in the vault file.
+    keychain_service: str = "Ringkeeper"
     # Files the api (root) writes into data_dir are handed to this user, so the
     # gateway (which runs as it) can read them. Compose sets it; the CLI doesn't.
     data_uid: int | None = None
@@ -121,6 +132,12 @@ class Settings(BaseSettings):
     def _empty_key_is_unset(cls, value: object) -> object:
         # Compose passes RINGKEEPER_MASTER_KEY="" when it isn't set in .env.
         return None if value == "" else value
+
+    @model_validator(mode="after")
+    def _desktop_database(self) -> Self:
+        if self.mode == "desktop" and "database_url" not in self.model_fields_set:
+            self.database_url = f"sqlite:///{(self.data_dir / 'ringkeeper.db').as_posix()}"
+        return self
 
 
 def get_settings() -> Settings:

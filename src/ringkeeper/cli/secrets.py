@@ -6,7 +6,7 @@ import typer
 from ringkeeper.cli.common import handle_errors
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.keys import key_file_path, load_master_key
+from ringkeeper.keys import key_file_path, key_location, load_master_key
 from ringkeeper.services import instances
 from ringkeeper.vault import VaultError, get_vault
 
@@ -27,9 +27,9 @@ def init() -> None:
     """Create the master key if there isn't one yet, and say where it lives."""
     settings = get_settings()
     with handle_errors():
-        if settings.master_key is not None:
+        if settings.master_key is not None or settings.mode == "desktop":
             load_master_key(settings)
-            typer.echo("using the master key from RINGKEEPER_MASTER_KEY")
+            typer.echo(f"using the master key from {key_location(settings)}")
             return
         path = key_file_path(settings)
         existed = path.exists()

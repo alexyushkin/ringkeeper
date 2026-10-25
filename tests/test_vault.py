@@ -4,7 +4,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import boto3
+import keyring
 import pytest
+from keyring.backend import KeyringBackend
+from keyring.backends.fail import Keyring as FailKeyring
 from moto import mock_aws
 from pydantic import SecretStr
 from typer.testing import CliRunner
@@ -263,3 +266,74 @@ def test_the_master_key_appears_whole_even_when_created_at_once(data_dir: Path) 
     assert errors == []
     assert len(set(found)) == 1  # one key, the same for everyone
     assert [p.name for p in data_dir.iterdir() if p.name.endswith(".tmp")] == []
+
+
+# --- Desktop mode: the master key in the OS keychain ---
+
+
+class MemoryKeyring(KeyringBackend):
+    """A stand-in for Windows Credential Manager / macOS Keychain."""
+
+    priority = 1  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.items: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.items.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.items[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        self.items.pop((service, username), None)
+
+
+@pytest.fixture
+def keychain() -> Iterator[MemoryKeyring]:
+    previous = keyring.get_keyring()
+    backend = MemoryKeyring()
+    keyring.set_keyring(backend)
+    yield backend
+    keyring.set_keyring(previous)
+
+
+def test_desktop_keeps_only_the_master_key_in_the_keychain(
+    keychain: MemoryKeyring, data_dir: Path
+) -> None:
+    settings = Settings(mode="desktop")
+    first = load_master_key(settings)
+    assert list(keychain.items) == [("Ringkeeper", "master-key")]
+    assert not (data_dir / "master.key").exists()
+    assert load_master_key(Settings(mode="desktop")) == first
+    vault = get_vault(settings)
+    vault.store("file://acme/supabase", CANARY)
+    assert vault.resolve("file://acme/supabase").reveal() == CANARY
+    assert CANARY not in str(keychain.items)  # secrets stay in the vault file
+    assert CANARY not in (data_dir / "vault.json").read_text(encoding="utf-8")
+
+
+def test_desktop_without_a_key_yet(keychain: MemoryKeyring) -> None:
+    with pytest.raises(MasterKeyError, match="no master key in the system keychain"):
+        load_master_key(Settings(mode="desktop"), create=False)
+    assert keychain.items == {}
+
+
+def test_desktop_without_a_keychain() -> None:
+    previous = keyring.get_keyring()
+    keyring.set_keyring(FailKeyring())
+    try:
+        with pytest.raises(MasterKeyError, match="system keychain isn't available"):
+            load_master_key(Settings(mode="desktop"))
+    finally:
+        keyring.set_keyring(previous)
+
+
+def test_desktop_database_defaults_to_the_data_dir(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RINGKEEPER_DATABASE_URL", raising=False)
+    settings = Settings(mode="desktop")
+    assert settings.database_url == f"sqlite:///{(data_dir / 'ringkeeper.db').as_posix()}"
+    assert Settings(mode="desktop", database_url="sqlite:///x.db").database_url == "sqlite:///x.db"

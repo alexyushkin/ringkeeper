@@ -62,7 +62,7 @@ def warn_weak_database_password(settings: Settings) -> None:
 
 def ensure_master_key(settings: Settings) -> None:
     load_master_key(settings, create=True)
-    if settings.master_key is None:
+    if settings.master_key is None and settings.mode == "server":
         _hand_over(settings, key_file_path(settings))
 
 
