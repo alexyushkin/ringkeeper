@@ -25,6 +25,30 @@ Python core: routing, connectors, approvals, projects and tasks.
 
 ---
 
+## Progress
+
+- **M1 done** (2026-10-25): storage seams in `src/ringkeeper/storage/`, SQLite schema
+  and migrations, keychain master key, `RINGKEEPER_MODE`. CI: Postgres 3.12/3.13,
+  SQLite, Windows.
+- **M2 done** (2026-10-25): `ringkeeper desktop`; workers as local processes
+  (`workers/process.py`); the front door's lock (`desktop/server.py`); the web app
+  exported as static files (`web/scripts/build-desktop.mjs`). The real Claude Code CLI
+  runs as a desktop worker against a fake API in tests, and CI checks the PowerShell
+  fallback on Windows without Git Bash.
+
+Left for later milestones, found while building M2:
+
+- **M3:** the shell must treat `desktop.json` as stale if `/desktop/health` doesn't
+  answer (a hard kill leaves the file; the lock file still stops a second backend),
+  and must bundle MinGit and put it on `RINGKEEPER_WORKER_TOOLS_PATH`.
+- **M4:** the sign-in, password, passkey and recovery-key screens mean nothing on the
+  desktop; the first-run flow replaces them. Voice is off until the Voice component.
+- **Not verified yet:** a task with a real model (needs your API key, so it's yours to
+  run, or part of the clean-machine test), and anything on macOS.
+- **To watch:** SQLite allows one writer at a time, so a request that holds a write
+  transaction while it waits on the network blocks the others (fine for one user;
+  revisit if it shows).
+
 ## 1. Decisions in one page
 
 | Area | Your default | My recommendation | Why |
