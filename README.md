@@ -437,16 +437,103 @@ docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
   where only the api calls it (`RINGKEEPER_STT_URL`, default `http://stt:9000`;
   empty turns voice off).
 
+## The web app
+
+The `web` service is a phone-first app for running Ringkeeper without a
+terminal: in plain words, with **Clients & projects**, **Connections** and
+**Approvals**, and technical detail behind **Show details**.
+
+| Screen | What it's for |
+| --- | --- |
+| Home | Your conversations, and a box to ask for something: typed, or hold the mic to speak ("I heard: ..." first, nothing is sent until you press Send). A conversation shows how the router split it and live task cards. |
+| Approvals | Everything waiting for you, in full: the SQL of a held write, a plan, a question, which project. Telegram only ever gets summaries; the full text lives here. A held write that deletes or drops data needs the connection's name typed to approve. |
+| Tasks | Every task, by project and status. A task opens as a transcript: what the assistant said, each tool call (arguments and results folded away), check results, the model, steps and estimated cost, the branch, changed files and diff, and Stop and Resume. |
+| Clients & projects | Create and edit projects (description, other names, folder, repository, how independently it works, checks, model overrides) and link connections, with defaults. |
+| Connections | Supabase and n8n forms. Secrets go in once, through password fields, and are never shown again. Production has a red badge. **Test connection** runs one read-only call through the adapter. |
+| Activity | The audit log with filters, and a CSV export per client. |
+| Settings | Claude (API key, or your subscription for personal use), Telegram (including the requests toggle and its privacy note), models, how many tasks at once, transcript retention, passkeys, the recovery key, and **Stop everything**. |
+
+### First start, without a terminal
+
+```bash
+docker compose up -d --build
+docker compose logs api | grep "setup code"     # or open .ringkeeper/setup-code.txt
+```
+
+Open http://localhost:3000. The setup wizard asks for the **setup code** the
+api printed on its first start (so whoever reaches a freshly exposed server
+first can't claim it), then walks through:
+
+1. your login (a password; you can add a passkey later) and your **recovery
+   key**, a file to keep somewhere safe. If you lose it, you'll need to
+   re-enter your connection secrets.
+2. Claude: an Anthropic API key, checked with one free call before it's
+   stored. Under **Advanced**, your Claude subscription instead (personal
+   use on your own account).
+3. Telegram, optional: paste the bot token, message the bot, and the wizard
+   picks up your chat.
+4. your first project, and 5. its first connection, with **Test connection**.
+
+On first start the api creates the master key (`.ringkeeper/master.key`),
+the API admin token and the setup code; the data dir is writable by the api
+for this. Settings you change in the app are stored in the database and win
+over `.env`; they apply without a restart.
+
+### On your phone: HTTPS with Tailscale Serve
+
+Installing the app, the microphone and passkeys all need HTTPS. The simplest
+way for your own install is [Tailscale](https://tailscale.com): your phone
+and the server join your tailnet, and Tailscale Serve gives the app a real
+HTTPS address that only your devices can reach.
+
+```bash
+# on the server, after installing Tailscale and `tailscale up`
+tailscale serve --bg --https=443 http://127.0.0.1:3000
+tailscale serve status      # shows https://<machine>.<tailnet>.ts.net
+```
+
+Then in `.env` set `RINGKEEPER_WEB_ORIGIN=https://<machine>.<tailnet>.ts.net`
+(for passkeys) and `RINGKEEPER_WEB_TRUST_PROXY=1` (sign-in limits then count
+per device), and `docker compose up -d`. On your phone, open that address
+in Safari or Chrome and choose **Add to Home Screen** (iPhone) or **Install
+app** (Android). Turn on HTTPS certificates in the Tailscale admin console
+first (DNS > HTTPS Certificates). A public address with your own domain
+(for client installs on cloud servers) comes in a later milestone.
+
+### How the web app is secured
+
+- **The browser never sees the admin token.** Next.js server code (the
+  backend-for-frontend, `/bff`) calls the API with it. The api writes a copy
+  into a volume only the api and web mount; the web container never mounts
+  the vault or the data dir, and secrets go browser → web → api → vault
+  without being logged.
+- **One owner account**: an argon2id password, sessions in an httpOnly,
+  `Secure`, `SameSite=Strict` cookie (only a hash is stored), ending after a
+  week unused or 30 days at most. Sign-in is rate limited per device and
+  overall. Optional passkeys.
+- **Every change** must come from the app's own origin and carry the CSRF
+  token (double submit). A strict Content-Security-Policy with a fresh nonce
+  per page allows no inline or third-party scripts.
+- **Live updates** are server-sent events from Postgres NOTIFY triggers, with
+  ids only; the app fetches the rest through the API.
+- **Retention**: full transcripts (session events) are deleted after
+  `RINGKEEPER_RETENTION_DAYS` (default 90). Task summaries, decisions and
+  the audit log stay.
+- The service worker caches the app shell only, never pages or data.
+
 ## Quick start
 
 Requirements: Docker with Compose, and [uv](https://docs.astral.sh/uv/).
+
+The web app's wizard does all of this without a terminal (see
+[The web app](#the-web-app)). From the CLI instead:
 
 ```bash
 cp .env.example .env                # then set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
 uv run ringkeeper secret init        # creates .ringkeeper/master.key: back it up
 uv run ringkeeper auth login         # the Anthropic API key workers and the router use
 docker compose --profile worker build worker
-docker compose up -d --build        # postgres, api (session manager, router), gateway
+docker compose up -d --build        # postgres, api (session manager, router), gateway, web
 uv run ringkeeper registry apply examples/registry.yaml
 curl http://localhost:8000/health
 curl http://localhost:8100/health
@@ -542,7 +629,22 @@ OpenAPI schema and docs pages are off.
 | `POST /messages`                      | queue a message for the router (`202`)       |
 | `GET /threads/{id}`                   | a thread's messages and routing results      |
 | `GET /decisions`, `/decisions/{id}`   | the inbox (`?status=`, `?kind=`), in full    |
-| `POST /decisions/{id}/answer`         | `{"choice": ..., "text": ..., "by": ...}`    |
+| `POST /decisions/{id}/answer`         | `{"choice": ..., "text": ..., "by": ...}`; `confirm` (the connection's name) for a write that deletes data |
+
+The web app's endpoints need the admin token **and** a signed-in owner
+(`X-Ringkeeper-Session`, which the web app's server adds). Writes are
+audited as `changed`, and secret endpoints are write-only:
+
+| Area | Endpoints |
+| --- | --- |
+| Setup and sign-in | `GET /setup/status`, `POST /setup/owner` (with the setup code), `POST /setup/recovery-key`, `POST /auth/login`, `/auth/logout`, `GET /auth/session`, `POST /auth/password`, passkeys under `/auth/passkeys` |
+| Settings | `GET`/`PATCH /settings`, `POST /stop-all`, `POST /resume-all` |
+| Secrets (write-only) | `PUT /secrets/claude`, `PUT /secrets/telegram`, `PUT /connections/{name}/secret`; `GET /telegram/detect` |
+| Projects | `POST /projects`, `PATCH`/`DELETE /projects/{name}`, `PUT`/`DELETE /projects/{name}/connections/{connection}` |
+| Connections | `GET`/`POST /connections`, `PATCH`/`DELETE /connections/{name}`, `POST /connections/{name}/test` |
+| Work | `GET /threads`, `/threads/{id}/tasks`, `/tasks`, `/tasks/{id}`, `/tasks/{id}/events`; `POST /tasks/{id}/stop`, `/tasks/{id}/resume` |
+| Activity | `GET /audit`, `GET /audit.csv` |
+| Voice and live | `POST /voice/transcribe` (audio in, transcript out, nothing kept), `GET /events` (server-sent events) |
 
 ```bash
 TOKEN=$(uv run ringkeeper auth api-token)

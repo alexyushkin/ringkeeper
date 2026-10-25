@@ -68,3 +68,53 @@ jobs:
           grep " ${tarball}\$" checksums.txt | sha256sum --check --strict
           tar -xzf "${tarball}" gitleaks
       - run: ./gitleaks git --redact --verbose .
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.11.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm audit --audit-level=high
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  e2e:
+    # The whole stack in Docker (fresh each run) and Chromium with a fake
+    # microphone playing tests/fixtures/voice-works.wav.
+    runs-on: ubuntu-latest
+    needs: [web]
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.11.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - if: failure()
+        run: docker compose -p ringkeeper-e2e -f ../docker-compose.yml -f e2e/compose.e2e.yml --profile stt --profile demo logs --no-color > e2e-stack.log 2>&1 || true
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-report
+          path: |
+            web/playwright-report
+            web/test-results
+            web/e2e-stack.log
+          retention-days: 7
