@@ -237,3 +237,29 @@ def test_delete_and_concurrent_writes_keep_every_entry(data_dir: Path) -> None:
     with pytest.raises(VaultError):
         vault.resolve("file://t/3")
     assert vault.resolve("file://t/4").reveal() == "value-4"
+
+
+def test_the_master_key_appears_whole_even_when_created_at_once(data_dir: Path) -> None:
+    import threading  # noqa: PLC0415
+
+    from ringkeeper.config import get_settings  # noqa: PLC0415
+    from ringkeeper.keys import load_master_key  # noqa: PLC0415
+
+    settings = get_settings()
+    found: list[bytes] = []
+    errors: list[Exception] = []
+
+    def load() -> None:
+        try:
+            found.append(load_master_key(settings))
+        except Exception as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=load) for _ in range(32)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    assert len(set(found)) == 1  # one key, the same for everyone
+    assert [p.name for p in data_dir.iterdir() if p.name.endswith(".tmp")] == []

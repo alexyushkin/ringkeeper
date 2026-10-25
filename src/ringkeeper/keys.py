@@ -7,6 +7,7 @@ its own label. Lose it and both the vault and every outstanding token are gone.
 
 import base64
 import binascii
+import contextlib
 import os
 import secrets
 from pathlib import Path
@@ -52,14 +53,20 @@ def load_master_key(settings: Settings, *, create: bool = True) -> bytes:
         if not create:
             raise MasterKeyError(f"no master key: set RINGKEEPER_MASTER_KEY or create {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Written in full to a private temporary file, then linked into place:
+        # the key file appears complete or not at all, and when two processes
+        # start at once only the first link wins (the other reads that key).
+        tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
-            # O_EXCL: two processes starting at once must not both write a key.
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            pass
-        else:
             with os.fdopen(fd, "w", encoding="ascii") as handle:
                 handle.write(generate_master_key() + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            with contextlib.suppress(FileExistsError):
+                os.link(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
     return _decode(path.read_text(encoding="ascii"), str(path))
 
 
