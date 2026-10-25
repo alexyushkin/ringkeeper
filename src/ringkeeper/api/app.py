@@ -6,10 +6,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ringkeeper import __version__
+from ringkeeper.api import live_routes, manage_routes, owner_routes, work_routes
 from ringkeeper.api.routes import public, router
+from ringkeeper.api.supervisor import Supervisor
 from ringkeeper.config import get_settings
-from ringkeeper.errors import NotFoundError, RuleViolationError
+from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
 from ringkeeper.scrub import install_log_scrubbing
+from ringkeeper.services import owner
 
 
 async def _not_found(_request: Request, error: Exception) -> JSONResponse:
@@ -20,34 +23,38 @@ async def _rule_violation(_request: Request, error: Exception) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
+async def _auth_error(_request: Request, error: Exception) -> JSONResponse:
+    return JSONResponse(status_code=401, content={"detail": str(error)})
+
+
+async def _too_many(_request: Request, error: Exception) -> JSONResponse:
+    retry = str(getattr(error, "retry_after", 900))
+    return JSONResponse(
+        status_code=429, content={"detail": str(error)}, headers={"Retry-After": retry}
+    )
+
+
 @asynccontextmanager
-async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """Run the session manager and router alongside the API when configured to.
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Run the session manager, router and Telegram bridge alongside the API.
 
     Only the api service sets RINGKEEPER_SESSION_MANAGER, and only it mounts the
-    Docker socket (which makes it root-equivalent on the host).
+    Docker socket (which makes it root-equivalent on the host). It also does
+    the first-start setup (master key, admin token, setup code). The router and
+    the bridge run under the supervisor, which applies settings changes live.
     """
     stop = threading.Event()
     settings = get_settings()
-    if settings.router:
-        from ringkeeper.router.model import AgentSdkModel  # noqa: PLC0415 (Agent SDK: only here)
-        from ringkeeper.router.service import Router  # noqa: PLC0415
-        from ringkeeper.vault import get_vault  # noqa: PLC0415
+    if settings.session_manager:
+        from ringkeeper import bootstrap  # noqa: PLC0415
 
+        bootstrap.run(settings)
+    supervisor = Supervisor(settings)
+    app.state.supervisor = supervisor
+    if settings.session_manager or settings.router or settings.telegram:
         install_log_scrubbing()
-        router = Router(AgentSdkModel(get_vault(settings), settings), settings)
         threading.Thread(
-            target=router.run_forever, args=(stop,), daemon=True, name="rk-router"
-        ).start()
-    if settings.telegram:
-        from ringkeeper.telegram.api import from_vault  # noqa: PLC0415
-        from ringkeeper.telegram.bridge import Bridge  # noqa: PLC0415
-        from ringkeeper.vault import get_vault  # noqa: PLC0415
-
-        install_log_scrubbing()
-        bridge = Bridge(from_vault(get_vault(settings), settings), settings)
-        threading.Thread(
-            target=bridge.run_forever, args=(stop,), daemon=True, name="rk-telegram"
+            target=supervisor.run_forever, args=(stop,), daemon=True, name="rk-supervisor"
         ).start()
     if settings.session_manager:
         from ringkeeper.vault import get_vault  # noqa: PLC0415 (Docker and the vault: only here)
@@ -78,6 +85,13 @@ def create_app() -> FastAPI:
     )
     app.include_router(public)
     app.include_router(router)
+    app.include_router(owner_routes.router)
+    app.include_router(manage_routes.router)
+    app.include_router(work_routes.router)
+    app.include_router(live_routes.router)
     app.add_exception_handler(NotFoundError, _not_found)
     app.add_exception_handler(RuleViolationError, _rule_violation)
+    app.add_exception_handler(AlreadyExistsError, _rule_violation)
+    app.add_exception_handler(owner.AuthError, _auth_error)
+    app.add_exception_handler(owner.TooManyAttemptsError, _too_many)
     return app

@@ -94,6 +94,23 @@ class BotApi:
         return b"".join(chunks)
 
 
+def recent_chats(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The chats in a batch of updates (for picking the ones to allow), newest last."""
+    seen: dict[int, dict[str, Any]] = {}
+    for update in updates:
+        message = cast(dict[str, Any], update.get("message") or {})
+        chat = cast(dict[str, Any], message.get("chat") or {})
+        if "id" in chat:
+            names = (chat.get("first_name"), chat.get("last_name"))
+            seen[int(chat["id"])] = {
+                "id": int(chat["id"]),
+                "type": str(chat.get("type", "-")),
+                "name": chat.get("title") or " ".join(str(n) for n in names if n) or "-",
+                "username": chat.get("username"),
+            }
+    return list(seen.values())
+
+
 def from_vault(vault: "Vault", settings: "Settings") -> BotApi:
     try:
         token = vault.resolve(settings.telegram_bot_token_ref).reveal()

@@ -25,6 +25,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -94,6 +95,7 @@ class AuditOutcome(enum.StrEnum):
     EXECUTED = "executed"
     FAILED = "failed"
     ANSWERED = "answered"  # a decision was answered: who and how are recorded
+    CHANGED = "changed"  # the owner changed settings, a project, a connection or a secret
 
 
 decision_status_enum = Enum(DecisionStatus, name="decision_status", values_callable=_enum_values)
@@ -240,6 +242,10 @@ class Instance(TimestampMixin, Base):
     base_url: Mapped[str | None] = mapped_column(Text)
     secret_ref: Mapped[str] = mapped_column(Text)
     owner: Mapped[str] = mapped_column(Text)
+    # The last "Test connection" (a read-only probe): when, whether it worked, and what it said.
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_test_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_test_message: Mapped[str | None] = mapped_column(Text)
 
     bindings: Mapped[list["ProjectInstance"]] = relationship(
         back_populates="instance", passive_deletes="all", passive_updates=True
@@ -492,10 +498,13 @@ class WorkerSession(Base):
 
 
 class SessionEvent(Base):
-    """One JSON line from a worker's stdout, scrubbed."""
+    """One JSON line from a worker's stdout, scrubbed. Deleted after `retention_days`."""
 
     __tablename__ = "session_events"
-    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_session_events_seq"),)
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_session_events_seq"),
+        Index("ix_session_events_at", "at"),  # the retention job
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
@@ -684,3 +693,62 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class Owner(Base):
+    """The one owner account of the web app (single row)."""
+
+    __tablename__ = "owner"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_owner_single_row"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, server_default=text("1"))
+    password_hash: Mapped[str] = mapped_column(Text)  # argon2id
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    password_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class OwnerSession(Base):
+    """A signed-in browser. Only a hash of the session token is stored."""
+
+    __tablename__ = "owner_sessions"
+
+    token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    method: Mapped[str] = mapped_column(Text)  # password, passkey
+    user_agent: Mapped[str | None] = mapped_column(Text)
+
+
+class Passkey(Base):
+    """A WebAuthn credential registered by the owner."""
+
+    __tablename__ = "passkeys"
+    __table_args__ = (UniqueConstraint("credential_id", name="uq_passkeys_credential_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    name: Mapped[str] = mapped_column(Text)
+    transports: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LoginAttempt(Base):
+    """Sign-in and setup-code attempts, for rate limiting (per client and overall)."""
+
+    __tablename__ = "login_attempts"
+    __table_args__ = (Index("ix_login_attempts_key_at", "key", "at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(Text)  # e.g. "ip:203.0.113.7", "all"
+    ok: Mapped[bool] = mapped_column(Boolean)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

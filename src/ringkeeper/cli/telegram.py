@@ -1,4 +1,4 @@
-from typing import Annotated, Any, cast
+from typing import Annotated
 
 import typer
 
@@ -6,7 +6,7 @@ from ringkeeper.claude_auth import normalize
 from ringkeeper.cli.auth import read_credential
 from ringkeeper.cli.common import echo_table, fail, handle_errors
 from ringkeeper.config import get_settings
-from ringkeeper.telegram.api import BotApi, TelegramError, from_vault
+from ringkeeper.telegram.api import BotApi, TelegramError, from_vault, recent_chats
 from ringkeeper.vault import get_vault
 
 app = typer.Typer(
@@ -43,17 +43,16 @@ def chats() -> None:
             updates = api.get_updates(None, 0)
         finally:
             api.close()
-    seen: dict[int, list[str]] = {}
-    for update in updates:
-        message = cast(dict[str, Any], update.get("message") or {})
-        chat = cast(dict[str, Any], message.get("chat") or {})
-        if "id" in chat:
-            name = chat.get("username") or chat.get("title") or chat.get("first_name") or "-"
-            allowed = "yes" if chat["id"] in settings.telegram_chat_ids else "no"
-            seen[int(chat["id"])] = [str(chat["id"]), str(chat.get("type", "-")), name, allowed]
+    seen = [
+        [
+            str(chat["id"]), chat["type"], chat["username"] or chat["name"],
+            "yes" if chat["id"] in settings.telegram_chat_ids else "no",
+        ]
+        for chat in recent_chats(updates)
+    ]  # fmt: skip
     echo_table(
         ["CHAT ID", "TYPE", "NAME", "ALLOWED"],
-        list(seen.values()),
+        seen,
         empty="no recent messages; send the bot a message and try again",
     )
     if seen:

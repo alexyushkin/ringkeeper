@@ -67,9 +67,21 @@ services:
       RINGKEEPER_STT_URL: ${RINGKEEPER_STT_URL:-http://stt:9000}
       RINGKEEPER_STT_MAX_SECONDS: ${RINGKEEPER_STT_MAX_SECONDS:-180}
       RINGKEEPER_STT_MAX_BYTES: ${RINGKEEPER_STT_MAX_BYTES:-5000000}
+      # Full transcripts are deleted after this many days (summaries and the audit stay).
+      RINGKEEPER_RETENTION_DAYS: ${RINGKEEPER_RETENTION_DAYS:-90}
+      # The web app (M5). Files the api writes in the data dir go to the gateway's
+      # user (10001), the admin token's copy for the web app to the web's (10003).
+      RINGKEEPER_DATA_UID: "10001"
+      RINGKEEPER_WEB_TOKEN_FILE: /run/ringkeeper-web/api-token
+      RINGKEEPER_WEB_UID: "10003"
+      # The web app's HTTPS address (Tailscale Serve, say); passkeys need it.
+      RINGKEEPER_WEB_ORIGIN: ${RINGKEEPER_WEB_ORIGIN:-}
     volumes:
-      # Read-only: the manager reads the Claude credential and signs session tokens.
-      - ./.ringkeeper:/var/lib/ringkeeper:ro
+      # Writable: on first start the api creates the master key, the admin token
+      # and the setup code here, and the web app's wizard stores secrets.
+      - ./.ringkeeper:/var/lib/ringkeeper
+      # Only the api (writes) and web (reads) mount this: the admin token's copy.
+      - web-token:/run/ringkeeper-web
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:${RINGKEEPER_API_PORT:-8000}:8000"
@@ -163,3 +175,4 @@ networks:
 volumes:
   pgdata:
   stt-models:
+  web-token:

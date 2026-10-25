@@ -158,7 +158,8 @@ def test_list_instances_without_secrets(client: TestClient, loaded: None) -> Non
     assert [i["name"] for i in prod] == ["acme-supabase-prod"]
 
 
-def test_api_is_read_only(client: TestClient, loaded: None) -> None:
-    assert client.post("/projects", json={}).status_code == 405
-    assert client.delete("/projects/acme-web").status_code == 405
+def test_writes_need_a_signed_in_owner_too(client: TestClient, loaded: None) -> None:
+    # The admin token alone reads; changes come from the web app's signed-in owner.
+    assert client.post("/projects", json={}).status_code == 401
+    assert client.delete("/projects/acme-web").status_code == 401
     assert client.put("/instances", json={}).status_code == 405

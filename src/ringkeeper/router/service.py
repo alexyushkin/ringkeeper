@@ -31,6 +31,7 @@ from ringkeeper.router.schema import (
     parse,
 )
 from ringkeeper.services import examples, inbox, tasks, threads
+from ringkeeper.services.runtime import current_settings
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,8 @@ class Router:
 
     def drain(self) -> int:
         routed = 0
+        if current_settings(self.settings).paused:  # "Stop everything": messages wait
+            return 0
         while route_next(self.settings, self.model) is not None:
             routed += 1
         return routed

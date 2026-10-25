@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     data_dir: Path = Path(".ringkeeper")
     # Base64 (32 bytes). Overrides data_dir/master.key when set.
     master_key: SecretStr | None = None
+    # Files the api (root) writes into data_dir are handed to this user, so the
+    # gateway (which runs as it) can read them. Compose sets it; the CLI doesn't.
+    data_uid: int | None = None
 
     token_max_ttl_seconds: int = 24 * 3600
     decision_ttl_seconds: int = 24 * 3600
@@ -94,6 +97,22 @@ class Settings(BaseSettings):
     stt_max_seconds: int = 180
     stt_max_bytes: int = 5_000_000
     stt_timeout_seconds: float = 120.0
+
+    # Full session events (transcripts) older than this are deleted daily; task
+    # summaries, decisions and the audit log are kept.
+    retention_days: int = 90
+    # "Stop everything": no new sessions start and the router waits.
+    paused: bool = False
+
+    # The web app (M5). The api writes the admin token here for the web service
+    # (a volume only the two of them mount), and the setup code into data_dir.
+    web_token_file: Path | None = None
+    web_uid: int | None = None  # the web service's user id, which must be able to read it
+    # Owner sessions: idle timeout and absolute lifetime, in hours.
+    owner_session_idle_hours: int = 24 * 7
+    owner_session_max_hours: int = 24 * 30
+    # WebAuthn (passkeys): the web app's public origin, e.g. https://ringkeeper.tail1234.ts.net
+    web_origin: str | None = None
 
     @field_validator("master_key", mode="before")
     @classmethod

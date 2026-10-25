@@ -64,6 +64,9 @@ class _Input(BaseModel):
     model_config = ConfigDict(extra="forbid", use_enum_values=False)
 
 
+Input = _Input  # for request bodies defined next to their endpoints
+
+
 class ProjectIn(_Input):
     name: Slug
     owner: NonEmpty
@@ -134,6 +137,8 @@ class MessageIn(_Input):
     body: NonEmpty
     thread_id: str | None = None
     author: NonEmpty = "api"
+    source: Literal["api", "web"] = "api"
+    input: Literal["text", "voice"] = "text"  # voice: a transcript the user confirmed
 
 
 class MessageAccepted(BaseModel):
@@ -166,6 +171,8 @@ class AnswerIn(_Input):
     choice: str | None = None
     text: str | None = None
     by: NonEmpty = "api"
+    # A held write that deletes or drops data: the connection's name, typed.
+    confirm: str | None = None
 
 
 class DecisionOut(_Output):

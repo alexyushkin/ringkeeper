@@ -3,18 +3,17 @@
 Everything but /health needs the admin token (`public` vs `router`).
 """
 
-from collections.abc import Generator
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from ringkeeper.api.auth import AdminDep
+from ringkeeper.api.deps import SessionDep, WriteSessionDep
 from ringkeeper.config import get_settings
-from ringkeeper.db import get_engine, session_scope
+from ringkeeper.db import get_engine
 from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Env, InstanceType
 from ringkeeper.schemas import (
     AnswerIn,
@@ -32,21 +31,6 @@ from ringkeeper.services import bindings, decisions, inbox, instances, projects,
 
 public = APIRouter()
 router = APIRouter(dependencies=[AdminDep])
-
-
-def get_session() -> Generator[Session]:
-    # Reads never commit.
-    with session_scope(commit=False) as session:
-        yield session
-
-
-def get_write_session() -> Generator[Session]:
-    with session_scope() as session:
-        yield session
-
-
-SessionDep = Annotated[Session, Depends(get_session)]
-WriteSessionDep = Annotated[Session, Depends(get_write_session)]
 
 
 class Health(BaseModel):
@@ -98,8 +82,9 @@ def list_instances(
 def post_message(data: MessageIn, session: WriteSessionDep) -> MessageAccepted:
     """Queue a message for the router. Its reply lands in the thread."""
     message = threads.post_message(
-        session, data.body, author=data.author, source="api", thread=data.thread_id
-    )
+        session, data.body, author=data.author, source=data.source, thread=data.thread_id,
+        input_kind=data.input,
+    )  # fmt: skip
     return MessageAccepted(message_id=str(message.id), thread_id=str(message.thread_id))
 
 
@@ -155,7 +140,7 @@ def answer_decision(decision_id: str, data: AnswerIn, session: WriteSessionDep) 
         session,
         get_settings(),
         decision_id,
-        inbox.Answer(choice=data.choice, text=data.text),
+        inbox.Answer(choice=data.choice, text=data.text, confirm=data.confirm),
         by=f"api:{data.by}",
         via=inbox.Via.API,
     )

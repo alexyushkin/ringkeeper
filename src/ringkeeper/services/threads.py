@@ -18,7 +18,7 @@ from ringkeeper.models import Message, MessageRole, Thread
 from ringkeeper.services.decisions import MIN_ID_PREFIX
 
 MESSAGES_CHANNEL = "ringkeeper_messages"
-SOURCES = frozenset({"cli", "api", "telegram"})
+SOURCES = frozenset({"cli", "api", "web", "telegram"})
 INPUTS = frozenset({"text", "voice"})  # voice: a transcript, confirmed by the user
 TITLE_CHARS = 80
 MAX_MESSAGE_CHARS = 20_000

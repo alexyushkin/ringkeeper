@@ -20,7 +20,7 @@ from typing import Any, cast
 from ringkeeper import scrub
 from ringkeeper.adapters import ADAPTERS
 from ringkeeper.claude_auth import resolve as resolve_credential
-from ringkeeper.config import Settings, get_settings
+from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
@@ -34,6 +34,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.services import architect, architect_loop, inbox, projects, revocations, tasks
+from ringkeeper.services.runtime import current_settings
 from ringkeeper.tokens import TokenRole, issue_token
 from ringkeeper.vault import Vault
 from ringkeeper.workers.env import worker_env
@@ -174,7 +175,9 @@ class Manager:
 
     @property
     def settings(self) -> Settings:
-        return self._fixed_settings or get_settings()
+        # The effective settings (.env plus the Settings screen), re-read each time,
+        # so concurrency and "Stop everything" apply without a restart.
+        return self._fixed_settings or current_settings()
 
     # --- Loop ---
 
@@ -197,7 +200,10 @@ class Manager:
 
     def tick(self) -> None:
         self._enforce_limits()
-        cap = self.settings.max_concurrent_workers
+        settings = self.settings
+        if settings.paused:  # "Stop everything": nothing new starts until resumed
+            return
+        cap = settings.max_concurrent_workers
         while True:
             with self._lock:
                 if len(self._active) >= cap:

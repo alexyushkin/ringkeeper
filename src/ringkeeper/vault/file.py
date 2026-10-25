@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import secrets
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, cast
@@ -28,13 +29,17 @@ def _b64(data: bytes) -> str:
 
 
 class FileBackend:
-    def __init__(self, path: Path, master_key: bytes) -> None:
+    def __init__(self, path: Path, master_key: bytes, owner_uid: int | None = None) -> None:
         self.path = path
         self._aead = AESGCM(derive_key(master_key, "vault"))
+        # The api writes as root; the gateway reads as its own user (RINGKEEPER_DATA_UID).
+        self._owner_uid = owner_uid
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "FileBackend":
-        return cls(settings.data_dir / VAULT_FILE_NAME, load_master_key(settings))
+        return cls(
+            settings.data_dir / VAULT_FILE_NAME, load_master_key(settings), settings.data_uid
+        )
 
     def _read(self) -> dict[str, dict[str, str]]:
         if not self.path.exists():
@@ -83,6 +88,8 @@ class FileBackend:
                 json.dump(data, handle, indent=2)
                 handle.write("\n")
             os.chmod(tmp, 0o600)
+            if self._owner_uid is not None and sys.platform != "win32":
+                os.chown(tmp, self._owner_uid, -1)
             os.replace(tmp, self.path)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)

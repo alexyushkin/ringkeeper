@@ -58,6 +58,7 @@ class Answer:
     choice: str | None = None
     text: str | None = None
     voice: bool = False  # text is a voice note's transcript, confirmed by the user
+    confirm: str | None = None  # the connection's name, typed to approve a destructive write
 
 
 def create(
@@ -194,9 +195,34 @@ def _answer_approve(decision: Decision, answer: Answer, by: str, via: Via) -> bo
     if choice == "deny":
         _close(decision, DecisionStatus.DENIED, by, via, answer)
         return False
+    check_destructive_confirmation(decision, answer.confirm, via)
     decision.answered_via = via.value
     decision.answer = {"choice": "approve", "by": by}
     return via is Via.CLI
+
+
+def destructive_reason(decision: Decision) -> str | None:
+    return (
+        (decision.payload or {}).get("destructive")
+        if decision.kind is DecisionKind.APPROVE
+        else None
+    )
+
+
+def check_destructive_confirmation(decision: Decision, confirm: str | None, via: Via) -> None:
+    """A write that deletes or drops data: not from Telegram, and only with the name typed."""
+    why = destructive_reason(decision)
+    if why is None:
+        return
+    if via is Via.TELEGRAM:
+        raise RuleViolationError(
+            f"This write {why}. Approve it in the Ringkeeper app, where you can see all of it."
+        )
+    if (confirm or "").strip() != decision.instance:
+        raise RuleViolationError(
+            f"This write {why}. To approve it, type the connection's name "
+            f"({decision.instance}) to confirm."
+        )
 
 
 def _answer_plan(
