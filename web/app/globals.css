@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Colors as tokens, light first; dark follows the system setting. */
+@theme {
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-sunken: #f0efec;
+  --color-line: #e3e1dc;
+  --color-ink: #1b1b19;
+  --color-muted: #6b6a65;
+  --color-accent: #2f5bd3;
+  --color-accent-ink: #ffffff;
+  --color-good: #1f7a4d;
+  --color-warn: #a35a00;
+  --color-bad: #c62828;
+  --color-bad-soft: #fdecec;
+  --color-good-soft: #e7f5ee;
+  --color-warn-soft: #fff3e0;
+  --color-accent-soft: #e9efff;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #121211;
+    --color-surface: #1c1c1a;
+    --color-sunken: #171716;
+    --color-line: #2e2d2a;
+    --color-ink: #ecebe7;
+    --color-muted: #a09e98;
+    --color-accent: #7b9cff;
+    --color-accent-ink: #0d1530;
+    --color-good: #5fcf96;
+    --color-warn: #f0a94a;
+    --color-bad: #ff7a7a;
+    --color-bad-soft: #3a1d1d;
+    --color-good-soft: #17301f;
+    --color-warn-soft: #3a2a12;
+    --color-accent-soft: #1e2744;
+  }
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Room for the phone's home indicator under the tab bar. */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+pre,
+code {
+  font-family: var(--font-mono);
+}

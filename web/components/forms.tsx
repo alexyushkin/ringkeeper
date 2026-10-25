@@ -1,0 +1,196 @@
+"use client";
+
+import { useState } from "react";
+
+import { Alert, Button, Details, Field, Select, TextArea } from "@/components/ui";
+import { api } from "@/lib/client/api";
+import { AUTONOMY, ENVS, slugify } from "@/lib/client/words";
+
+export interface ProjectData {
+  name: string;
+  owner: string;
+  description: string;
+  aliases: string[];
+  repo_url: string | null;
+  workspace_path: string | null;
+  autonomy: string;
+  checks: string[];
+  models: Record<string, string>;
+}
+
+const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean);
+
+/** Create (no `existing`) or edit a project. */
+export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onSaved: (name: string) => void }) {
+  const [client, setClient] = useState(existing?.owner ?? "");
+  const [title, setTitle] = useState(existing?.name ?? "");
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [aliases, setAliases] = useState((existing?.aliases ?? []).join(", "));
+  const [folder, setFolder] = useState(existing?.workspace_path ?? "");
+  const [repo, setRepo] = useState(existing?.repo_url ?? "");
+  const [autonomy, setAutonomy] = useState(existing?.autonomy ?? "standard");
+  const [checks, setChecks] = useState((existing?.checks ?? []).join("\n"));
+  const [models, setModels] = useState(
+    Object.entries(existing?.models ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n"),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const name = existing ? existing.name : slugify(title);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    const body = {
+      owner: slugify(client) || client,
+      description,
+      aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean),
+      workspace_path: folder.trim() || null,
+      repo_url: repo.trim() || null,
+      autonomy,
+      checks: lines(checks),
+      models: Object.fromEntries(lines(models).map((l) => l.split("=").map((p) => p.trim()) as [string, string])),
+    };
+    try {
+      if (existing) await api(`projects/${existing.name}`, { method: "PATCH", json: body });
+      else await api("projects", { json: { name, ...body } });
+      onSaved(name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <Field label="Client" value={client} onChange={setClient} placeholder="Acme Inc." hint="Who this work is for. Projects of different clients never share a task." required />
+      {existing ? null : (
+        <Field
+          label="Project name"
+          value={title}
+          onChange={setTitle}
+          placeholder="Acme website"
+          hint={name ? `Short name: ${name}` : "Lowercase letters, numbers and dashes are used as its short name."}
+          required
+        />
+      )}
+      <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />
+      <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="acme site, the portal" hint="Separate with commas." />
+      <Field label="Folder" value={folder} onChange={setFolder} placeholder="acme-web" hint="Where the project's files are, inside Ringkeeper's workspaces folder." />
+      <Select
+        label="How independently it works"
+        value={autonomy}
+        onChange={setAutonomy}
+        options={Object.entries(AUTONOMY).map(([k, [label, help]]) => [k, `${label}: ${help}`])}
+      />
+      <Details>
+        <div className="space-y-4">
+          <Field label="Repository (optional)" value={repo} onChange={setRepo} placeholder="https://github.com/acme/web" />
+          <TextArea label="Checks to run after each change" value={checks} onChange={setChecks} hint="One shell command per line, e.g. python -m pytest -q" />
+          <TextArea label="Model overrides" value={models} onChange={setModels} hint="One per line: architect=…, worker=…, low=…, medium=…, high=…" />
+        </div>
+      </Details>
+      {error ? <Alert>{error}</Alert> : null}
+      <Button type="submit" kind="primary" busy={busy} disabled={!client || !name}>
+        {existing ? "Save" : "Add project"}
+      </Button>
+    </form>
+  );
+}
+
+export interface ConnectionData {
+  name: string;
+  type: string;
+  env: string;
+  owner: string;
+  base_url: string | null;
+  secret_stored: boolean;
+  projects: string[];
+  last_test_at: string | null;
+  last_test_ok: boolean | null;
+  last_test_message: string | null;
+}
+
+const SECRET_HELP: Record<string, string> = {
+  supabase: "The database connection string, from Supabase › Project Settings › Database. It starts with postgresql://",
+  n8n: "An API key from n8n › Settings › n8n API.",
+};
+
+/** Add a connection. Its secret goes in once and is never shown again. */
+export function ConnectionForm({ client, onSaved }: { client?: string; onSaved: (connection: ConnectionData) => void }) {
+  const [type, setType] = useState("supabase");
+  const [title, setTitle] = useState("");
+  const [owner, setOwner] = useState(client ?? "");
+  const [env, setEnv] = useState("dev");
+  const [address, setAddress] = useState("");
+  const [secret, setSecret] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const name = slugify(title);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await api<ConnectionData>("connections", {
+        json: { name, type, env, owner: slugify(owner) || owner, base_url: address.trim() || null, secret },
+      });
+      setSecret("");
+      onSaved(saved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-4" autoComplete="off">
+      <Select label="Service" value={type} onChange={setType} options={[["supabase", "Supabase (database)"], ["n8n", "n8n (automations)"]]} />
+      <Field label="Name" value={title} onChange={setTitle} placeholder={type === "n8n" ? "Acme automations" : "Acme database"} hint={name ? `Short name: ${name}` : undefined} required />
+      <Field label="Client" value={owner} onChange={setOwner} placeholder="Acme Inc." required />
+      <Select
+        label="Kind of data"
+        value={env}
+        onChange={setEnv}
+        options={ENVS}
+        hint={env === "prod" ? "Changes to production are always held for your approval." : "Test data: changes can run without asking."}
+      />
+      {type === "n8n" ? <Field label="n8n address" value={address} onChange={setAddress} placeholder="https://n8n.acme.com" inputMode="url" required /> : null}
+      <Field label={type === "n8n" ? "API key" : "Connection string"} type="password" value={secret} onChange={setSecret} hint={SECRET_HELP[type]} required />
+      {error ? <Alert>{error}</Alert> : null}
+      <Button type="submit" kind="primary" busy={busy} disabled={!name || !secret}>
+        Add connection
+      </Button>
+    </form>
+  );
+}
+
+export function TestButton({ name, onDone }: { name: string; onDone?: (ok: boolean) => void }) {
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true);
+    try {
+      const outcome = await api<{ ok: boolean; message: string }>(`connections/${name}/test`, { method: "POST" });
+      setResult(outcome);
+      onDone?.(outcome.ok);
+    } catch (err) {
+      setResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <Button onClick={run} busy={busy}>
+        Test connection
+      </Button>
+      {result ? <Alert tone={result.ok ? "good" : "bad"}>{result.message}</Alert> : null}
+    </div>
+  );
+}

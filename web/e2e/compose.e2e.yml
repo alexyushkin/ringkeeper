@@ -1,0 +1,65 @@
+# The end-to-end stack: the real services on their own project, ports, data
+# dir and volumes, so it never touches a real install. Run from the repo root:
+#
+#   docker compose -p ringkeeper-e2e -f docker-compose.yml -f web/e2e/compose.e2e.yml \
+#     --profile stt --profile demo up -d --build
+#
+# Differences from a real install: a fake Anthropic API for the wizard's key
+# check, no router and no Telegram (they'd need real accounts), plain-http
+# cookies, and the smaller `base` speech model.
+
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:15432:5432"
+
+  api:
+    environment:
+      ANTHROPIC_BASE_URL: http://fake-anthropic:8080
+      RINGKEEPER_ROUTER: "0"
+      RINGKEEPER_TELEGRAM: "0"
+      RINGKEEPER_CLAUDE_AUTH_MODE: api_key
+      RINGKEEPER_WORKSPACES_ROOT: /tmp/e2e-workspaces
+      RINGKEEPER_STT_MAX_SECONDS: "60"
+    volumes:
+      - ./web/e2e/.data:/var/lib/ringkeeper
+    ports: !override
+      - "127.0.0.1:18000:8000"
+
+  gateway:
+    volumes:
+      - ./web/e2e/.data:/var/lib/ringkeeper:ro
+    ports: !override
+      - "127.0.0.1:18100:8100"
+
+  web:
+    environment:
+      RINGKEEPER_WEB_INSECURE_COOKIES: "1"
+    ports: !override
+      - "127.0.0.1:13000:3000"
+
+  stt:
+    environment:
+      RINGKEEPER_STT_MODEL: base
+      RINGKEEPER_STT_LANGUAGE: en
+
+  demo-targets:
+    ports: !override
+      - "127.0.0.1:15433:5432"
+
+  fake-anthropic:
+    image: python:3.12-slim-bookworm
+    command: ["python", "/srv/fake_anthropic.py"]
+    volumes:
+      - ./web/e2e/fake_anthropic.py:/srv/fake_anthropic.py:ro
+    networks: [internal]
+
+networks:
+  workers:
+    name: ringkeeper_e2e_workers
+
+volumes:
+  # Kept between runs (the model is ~150 MB); created by global-setup.
+  stt-models:
+    name: ringkeeper_test_stt_models
+    external: true

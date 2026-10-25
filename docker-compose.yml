@@ -5,7 +5,7 @@ name: ringkeeper
 # Ports are published on 127.0.0.1 only.
 #
 #   docker compose --profile worker build worker  # the worker image, once
-#   docker compose up -d --build                  # postgres, api, gateway
+#   docker compose up -d --build                  # postgres, api, gateway, web app
 #   docker compose --profile demo up -d --build   # plus fake client databases
 #   docker compose --profile stt up -d --build    # plus speech to text for voice notes
 #
@@ -85,7 +85,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:${RINGKEEPER_API_PORT:-8000}:8000"
-    networks: [internal]
+    networks: [internal, frontend]
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,6 +116,34 @@ services:
     depends_on:
       api:
         condition: service_healthy  # the api applies migrations before it is healthy
+    restart: unless-stopped
+
+  # The web app (Next.js). Only on `frontend` with the api: it can't reach
+  # Postgres, the gateway or workers. It never mounts the vault or the data dir;
+  # the api hands it the admin token through the web-token volume. For your
+  # phone, put it behind HTTPS (Tailscale Serve: see the README).
+  web:
+    build: ./web
+    image: ringkeeper-web:latest
+    environment:
+      RINGKEEPER_API_URL: http://api:8000
+      RINGKEEPER_API_TOKEN_FILE: /run/ringkeeper-web/api-token
+      # Trust X-Forwarded-For (for sign-in rate limits) only behind your own proxy.
+      RINGKEEPER_WEB_TRUST_PROXY: ${RINGKEEPER_WEB_TRUST_PROXY:-0}
+      # Only for plain http on a LAN address while trying things out.
+      RINGKEEPER_WEB_INSECURE_COOKIES: ${RINGKEEPER_WEB_INSECURE_COOKIES:-0}
+    volumes:
+      - web-token:/run/ringkeeper-web:ro
+    ports:
+      - "127.0.0.1:${RINGKEEPER_WEB_PORT:-3000}:3000"
+    networks: [frontend]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
   # Build-only: the image the session manager starts workers from.
@@ -168,6 +196,8 @@ services:
 
 networks:
   internal: {}
+  # The web app and the api, nothing else.
+  frontend: {}
   workers:
     # A fixed name: the session manager attaches workers to it by name.
     name: ringkeeper_workers

@@ -1,0 +1,329 @@
+"use client";
+
+import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
+import { useEffect, useState } from "react";
+
+import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
+import { api, useApi } from "@/lib/client/api";
+import { download } from "@/lib/client/words";
+
+interface Settings {
+  values: {
+    claude_auth_mode: string;
+    telegram: boolean;
+    telegram_chat_ids: number[];
+    telegram_requests: boolean;
+    telegram_summary_chars: number;
+    telegram_question_chars: number;
+    model_router: string;
+    model_architect: string;
+    model_worker: string;
+    model_low: string;
+    model_medium: string;
+    model_high: string;
+    max_concurrent_workers: number;
+    retention_days: number;
+    paused: boolean;
+  };
+  overridden: string[];
+  services: Record<string, { running: boolean; error: string | null }>;
+  claude: { mode: string; api_key: boolean; subscription: boolean };
+  telegram: { token: boolean };
+}
+
+const MODELS: [keyof Settings["values"], string][] = [
+  ["model_router", "Sorting requests"],
+  ["model_architect", "Planning features"],
+  ["model_low", "Small tasks"],
+  ["model_medium", "Normal tasks"],
+  ["model_high", "Big tasks"],
+  ["model_worker", "Tasks without a size"],
+];
+
+export default function SettingsPage() {
+  const settings = useApi<Settings>("settings");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function change(values: Record<string, unknown>, done = "Saved.") {
+    setError(null);
+    setNotice(null);
+    try {
+      await api("settings", { method: "PATCH", json: values });
+      setNotice(done);
+      settings.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function stopEverything() {
+    if (!window.confirm("Stop every running task and pause everything until you resume?")) return;
+    try {
+      const result = await api<{ stopped: number }>("stop-all", { method: "POST" });
+      setNotice(`Stopped ${result.stopped} task${result.stopped === 1 ? "" : "s"}. Nothing new starts until you resume.`);
+      settings.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (settings.error) return <Alert>{settings.error}</Alert>;
+  if (!settings.data) return <Loading />;
+  const v = settings.data.values;
+  const telegramState = settings.data.services.telegram;
+
+  return (
+    <>
+      <PageHeader title="Settings" />
+      {notice ? <div className="mb-3"><Alert tone="good">{notice}</Alert></div> : null}
+      {error ? <div className="mb-3"><Alert>{error}</Alert></div> : null}
+
+      <Card className="mb-4 space-y-3 border-bad">
+        <h2 className="font-semibold">Stop everything</h2>
+        <p className="text-sm text-muted">Stops every running task and pauses new work until you resume. Approvals wait where they are.</p>
+        {v.paused ? (
+          <Button kind="primary" onClick={() => change({ paused: false }, "Resumed.")}>
+            Resume
+          </Button>
+        ) : (
+          <Button kind="danger" onClick={stopEverything} className="w-full sm:w-auto">
+            Stop everything
+          </Button>
+        )}
+      </Card>
+
+      <ClaudeCard settings={settings.data} onSaved={settings.reload} />
+
+      <Card className="mb-4 space-y-4">
+        <h2 className="font-semibold">Telegram</h2>
+        {!settings.data.telegram.token ? (
+          <p className="text-sm text-muted">Not connected. Run the setup's Telegram step, or store a bot token below.</p>
+        ) : null}
+        <TelegramToken onSaved={settings.reload} />
+        <Toggle label="Send approvals and questions to Telegram" checked={v.telegram} onChange={(on) => change({ telegram: on })} hint={telegramState?.error ? `Not running: ${telegramState.error}` : telegramState?.running ? "Running." : undefined} />
+        <Toggle
+          label="Accept new requests from Telegram"
+          checked={v.telegram_requests}
+          onChange={(on) => change({ telegram_requests: on })}
+          hint="Off by default. When on, your client requests, typed or spoken, pass through Telegram's servers, which aren't end-to-end encrypted. Leave it off for anything you wouldn't put in a normal Telegram chat."
+        />
+        <Details>
+          <div className="space-y-3">
+            <TextSetting
+              label="Allowed chat IDs (comma-separated)"
+              value={v.telegram_chat_ids.join(", ")}
+              onSave={(text) =>
+                change({ telegram_chat_ids: text.split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n !== 0) })
+              }
+            />
+            <p className="text-xs text-muted">Only these chats get messages; everyone else gets nothing.</p>
+            <NumberSetting label="Summary length (approvals, plans)" value={v.telegram_summary_chars} onSave={(n) => change({ telegram_summary_chars: n })} />
+            <NumberSetting label="Question length" value={v.telegram_question_chars} onSave={(n) => change({ telegram_question_chars: n })} />
+          </div>
+        </Details>
+      </Card>
+
+      <Card className="mb-4 space-y-4">
+        <h2 className="font-semibold">Work</h2>
+        <NumberSetting label="Tasks at once" value={v.max_concurrent_workers} onSave={(n) => change({ max_concurrent_workers: n })} hint="How many tasks can run at the same time." />
+        <NumberSetting label="Keep full transcripts for (days)" value={v.retention_days} onSave={(n) => change({ retention_days: n })} hint="After this, transcripts are deleted. Task summaries, approvals and the activity log stay." />
+        <Details label="Models">
+          <div className="space-y-3">
+            {MODELS.map(([key, label]) => (
+              <TextSetting key={key} label={label} value={String(v[key])} onSave={(text) => change({ [key]: text })} />
+            ))}
+          </div>
+        </Details>
+      </Card>
+
+      <Passkeys />
+      <RecoveryKey />
+      <SignOut />
+    </>
+  );
+}
+
+function NumberSetting({ label, value, onSave, hint }: { label: string; value: number; onSave: (n: number) => void; hint?: string }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  return (
+    <div className="flex items-end gap-2">
+      <div className="flex-1">
+        <Field label={label} value={text} onChange={setText} inputMode="numeric" hint={hint} />
+      </div>
+      <Button disabled={text === String(value) || !/^\d+$/.test(text)} onClick={() => onSave(Number(text))}>
+        Save
+      </Button>
+    </div>
+  );
+}
+
+function TextSetting({ label, value, onSave }: { label: string; value: string; onSave: (text: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <div className="flex items-end gap-2">
+      <div className="flex-1">
+        <Field label={label} value={text} onChange={setText} />
+      </div>
+      <Button disabled={text === value || !text.trim()} onClick={() => onSave(text.trim())}>
+        Save
+      </Button>
+    </div>
+  );
+}
+
+function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => void }) {
+  const [mode, setMode] = useState(settings.claude.mode);
+  const [key, setKey] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api<{ message: string }>("secrets/claude", { method: "PUT", json: { mode, value: key } });
+      setKey("");
+      setMessage(result.message);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const stored = mode === "api_key" ? settings.claude.api_key : settings.claude.subscription;
+  return (
+    <Card className="mb-4 space-y-3">
+      <h2 className="font-semibold">Claude</h2>
+      <Select
+        label="How Ringkeeper pays for Claude"
+        value={mode}
+        onChange={setMode}
+        options={[
+          ["api_key", "API key (for client work)"],
+          ["subscription", "My Claude subscription (personal use on my own account)"],
+        ]}
+      />
+      <p className="text-sm text-muted">{stored ? "A key is saved (hidden)." : "No key saved for this option yet."}</p>
+      <Field label={stored ? "Replace the key" : "Key"} type="password" value={key} onChange={setKey} />
+      <Button kind="primary" busy={busy} disabled={!key} onClick={save}>
+        Check and save
+      </Button>
+      {message ? <Alert tone="good">{message}</Alert> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </Card>
+  );
+}
+
+function TelegramToken({ onSaved }: { onSaved: () => void }) {
+  const [token, setToken] = useState("");
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    setError(null);
+    try {
+      const saved = await api<{ bot: string }>("secrets/telegram", { method: "PUT", json: { token } });
+      setToken("");
+      setResult(`Connected to ${saved.bot}.`);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return (
+    <Details label="Change the bot">
+      <div className="space-y-2">
+        <Field label="Bot token" type="password" value={token} onChange={setToken} />
+        <Button disabled={!token} onClick={save}>
+          Save
+        </Button>
+        {result ? <Alert tone="good">{result}</Alert> : null}
+        {error ? <Alert>{error}</Alert> : null}
+      </div>
+    </Details>
+  );
+}
+
+function Passkeys() {
+  const passkeys = useApi<{ id: string; name: string; created_at: string; last_used_at: string | null }[]>("auth/passkeys");
+  const [error, setError] = useState<string | null>(null);
+  const [supported, setSupported] = useState(false);
+  useEffect(() => setSupported(browserSupportsWebAuthn() && window.isSecureContext), []);
+
+  async function add() {
+    setError(null);
+    try {
+      const { challenge_id, options } = await api<{ challenge_id: string; options: Parameters<typeof startRegistration>[0]["optionsJSON"] }>("auth/passkeys/register/options", { method: "POST" });
+      const credential = await startRegistration({ optionsJSON: options });
+      await api("auth/passkeys/register", { json: { challenge_id, credential, name: navigator.platform || "Passkey" } });
+      passkeys.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <Card className="mb-4 space-y-3">
+      <h2 className="font-semibold">Passkeys</h2>
+      <p className="text-sm text-muted">Sign in with your fingerprint, face or device PIN instead of the password.</p>
+      <ul className="space-y-1 text-sm">
+        {passkeys.data?.map((p) => (
+          <li key={p.id} className="flex items-center gap-2">
+            {p.name}
+            <Button kind="ghost" onClick={() => api(`auth/passkeys/${p.id}`, { method: "DELETE" }).then(passkeys.reload)}>
+              Remove
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {supported ? <Button onClick={add}>Add a passkey</Button> : <p className="text-sm text-muted">Passkeys need the app's https:// address.</p>}
+      {error ? <Alert>{error}</Alert> : null}
+    </Card>
+  );
+}
+
+function RecoveryKey() {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  async function get() {
+    setError(null);
+    try {
+      const key = await api<{ filename: string; key: string; note: string }>("setup/recovery-key", { json: { password } });
+      download(key.filename, `Ringkeeper recovery key\n\n${key.key}\n\n${key.note}\n`);
+      setPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return (
+    <Card className="mb-4 space-y-3">
+      <h2 className="font-semibold">Recovery key</h2>
+      <p className="text-sm text-muted">If you lose this file, you'll need to re-enter your connection secrets.</p>
+      <Details label="Download it again">
+        <div className="space-y-2">
+          <Field label="Your password" type="password" value={password} onChange={setPassword} />
+          <Button disabled={!password} onClick={get}>
+            Download
+          </Button>
+          {error ? <Alert>{error}</Alert> : null}
+        </div>
+      </Details>
+    </Card>
+  );
+}
+
+function SignOut() {
+  return (
+    <Button
+      onClick={async () => {
+        await api("auth/logout", { method: "POST" });
+        window.location.href = "/login";
+      }}
+    >
+      Sign out
+    </Button>
+  );
+}

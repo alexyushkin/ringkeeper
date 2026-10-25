@@ -37,6 +37,7 @@ class Recorder:
 @pytest.fixture
 def supervised(database_url: str, monkeypatch: pytest.MonkeyPatch) -> tuple[Supervisor, Recorder]:
     bridges, routers = Recorder(), Recorder()
+
     def fake_bridge(_self: Supervisor, settings: Settings) -> Callable[[threading.Event], None]:
         return bridges.make(settings)
 
