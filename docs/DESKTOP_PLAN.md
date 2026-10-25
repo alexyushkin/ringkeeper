@@ -1,6 +1,19 @@
 # Desktop app plan
 
-Status: **draft for review**. No code has changed yet.
+Status: **approved 2026-10-25**, with the decisions below. They override anything later in this document.
+
+## Approved decisions
+
+- **Platforms.** Windows is the only supported desktop target at launch. macOS code paths keep working, and CI builds an unsigned macOS `.dmg` on tags only. No Apple account, signing or notarization for now; the Mac docs are a short "unsigned beta" note with the Open Anyway steps.
+- **Windows signing.** Azure Artifact Signing under General Informatics LLC. It doesn't block M1–M5.
+- **Deviations accepted.** The keychain holds only the master key, and secrets stay in the encrypted vault file (Q3). The backend ships as embedded Python.
+- **Connectors (Q1).** API tokens in v1: Neon, Supabase, Airtable PAT, Twilio, Vercel, n8n and similar. Each connector has a "where do I get this" link and a live test button. OAuth only where no token option exists.
+- **Gmail (Q2).** No Google OAuth in v1. Gmail uses IMAP/SMTP with an app password. When the account or a Workspace admin blocks app passwords, the UI says so plainly.
+- **Updates (Q4).** A separate public releases repository holds installers and update manifests.
+- **macOS sandbox (Q7).** Not in v1; a post-launch item.
+- **Q5 (voice model size) and Q8 (keep running in the tray).** My recommendation, but I ask before shipping anything that changes what the user sees or pays. Q6 is moot (Windows only).
+- **CI.** Packaging jobs (Windows installer, unsigned macOS build) run on tags only. Regular CI runs the tests against Postgres and SQLite, and includes Claude Code's PowerShell fallback on Windows (no bash).
+- **Definition of done.** A clean Windows 11 machine: download the signed installer, open it, paste an API key, create a project, connect one service, run one task. Under 5 minutes, zero terminal use.
 
 Goal: an agency owner downloads Ringkeeper, double-clicks it, pastes an Anthropic
 API key, creates a project, connects one service and runs one task. That should
@@ -301,6 +314,28 @@ Not blocking: unsigned builds are fine for testing. Prices are approximate; I'll
 | CI | GitHub macOS and Windows runners on a **private** repo | macOS minutes count **10×**, Windows **2×** against your plan's free minutes | Your OK on running packaging jobs only on tags or on demand (my suggestion) |
 
 ---
+
+### Azure Artifact Signing for General Informatics LLC: eligibility and what's needed
+
+Checked 2026-10-25 against Microsoft's [quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart) (updated 2026-10-08).
+
+- **Region:** Public Trust certificates for organizations are available in the US, Canada, EU, UK, Australia, New Zealand, Japan, South Korea, Singapore, Switzerland, Norway and Israel. A US LLC qualifies.
+- **Business age: the one open risk.** The current docs list no minimum age. A Microsoft moderator confirmed in August 2026 there is "no minimum org age" ([Q&A](https://learn.microsoft.com/en-us/answers/questions/5977141/azure-artifact-signing-trusted-signing-is-a-us-llc)). During the preview, though, organizations needed three years of verifiable tax history, and some younger companies report being declined. If the LLC is under three years old, start validation early. If it fails, the fallback is an OV certificate from a commercial CA.
+- **What validation asks for:**
+  - the legal name exactly as in public records (keep the state registry up to date);
+  - a website on the company's domain;
+  - two monitored email addresses on that same domain that accept external links;
+  - a business identifier (the EIN);
+  - the registered business address;
+  - the name, exactly as on a government ID, of the person who does the individual ID check (phone camera, AU10TIX, Microsoft Authenticator).
+  - Any extra documents must be dated within the last 12 months; domain registration papers should list the company.
+- **Azure setup:**
+  - an Entra tenant and an Azure subscription;
+  - register the `Microsoft.CodeSigning` provider;
+  - an Artifact Signing account (Basic tier) in a supported region, such as East US;
+  - your user given the "Artifact Signing Identity Verifier" role.
+  - Identity validation is done **only in the Azure portal**.
+- **Timing:** validation takes 1–20 business days, and billing starts as soon as the account is created. **Start it when M4 begins**, so it's done before M6. For CI I'll then need a certificate profile name, the account name and endpoint, and a service principal with the "Artifact Signing Certificate Profile Signer" role, stored as GitHub secrets.
 
 ## 8. Questions for you (each affects what users see or what it costs)
 
