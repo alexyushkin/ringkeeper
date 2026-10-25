@@ -14,19 +14,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import TERMINAL_STATUSES, Project, SessionEvent, TaskStatus
+from ringkeeper.models import TERMINAL_STATUSES, SessionEvent, TaskStatus
 from ringkeeper.services import revocations, tasks
-from ringkeeper.vault import Vault, get_vault
+from ringkeeper.vault import get_vault
 from ringkeeper.workers.env import TASK_ENV, TOKEN_ENV
 from ringkeeper.workers.manager import Manager
 from ringkeeper.workers.process import ProcessRuntime, parse_memory
 from ringkeeper.workers.runtime import WorkerSpec
 from tests.conftest import CLAUDE_API_KEY, CLAUDE_OAUTH_TOKEN
+from tests.helpers import make_project
 
 GIT = (
     "git",
@@ -79,17 +80,15 @@ def workspace(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def run_stub(
-    gateway: str, vault: Vault, workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    bare_gateway: str, workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Callable[..., Run]]:
-    monkeypatch.setenv("RINGKEEPER_GATEWAY_INTERNAL_URL", gateway)
+    monkeypatch.setenv("RINGKEEPER_GATEWAY_INTERNAL_URL", bare_gateway)
     monkeypatch.setenv("RINGKEEPER_WORKER_RUNTIME", "process")
     settings = get_settings()
     get_vault(settings).store(settings.claude_api_key_ref, CLAUDE_API_KEY)
     get_vault(settings).store(settings.claude_oauth_token_ref, CLAUDE_OAUTH_TOKEN)
     with session_scope() as session:
-        session.execute(
-            update(Project).where(Project.name == "acme-web").values(workspace_path=str(workspace))
-        )
+        make_project(session, "acme-web", workspace_path=str(workspace))
     runtime = ProcessRuntime(tmp_path / "workers")
     managers: list[Manager] = []
 
@@ -200,7 +199,7 @@ def test_planted_git_hooks_are_undone_and_leftovers_killed(
 
 
 def test_the_time_limit_kills_the_whole_tree(run_stub: Callable[..., Run]) -> None:
-    run = run_stub({"leave_behind": True, "sleep": 60}, max_runtime_s=3)
+    run = run_stub({"leave_behind": True, "sleep": 120}, max_runtime_s=10)
     assert status_of(run.task_id) is TaskStatus.TIMED_OUT
     assert not alive(events_of(run.task_id)["stub.left_behind"][0]["pid"])
     assert run.runtime.running_workers() == {}

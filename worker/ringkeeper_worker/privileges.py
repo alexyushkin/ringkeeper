@@ -29,7 +29,15 @@ _os: Any = os
 _signal: Any = signal
 
 
+# Set by Ringkeeper's process runtime (desktop mode): this runner is a local
+# process, not the worker container, even if it happens to run as root.
+LOCAL_MARKER = "RK_RUN_ID"
+
+
 def is_root() -> bool:
+    """Root in the worker container: the one case where work drops to `worker`."""
+    if LOCAL_MARKER in os.environ:
+        return False
     return hasattr(os, "geteuid") and _os.geteuid() == 0
 
 

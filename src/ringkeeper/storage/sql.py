@@ -108,12 +108,16 @@ def _prepare_sqlite(engine: Engine) -> None:
         # Transactions are begun explicitly below, not by the driver.
         dbapi_connection.isolation_level = None
         for pragma in (
-            "journal_mode = WAL",
+            f"busy_timeout = {SQLITE_BUSY_SECONDS * 1000}",
             "synchronous = NORMAL",
             "foreign_keys = ON",
-            f"busy_timeout = {SQLITE_BUSY_SECONDS * 1000}",
         ):
             dbapi_connection.execute(f"PRAGMA {pragma}")
+        # WAL is stored in the file, so only the first connection ever switches it.
+        # Asking again while another connection writes fails with "database is locked".
+        mode = dbapi_connection.execute("PRAGMA journal_mode").fetchone()[0]
+        if str(mode).lower() != "wal":
+            dbapi_connection.execute("PRAGMA journal_mode = WAL")
         pending = dbapi_connection.pending
 
         def rk_notify(channel: str, payload: str | None) -> None:

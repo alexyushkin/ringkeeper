@@ -13,12 +13,17 @@ LAN addresses stay allowed: a self-hosted n8n often lives on one. URLs may
 not carry a username, password, query or fragment, and must be http(s).
 `RINGKEEPER_ALLOW_LOCAL_CONNECTIONS=1` lifts the loopback rule (tests, and
 services published on the same host for development).
+
+The service names are resolved together (a slow DNS costs one wait, not five),
+and not at all in desktop mode, which has no such services: its database is
+a file and its API and gateway are on loopback, which is refused anyway.
 """
 
 import ipaddress
 import os
 import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 from urllib.parse import urlsplit
 
@@ -49,10 +54,11 @@ def _addresses(host: str) -> set[str]:
 
 def _own_addresses() -> frozenset[str]:
     """What Ringkeeper's own service names resolve to here (cached for a minute)."""
+    if os.environ.get("RINGKEEPER_MODE") == "desktop":
+        return frozenset()
     if time.monotonic() - cast(float, _own_cache["at"]) > _CACHE_SECONDS:
-        found: set[str] = set()
-        for name in OWN_SERVICES:
-            found |= _addresses(name)
+        with ThreadPoolExecutor(len(OWN_SERVICES)) as pool:
+            found = set[str]().union(*pool.map(_addresses, OWN_SERVICES))
         _own_cache.update(at=time.monotonic(), addresses=frozenset(found))
     return cast(frozenset[str], _own_cache["addresses"])
 

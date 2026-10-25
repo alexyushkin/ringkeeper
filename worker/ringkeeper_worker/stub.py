@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ringkeeper_worker.config import WorkerConfig
+from ringkeeper_worker.config import WORKSPACE, WorkerConfig
 from ringkeeper_worker.emit import emit
 
 FORBIDDEN_PATHS = (
@@ -138,8 +138,8 @@ async def run(config: WorkerConfig) -> bool:
         mounts=mount_points(),
         env_names=sorted(os.environ),
         forbidden_present=[p for p in FORBIDDEN_PATHS if os.path.exists(p)],
-        # Searching the whole disk only makes sense inside a container.
-        master_keys=find_files("master.key") if mount_points() else [],
+        # Searching the whole disk only makes sense inside the worker container.
+        master_keys=find_files("master.key") if config.workspace == WORKSPACE else [],
         workspace_writable=os.access(config.workspace, os.W_OK),
         workspace=config.workspace,
         home=os.environ.get("HOME"),

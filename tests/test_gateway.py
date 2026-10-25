@@ -235,8 +235,8 @@ async def test_a_held_write_approved_remotely_is_run_by_the_gateway(gateway: str
             assert decision is not None
             return decision.status
 
-    with anyio.fail_after(15):
-        while status() is DecisionStatus.PENDING:
+    with anyio.fail_after(30):  # claimed (approved) first, then run (executed)
+        while status() in (DecisionStatus.PENDING, DecisionStatus.APPROVED):
             await anyio.sleep(0.1)
     assert status() is DecisionStatus.EXECUTED
     with session_scope() as session:

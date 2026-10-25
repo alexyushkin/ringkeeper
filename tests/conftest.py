@@ -24,6 +24,7 @@ from ringkeeper.adapters import n8n
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.gateway.app import create_app
+from ringkeeper.keys import load_master_key
 from ringkeeper.models import Autonomy, Base, Env, InstanceType
 from ringkeeper.storage import sqlite_baseline
 from ringkeeper.storage.sql import make_engine
@@ -229,6 +230,24 @@ def gateway(registry: None, vault: Vault) -> Iterator[str]:
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
     thread.join(timeout=10)
+
+
+@pytest.fixture
+def bare_gateway(database_url: str) -> Iterator[str]:
+    """The real gateway, with no client connections (so no Postgres needed)."""
+    del database_url
+    load_master_key(get_settings())  # the gateway only reads it; tests start without one
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(get_vault()), host="127.0.0.1", port=free_port(),
+                       log_level="warning")
+    )  # fmt: skip
+    threading.Thread(target=server.run, daemon=True).start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        assert time.monotonic() < deadline, "gateway did not start"
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{server.config.port}"
+    server.should_exit = True
 
 
 CLAUDE_API_KEY = "sk-ant-api03-fake-manager-key-0001"  # fakes: right prefix, nowhere near

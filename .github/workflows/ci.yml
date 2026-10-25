@@ -105,7 +105,7 @@ jobs:
           }
           $bash = Get-Command bash -ErrorAction SilentlyContinue
           if ($bash) { Write-Output "note: a bash is still on PATH: $($bash.Source)" }
-          "RINGKEEPER_WORKER_TOOLS_PATH=C:\mingit\cmd" >> $env:GITHUB_ENV
+          'RINGKEEPER_WORKER_TOOLS_PATH=["C:\\mingit\\cmd"]' >> $env:GITHUB_ENV
       - run: uv run pytest tests/test_claude_cli.py -p no:cacheprovider
         env:
           RINGKEEPER_TEST_DB: sqlite

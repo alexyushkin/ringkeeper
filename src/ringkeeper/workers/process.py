@@ -9,7 +9,9 @@ doesn't change. Each worker is `python -m ringkeeper_worker`, started with:
   never reads the user's own ~/.claude, settings or MCP servers;
 - the project's folder as its workspace, given in its task description;
 - a Windows Job Object (memory cap, and everything it starts dies with it or
-  with Ringkeeper), or on macOS and Linux its own process group.
+  with Ringkeeper), or on macOS and Linux its own process group. A process
+  that leaves the group (setsid) is still found on Linux by a marker in its
+  environment; on macOS it's out of reach (Windows is the supported desktop).
 
 In a container the runner is root: after the agent it kills whatever the
 agent left running, then puts the repository's .git config, hooks and info
@@ -27,11 +29,13 @@ import contextlib
 import json
 import logging
 import os
+import queue
 import shutil
 import signal
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -54,6 +58,9 @@ WINDOWS_ENV = (
 )  # fmt: skip
 POSIX_ENV = ("LANG", "LC_ALL", "TZ")
 REGISTRY = "workers.json"  # pids of running workers, to clean up after a crash
+MARKER = "RK_RUN_ID"  # in every worker process's environment, inherited by its children
+# Once the runner has exited and its tree is gone, how long its output may still trickle in.
+DRAIN_SECONDS = 2.0
 # Its own process group, and no console window popping up.
 _WINDOWS_FLAGS = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
     subprocess, "CREATE_NO_WINDOW", 0
@@ -95,9 +102,12 @@ class _Worker:
     process: subprocess.Popen[str]
     session_id: str
     workspace: str
+    marker: str
     job: "_Job | None" = None
     log: IO[str] | None = field(default=None, repr=False)
     git: dict[str, Any] | None = field(default=None, repr=False)  # .git files before the run
+    output: "queue.Queue[str | None]" = field(default_factory=queue.Queue[str | None])
+    exited: float | None = None  # monotonic time the runner's tree was gone
 
 
 class ProcessRuntime:
@@ -143,6 +153,7 @@ class ProcessRuntime:
         else:
             env["TMPDIR"] = str(state / "tmp")
         env |= {"PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+        env[MARKER] = spec.name
         if pythonpath := worker_pythonpath():
             env["PYTHONPATH"] = pythonpath
         for name, value in spec.env.items():
@@ -187,12 +198,16 @@ class ProcessRuntime:
             raise ProcessRuntimeError(f"cannot start worker: {error}") from None
         job = _Job.wrap(process, parse_memory(spec.memory)) if WINDOWS else None
         session = spec.labels.get(LABEL_SESSION, "")
-        worker = _Worker(process, session, spec.workspace, job, log, git)
+        worker = _Worker(process, session, spec.workspace, spec.name, job, log, git)
         with self._lock:
             self._workers[spec.name] = worker
             self._save_registry()
         # As in a container: when the runner exits, whatever it left running goes
-        # too. That also closes their copies of its output, so the stream ends.
+        # too. Its output is read on a thread of its own, so a process that kept
+        # a copy of the pipe can't keep the session open.
+        threading.Thread(
+            target=_pump, args=(worker,), daemon=True, name=f"rk-read-{spec.name}"
+        ).start()
         threading.Thread(
             target=_reap_when_done, args=(worker,), daemon=True, name=f"rk-reap-{spec.name}"
         ).start()
@@ -200,9 +215,17 @@ class ProcessRuntime:
 
     def lines(self, container_id: str) -> Iterator[str]:
         worker = self._get(container_id)
-        if worker is None or worker.process.stdout is None:
+        if worker is None:
             return
-        for line in worker.process.stdout:
+        while True:
+            try:
+                line = worker.output.get(timeout=0.25)
+            except queue.Empty:
+                if worker.exited is not None and time.monotonic() - worker.exited > DRAIN_SECONDS:
+                    return  # the runner is gone; something it started still holds the pipe
+                continue
+            if line is None:
+                return
             yield line.rstrip("\r\n")
 
     def wait(self, container_id: str) -> int:
@@ -232,8 +255,6 @@ class ProcessRuntime:
         if worker.job is not None:
             worker.job.close()
         self._restore_git(worker)
-        if worker.process.stdout is not None:
-            worker.process.stdout.close()
         if worker.log is not None:
             worker.log.close()
 
@@ -334,9 +355,38 @@ def _kill_group(pid: int, *, verify: bool = True) -> None:
             killpg(pid, getattr(signal, "SIGKILL"))  # noqa: B009
 
 
+def _pump(worker: _Worker) -> None:
+    stream = worker.process.stdout
+    try:
+        if stream is not None:
+            for line in stream:
+                worker.output.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        worker.output.put(None)
+
+
 def _reap_when_done(worker: _Worker) -> None:
     worker.process.wait()
     _kill_tree(worker)
+    worker.exited = time.monotonic()
+
+
+def _marked_pids(marker: str) -> list[int]:
+    """Linux: processes (ours) whose environment carries this worker's marker."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    needle = f"{MARKER}={marker}".encode()
+    found: list[int] = []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        with contextlib.suppress(OSError):
+            if needle in (entry / "environ").read_bytes().split(b"\0"):
+                found.append(int(entry.name))
+    return found
 
 
 def _kill_tree(worker: _Worker) -> None:
@@ -344,6 +394,9 @@ def _kill_tree(worker: _Worker) -> None:
         worker.job.terminate()
     elif not WINDOWS:
         _kill_group(worker.process.pid, verify=False)
+        for pid in _marked_pids(worker.marker):  # ones that left the group (setsid)
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, getattr(signal, "SIGKILL"))  # noqa: B009
     with contextlib.suppress(OSError):
         worker.process.kill()
 
@@ -408,7 +461,8 @@ class _Job:
             process.kill()
             job.close()
             raise ProcessRuntimeError(
-                f"couldn't put the worker in a Windows job (error {ctypes.get_last_error()})"
+                "couldn't put the worker in a Windows job "
+                f"(error {getattr(ctypes, 'get_last_error')()})"  # noqa: B009 (Windows only)
             )
         return job
 
