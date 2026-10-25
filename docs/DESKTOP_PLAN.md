@@ -36,15 +36,29 @@ Python core: routing, connectors, approvals, projects and tasks.
   runs as a desktop worker against a fake API in tests, and CI checks the PowerShell
   fallback on Windows without Git Bash.
 
-Left for later milestones, found while building M2:
+- **M3 done** (2026-10-25): the app shell in `shell/` (Tauri 2). It starts the
+  backend, restarts it after a crash (1, 2, 4, 8 s apart; after five crashes in two
+  minutes it stops and offers Try again), finds a running backend again after the
+  shell itself crashed, and Quit stops everything cleanly. Closing the window keeps
+  it in the tray, with a one-time notice. Tray menu: Open Ringkeeper, Pause all
+  routines (the existing pause: nothing new starts, requests wait, running tasks
+  finish), Quit. A red dot on the tray and taskbar icons and a Windows notification
+  when something is waiting for the user. "Start Ringkeeper when I sign in" is a
+  setting (`start_at_login`, on by default) the shell applies. `ringkeeper --quit`
+  quits a running app (for the installer). CI builds and tests it on Windows.
 
-- **M3:** the shell must treat `desktop.json` as stale if `/desktop/health` doesn't
-  answer (a hard kill leaves the file; the lock file still stops a second backend),
-  and must bundle MinGit and put it on `RINGKEEPER_WORKER_TOOLS_PATH`.
+Left for later milestones:
+
 - **M4:** the sign-in, password, passkey and recovery-key screens mean nothing on the
-  desktop; the first-run flow replaces them. Voice is off until the Voice component.
-- **Not verified yet:** a task with a real model (needs your API key, so it's yours to
-  run, or part of the clean-machine test), and anything on macOS.
+  desktop; the first-run flow replaces them, and has the "Start Ringkeeper when I
+  sign in" checkbox. Voice is off until the Voice component.
+- **M6:** bundle the embedded Python at `resources/python` and the web files at
+  `resources/web` (the shell looks there), and MinGit at `resources/mingit`
+  (`shell/scripts/fetch-mingit.ps1`, pinned and checked). The app identifier
+  (`com.generalinformatics.ringkeeper`) can change until the first release. In a dev
+  build, notifications show as from PowerShell; an installed app shows its own name.
+- **Not verified yet:** a task with a real model (`docs/DESKTOP_REAL_TASK_CHECK.md`),
+  and anything on macOS.
 - **To watch:** SQLite allows one writer at a time, so a request that holds a write
   transaction while it waits on the network blocks the others (fine for one user;
   revisit if it shows).
