@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 
 import { ProjectForm } from "@/components/forms";
 import { Card, PageHeader } from "@/components/ui";
+import { projectHref } from "@/lib/client/routes";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -11,7 +12,7 @@ export default function NewProjectPage() {
     <>
       <PageHeader title="Add a project" />
       <Card>
-        <ProjectForm onSaved={(name) => router.push(`/projects/${name}`)} />
+        <ProjectForm onSaved={(name) => router.push(projectHref(name))} />
       </Card>
     </>
   );

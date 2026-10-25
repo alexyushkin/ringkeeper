@@ -27,7 +27,8 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Reading a request header makes every page dynamic, which the CSP nonce needs
   // (Next.js adds the nonce from the request's CSP header to its own scripts).
-  await headers();
+  // The desktop app's pages are exported as files instead: no request, no nonce.
+  if (process.env.NEXT_PUBLIC_RINGKEEPER_TARGET !== "desktop") await headers();
   return (
     <html lang="en">
       <body className="min-h-dvh antialiased">

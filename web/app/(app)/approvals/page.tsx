@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Alert, Badge, Button, Card, Code, Details, Empty, Field, Loading, PageHeader, TextArea, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { KIND } from "@/lib/client/words";
+import { taskHref } from "@/lib/client/routes";
 
 interface Decision {
   id: string;
@@ -150,7 +151,7 @@ function DecisionCard({ decision, onDone }: { decision: Decision; onDone: () => 
 
       {error ? <div className="mt-3"><Alert>{error}</Alert></div> : null}
       {decision.task_id ? (
-        <Link href={`/tasks/${decision.task_id}`} className="mt-3 inline-block text-sm text-accent">
+        <Link href={taskHref(decision.task_id)} className="mt-3 inline-block text-sm text-accent">
           Open the task ›
         </Link>
       ) : null}

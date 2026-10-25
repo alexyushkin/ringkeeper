@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { StatusBadge, money, timeAgo } from "@/components/ui";
+import { taskHref } from "@/lib/client/routes";
 
 export interface TaskCard {
   id: string;
@@ -30,7 +31,7 @@ const PHASE: Record<string, string> = {
 
 export function TaskCardView({ task }: { task: TaskCard }) {
   return (
-    <Link href={`/tasks/${task.id}`} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
+    <Link href={taskHref(task.id)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{task.project}</span>
         <StatusBadge status={task.status} />

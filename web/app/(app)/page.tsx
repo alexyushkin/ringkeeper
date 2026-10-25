@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Composer } from "@/components/composer";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
+import { threadHref } from "@/lib/client/routes";
 
 interface Thread {
   id: string;
@@ -29,7 +30,7 @@ export default function Home() {
   return (
     <>
       <PageHeader title="What do you need?" subtitle="Say it in your own words. Ringkeeper sends it to the right client project." />
-      <Composer onSent={(thread) => router.push(`/threads/${thread}`)} />
+      <Composer onSent={(thread) => router.push(threadHref(thread))} />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">Recent conversations</h2>
       {threads.error ? <Alert>{threads.error}</Alert> : null}
       {threads.loading && !threads.data ? <Loading /> : null}
@@ -41,7 +42,7 @@ export default function Home() {
           const failed = (thread.tasks.failed ?? 0) + (thread.tasks.timed_out ?? 0);
           return (
             <li key={thread.id}>
-              <Link href={`/threads/${thread.id}`} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
+              <Link href={threadHref(thread.id)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{thread.title}</span>
                   <span className="ml-auto shrink-0 text-xs text-muted">{timeAgo(thread.updated_at)}</span>

@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+export const dynamic = "force-static"; // the same for everyone (and exportable for the desktop app)
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Ringkeeper",

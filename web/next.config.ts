@@ -10,7 +10,16 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
-const config: NextConfig = {
+// The desktop app serves exported files from its backend (no Node there):
+// see scripts/build-desktop.mjs. Its backend sets the security headers.
+const desktop: NextConfig = {
+  output: "export",
+  poweredByHeader: false,
+  reactStrictMode: true,
+  images: { unoptimized: true },
+};
+
+const server: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
@@ -28,4 +37,4 @@ const config: NextConfig = {
   },
 };
 
-export default config;
+export default process.env.NEXT_PUBLIC_RINGKEEPER_TARGET === "desktop" ? desktop : server;

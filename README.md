@@ -745,6 +745,22 @@ it shows up anywhere else. Migrations from 0009 on must run on both (`ringkeeper
 db upgrade` against a `sqlite:///` URL to try one); 0001–0008 are Postgres-only,
 and SQLite gets their result in one step (`storage/sqlite_baseline.py`).
 
+### Desktop mode from source
+
+The desktop app's backend is `ringkeeper desktop`: SQLite, the master key in
+the OS keychain, workers as local processes (no Docker), API and gateway on
+random 127.0.0.1 ports. It writes `desktop.json` (the address and a
+per-launch secret) to its data folder for the app shell.
+
+```bash
+cd web && node scripts/build-desktop.mjs && cd ..   # the UI as static files
+uv run ringkeeper desktop --web-dir web/.desktop/out --data-dir ./.desktop-data
+```
+
+Then open the window the way the shell does: POST `/desktop/codes` with
+`Authorization: Bearer <secret>` and open `/desktop/start?code=<code>`. There
+is no sign-in; that link is the lock (see `src/ringkeeper/desktop/server.py`).
+
 Adding a service means one module in `src/ringkeeper/adapters/` (tools declared
 `@read` or `@write`), one entry in `adapters/__init__.py`, and tests. See
 [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Alert, Badge, Empty, LinkButton, Loading, PageHeader } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 import { AUTONOMY } from "@/lib/client/words";
+import { projectHref } from "@/lib/client/routes";
 
 interface Project {
   name: string;
@@ -31,7 +32,7 @@ export default function ProjectsPage() {
           <ul className="space-y-2">
             {list.map((project) => (
               <li key={project.name}>
-                <Link href={`/projects/${project.name}`} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
+                <Link href={projectHref(project.name)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{project.name}</span>
                     <Badge>{AUTONOMY[project.autonomy]?.[0] ?? project.autonomy}</Badge>
