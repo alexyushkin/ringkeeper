@@ -48,6 +48,10 @@ def desktop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[st
     yield {"data_dir": data_dir, "workspaces": workspaces, **info}
     stop.set()
     thread.join(30)
+    deadline = time.monotonic() + 15  # quitting stops everything it started
+    while lingering := [t.name for t in threading.enumerate() if t.name.startswith("rk-")]:
+        assert time.monotonic() < deadline, f"still running after quit: {lingering}"
+        time.sleep(0.1)
     dispose_engines()
     keyring.set_keyring(previous)
     os.environ.clear()

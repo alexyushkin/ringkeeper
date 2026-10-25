@@ -134,6 +134,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         yield
     finally:
         stop.set()
+        supervisor.wake()  # it stops the router and bridge now, not at its next recheck
 
 
 def create_app() -> FastAPI:
