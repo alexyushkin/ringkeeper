@@ -292,3 +292,11 @@ def test_start_from_a_stranger_gets_nothing(telegram: FakeTelegram) -> None:
     )
     bridge().poll_once(0)
     assert telegram.sent == []
+
+
+def test_a_bot_token_is_scrubbed_as_soon_as_a_client_is_made() -> None:
+    from ringkeeper.scrub import scrub  # noqa: PLC0415
+
+    token = "123456789:AAH" + "q" * 32
+    BotApi(token, "http://127.0.0.1:9").close()
+    assert token not in scrub(f"failed calling /bot{token}/getMe")

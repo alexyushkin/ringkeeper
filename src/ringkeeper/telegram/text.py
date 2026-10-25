@@ -35,7 +35,14 @@ _SQL_START = (
     rf"|truncate\s+{_IDENT}"
     r"|grant\s+[\w\s,]+\s+on\b"
     r"|revoke\s+[\w\s,]+\s+on\b"
+    r"|with\s+(?:recursive\s+)?\w+\s+as\s*\("
+    r"|copy\s+[\w.\"]+\s*(?:\([^)]*\)\s*)?(?:from|to)\s+(?:stdin|stdout|program|')"
+    r"|call\s+[\w.\"]+\("
+    r"|do\s+(?:language\s+\w+\s+)?\$"
+    r"|execute\s+format\s*\("
 )
+# Dollar-quoted bodies ($$ ... $$ or $tag$ ... $tag$) hold code, whatever comes before.
+_DOLLAR = re.compile(r"(\$\w*\$).*?(?:\1|\Z)", re.S)
 _INLINE_SQL = re.compile(rf"`\s*(?:{_SQL_START})[^`]*`", re.I)
 _SQL = re.compile(rf"\b(?:{_SQL_START})(?:[^;\n]|\n(?![ \t]*\n))*;?", re.I)
 
@@ -48,6 +55,7 @@ class Shown:
 
 def hide_code(text: str) -> tuple[str, bool]:
     hidden = _FENCED.sub(CODE_HIDDEN, text)
+    hidden = _DOLLAR.sub(CODE_HIDDEN, hidden)
     hidden = _INLINE_SQL.sub(SQL_HIDDEN, hidden)
     hidden = _SQL.sub(SQL_HIDDEN, hidden)
     return hidden, hidden != text

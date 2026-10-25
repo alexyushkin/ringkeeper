@@ -1,5 +1,7 @@
 """The stt service: request rules on a fake engine, then the real image with a recording."""
 
+import base64
+import socket
 import threading
 import time
 from collections.abc import Iterator
@@ -11,7 +13,15 @@ import httpx2
 import pytest
 
 from ringkeeper_stt.config import ConfigError, SttConfig, load
-from ringkeeper_stt.server import Decoded, DecodeError, Service, Transcript, serve
+from ringkeeper_stt.server import (
+    MAX_IN_FLIGHT,
+    Decoded,
+    DecodeError,
+    Service,
+    TooLongError,
+    Transcript,
+    serve,
+)
 from tests.conftest import free_port
 
 ROOT = Path(__file__).parents[1]
@@ -25,8 +35,9 @@ class FakeEngine:
         self.seconds = seconds
         self.decoded: list[int] = []
         self.hints: list[str | None] = []
+        self.slots = threading.BoundedSemaphore(1)  # the service's, set by the fixture
 
-    def decode(self, data: bytes) -> Decoded:
+    def decode(self, data: bytes, max_seconds: float) -> Decoded:
         if not data.startswith(b"OggS"):
             raise DecodeError("not ogg")
         self.decoded.append(len(data))
@@ -40,7 +51,9 @@ class FakeEngine:
 @pytest.fixture
 def fake_stt() -> Iterator[tuple[str, FakeEngine]]:
     engine = FakeEngine()
-    server = serve(Service(engine, SttConfig(max_seconds=60, max_bytes=1000, port=free_port())))
+    service = Service(engine, SttConfig(max_seconds=60, max_bytes=1000, port=free_port()))
+    engine.slots = service.slots
+    server = serve(service)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}", engine
     server.shutdown()
@@ -81,6 +94,41 @@ def test_transcribe_and_limits(fake_stt: tuple[str, FakeEngine]) -> None:
         bad = http.post("/transcribe", content=b"not audio")
         assert (bad.status_code, bad.json()) == (422, {"error": "undecodable"})
         assert http.post("/other", content=b"").status_code == 404
+        # A playlist would make the decoder open other files: never opened.
+        playlist = http.post("/transcribe", content=b"#EXTM3U\nfile:///etc/passwd\n")
+        assert playlist.status_code == 422
+        assert engine.decoded == [14, 4, 4]
+
+
+def test_a_negative_length_is_refused(fake_stt: tuple[str, FakeEngine]) -> None:
+    url, _ = fake_stt
+    host, port = url.removeprefix("http://").split(":")
+    with socket.create_connection((host, int(port)), timeout=5) as raw:
+        raw.sendall(b"POST /transcribe HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\nOggS")
+        assert raw.recv(100).startswith(b"HTTP/1.0 411")
+
+
+def test_only_a_few_requests_at_once(fake_stt: tuple[str, FakeEngine]) -> None:
+    url, engine = fake_stt
+    service_slots = engine.slots
+    for _ in range(MAX_IN_FLIGHT):
+        assert service_slots.acquire(blocking=False)
+    try:
+        busy = httpx2.post(f"{url}/transcribe", content=b"OggS")
+        assert (busy.status_code, busy.json()) == (503, {"error": "busy"})
+    finally:
+        for _ in range(MAX_IN_FLIGHT):
+            service_slots.release()
+    assert httpx2.post(f"{url}/transcribe", content=b"OggS").status_code == 200
+
+
+def test_decoding_past_the_limit_is_too_long() -> None:
+    class Endless(FakeEngine):
+        def decode(self, data: bytes, max_seconds: float) -> Decoded:
+            raise TooLongError(max_seconds)
+
+    service = Service(Endless(), SttConfig(max_seconds=60))
+    assert service.transcribe(b"OggS") == (413, {"error": "too_long", "max_seconds": 60})
 
 
 # --- The real image ---
@@ -159,3 +207,37 @@ def test_the_real_service_enforces_the_duration_limit(stt_container: tuple[str, 
     garbage = httpx2.post(f"{url}/transcribe", content=b"\x00" * 512, timeout=30)
     assert (garbage.status_code, garbage.json()) == (422, {"error": "undecodable"})
     assert _audio_files(container) == []
+
+
+BOMB = """
+import base64, io, sys
+import av, numpy as np
+buffer = io.BytesIO()
+with av.open(buffer, "w", format="ogg") as out:
+    stream = out.add_stream("libopus", rate=48000, layout="mono")
+    silence = np.zeros((1, 960 * 50), dtype=np.int16)  # one second
+    for second in range(30 * 60):
+        frame = av.AudioFrame.from_ndarray(silence, format="s16", layout="mono")
+        frame.rate, frame.pts = 48000, second * 48000
+        for packet in stream.encode(frame):
+            out.mux(packet)
+    for packet in stream.encode(None):
+        out.mux(packet)
+sys.stdout.write(base64.b64encode(buffer.getvalue()).decode())
+"""
+
+
+@pytest.mark.container
+def test_a_small_file_with_a_long_recording_is_stopped_early(
+    stt_container: tuple[str, Any],
+) -> None:
+    url, container = stt_container
+    made = container.exec_run(["python", "-c", BOMB])  # in memory: nothing written
+    assert made.exit_code == 0, made.output[-500:]
+    bomb = base64.b64decode(made.output)
+    assert len(bomb) < 1_000_000  # half an hour of silence is small
+    started = time.monotonic()
+    response = httpx2.post(f"{url}/transcribe", content=bomb, timeout=60)
+    assert response.status_code == 413, response.text
+    assert response.json()["error"] == "too_long"
+    assert time.monotonic() - started < 20  # stopped at 10 s of audio, not decoded in full

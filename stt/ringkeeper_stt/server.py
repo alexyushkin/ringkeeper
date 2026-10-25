@@ -3,6 +3,11 @@
 Audio lives only in memory for one request: it is read from the request
 body, decoded from a buffer and dropped. Nothing is written to disk, and
 neither audio nor transcripts are logged.
+
+A few kilobytes of compressed audio can decode to hours of samples, so:
+only known audio formats are opened (by their first bytes), decoding stops
+as soon as it passes the length limit, only a couple of requests are
+handled at once, and slow clients are cut off.
 """
 
 import json
@@ -18,10 +23,38 @@ from ringkeeper_stt.config import SttConfig
 logger = logging.getLogger(__name__)
 
 MAX_HINT_CHARS = 500
+MAX_IN_FLIGHT = 2  # requests read and decoded at once; one transcribes at a time
+SOCKET_TIMEOUT = 30.0  # seconds a client may stall while sending
 
 
 class DecodeError(Exception):
     pass
+
+
+class TooLongError(Exception):
+    def __init__(self, seconds: float) -> None:
+        super().__init__(f"longer than {seconds} s")
+        self.seconds = seconds
+
+
+# What each accepted container starts with, and the demuxer to open it with
+# (never left to probing: some demuxers, like playlists, open other files).
+_MAGIC: tuple[tuple[int, bytes, str], ...] = (
+    (0, b"OggS", "ogg"),  # Telegram voice notes (opus), Firefox
+    (0, b"\x1a\x45\xdf\xa3", "matroska"),  # webm: Chrome, Android
+    (4, b"ftyp", "mp4"),  # iOS Safari
+    (0, b"RIFF", "wav"),
+    (0, b"fLaC", "flac"),
+    (0, b"ID3", "mp3"),
+)
+
+
+def sniff(data: bytes) -> str | None:
+    """The demuxer for this audio, or None if it isn't a format we accept."""
+    for offset, magic, demuxer in _MAGIC:
+        if data[offset : offset + len(magic)] == magic:
+            return demuxer
+    return None
 
 
 @dataclass(frozen=True)
@@ -37,7 +70,9 @@ class Transcript:
 
 
 class Engine(Protocol):
-    def decode(self, data: bytes) -> Decoded: ...
+    def decode(self, data: bytes, max_seconds: float) -> Decoded:
+        """Raises DecodeError, or TooLongError once past max_seconds."""
+        ...
 
     def transcribe(self, audio: Decoded, hint: str | None = None) -> Transcript: ...
 
@@ -49,14 +84,19 @@ class Service:
         self.engine = engine
         self.config = config
         self._lock = threading.Lock()
+        self.slots = threading.BoundedSemaphore(MAX_IN_FLIGHT)
 
     def transcribe(self, data: bytes, hint: str | None = None) -> tuple[int, dict[str, Any]]:
         if len(data) > self.config.max_bytes:
             return 413, {"error": "too_large", "max_bytes": self.config.max_bytes}
+        if sniff(data) is None:
+            return 422, {"error": "undecodable"}
         try:
-            audio = self.engine.decode(data)
+            audio = self.engine.decode(data, self.config.max_seconds)
         except DecodeError:
             return 422, {"error": "undecodable"}
+        except TooLongError:
+            return 413, {"error": "too_long", "max_seconds": self.config.max_seconds}
         finally:
             del data
         seconds = round(audio.seconds, 1)
@@ -73,6 +113,7 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "ringkeeper-stt"
         sys_version = ""
+        timeout = SOCKET_TIMEOUT
 
         def _send(self, status: int, body: dict[str, Any]) -> None:
             payload = json.dumps(body).encode()
@@ -96,6 +137,9 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
             try:
                 length = int(self.headers.get("Content-Length", ""))
             except ValueError:
+                length = -1
+            if length < 0:
+                self.close_connection = True
                 self._send(411, {"error": "length_required"})
                 return
             if length > service.config.max_bytes:
@@ -103,12 +147,21 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
                 self.close_connection = True
                 self._send(413, {"error": "too_large", "max_bytes": service.config.max_bytes})
                 return
+            if not service.slots.acquire(blocking=False):
+                self.close_connection = True
+                self._send(503, {"error": "busy"})
+                return
             try:
                 hint = parse_qs(url.query).get("hint", [""])[0]
                 status, body = service.transcribe(self.rfile.read(length), hint)
+            except TimeoutError:
+                self.close_connection = True
+                return  # the client stalled: nothing to answer
             except Exception:
                 logger.exception("transcription failed")
                 status, body = 500, {"error": "failed"}
+            finally:
+                service.slots.release()
             self._send(status, body)
 
         def log_message(self, format: str, *args: Any) -> None:

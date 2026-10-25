@@ -195,6 +195,33 @@ def test_a_long_router_reply_is_shown_in_full(bridge: Bridge, telegram: FakeTele
     assert text.SHORTENED not in telegram.sent[-1]["text"]
 
 
+def test_notices_go_only_to_the_chat_the_request_came_from(
+    bridge: Bridge, telegram: FakeTelegram, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    other = 2002  # another allowed chat (a teammate)
+    monkeypatch.setenv("RINGKEEPER_TELEGRAM_CHAT_IDS", json.dumps([ME, other]))
+    both = Bridge(BotApi(BOT_TOKEN, get_settings().telegram_api_url), get_settings())
+    telegram.text("count globex customers", chat=other)
+    both.poll_once(0)
+    route_next(get_settings(), FakeModel([output(routed("globex-portal"))]))
+    sent_before = len(telegram.sent)
+    assert both.send_notices() == 1
+    assert [m["chat_id"] for m in telegram.sent[sent_before:]] == [other]
+
+
+def test_links_are_defanged_and_never_previewed(bridge: Bridge, telegram: FakeTelegram) -> None:
+    telegram.text("hello there")
+    bridge.poll_once(0)
+    reply = "See https://evil.example/login?next=x or http://10.0.0.5:8080/admin."
+    route_next(get_settings(), FakeModel([output(reply=reply)]))
+    bridge.send_notices()
+    sent = telegram.sent[-1]
+    assert "https://" not in sent["text"]
+    assert "hxxps://evil[.]example/login?next=x" in sent["text"]
+    assert "hxxp://10[.]0[.]0[.]5:8080/admin" in sent["text"]
+    assert sent["link_preview_options"] == {"is_disabled": True}
+
+
 def test_requests_from_elsewhere_get_no_notices(bridge: Bridge, telegram: FakeTelegram) -> None:
     with session_scope() as session:
         threads.post_message(session, "count globex customers", author="alice", source="cli")

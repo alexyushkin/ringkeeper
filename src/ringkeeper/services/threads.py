@@ -64,8 +64,11 @@ def post_message(
     source: str,
     thread: str | None = None,
     input_kind: str = "text",
+    origin_chat_id: int | None = None,
 ) -> Message:
-    """Store a user message (in a new thread unless one is given) for the router."""
+    """Store a user message (in a new thread unless one is given) for the router.
+
+    `origin_chat_id`: the Telegram chat it came from; its news goes only there."""
     body = body.strip()
     if not body:
         raise RuleViolationError("the message is empty")
@@ -77,7 +80,7 @@ def post_message(
         raise RuleViolationError(f"unknown message input '{input_kind}'")
     if thread is None:
         title = body.splitlines()[0][:TITLE_CHARS]
-        target = Thread(title=title, source=source)
+        target = Thread(title=title, source=source, origin_chat_id=origin_chat_id)
         session.add(target)
         session.flush()
     else:

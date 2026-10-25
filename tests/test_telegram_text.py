@@ -42,6 +42,38 @@ def test_a_longer_question_is_cut_on_a_word_and_says_so() -> None:
     assert text.SHORTENED in rendered
 
 
+@pytest.mark.parametrize(
+    "code",
+    [
+        "DO $$ BEGIN PERFORM purge(); END $$",
+        "$fn$ select secret from vault $fn$",
+        "WITH gone AS (DELETE FROM t RETURNING id) SELECT 1",
+        "COPY customers TO STDOUT",
+        "CALL purge_rows(30)",
+        "EXECUTE format('DROP TABLE %I', name)",
+    ],
+)
+def test_more_code_shapes_are_hidden(code: str) -> None:
+    hidden, changed = text.hide_code(f"Is this fine? {code}")
+    assert changed
+    assert "purge" not in hidden.lower()
+    assert "customers" not in hidden
+    assert "secret" not in hidden
+    assert "DROP" not in hidden
+
+
+@pytest.mark.parametrize(
+    "plain",
+    [
+        "Should I execute on staging first?",
+        "Call Bob (the admin) about it?",
+        "Copy notes to the wiki?",
+    ],
+)
+def test_plain_english_stays(plain: str) -> None:
+    assert text.hide_code(plain) == (plain, False)
+
+
 def test_approvals_and_plans_stay_one_short_line() -> None:
     held = Decision(
         kind=DecisionKind.APPROVE, project="acme-web", instance="acme-supabase-prod",

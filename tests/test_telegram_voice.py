@@ -25,7 +25,7 @@ from ringkeeper.models import (
 from ringkeeper.services import inbox, tasks
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.telegram.api import BotApi
-from ringkeeper.telegram.bridge import EXPIRED, REQUESTS_OFF, Bridge
+from ringkeeper.telegram.bridge import EXPIRED, NOT_A_PERSON, REQUESTS_OFF, Bridge
 from tests.fake_telegram import AUDIO_MARKER, BOT_TOKEN, ME, STRANGER, FakeStt, FakeTelegram
 
 pytestmark = pytest.mark.usefixtures("task_registry")
@@ -183,6 +183,71 @@ def test_after_redo_the_next_voice_note_answers_the_same_question_without_a_repl
     assert telegram.sent[-1]["text"] == REQUESTS_OFF
 
 
+def test_only_the_sender_can_confirm_their_voice_note(
+    bridge: Bridge, telegram: FakeTelegram, stt: FakeStt
+) -> None:
+    question_id, message_id = ask_question(bridge, telegram)
+    confirm = hear(bridge, telegram, message_id)
+    telegram.press(confirm, user=43)  # someone else in the same group
+    bridge.poll_once(0)
+    assert (
+        telegram.callbacks[-1]["text"] == "Only the person who sent the voice note can confirm it"
+    )
+    assert decision(question_id).status is DecisionStatus.PENDING
+    telegram.press(confirm)
+    bridge.poll_once(0)
+    assert decision(question_id).status is DecisionStatus.ANSWERED
+
+
+def test_a_redo_follow_up_is_the_senders_and_works_once(
+    bridge: Bridge, telegram: FakeTelegram, stt: FakeStt
+) -> None:
+    question_id, message_id = ask_question(bridge, telegram)
+    hear(bridge, telegram, message_id)
+    telegram.press(buttons(telegram.sent[-1])["🔁 Redo"])
+    bridge.poll_once(0)
+    telegram.text("not my answer", user=43)  # someone else: not taken as the answer
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == REQUESTS_OFF
+    assert decision(question_id).status is DecisionStatus.PENDING
+    telegram.voice("v2")  # the sender's follow-up uses the Redo
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"].endswith(f"Answer question {question_id[:8]} with this?")
+    assert [c.status for c in confirmations()] == ["used", "pending"]
+    telegram.press(buttons(telegram.sent[-1])["🔁 Redo"])
+    bridge.poll_once(0)
+    telegram.voice("v3")  # a new Redo, a new follow-up
+    bridge.poll_once(0)
+    assert [c.status for c in confirmations()] == ["used", "used", "pending"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"user": 1087968824},  # an anonymous group admin
+        {"sender_chat": {"id": -100123, "type": "channel"}},  # posted as a channel
+    ],
+)
+def test_anonymous_senders_cant_answer(
+    bridge: Bridge, telegram: FakeTelegram, fields: dict[str, Any]
+) -> None:
+    question_id, message_id = ask_question(bridge, telegram)
+    telegram.text("deny it", reply_to_message={"message_id": message_id}, **fields)
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == NOT_A_PERSON
+    assert decision(question_id).status is DecisionStatus.PENDING
+
+
+def test_bots_cant_press_buttons(bridge: Bridge, telegram: FakeTelegram, stt: FakeStt) -> None:
+    question_id, message_id = ask_question(bridge, telegram)
+    confirm = hear(bridge, telegram, message_id)
+    telegram.press(confirm)
+    telegram.updates[-1]["callback_query"]["from"]["is_bot"] = True
+    bridge.poll_once(0)
+    assert telegram.callbacks[-1]["text"] == NOT_A_PERSON
+    assert decision(question_id).status is DecisionStatus.PENDING
+
+
 def test_the_speech_model_gets_project_and_connection_names_as_a_hint(
     bridge: Bridge, telegram: FakeTelegram, stt: FakeStt
 ) -> None:
@@ -227,7 +292,7 @@ def test_confirmations_expire(
     assert bridge.expire_confirmations() == 1
     assert telegram.edits[-1] == {
         "chat_id": ME, "message_id": telegram.sent[-1]["message_id"], "text": EXPIRED,
-        "reply_markup": {"inline_keyboard": []},
+        "reply_markup": {"inline_keyboard": []}, "link_preview_options": {"is_disabled": True},
     }  # fmt: skip
     assert [c.transcript for c in confirmations()] == [None, None]
     assert bridge.expire_confirmations() == 0

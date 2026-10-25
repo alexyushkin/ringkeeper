@@ -1,9 +1,11 @@
 """The few Bot API methods Ringkeeper uses, over long polling (no webhook)."""
 
+import re
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx2
 
+from ringkeeper import scrub
 from ringkeeper.errors import RingkeeperError
 
 if TYPE_CHECKING:
@@ -18,12 +20,30 @@ class TelegramError(RingkeeperError):
     pass
 
 
+_URL = re.compile(r"(?i)\b(https?)://([^\s/?#<>\"'`]+)")
+
+
+def defang(text: str) -> str:
+    """http://evil.example/x -> hxxp://evil[.]example/x: links in what an agent or a
+    client's data says aren't clickable (and Telegram shows no preview anyway)."""
+
+    def neutral(match: re.Match[str]) -> str:
+        scheme = "hxxps" if match.group(1).lower() == "https" else "hxxp"
+        return f"{scheme}://{match.group(2).replace('.', '[.]')}"
+
+    return _URL.sub(neutral, text)
+
+
+NO_PREVIEW = {"is_disabled": True}
+
+
 class FileTooLargeError(TelegramError):
     pass
 
 
 class BotApi:
     def __init__(self, token: str, base_url: str = "https://api.telegram.org") -> None:
+        scrub.register(token)  # before any call: an error or log line never shows it
         self._http = httpx2.Client(
             base_url=f"{base_url.rstrip('/')}/bot{token}/", timeout=60.0, transport=transport
         )
@@ -55,13 +75,16 @@ class BotApi:
     def send_message(
         self, chat_id: int, text: str, reply_markup: dict[str, Any] | None = None
     ) -> int:
-        result = self.call("sendMessage", chat_id=chat_id, text=text, reply_markup=reply_markup)
+        result = self.call(
+            "sendMessage", chat_id=chat_id, text=defang(text), reply_markup=reply_markup,
+            link_preview_options=NO_PREVIEW,
+        )  # fmt: skip
         return int(cast(dict[str, Any], result)["message_id"])
 
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
         self.call(
-            "editMessageText", chat_id=chat_id, message_id=message_id, text=text,
-            reply_markup={"inline_keyboard": []},
+            "editMessageText", chat_id=chat_id, message_id=message_id, text=defang(text),
+            reply_markup={"inline_keyboard": []}, link_preview_options=NO_PREVIEW,
         )  # fmt: skip
 
     def answer_callback(self, callback_id: str, text: str) -> None:

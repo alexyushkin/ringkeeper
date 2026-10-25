@@ -98,8 +98,8 @@ class FakeTelegram:
     def reply(self, to_message: int, text: str, chat: int = ME) -> None:
         self._message(chat, text=text, reply_to_message={"message_id": to_message})
 
-    def text(self, text: str, chat: int = ME) -> None:
-        self._message(chat, text=text)
+    def text(self, text: str, chat: int = ME, user: int = 42, **fields: Any) -> None:
+        self._message(chat, user, text=text, **fields)
 
     def voice(
         self,
@@ -110,6 +110,7 @@ class FakeTelegram:
         reply_to: int | None = None,
         chat: int = ME,
         reported_size: int | None = None,
+        user: int = 42,
     ) -> None:
         """A voice note of `size` bytes; Telegram reports `reported_size` (default: the truth)."""
         self.files[file_id] = (AUDIO_MARKER + file_id.encode()).ljust(size, b"\x01")
@@ -120,7 +121,7 @@ class FakeTelegram:
         extra: dict[str, Any] = {"voice": voice}
         if reply_to is not None:
             extra["reply_to_message"] = {"message_id": reply_to}
-        self._message(chat, **extra)
+        self._message(chat, user, **extra)
 
 
 @dataclass

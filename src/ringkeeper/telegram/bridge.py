@@ -179,6 +179,20 @@ def _close_confirmation(row: VoiceConfirmation, status: str) -> None:
     row.status, row.transcript, row.resolved_at = status, None, datetime.now(UTC)
 
 
+# Telegram's stand-ins for people it hides: anonymous group admins, channels,
+# and its own service account. A message from one of them isn't from a person.
+ANONYMOUS_SENDERS = frozenset({1087968824, 136817688, 777000})
+NOT_A_PERSON = "Send this from your own account (not anonymously or as a channel)."
+
+
+def _person(user: dict[str, Any], message: dict[str, Any] | None = None) -> bool:
+    """A real person sent it: not a bot, an anonymous admin or a channel."""
+    if message is not None and message.get("sender_chat"):
+        return False
+    ident = user.get("id")
+    return isinstance(ident, int) and not user.get("is_bot") and ident not in ANONYMOUS_SENDERS
+
+
 def _who(user: dict[str, Any]) -> str:
     handle = user.get("username")
     return f"telegram:{user.get('id')}" + (f" (@{handle})" if handle else "")
@@ -250,9 +264,15 @@ class Bridge:
                     closed += 1
         return closed
 
-    def _notify(self, session: Session, text: str, **subject: uuid.UUID) -> int:
+    def _notify(
+        self, session: Session, text: str, thread_id: uuid.UUID | None, **subject: uuid.UUID
+    ) -> int:
+        """News about a request: only to the chat it came from (if still allowed)."""
+        thread = session.get(Thread, thread_id) if thread_id is not None else None
+        origin = thread.origin_chat_id if thread is not None else None
+        chats = {origin} & self.chats if origin is not None else self.chats
         sent = 0
-        for chat in sorted(self.chats):
+        for chat in sorted(chats):
             note = Notification(channel=CHANNEL, chat_id=chat, **subject)
             try:
                 note.external_id = self.api.send_message(chat, scrub(text))
@@ -283,7 +303,7 @@ class Bridge:
             ).all()
             for message in routed:
                 text = routed_text(session, message, self.settings.telegram_question_chars)
-                sent += self._notify(session, text, message_id=message.id)
+                sent += self._notify(session, text, message.thread_id, message_id=message.id)
             ended = select(Notification.task_id).where(
                 Notification.channel == CHANNEL, Notification.task_id.is_not(None)
             )
@@ -298,7 +318,7 @@ class Bridge:
                 .order_by(Task.finished_at)
             ).all()
             for task in finished:
-                sent += self._notify(session, finished_text(task), task_id=task.id)
+                sent += self._notify(session, finished_text(task), task.thread_id, task_id=task.id)
         return sent
 
     # --- Incoming ---
@@ -327,10 +347,12 @@ class Bridge:
         if not self._allowed(cast(dict[str, Any] | None, message.get("chat"))):
             return  # not ours to answer, and nothing is said back
         parts = str(callback.get("data", "")).split(":")
-        user = cast(dict[str, Any], callback["from"])
+        user = cast(dict[str, Any], callback.get("from") or {})
         chat_id = int(cast(dict[str, Any], message["chat"])["id"])
         feedback = "Unknown button"
-        if len(parts) == 3 and parts[0] == CALLBACK_PREFIX:
+        if not _person(user):
+            feedback = NOT_A_PERSON
+        elif len(parts) == 3 and parts[0] == CALLBACK_PREFIX:
             feedback = self._press(parts[1], parts[2], user)
         elif len(parts) == 3 and parts[0] == CONFIRM_PREFIX:
             feedback = self._resolve(parts[1], parts[2], chat_id, user)
@@ -363,9 +385,12 @@ class Bridge:
         if not replied and text.split("@")[0].split(" ")[0] == "/start":
             self._say(chat_id, WELCOME)
             return
+        if not _person(user, message):
+            self._say(chat_id, NOT_A_PERSON)  # who answered or asked must be on record
+            return
         decision_id = self._question_for(chat_id, replied) if replied else None
         if decision_id is None and not replied:
-            decision_id = self._redo_target(chat_id)
+            decision_id = self._take_redo(chat_id, int(user["id"]))
         if decision_id is None:
             # Not an answer: a new request, if requests from Telegram are on.
             if not self.settings.telegram_requests:
@@ -373,7 +398,7 @@ class Bridge:
             elif note is not None:
                 self._hear(chat_id, user, note, None)
             elif text:
-                self._say(chat_id, self._request(text, user, "text"))
+                self._say(chat_id, self._request(text, user, "text", chat_id))
             else:
                 self._say(chat_id, TEXT_OR_VOICE_REQUEST)
         elif note is not None:
@@ -400,16 +425,18 @@ class Bridge:
 
     # --- Voice: "I heard: ..." with Confirm and Redo ---
 
-    def _redo_target(self, chat_id: int) -> str | None:
-        """After Redo on an answer, the next message in that chat answers the same
-        question (within the confirmation window), no Telegram reply needed."""
+    def _take_redo(self, chat_id: int, user_id: int) -> str | None:
+        """After Redo on an answer, the same person's next message in that chat
+        answers the same question (within the confirmation window, while it's
+        still open), no Telegram reply needed. It works once."""
         window = timedelta(minutes=self.settings.telegram_confirm_minutes)
         with session_scope() as session:
             latest = session.scalars(
                 select(VoiceConfirmation)
-                .where(VoiceConfirmation.chat_id == chat_id)
+                .where(VoiceConfirmation.chat_id == chat_id, VoiceConfirmation.user_id == user_id)
                 .order_by(VoiceConfirmation.created_at.desc())
                 .limit(1)
+                .with_for_update()
             ).one_or_none()
             if (
                 latest is None
@@ -419,6 +446,10 @@ class Bridge:
                 or latest.resolved_at < datetime.now(UTC) - window
             ):
                 return None
+            question = session.get(Decision, latest.decision_id)
+            if question is None or question.status is not DecisionStatus.PENDING:
+                return None
+            latest.status = "used"
             return str(latest.decision_id)
 
     def _open_question(self, decision_id: str) -> str | None:
@@ -431,13 +462,14 @@ class Bridge:
                 return f"Not done: that question is already {decision.status}"
             return None
 
-    def _request(self, body: str, user: dict[str, Any], input_kind: str) -> str:
+    def _request(self, body: str, user: dict[str, Any], input_kind: str, chat_id: int) -> str:
         """Post a request for the router, the same path as `ringkeeper ask`."""
         try:
             with session_scope() as session:
                 message = threads.post_message(
-                    session, body, author=_who(user), source=CHANNEL, input_kind=input_kind
-                )
+                    session, body, author=_who(user), source=CHANNEL, input_kind=input_kind,
+                    origin_chat_id=chat_id,
+                )  # fmt: skip
                 thread = str(message.thread_id)[:8]
         except RingkeeperError as error:
             return f"Not sent: {error}"
@@ -468,8 +500,8 @@ class Bridge:
         with session_scope() as session:
             row = VoiceConfirmation(
                 kind=ANSWER if decision_id else REQUEST, chat_id=chat_id, author=_who(user),
+                user_id=int(user["id"]), transcript=transcript, expires_at=expires,
                 decision_id=uuid.UUID(decision_id) if decision_id else None,
-                transcript=transcript, expires_at=expires,
             )  # fmt: skip
             session.add(row)
             session.flush()
@@ -501,6 +533,8 @@ class Bridge:
                 row = session.get(VoiceConfirmation, ident, with_for_update=True)
                 if row is None or row.chat_id != chat_id or action not in (CONFIRM, REDO):
                     return "This button is out of date"
+                if row.user_id != user.get("id"):
+                    return "Only the person who sent the voice note can confirm it"
                 if row.status != "pending":
                     return f"Already {row.status}"
                 transcript, external_id = row.transcript or "", row.external_id
@@ -518,8 +552,9 @@ class Bridge:
                     feedback = "Send it again"
                 elif row.kind == REQUEST:
                     message = threads.post_message(
-                        session, transcript, author=row.author, source=CHANNEL, input_kind="voice"
-                    )
+                        session, transcript, author=row.author, source=CHANNEL,
+                        input_kind="voice", origin_chat_id=row.chat_id,
+                    )  # fmt: skip
                     _close_confirmation(row, "confirmed")
                     thread = str(message.thread_id)[:8]
                     outcome = f"✔ Sent. Routing it now (thread {thread})."
