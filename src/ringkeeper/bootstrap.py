@@ -53,8 +53,11 @@ def ensure_admin_token(settings: Settings) -> None:
         logger.info("created the API admin token (see `ringkeeper auth api-token`)")
 
 
-def ensure_setup_code(settings: Settings) -> str | None:
-    """The setup code while no owner exists (reused across restarts); None afterwards."""
+def ensure_setup_code(settings: Settings, *, announce: bool = True) -> str | None:
+    """The setup code while no owner exists (reused across restarts); None afterwards.
+
+    `announce` logs it (the api's start); the CLI prints it itself instead.
+    """
     path = setup_code_path(settings)
     with session_scope() as session:
         if owner.has_owner(session):
@@ -73,11 +76,12 @@ def ensure_setup_code(settings: Settings) -> str | None:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(code + "\n")
             _hand_over(settings, path)
-    logger.warning(
-        "Ringkeeper setup code: %s  (open the web app to finish setup; the code is also in "
-        "%s in Ringkeeper's data folder, .ringkeeper)",
-        code, path.name,
-    )  # fmt: skip
+    if announce:
+        logger.warning(
+            "Ringkeeper setup code: %s  (open the web app to finish setup; the code is also "
+            "in %s in Ringkeeper's data folder, .ringkeeper)",
+            code, path.name,
+        )  # fmt: skip
     return code
 
 

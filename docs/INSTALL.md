@@ -87,6 +87,10 @@ git clone https://github.com/alexyushkin/ringkeeper.git
 cd ringkeeper
 ```
 
+(Windows PowerShell shows git's normal progress, like "Cloning into
+'ringkeeper'...", in red. That's not an error. The same goes for Docker's
+progress lines later.)
+
 ### Step 2: settings
 
 Create your settings file from the example:
@@ -349,12 +353,14 @@ app on your phone, see [section 3](#3-use-it-from-your-phone), steps 5 to 7.
 ## 5. Everyday tasks
 
 Run these in the `ringkeeper` folder. If you didn't install voice, leave out
-`--profile stt`.
+`--profile stt` in the start commands. `--profile "*"` means "all parts of
+Ringkeeper, including voice"; without it, stop and uninstall would leave the
+voice service running.
 
 ### Stop and start
 
 ```bash
-docker compose stop                     # stop (data is kept)
+docker compose --profile "*" stop       # stop (data is kept)
 docker compose --profile stt up -d      # start again
 ```
 
@@ -402,17 +408,19 @@ they exist only there.
 On a fresh install (sections 2 or 4, up to and including step 2 "settings"):
 
 1. Unpack the backup into the `ringkeeper` folder, replacing `.env` and
-   `.ringkeeper`.
+   `.ringkeeper`:
+   - Windows: `Expand-Archive ringkeeper-backup.zip -DestinationPath . -Force`
+   - Mac/Linux: `sudo tar xzf ringkeeper-backup.tgz`
 2. Start only the database and load the backup:
 
    ```bash
-   docker compose up -d postgres
+   docker compose up -d --wait postgres
    docker compose cp ./ringkeeper-backup.dump postgres:/tmp/ringkeeper.dump
    docker compose exec -T postgres pg_restore -U ringkeeper -d ringkeeper --no-owner /tmp/ringkeeper.dump
    ```
 
-3. Start everything (step 3). Your login, projects, connections and history
-   are back; no setup wizard.
+3. Start everything: `docker compose --profile stt up -d`. Your login,
+   projects, connections and history are back; no setup wizard.
 
 If `master.key` is missing from the restored `.ringkeeper` folder, open your
 recovery key file, copy the key line (the long line of letters and digits),
@@ -435,8 +443,8 @@ As long as Ringkeeper still runs, download it again: **Settings → Recovery key
 ### Uninstall
 
 ```bash
-docker compose down                     # remove the app, keep the data
-docker compose down -v                  # remove the app AND all its data (cannot be undone)
+docker compose --profile "*" down       # remove the app, keep the data
+docker compose --profile "*" down -v    # remove the app AND all its data (cannot be undone)
 ```
 
 Then delete the `ringkeeper` folder, and the images with
@@ -453,6 +461,7 @@ To see what a part of Ringkeeper is doing: `docker compose logs api` (or
 | --- | --- |
 | `error during connect` / `Cannot connect to the Docker daemon` | Docker Desktop isn't running: open it and wait until it says it's running. |
 | `port is already allocated` | Another program uses that port (often 5432 or 3000). In `.env`, delete the `#` in front of the matching `RINGKEEPER_..._PORT` line and pick another number (for example `RINGKEEPER_DB_PORT=5442`), then start again. If you change `RINGKEEPER_WEB_PORT`, open that port instead of 3000, and use it in `tailscale serve`. |
+| You want a second Ringkeeper on the same machine (a test install, say) | In the second one's `.env`, set its own `COMPOSE_PROJECT_NAME` (for example `ringkeeper2`), its own `RINGKEEPER_WORKER_NETWORK` (`ringkeeper2_workers`) and different ports (see `.env.example`). Without its own project name, its commands control the first install. Keep both on the same version: they share the `ringkeeper-web`, `ringkeeper-stt` and `ringkeeper-worker` images. |
 | `dependency failed to start: container ... api ... is unhealthy` | Run `docker compose logs api`. `password authentication failed` means the database was first started with a different `POSTGRES_PASSWORD`: put the old one back, or, on a fresh install with nothing to keep, run `docker compose down -v` and start again. |
 | `localhost:3000` doesn't load | Run `docker compose ps`: `web` should be `Up`. If it was just started, wait a minute. |
 | The app says "can't find Ringkeeper's API token yet" | The api is still starting: wait a minute and reload. |

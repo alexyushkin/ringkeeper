@@ -27,7 +27,7 @@ def reset_login(
     with handle_errors():
         with session_scope() as session:
             owner.reset_owner(session)
-        code = bootstrap.ensure_setup_code(settings)
+        code = bootstrap.ensure_setup_code(settings, announce=False)
     typer.echo(f"New setup code: {code}")
     typer.echo("Open the web app and create the login again with this code.")
 
@@ -36,7 +36,7 @@ def reset_login(
 def setup_code() -> None:
     """Print the setup code the web app's wizard asks for (only before the login exists)."""
     with handle_errors():
-        code = bootstrap.ensure_setup_code(get_settings())
+        code = bootstrap.ensure_setup_code(get_settings(), announce=False)
     if code is None:
         typer.echo("Setup is done: the login exists.")
         typer.echo("Forgot the password? Run `ringkeeper web reset-login`.")
