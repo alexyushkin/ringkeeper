@@ -6,8 +6,8 @@ every 30 seconds), it:
 - starts, restarts or stops the Telegram bridge when its settings change
   (turned on in the Settings screen, a new chat id, a new bot token);
 - restarts the router when its model changes;
-- writes the admin token to the web service's token file, so a rotation
-  (`ringkeeper auth api-token --rotate`) reaches the web app.
+- writes the web token to the web service's token file, so a new one
+  (`ringkeeper web reset-login`) reaches the web app.
 
 The session manager doesn't need it: it reads the effective settings on
 every tick.
@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ringkeeper.admin_token import stored_api_token
+from ringkeeper.admin_token import stored_web_token
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -169,14 +169,14 @@ class Supervisor:
                         deleted, settings.retention_days,
                     )  # fmt: skip
 
-    # --- The web app's copy of the admin token ---
+    # --- The web app's token ---
 
     @staticmethod
     def _sync_web_token(settings: Settings) -> None:
         path = settings.web_token_file
         if path is None:
             return
-        token = stored_api_token()
+        token = stored_web_token()
         if token is None:
             return
         write_private(path, token, owner_uid=settings.web_uid)

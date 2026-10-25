@@ -234,7 +234,7 @@ def held_write() -> str:
             instance="acme-supabase-prod",
             service=InstanceType.SUPABASE,
             tool="execute",
-            args={"sql": "DELETE FROM notes"},
+            args={"sql": "UPDATE notes SET body = 'x'"},
             args_hash="h",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )

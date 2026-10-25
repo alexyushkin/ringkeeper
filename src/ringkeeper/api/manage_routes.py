@@ -1,8 +1,12 @@
 """What the owner manages in the web app: settings, secrets, projects, connections.
 
-Every endpoint needs the admin token and a signed-in owner. Writes go through
-the services layer and are audited (outcome `changed`). Secret values are
+Every endpoint needs a token and a signed-in owner. Writes go through the
+services layer and are audited (outcome `changed`). Secret values are
 write-only: no response, log line or audit row ever contains one.
+
+Changes that store a secret, redirect approvals or loosen them also need a
+recent confirmation (deps.check_recent_auth): a stolen session cookie alone
+can't point Telegram approvals at another chat or send a key elsewhere.
 """
 
 from typing import Annotated, Any
@@ -11,6 +15,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Query,
     Request,
 )
 from pydantic import BaseModel, Field
@@ -18,7 +23,15 @@ from sqlalchemy import select
 
 from ringkeeper import netpolicy
 from ringkeeper.api.auth import AdminDep
-from ringkeeper.api.deps import OWNER, OwnerToken, SessionDep, WriteSessionDep, require_owner
+from ringkeeper.api.deps import (
+    OWNER,
+    OwnerToken,
+    RecentAuth,
+    SessionDep,
+    WriteSessionDep,
+    check_recent_auth,
+    require_owner,
+)
 from ringkeeper.api.supervisor import Supervisor
 from ringkeeper.claude_auth import ClaudeAuthError, credential_ref
 from ringkeeper.config import get_settings
@@ -50,6 +63,9 @@ from ringkeeper.telegram.api import BotApi, TelegramError, from_vault, recent_ch
 from ringkeeper.vault import get_vault
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
+
+# Settings that decide who can approve and where approvals go.
+CONFIRMED_SETTINGS = frozenset({"telegram", "telegram_chat_ids", "telegram_requests"})
 
 
 def _stored(ref: str) -> bool:
@@ -97,9 +113,14 @@ def get_settings_view(request: Request, session: SessionDep) -> SettingsOut:
 
 
 @router.patch("/settings")
-def patch_settings(changes: RuntimeIn, request: Request, session: WriteSessionDep) -> SettingsOut:
+def patch_settings(
+    changes: RuntimeIn, request: Request, session: WriteSessionDep, token: OwnerToken
+) -> SettingsOut:
     """Change some settings; null resets one to its .env value. Applied without a restart."""
-    runtime.update(session, changes.model_dump(exclude_unset=True, mode="json"), by=OWNER)
+    values = changes.model_dump(exclude_unset=True, mode="json")
+    if CONFIRMED_SETTINGS & values.keys():
+        check_recent_auth(request, token)
+    runtime.update(session, values, by=OWNER)
     supervisor: Supervisor | None = getattr(request.app.state, "supervisor", None)
     if supervisor is not None:
         supervisor.wake()
@@ -133,7 +154,7 @@ class TelegramSecretIn(Input):
     token: str = Field(repr=False)
 
 
-@router.put("/secrets/claude")
+@router.put("/secrets/claude", dependencies=[RecentAuth])
 def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[str, Any]:
     settings = current_settings()
     try:
@@ -149,7 +170,7 @@ def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[st
     return {"stored": True, "verified": stored.verified, "message": stored.message}
 
 
-@router.put("/secrets/telegram")
+@router.put("/secrets/telegram", dependencies=[RecentAuth])
 def put_telegram_secret(data: TelegramSecretIn, session: WriteSessionDep) -> dict[str, Any]:
     try:
         bot = secrets_in.store_telegram(session, get_settings(), data.token)
@@ -161,9 +182,11 @@ def put_telegram_secret(data: TelegramSecretIn, session: WriteSessionDep) -> dic
 
 
 @router.get("/telegram/detect")
-def detect_telegram_chats(request: Request) -> dict[str, Any]:
-    """Chats that messaged the bot, for picking the chat id. Not while the bridge runs:
-    it takes every update first."""
+def detect_telegram_chats(
+    request: Request, code: Annotated[str, Query(min_length=6, max_length=32)]
+) -> dict[str, Any]:
+    """Chats that sent the bot the pairing code the app shows, for picking the chat id.
+    Not while the bridge runs: it takes every update first."""
     supervisor: Supervisor | None = getattr(request.app.state, "supervisor", None)
     if supervisor and supervisor.status().get("telegram", {}).get("running"):
         raise HTTPException(409, detail="Telegram is already connected.")
@@ -178,7 +201,7 @@ def detect_telegram_chats(request: Request) -> dict[str, Any]:
         raise HTTPException(502, detail=str(error)) from None
     finally:
         api.close()
-    return {"chats": recent_chats(updates)}
+    return {"chats": recent_chats(updates, code)}
 
 
 # --- Projects ---
@@ -212,8 +235,12 @@ def create_project(data: ProjectIn, session: WriteSessionDep) -> dict[str, str]:
 
 
 @router.patch("/projects/{name}")
-def update_project(name: str, data: ProjectPatch, session: WriteSessionDep) -> dict[str, str]:
+def update_project(
+    name: str, data: ProjectPatch, request: Request, session: WriteSessionDep, token: OwnerToken
+) -> dict[str, str]:
     project = projects.get_project(session, name)
+    if data.autonomy is not None and data.autonomy != project.autonomy:
+        check_recent_auth(request, token)  # autonomy decides what runs without asking
     current = ProjectIn.model_validate(
         {
             "name": project.name, "owner": project.owner, "description": project.description,
@@ -243,8 +270,15 @@ def delete_project(name: str, session: WriteSessionDep) -> None:
 
 @router.put("/projects/{name}/connections/{instance}")
 def bind_connection(
-    name: str, instance: str, data: ConnectionBindingIn, session: WriteSessionDep
+    name: str,
+    instance: str,
+    data: ConnectionBindingIn,
+    request: Request,
+    session: WriteSessionDep,
+    token: OwnerToken,
 ) -> dict[str, Any]:
+    if data.preapproved_writes:
+        check_recent_auth(request, token)  # writes that run without an approval
     binding, created = bindings.set_binding(
         session, BindingIn(project=name, instance=instance, **data.model_dump())
     )
@@ -320,7 +354,7 @@ def list_connections(session: SessionDep) -> list[ConnectionOut]:
     return [_connection_out(i) for i in found]
 
 
-@router.post("/connections", status_code=201)
+@router.post("/connections", status_code=201, dependencies=[RecentAuth])
 def create_connection(data: ConnectionIn, session: WriteSessionDep) -> ConnectionOut:
     if data.type is InstanceType.N8N and not data.base_url:
         raise HTTPException(422, detail="n8n needs its address (base URL)")
@@ -348,11 +382,16 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
 
 
 @router.patch("/connections/{name}")
-def update_connection(name: str, data: ConnectionPatch, session: WriteSessionDep) -> ConnectionOut:
+def update_connection(
+    name: str, data: ConnectionPatch, request: Request, session: WriteSessionDep, token: OwnerToken
+) -> ConnectionOut:
     instance = instances.get_instance(session, name)
     changes = data.model_dump(exclude_unset=True, exclude={"secret"})
     base_url = instance.base_url
-    if "base_url" in changes and changes["base_url"] != instance.base_url:
+    moved = "base_url" in changes and changes["base_url"] != instance.base_url
+    if moved or (instance.env is Env.PROD and changes.get("env", Env.PROD) is not Env.PROD):
+        check_recent_auth(request, token)  # a new address, or production's rules dropped
+    if moved:
         if not data.secret:
             raise HTTPException(
                 422, detail="Changing the address needs the secret again, in the same request."
@@ -376,7 +415,7 @@ def update_connection(name: str, data: ConnectionPatch, session: WriteSessionDep
     return _connection_out(instances.get_instance(session, name))
 
 
-@router.put("/connections/{name}/secret", status_code=204)
+@router.put("/connections/{name}/secret", status_code=204, dependencies=[RecentAuth])
 def replace_connection_secret(
     name: str, data: ConnectionSecretIn, session: WriteSessionDep
 ) -> None:

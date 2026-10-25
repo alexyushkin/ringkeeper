@@ -6,8 +6,14 @@
 - Passwords are hashed with argon2id; at least 12 characters.
 - Sessions are random tokens; only their SHA-256 is stored. They end after
   `owner_session_idle_hours` without use, or `owner_session_max_hours` at most.
-- Sign-in and setup-code attempts are rate limited per client and overall.
-- Passkeys (WebAuthn) are optional and need the web app's HTTPS origin.
+- Password and setup-code guesses are slowed down overall and blocked per
+  client (when the client's address is known): an attacker can't lock the
+  owner out, and a passkey sign-in is never held up.
+- Sensitive actions need a recent confirmation (password, or a passkey with
+  user verification) on the session: a stolen session cookie alone can't
+  add a passkey, take the recovery key or redirect approvals.
+- Passkeys (WebAuthn) are optional, need the web app's HTTPS origin and user
+  verification, and are all removed when the password changes.
 """
 
 import hashlib
@@ -21,7 +27,7 @@ from typing import Any, cast
 import webauthn
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from sqlalchemy import delete, func, select
+from sqlalchemy import DateTime, delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
@@ -41,9 +47,18 @@ from ringkeeper.services import admin_audit
 SETUP_CODE_KEY = "setup.code"
 CHALLENGE_KEY = "webauthn.challenge."
 MIN_PASSWORD_CHARS = 12
-# Per client: 5 failures in 15 minutes. Overall: 50 (a spread-out guessing attempt).
-CLIENT_LIMIT, GLOBAL_LIMIT = 5, 50
+# Per known client: 5 failures in 15 minutes, then blocked. Overall: after 5
+# failures, one guess every few seconds at most (answered "try again shortly",
+# never a lockout, and no request is held waiting). Clients without a known
+# address ("direct") only get the overall rule.
+CLIENT_LIMIT = 5
+SLOW_AFTER = 5
+SLOW_SECONDS = 3
 WINDOW = timedelta(minutes=15)
+CONFIRM_FOR = timedelta(minutes=10)  # how long a confirmation lets sensitive actions run
+MAX_CHALLENGES = 20
+ATTEMPTS_LOCK = 0x52_4B_4C_47  # pg advisory lock: one guess is checked at a time
+UNKNOWN_CLIENT = "direct"
 CHALLENGE_TTL = timedelta(minutes=5)
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L
 OWNER = "owner"
@@ -102,12 +117,21 @@ def setup_code_matches(session: Session, code: str) -> bool:
 
 
 def _check_rate(session: Session, client: str) -> None:
-    since = _now() - WINDOW
-    failures = select(func.count()).where(LoginAttempt.ok.is_(False), LoginAttempt.at >= since)
-    mine = session.scalar(failures.where(LoginAttempt.key == f"client:{client}")) or 0
-    everyone = session.scalar(failures) or 0
-    if mine >= CLIENT_LIMIT or everyone >= GLOBAL_LIMIT:
-        raise TooManyAttemptsError(int(WINDOW.total_seconds()))
+    """Before checking a guess: one at a time, block a known client, pace everyone."""
+    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ATTEMPTS_LOCK})
+    now = _now()
+    failed = (LoginAttempt.ok.is_(False), LoginAttempt.at >= now - WINDOW)
+    if client != UNKNOWN_CLIENT:
+        mine = session.scalar(
+            select(func.count()).where(*failed, LoginAttempt.key == f"client:{client}")
+        )
+        if (mine or 0) >= CLIENT_LIMIT:
+            raise TooManyAttemptsError(int(WINDOW.total_seconds()))
+    count, last = session.execute(
+        select(func.count(), func.max(LoginAttempt.at)).where(*failed)
+    ).one()
+    if count >= SLOW_AFTER and now - last < timedelta(seconds=SLOW_SECONDS):
+        raise TooManyAttemptsError(SLOW_SECONDS)
 
 
 def _attempt(session: Session, client: str, ok: bool) -> None:
@@ -159,11 +183,15 @@ def change_password(session: Session, current_token: str, old: str, new: str) ->
     check_password_rules(new)
     owner.password_hash = _hasher.hash(new)
     owner.password_changed_at = _now()
-    # Every other browser is signed out.
+    # Every other browser is signed out, and every passkey goes: one added with a
+    # stolen session mustn't outlive the password change.
     session.execute(
         delete(OwnerSession).where(OwnerSession.token_hash != token_hash(current_token))
     )
-    admin_audit.record(session, "owner.password", "changed the password", by=OWNER)
+    session.execute(delete(Passkey))
+    admin_audit.record(
+        session, "owner.password", "changed the password (passkeys removed)", by=OWNER
+    )
     session.flush()
 
 
@@ -197,6 +225,7 @@ def open_session(
         OwnerSession(
             token_hash=token_hash(token), expires_at=expires, method=method,
             user_agent=(user_agent or "")[:300] or None,
+            confirmed_at=_now(),  # signing in proves it's the owner, for a few minutes
         )
     )  # fmt: skip
     session.flush()
@@ -231,6 +260,26 @@ def verify_session(session: Session, settings: Settings, token: str) -> OwnerSes
     return row
 
 
+def confirm(session: Session, token: str, password: str, client: str) -> None:
+    """The owner proves it's them again, before a sensitive action."""
+    row = session.get(OwnerSession, token_hash(token), with_for_update=True)
+    owner = session.get(Owner, 1)
+    if row is None or owner is None:
+        raise AuthError("not signed in")
+    _check_rate(session, client)
+    if not verify_password(owner, password):
+        _attempt(session, client, False)
+        raise AuthError("wrong password")
+    _attempt(session, client, True)
+    row.confirmed_at = _now()
+    session.flush()
+
+
+def recently_confirmed(session: Session, token: str) -> bool:
+    row = session.get(OwnerSession, token_hash(token))
+    return bool(row and row.confirmed_at and row.confirmed_at + CONFIRM_FOR > _now())
+
+
 def logout(session: Session, token: str) -> None:
     session.execute(delete(OwnerSession).where(OwnerSession.token_hash == token_hash(token)))
 
@@ -250,6 +299,18 @@ def _rp(settings: Settings) -> tuple[str, str]:
 
 
 def _save_challenge(session: Session, challenge: bytes, purpose: str) -> str:
+    # Expired ones go; a flood of new ones (this is reachable signed out) is refused.
+    session.execute(
+        delete(Setting).where(
+            Setting.key.startswith(CHALLENGE_KEY),
+            Setting.value["expires"].astext.cast(DateTime(timezone=True)) <= _now(),
+        )
+    )
+    outstanding = session.scalar(
+        select(func.count()).select_from(Setting).where(Setting.key.startswith(CHALLENGE_KEY))
+    )
+    if (outstanding or 0) >= MAX_CHALLENGES:
+        raise TooManyAttemptsError(int(CHALLENGE_TTL.total_seconds()))
     ident = secrets.token_urlsafe(16)
     session.add(
         Setting(
@@ -285,7 +346,7 @@ def passkey_registration_options(session: Session, settings: Settings) -> dict[s
         exclude_credentials=[PublicKeyCredentialDescriptor(id=p.credential_id) for p in existing],
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.PREFERRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )  # fmt: skip
     ident = _save_challenge(session, options.challenge, "register")
@@ -300,7 +361,7 @@ def register_passkey(
     try:
         verified = webauthn.verify_registration_response(
             credential=credential, expected_challenge=challenge, expected_rp_id=rp_id,
-            expected_origin=origin,
+            expected_origin=origin, require_user_verification=True,
         )  # fmt: skip
     except WebAuthnException as error:
         raise RuleViolationError(f"the passkey couldn't be added: {error}") from None
@@ -322,7 +383,7 @@ def passkey_login_options(session: Session, settings: Settings) -> dict[str, Any
     if session.scalar(select(func.count()).select_from(Passkey)) == 0:
         raise RuleViolationError("no passkey has been added yet")
     options = webauthn.generate_authentication_options(
-        rp_id=rp_id, user_verification=UserVerificationRequirement.PREFERRED
+        rp_id=rp_id, user_verification=UserVerificationRequirement.REQUIRED
     )
     ident = _save_challenge(session, options.challenge, "login")
     return {"challenge_id": ident, "options": json.loads(webauthn.options_to_json(options))}
@@ -336,26 +397,26 @@ def passkey_login(
     client: str,
     user_agent: str | None,
 ) -> NewSession:
+    # No guess counting here: a passkey can't be guessed, and a password
+    # attacker's failures mustn't hold the owner's passkey sign-in up.
+    del client
     rp_id, origin = _rp(settings)
-    _check_rate(session, client)
     challenge = _take_challenge(session, challenge_id, "login")
     raw_id = base64url_to_bytes(str(credential.get("rawId") or credential.get("id") or ""))
     passkey = session.scalars(select(Passkey).where(Passkey.credential_id == raw_id)).one_or_none()
     if passkey is None:
-        _attempt(session, client, False)
         raise AuthError("that passkey isn't registered here")
     try:
         verified = webauthn.verify_authentication_response(
             credential=credential, expected_challenge=challenge, expected_rp_id=rp_id,
             expected_origin=origin, credential_public_key=passkey.public_key,
             credential_current_sign_count=passkey.sign_count,
+            require_user_verification=True,
         )  # fmt: skip
     except WebAuthnException:
-        _attempt(session, client, False)
         raise AuthError("the passkey didn't check out") from None
     passkey.sign_count = verified.new_sign_count
     passkey.last_used_at = _now()
-    _attempt(session, client, True)
     return open_session(session, settings, "passkey", user_agent)
 
 

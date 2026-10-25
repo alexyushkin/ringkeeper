@@ -86,9 +86,9 @@ def test_refused_token_has_no_project(session: Session) -> None:
 
 
 def test_hold_and_approve_lifecycle(session: Session) -> None:
-    held = decisions.hold(session, call(sql="DELETE FROM t"), "acme-supabase-prod")
+    held = decisions.hold(session, call(sql="UPDATE t SET x = 1"), "acme-supabase-prod")
     assert held.status == DecisionStatus.PENDING
-    assert held.args == {"sql": "DELETE FROM t"}
+    assert held.args == {"sql": "UPDATE t SET x = 1"}
     assert (held.expires_at - held.created_at).total_seconds() == 24 * 3600
 
     claimed = decisions.claim_for_approval(session, str(held.id), by="ops")
@@ -101,7 +101,7 @@ def test_hold_and_approve_lifecycle(session: Session) -> None:
 
 
 def test_cannot_approve_twice(session: Session) -> None:
-    held = decisions.hold(session, call(), "acme-supabase-prod")
+    held = decisions.hold(session, call(sql="UPDATE t SET x = 1"), "acme-supabase-prod")
     decisions.claim_for_approval(session, str(held.id))
     with pytest.raises(RuleViolationError, match="is already approved"):
         decisions.claim_for_approval(session, str(held.id))

@@ -286,14 +286,12 @@ function Passkeys() {
 }
 
 function RecoveryKey() {
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   async function get() {
     setError(null);
     try {
-      const key = await api<{ filename: string; key: string; note: string }>("setup/recovery-key", { json: { password } });
+      const key = await api<{ filename: string; key: string; note: string }>("setup/recovery-key", { method: "POST" });
       download(key.filename, `Ringkeeper recovery key\n\n${key.key}\n\n${key.note}\n`);
-      setPassword("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -304,10 +302,8 @@ function RecoveryKey() {
       <p className="text-sm text-muted">If you lose this file, you'll need to re-enter your connection secrets.</p>
       <Details label="Download it again">
         <div className="space-y-2">
-          <Field label="Your password" type="password" value={password} onChange={setPassword} />
-          <Button disabled={!password} onClick={get}>
-            Download
-          </Button>
+          <p className="text-sm text-muted">You may be asked for your password first.</p>
+          <Button onClick={get}>Download</Button>
           {error ? <Alert>{error}</Alert> : null}
         </div>
       </Details>

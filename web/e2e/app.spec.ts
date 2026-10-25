@@ -165,6 +165,28 @@ with session_scope() as session:
     await expect(page.getByText(/Spoken/)).toBeVisible();
   });
 
+  await test.step("a sensitive change asks for the password again after a while", async () => {
+    python(`
+from sqlalchemy import text
+from ringkeeper.db import session_scope
+with session_scope() as session:
+    session.execute(text("UPDATE owner_sessions SET confirmed_at = now() - interval '11 minutes'"))
+`);
+    await page.goto("/settings");
+    await page.getByText("Download it again").click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("This change needs your password again.")).toBeVisible();
+    await dialog.getByLabel("Password").fill("not my password");
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await expect(dialog.getByText("That password isn't right.")).toBeVisible();
+    await dialog.getByLabel("Password").fill(PASSWORD);
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    expect((await download).suggestedFilename()).toBe("ringkeeper-recovery-key.txt");
+    await expect(dialog).toBeHidden();
+  });
+
   await test.step("the phone layout at 375 px, and the app installs", async () => {
     await page.setViewportSize({ width: 375, height: 812 });
     for (const path of ["/", "/approvals", "/tasks", "/projects", "/connections", "/activity", "/settings"]) {

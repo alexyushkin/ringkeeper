@@ -94,12 +94,18 @@ class BotApi:
         return b"".join(chunks)
 
 
-def recent_chats(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The chats in a batch of updates (for picking the ones to allow), newest last."""
+def recent_chats(updates: list[dict[str, Any]], code: str | None = None) -> list[dict[str, Any]]:
+    """The chats in a batch of updates (for picking the ones to allow), newest last.
+
+    With `code`, only chats that sent it: anyone can message a bot, so the web
+    app shows a pairing code and lists just the chat that typed it.
+    """
     seen: dict[int, dict[str, Any]] = {}
     for update in updates:
         message = cast(dict[str, Any], update.get("message") or {})
         chat = cast(dict[str, Any], message.get("chat") or {})
+        if code is not None and code.upper() not in str(message.get("text") or "").upper():
+            continue
         if "id" in chat:
             names = (chat.get("first_name"), chat.get("last_name"))
             seen[int(chat["id"])] = {

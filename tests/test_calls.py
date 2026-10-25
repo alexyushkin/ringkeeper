@@ -270,7 +270,7 @@ async def test_deny(registry: None, target_dsn: str, vault: Vault) -> None:
 
 async def test_failed_execution_on_approval(registry: None, vault: Vault) -> None:
     decision_id = await held(vault, sql="DELETE FROM missing_table")
-    decision = await approve(decision_id, vault=vault)
+    decision = await approve(decision_id, vault=vault, confirm="acme-supabase-prod")
     assert decision.status is DecisionStatus.FAILED
     assert decision.error is not None
     assert "does not exist" in decision.error
@@ -305,7 +305,7 @@ async def test_approval_runs_when_workflow_is_unchanged(
     result = await run_call(
         call("update_workflow", "acme-n8n", service=InstanceType.N8N, **WORKFLOW_UPDATE), vault
     )
-    decision = await approve(result["decision_id"], vault=vault)
+    decision = await approve(result["decision_id"], vault=vault, confirm="acme-n8n")
     assert decision.status is DecisionStatus.EXECUTED
     assert fake_n8n.workflows["wf1"]["name"] == "Sync leads v2"
     assert fake_n8n.requests[-1].url.params["publishIfActive"] == "false"
@@ -317,7 +317,7 @@ async def test_stale_approval_is_refused(registry: None, vault: Vault, fake_n8n:
     )
     fake_n8n.workflows["wf1"].update(name="Edited by a human", updatedAt="2026-10-24T11:00:00Z")
 
-    decision = await approve(result["decision_id"], vault=vault)
+    decision = await approve(result["decision_id"], vault=vault, confirm="acme-n8n")
     assert decision.status is DecisionStatus.FAILED
     assert decision.error is not None
     assert decision.error.startswith("stale: the target changed")

@@ -16,11 +16,12 @@ from sqlalchemy import select, text
 from typer.testing import CliRunner
 
 from ringkeeper import bootstrap, voice
+from ringkeeper.admin_token import stored_web_token
 from ringkeeper.api.app import create_app
 from ringkeeper.cli.main import app as cli
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import AuditEvent, AuditOutcome, Instance, Task, TaskStatus
+from ringkeeper.models import AuditEvent, AuditOutcome, Instance, Passkey, Task, TaskStatus
 from ringkeeper.services import runtime, secrets_in, tasks
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.vault import get_vault
@@ -105,16 +106,31 @@ def test_bootstrap_creates_the_master_key_and_admin_token(
     assert "created" not in result.output  # it existed already
 
 
-def test_the_recovery_key_needs_the_password_after_the_first_download(owner: TestClient) -> None:
-    first = owner.post("/setup/recovery-key", json={})
+def age_confirmation(minutes: int = 11) -> None:
+    """Pretend the owner signed in (or confirmed) a while ago."""
+    with session_scope() as session:
+        session.execute(
+            text("UPDATE owner_sessions SET confirmed_at = now() - make_interval(mins => :m)"),
+            {"m": minutes},
+        )
+
+
+def test_the_recovery_key_needs_a_recent_confirmation(owner: TestClient) -> None:
+    first = owner.post("/setup/recovery-key")  # right after setup: just signed in
     assert first.status_code == 200
     body = first.json()
     assert body["note"] == "If you lose this file, you'll need to re-enter your connection secrets."
     assert len(body["key"]) == 44
     assert owner.post("/setup/recovery-key/saved").status_code == 204
     assert owner.get("/setup/status").json()["recovery_saved"] is True
-    assert owner.post("/setup/recovery-key", json={}).status_code == 403
-    again = owner.post("/setup/recovery-key", json={"password": PASSWORD})
+    age_confirmation()
+    stale = owner.post("/setup/recovery-key")
+    assert stale.status_code == 403
+    assert stale.headers["X-Ringkeeper-Confirm"] == "password"
+    assert owner.get("/auth/session").json()["confirmed"] is False
+    assert owner.post("/auth/confirm", json={"password": "wrong"}).status_code == 401
+    assert owner.post("/auth/confirm", json={"password": PASSWORD}).status_code == 204
+    again = owner.post("/setup/recovery-key")
     assert again.json()["key"] == body["key"]
 
 
@@ -138,16 +154,45 @@ def test_sign_in_sessions_and_sign_out(owner: TestClient) -> None:
         assert token not in stored
 
 
+def age_attempts(seconds: int) -> None:
+    with session_scope() as session:
+        session.execute(
+            text("UPDATE login_attempts SET at = at - make_interval(secs => :s)"), {"s": seconds}
+        )
+
+
 def test_sign_in_is_rate_limited_per_client(owner: TestClient) -> None:
     for _ in range(5):
         assert owner.post("/auth/login", json={"password": "wrong"}).status_code == 401
     blocked = owner.post("/auth/login", json={"password": PASSWORD})
     assert blocked.status_code == 429
     assert blocked.headers["Retry-After"] == "900"
-    other = owner.post(
-        "/auth/login", json={"password": PASSWORD}, headers={"X-Ringkeeper-Client": "203.0.113.9"}
+    # Everyone else is paced (one guess every few seconds), never locked out.
+    other = {"X-Ringkeeper-Client": "203.0.113.9"}
+    paced = owner.post("/auth/login", json={"password": PASSWORD}, headers=other)
+    assert paced.status_code == 429
+    assert paced.headers["Retry-After"] == "3"
+    age_attempts(5)
+    assert owner.post("/auth/login", json={"password": PASSWORD}, headers=other).status_code == 200
+    assert owner.post("/auth/login", json={"password": PASSWORD}).status_code == 429  # still
+
+
+def test_clients_without_an_address_are_paced_not_blocked(owner: TestClient) -> None:
+    direct = {"X-Ringkeeper-Client": "direct"}  # the web app without a trusted proxy
+    for _ in range(6):
+        assert owner.post("/auth/login", json={"password": "x"}, headers=direct).status_code == 401
+        age_attempts(5)
+    assert owner.post("/auth/login", json={"password": PASSWORD}, headers=direct).status_code == 200
+
+
+def test_changing_the_password_removes_passkeys(owner: TestClient) -> None:
+    add_passkey()
+    assert len(owner.get("/auth/passkeys").json()) == 1
+    changed = owner.post(
+        "/auth/password", json={"current": PASSWORD, "new": "a much better passphrase"}
     )
-    assert other.status_code == 200
+    assert changed.status_code == 204
+    assert owner.get("/auth/passkeys").json() == []
 
 
 def test_changing_the_password_signs_out_other_browsers(owner: TestClient) -> None:
@@ -204,6 +249,148 @@ def test_passkey_registration_options(owner: TestClient, monkeypatch: pytest.Mon
         json={"challenge_id": options["challenge_id"], "credential": {"id": "x"}},
     )
     assert replay.status_code == 401  # a challenge works once
+    options = owner.post("/auth/passkeys/register/options").json()
+    assert options["options"]["authenticatorSelection"]["userVerification"] == "required"
+
+
+def test_adding_a_passkey_needs_a_recent_confirmation(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RINGKEEPER_WEB_ORIGIN", "https://ringkeeper.example.ts.net")
+    age_confirmation()
+    assert owner.post("/auth/passkeys/register/options").status_code == 403
+    assert (
+        owner.post(
+            "/auth/passkeys/register", json={"challenge_id": "x", "credential": {}}
+        ).status_code
+        == 403
+    )
+    assert owner.post("/auth/confirm", json={"password": PASSWORD}).status_code == 204
+    assert owner.post("/auth/passkeys/register/options").status_code == 200
+
+
+def add_passkey() -> None:
+    with session_scope() as session:
+        session.add(Passkey(credential_id=b"cred", public_key=b"key", name="Phone"))
+
+
+def test_passkey_sign_in_isnt_held_up_by_password_guesses(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RINGKEEPER_WEB_ORIGIN", "https://ringkeeper.example.ts.net")
+    add_passkey()
+    for _ in range(5):
+        owner.post("/auth/login", json={"password": "wrong"})
+    assert owner.post("/auth/login", json={"password": PASSWORD}).status_code == 429
+    options = owner.post("/auth/passkeys/login/options").json()
+    attempt = owner.post(
+        "/auth/passkeys/login",
+        json={"challenge_id": options["challenge_id"], "credential": {"id": "AAAA"}},
+    )
+    assert attempt.status_code == 401  # checked (and refused), not rate limited
+    with session_scope() as session:  # and not counted as a guess
+        keys = session.execute(
+            text("SELECT count(*) FROM login_attempts WHERE NOT ok")
+        ).scalar_one()
+        assert keys == 5
+
+
+def test_passkey_challenges_are_capped(owner: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RINGKEEPER_WEB_ORIGIN", "https://ringkeeper.example.ts.net")
+    add_passkey()
+    for _ in range(20):
+        assert owner.post("/auth/passkeys/login/options").status_code == 200
+    assert owner.post("/auth/passkeys/login/options").status_code == 429
+    with session_scope() as session:  # expired ones are cleared on the next request
+        session.execute(
+            text(
+                "UPDATE settings_kv SET value = jsonb_set(value, '{expires}', "
+                "to_jsonb((now() - interval '1 minute')::text)) "
+                "WHERE key LIKE 'webauthn.challenge.%'"
+            )
+        )
+    assert owner.post("/auth/passkeys/login/options").status_code == 200
+
+
+# --- The web token ---
+
+
+def web_token() -> str:
+    bootstrap.ensure_admin_token(get_settings())  # creates the web token too
+    token = stored_web_token()
+    assert token is not None
+    return token
+
+
+def test_the_web_token_needs_a_signed_in_owner(owner: TestClient) -> None:
+    session = owner.headers["X-Ringkeeper-Session"]
+    web = {"Authorization": f"Bearer {web_token()}"}
+    with TestClient(create_app(), headers=web) as client:
+        # Setup and sign-in work on their own, and say little.
+        status = client.get("/setup/status").json()
+        assert status == {
+            "owner": True, "signed_in": False, "setup_code_hint": None, "recovery_saved": None,
+            "claude": None, "telegram": None, "projects": None, "connections": None,
+        }  # fmt: skip
+        assert client.post("/auth/login", json={"password": "wrong"}).status_code == 401
+        # Everything else needs the session, even what the admin token reads alone.
+        for path in ("/projects", "/decisions", "/instances", "/settings"):
+            assert client.get(path).status_code == 401, path
+            ok = client.get(path, headers={"X-Ringkeeper-Session": session})
+            assert ok.status_code == 200, path
+        signed_in = client.get("/setup/status", headers={"X-Ringkeeper-Session": session})
+        assert signed_in.json()["signed_in"] is True
+        assert signed_in.json()["projects"] == 0
+        assert client.post("/messages", json={"text": "hi"}).status_code == 401
+    del owner.headers["X-Ringkeeper-Session"]
+    assert owner.get("/projects").status_code == 200  # the admin token alone still works
+    assert owner.get("/setup/status").json()["projects"] == 0
+
+
+# --- Changes that need a recent confirmation ---
+
+
+def test_redirecting_approvals_needs_a_recent_confirmation(owner: TestClient) -> None:
+    age_confirmation()
+    for change in ({"telegram_chat_ids": [42]}, {"telegram": True}, {"telegram_requests": True}):
+        stale = owner.patch("/settings", json=change)
+        assert stale.status_code == 403, change
+        assert stale.headers["X-Ringkeeper-Confirm"] == "password"
+    assert owner.patch("/settings", json={"retention_days": 30}).status_code == 200
+    assert owner.put("/secrets/claude", json={"value": API_KEY}).status_code == 403
+    assert owner.put("/secrets/telegram", json={"token": BOT_TOKEN}).status_code == 403
+    assert owner.post("/auth/confirm", json={"password": PASSWORD}).status_code == 204
+    assert owner.patch("/settings", json={"telegram_chat_ids": [42]}).status_code == 200
+
+
+def test_loosening_connections_needs_a_recent_confirmation(
+    owner: TestClient, target_dsn: str
+) -> None:
+    assert owner.post("/projects", json={"name": "acme-web", "owner": "acme"}).status_code == 201
+    connection = {"name": "acme-db", "type": "supabase", "env": "prod", "owner": "acme",
+                  "secret": target_dsn}  # fmt: skip
+    assert owner.post("/connections", json=connection).status_code == 201
+    age_confirmation()
+    assert owner.post("/connections", json={**connection, "name": "other"}).status_code == 403
+    assert owner.patch("/connections/acme-db", json={"env": "staging"}).status_code == 403
+    assert owner.put("/connections/acme-db/secret", json={"secret": target_dsn}).status_code == 403
+    assert owner.patch("/connections/acme-db", json={"owner": "acme inc"}).status_code == 200
+    preapproved = {"preapproved_writes": ["execute"]}
+    bind = owner.put("/projects/acme-web/connections/acme-db", json=preapproved)
+    assert bind.status_code == 403
+    assert owner.put("/projects/acme-web/connections/acme-db", json={}).status_code == 200
+    assert owner.patch("/projects/acme-web", json={"autonomy": "relaxed"}).status_code == 403
+    assert owner.patch("/projects/acme-web", json={"description": "x"}).status_code == 200
+
+
+def test_too_many_live_streams_are_refused(owner: TestClient) -> None:
+    from ringkeeper.api import live_routes  # noqa: PLC0415
+
+    live_routes._streams["open"] = live_routes.MAX_STREAMS  # pyright: ignore[reportPrivateUsage]
+    try:
+        assert owner.get("/events").status_code == 429
+    finally:
+        live_routes._streams["open"] = 0  # pyright: ignore[reportPrivateUsage]
 
 
 # --- Settings ---
@@ -296,7 +483,10 @@ def test_telegram_token_and_chat_detection(
     assert BOT_TOKEN not in stored.text
     assert BOT_TOKEN not in audit_text()
     fake.text("hi")
-    chats = owner.get("/telegram/detect").json()["chats"]
+    assert owner.get("/telegram/detect").status_code == 422  # the pairing code is required
+    assert owner.get("/telegram/detect", params={"code": "K7M2QX"}).json()["chats"] == []
+    fake.text("k7m2qx")
+    chats = owner.get("/telegram/detect", params={"code": "K7M2QX"}).json()["chats"]
     assert chats == [{"id": 1001, "type": "private", "name": "Alice", "username": None}]
 
 

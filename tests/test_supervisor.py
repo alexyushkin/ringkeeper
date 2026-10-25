@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select, update
 
-from ringkeeper.admin_token import stored_api_token
+from ringkeeper.admin_token import stored_api_token, stored_web_token
 from ringkeeper.api.supervisor import Supervisor, write_private
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
@@ -87,23 +87,28 @@ def test_telegram_starts_restarts_and_stops_with_the_settings(
     assert supervisor.status()["telegram"]["running"] is False
 
 
-def test_the_web_token_file_follows_the_admin_token(
+def test_the_web_app_gets_the_web_token_not_the_admin_token(
     supervised: tuple[Supervisor, Recorder], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from typer.testing import CliRunner  # noqa: PLC0415
 
+    from ringkeeper import bootstrap  # noqa: PLC0415
     from ringkeeper.cli.main import app as cli  # noqa: PLC0415
 
     token_file = tmp_path / "web" / "api-token"
     monkeypatch.setenv("RINGKEEPER_WEB_TOKEN_FILE", str(token_file))
-    CliRunner().invoke(cli, ["auth", "api-token"])
+    bootstrap.ensure_admin_token(get_settings())
     supervisor, _ = supervised
     supervisor.base = get_settings()
     supervisor.reconcile()
-    assert token_file.read_text().strip() == stored_api_token()
-    CliRunner().invoke(cli, ["auth", "api-token", "--rotate"])
+    first = token_file.read_text().strip()
+    assert first == stored_web_token()
+    assert first.startswith("rk_web_")
+    assert first != stored_api_token()
+    # Resetting the login gives the web app a new token too.
+    assert CliRunner().invoke(cli, ["web", "reset-login", "--yes"]).exit_code == 0
     supervisor.reconcile()
-    assert token_file.read_text().strip() == stored_api_token()
+    assert token_file.read_text().strip() == stored_web_token() != first
 
 
 def test_write_private_skips_unchanged_files(tmp_path: Path) -> None:

@@ -80,7 +80,7 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
       search: request.nextUrl.search,
       body: method === "GET" || method === "HEAD" ? null : streamingUpload ? request.body : await request.text(),
       contentType: request.headers.get("content-type"),
-      session: isPublic ? null : session,
+      session: session ?? null, // public paths too: setup/status says more when signed in
       client: clientAddress(request.headers),
       userAgent: request.headers.get("user-agent"),
       signal: request.signal,
@@ -104,7 +104,7 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
   }
 
   const headers = new Headers();
-  for (const name of ["content-type", "content-disposition", "retry-after", "cache-control"]) {
+  for (const name of ["content-type", "content-disposition", "retry-after", "cache-control", "x-ringkeeper-confirm"]) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }

@@ -4,8 +4,8 @@ Runs when the api service starts (it is the only service with a writable
 data dir besides the CLI):
 
 1. the master key (data_dir/master.key), unless RINGKEEPER_MASTER_KEY is set;
-2. the API admin token in the vault (the web service gets a copy through the
-   supervisor's token file);
+2. the API admin token and the web token in the vault (the web service gets
+   the web token through the supervisor's token file);
 3. while there is no owner yet, the one-time setup code: printed to the log
    and written to data_dir/setup-code.txt. The web app's wizard asks for it
    before creating the owner, so whoever reaches a freshly exposed server
@@ -19,7 +19,12 @@ import os
 import sys
 from pathlib import Path
 
-from ringkeeper.admin_token import generate_api_token, stored_api_token
+from ringkeeper.admin_token import (
+    generate_api_token,
+    generate_web_token,
+    stored_api_token,
+    stored_web_token,
+)
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -51,6 +56,8 @@ def ensure_admin_token(settings: Settings) -> None:
     if stored_api_token() is None:
         get_vault(settings).store(settings.api_token_ref, generate_api_token())
         logger.info("created the API admin token (see `ringkeeper auth api-token`)")
+    if stored_web_token() is None:
+        get_vault(settings).store(settings.web_token_ref, generate_web_token())
 
 
 def ensure_setup_code(settings: Settings, *, announce: bool = True) -> str | None:

@@ -43,7 +43,25 @@ export interface Options {
   query?: Record<string, string | number | boolean | undefined | null>;
 }
 
+type ConfirmHandler = () => Promise<boolean>;
+let confirmHandler: ConfirmHandler | null = null;
+
+/** The password dialog (ConfirmPassword) registers itself here. */
+export function setConfirmHandler(handler: ConfirmHandler | null): void {
+  confirmHandler = handler;
+}
+
 export async function api<T = unknown>(path: string, options: Options = {}): Promise<T> {
+  const response = await send(path, options);
+  // A sensitive change after a while: confirm the password, then try once more.
+  if (response.status === 403 && response.headers.get("x-ringkeeper-confirm") === "password" && confirmHandler) {
+    if (await confirmHandler()) return read<T>(path, await send(path, options));
+    throw new ApiError(403, "Cancelled: the change needs your password.");
+  }
+  return read<T>(path, response);
+}
+
+async function send(path: string, options: Options): Promise<Response> {
   const method = options.method ?? (options.json !== undefined || options.body ? "POST" : "GET");
   const headers: Record<string, string> = {};
   if (method !== "GET") headers["x-csrf-token"] = csrfToken();
@@ -59,7 +77,10 @@ export async function api<T = unknown>(path: string, options: Options = {}): Pro
     if (value !== undefined && value !== null && value !== "") search.set(key, String(value));
   }
   const url = `/bff/${path.replace(/^\//, "")}${search.size ? `?${search}` : ""}`;
-  const response = await fetch(url, { method, headers, body, credentials: "same-origin" });
+  return fetch(url, { method, headers, body, credentials: "same-origin" });
+}
+
+async function read<T>(path: string, response: Response): Promise<T> {
   if (response.status === 401 && !path.startsWith("auth/") && !path.startsWith("setup/")) {
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new ApiError(401, "Please sign in again.");

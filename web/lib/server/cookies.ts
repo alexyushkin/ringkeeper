@@ -51,11 +51,18 @@ export function clearSession(request: NextRequest, response: NextResponse): void
   }
 }
 
-/** Where the request came from, for sign-in rate limits. Proxies are trusted only if told so. */
+/**
+ * Where the request came from, for sign-in rate limits. Proxies are trusted
+ * only if told so (RINGKEEPER_WEB_TRUST_PROXY=1), and then only the address
+ * the proxy itself added: the last X-Forwarded-For entry. Earlier entries
+ * come from the browser and could be anything. Without a trusted proxy every
+ * browser is "direct" (paced together, never blocked one by one).
+ */
 export function clientAddress(headers: Headers): string {
   if (process.env.RINGKEEPER_WEB_TRUST_PROXY === "1") {
-    const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-    if (forwarded) return forwarded;
+    const hops = (headers.get("x-forwarded-for") ?? "").split(",").map((hop) => hop.trim());
+    const last = hops.at(-1);
+    if (last && /^[0-9A-Fa-f.:]{2,45}$/.test(last)) return last;
   }
   return "direct";
 }

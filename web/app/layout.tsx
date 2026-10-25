@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 
+import { ConfirmPassword } from "@/components/confirm-password";
 import { ServiceWorker } from "@/components/service-worker";
 
 import "./globals.css";
@@ -31,6 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body className="min-h-dvh antialiased">
         {children}
+        <ConfirmPassword />
         <ServiceWorker />
       </body>
     </html>

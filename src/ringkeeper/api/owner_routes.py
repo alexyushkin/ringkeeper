@@ -1,20 +1,31 @@
 """Setup (first run) and the owner's sign-in: password, sessions, passkeys.
 
-All of these need the admin token (only the web app's server side calls
-them). The ones marked with OwnerToken also need a signed-in owner.
+All of these need a token (only the web app's server side calls them).
+The ones marked with OwnerToken also need a signed-in owner, and the ones
+with RecentAuth a recent confirmation (POST /auth/confirm).
+
+Without a signed-in owner, /setup/status tells only what the wizard's first
+step needs (is there an owner yet, and where's the setup code).
 """
 
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from ringkeeper import bootstrap
-from ringkeeper.api.auth import AdminDep
-from ringkeeper.api.deps import OWNER, ClientDep, OwnerToken, SessionDep, WriteSessionDep
+from ringkeeper.api.auth import AdminDep, Caller, caller
+from ringkeeper.api.deps import (
+    OWNER,
+    ClientDep,
+    OwnerToken,
+    RecentAuth,
+    SessionDep,
+    WriteSessionDep,
+)
 from ringkeeper.claude_auth import credential_ref
 from ringkeeper.config import get_settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
@@ -38,12 +49,14 @@ class SessionOut(BaseModel):
 
 class SetupStatus(BaseModel):
     owner: bool
-    recovery_saved: bool
-    claude: dict[str, Any]
-    telegram: dict[str, Any]
-    projects: int
-    connections: int
+    signed_in: bool
     setup_code_hint: str | None  # where to find the code, while setup isn't done
+    # The rest only for a signed-in owner (or the admin token).
+    recovery_saved: bool | None = None
+    claude: dict[str, Any] | None = None
+    telegram: dict[str, Any] | None = None
+    projects: int | None = None
+    connections: int | None = None
 
 
 class OwnerIn(Input):
@@ -66,10 +79,6 @@ class PasskeyIn(Input):
     name: str = Field(default="Passkey", max_length=80)
 
 
-class RecoveryKeyIn(Input):
-    password: str | None = None
-
-
 def _stored(ref: str) -> bool:
     try:
         get_vault().resolve(ref)
@@ -82,13 +91,41 @@ def _too_many(error: owner.TooManyAttemptsError) -> HTTPException:
     return HTTPException(429, detail=str(error), headers={"Retry-After": str(error.retry_after)})
 
 
+def _signed_in(session: SessionDep, token: str | None) -> bool:
+    if not token:
+        return False
+    try:
+        owner.verify_session(session, get_settings(), token)
+    except owner.AuthError:
+        return False
+    return True
+
+
 @router.get("/setup/status")
-def setup_status(session: SessionDep) -> SetupStatus:
+def setup_status(
+    request: Request,
+    session: SessionDep,
+    x_ringkeeper_session: Annotated[str | None, Header()] = None,
+) -> SetupStatus:
     settings = current_settings()
-    recovery = session.get(Setting, RECOVERY_SAVED_KEY)
     has_owner = owner.has_owner(session)
+    signed_in = _signed_in(session, x_ringkeeper_session)
+    hint = (
+        None
+        if has_owner
+        else (
+            "by running `docker compose exec api ringkeeper web setup-code` in the "
+            f"ringkeeper folder on the server (it's also in {bootstrap.SETUP_CODE_FILE} "
+            "in the .ringkeeper folder)"
+        )
+    )
+    if not signed_in and caller(request) is not Caller.ADMIN:
+        return SetupStatus(owner=has_owner, signed_in=False, setup_code_hint=hint)
+    recovery = session.get(Setting, RECOVERY_SAVED_KEY)
     return SetupStatus(
         owner=has_owner,
+        signed_in=signed_in,
+        setup_code_hint=hint,
         recovery_saved=recovery is not None,
         claude={
             "mode": settings.claude_auth_mode.value,
@@ -102,13 +139,6 @@ def setup_status(session: SessionDep) -> SetupStatus:
         },
         projects=session.scalar(select(func.count()).select_from(Project)) or 0,
         connections=session.scalar(select(func.count()).select_from(Instance)) or 0,
-        setup_code_hint=None
-        if has_owner
-        else (
-            "by running `docker compose exec api ringkeeper web setup-code` in the "
-            f"ringkeeper folder on the server (it's also in {bootstrap.SETUP_CODE_FILE} "
-            "in the .ringkeeper folder)"
-        ),
     )
 
 
@@ -134,18 +164,11 @@ def create_owner(
     return SessionOut(token=opened.token, expires_at=opened.expires_at)
 
 
-@router.post("/setup/recovery-key")
-def recovery_key(
-    data: RecoveryKeyIn, session: WriteSessionDep, token: OwnerToken
-) -> dict[str, str]:
-    """The master key, as a file to keep safe. After the first download the password
-    is needed again, so a stolen session alone can't take it."""
+@router.post("/setup/recovery-key", dependencies=[RecentAuth])
+def recovery_key(session: WriteSessionDep, token: OwnerToken) -> dict[str, str]:
+    """The master key, as a file to keep safe. Needs a recent confirmation, so a
+    stolen session alone can't take it."""
     del token
-    saved = session.get(Setting, RECOVERY_SAVED_KEY) is not None
-    if saved:
-        row = session.get(owner.Owner, 1)
-        if row is None or not data.password or not owner.verify_password(row, data.password):
-            raise HTTPException(403, detail="enter your password to download the recovery key")
     import base64  # noqa: PLC0415
 
     key = base64.urlsafe_b64encode(load_master_key(get_settings(), create=False)).decode()
@@ -180,6 +203,20 @@ def login(
     return SessionOut(token=opened.token, expires_at=opened.expires_at)
 
 
+@router.post("/auth/confirm", status_code=204)
+def confirm(
+    data: PasswordIn, session: WriteSessionDep, token: OwnerToken, client: ClientDep
+) -> None:
+    """The password again, before a sensitive change (valid for a few minutes)."""
+    try:
+        owner.confirm(session, token, data.password, client)
+    except owner.TooManyAttemptsError as error:
+        raise _too_many(error) from None
+    except owner.AuthError:
+        session.commit()  # the failed attempt counts
+        raise HTTPException(401, detail="wrong password") from None
+
+
 @router.post("/auth/logout", status_code=204)
 def logout(session: WriteSessionDep, token: OwnerToken) -> None:
     owner.logout(session, token)
@@ -190,7 +227,12 @@ def current_session(session: SessionDep, token: OwnerToken) -> dict[str, Any]:
     row = session.get(OwnerSession, owner.token_hash(token))
     if row is None:
         raise HTTPException(401, detail="sign in first")
-    return {"method": row.method, "expires_at": row.expires_at, "created_at": row.created_at}
+    return {
+        "method": row.method,
+        "expires_at": row.expires_at,
+        "created_at": row.created_at,
+        "confirmed": owner.recently_confirmed(session, token),
+    }
 
 
 @router.post("/auth/password", status_code=204)
@@ -218,13 +260,13 @@ def list_passkeys(session: SessionDep, token: OwnerToken) -> list[dict[str, Any]
     ]
 
 
-@router.post("/auth/passkeys/register/options")
+@router.post("/auth/passkeys/register/options", dependencies=[RecentAuth])
 def passkey_register_options(session: WriteSessionDep, token: OwnerToken) -> dict[str, Any]:
     del token
     return owner.passkey_registration_options(session, get_settings())
 
 
-@router.post("/auth/passkeys/register", status_code=201)
+@router.post("/auth/passkeys/register", status_code=201, dependencies=[RecentAuth])
 def passkey_register(
     data: PasskeyIn, session: WriteSessionDep, token: OwnerToken
 ) -> dict[str, str]:

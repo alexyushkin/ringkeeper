@@ -538,7 +538,9 @@ class Thread(Base):
         primary_key=True, server_default=text("gen_random_uuid()")
     )
     title: Mapped[str] = mapped_column(Text)
-    source: Mapped[str] = mapped_column(Text)  # cli, api, telegram
+    source: Mapped[str] = mapped_column(Text)  # cli, api, web, telegram
+    # For a Telegram request: the chat it came from, the only one its notices go to.
+    origin_chat_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -655,7 +657,7 @@ class VoiceConfirmation(Base):
             name="ck_voice_confirmations_answer_has_decision",
         ),
         CheckConstraint(
-            "status IN ('pending', 'confirmed', 'redone', 'expired')",
+            "status IN ('pending', 'confirmed', 'redone', 'expired', 'used')",
             name="ck_voice_confirmations_status",
         ),
         CheckConstraint(
@@ -680,6 +682,8 @@ class VoiceConfirmation(Base):
     )
     transcript: Mapped[str | None] = mapped_column(Text)
     external_id: Mapped[int | None] = mapped_column(BigInteger)  # the "I heard" message
+    # The Telegram user who sent the voice note: only they can confirm or redo it.
+    user_id: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -722,6 +726,9 @@ class OwnerSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     method: Mapped[str] = mapped_column(Text)  # password, passkey
     user_agent: Mapped[str | None] = mapped_column(Text)
+    # Last time the owner proved it was them (password, or a passkey with user
+    # verification): sensitive actions need this to be recent.
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Passkey(Base):

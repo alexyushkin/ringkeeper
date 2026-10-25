@@ -176,15 +176,15 @@ def test_api_approval_of_a_held_write_is_left_for_the_gateway(client: TestClient
         held = Decision(
             kind=DecisionKind.APPROVE, project="acme-web", session_id="s", token_id="t",
             instance="acme-supabase-prod", service=InstanceType.SUPABASE, tool="execute",
-            args={"sql": "DELETE FROM notes"}, args_hash="h",
+            args={"sql": "UPDATE notes SET body = 'x'"}, args_hash="h",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )  # fmt: skip
         session.add(held)
         session.flush()
         held_id = str(held.id)
     detail = client.get(f"/decisions/{held_id}").json()
-    assert detail["args"] == {"sql": "DELETE FROM notes"}  # full details stay in the API
-    assert "DELETE" not in detail["summary"]
+    assert detail["args"] == {"sql": "UPDATE notes SET body = 'x'"}  # full details stay in the API
+    assert "UPDATE" not in detail["summary"]
     body = client.post(f"/decisions/{held_id}/answer", json={"choice": "approve"}).json()
     assert body["status"] == "pending"
     assert body["answer"] == {"choice": "approve", "by": "api:api"}

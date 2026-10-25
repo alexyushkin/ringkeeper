@@ -11,12 +11,14 @@ import { download } from "@/lib/client/words";
 
 interface Status {
   owner: boolean;
-  recovery_saved: boolean;
-  claude: { mode: string; api_key: boolean; subscription: boolean };
-  telegram: { token: boolean; enabled: boolean; chats: number[] };
-  projects: number;
-  connections: number;
+  signed_in: boolean;
   setup_code_hint: string | null;
+  // Only when signed in:
+  recovery_saved?: boolean;
+  claude?: { mode: string; api_key: boolean; subscription: boolean };
+  telegram?: { token: boolean; enabled: boolean; chats: number[] };
+  projects?: number;
+  connections?: number;
 }
 
 const STEPS = ["Your login", "Claude", "Telegram", "First project", "First connection", "Done"];
@@ -37,20 +39,16 @@ export default function SetupPage() {
   useEffect(() => {
     refresh()
       .then(async (s) => {
-        if (s.owner) {
+        if (s.owner && !s.signed_in) {
           // Setup was started: only a signed-in owner may continue it.
-          try {
-            await api("auth/session");
-          } catch {
-            router.replace("/login?next=/setup");
-            return;
-          }
+          router.replace("/login?next=/setup");
+          return;
         }
         const skipped = localStorage.getItem("rk-setup-telegram") === "skipped";
         setStep(
           !s.owner || !s.recovery_saved ? 0
-          : !s.claude.api_key && !s.claude.subscription ? 1
-          : !s.telegram.enabled && !skipped ? 2
+          : !s.claude?.api_key && !s.claude?.subscription ? 1
+          : !s.telegram?.enabled && !skipped ? 2
           : s.projects === 0 ? 3
           : s.connections === 0 ? 4
           : 5,
@@ -152,7 +150,7 @@ function OwnerStep({ status, onDone }: { status: Status; onDone: () => void }) {
   async function getKey() {
     setError(null);
     try {
-      const key = await api<{ filename: string; key: string; note: string }>("setup/recovery-key", { json: {} });
+      const key = await api<{ filename: string; key: string; note: string }>("setup/recovery-key", { method: "POST" });
       download(key.filename, `Ringkeeper recovery key\n\n${key.key}\n\n${key.note}\nKeep this file somewhere safe, away from the server.\n`);
       setDownloaded(true);
     } catch (err) {
@@ -285,15 +283,21 @@ function TelegramStep({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Anyone can message a bot: only the chat that sends this code is offered.
+  const [code] = useState(() => {
+    const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    return Array.from(crypto.getRandomValues(new Uint8Array(6)), (n) => alphabet[n % alphabet.length]).join("");
+  });
+
   useEffect(() => {
     if (!bot) return;
     const timer = setInterval(() => {
-      api<{ chats: Chat[] }>("telegram/detect")
+      api<{ chats: Chat[] }>("telegram/detect", { query: { code } })
         .then((found) => setChats(found.chats.filter((c) => c.type === "private")))
         .catch(() => undefined);
     }, 3000);
     return () => clearInterval(timer);
-  }, [bot]);
+  }, [bot, code]);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -330,7 +334,7 @@ function TelegramStep({ onDone }: { onDone: () => void }) {
         <div className="space-y-3">
           <Alert tone="good">Connected to {bot}.</Alert>
           <p className="text-sm">
-            Now open Telegram and send <strong>{bot}</strong> any message. Your chat shows up here.
+            Now open Telegram and send <strong>{bot}</strong> this code: <strong className="font-mono text-base">{code}</strong>. Your chat shows up here.
           </p>
           {chats.length === 0 ? (
             <p className="text-sm text-muted">Waiting for your message…</p>

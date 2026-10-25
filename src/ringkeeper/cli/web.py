@@ -1,10 +1,12 @@
 import typer
 
 from ringkeeper import bootstrap
+from ringkeeper.admin_token import generate_web_token
 from ringkeeper.cli.common import handle_errors
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.services import owner
+from ringkeeper.vault import get_vault
 
 app = typer.Typer(help="The web app's owner login.", no_args_is_help=True)
 
@@ -15,8 +17,9 @@ def reset_login(
 ) -> None:
     """Forgot the password? Remove the login (and passkeys) and print a new setup code.
 
-    Projects, connections, secrets and history stay. Open the web app and run
-    the wizard's first step again with the new code.
+    Every browser is signed out and the web app gets a new token. Projects,
+    connections, secrets and history stay. Open the web app and run the
+    wizard's first step again with the new code.
     """
     if not yes:
         typer.confirm(
@@ -27,6 +30,8 @@ def reset_login(
     with handle_errors():
         with session_scope() as session:
             owner.reset_owner(session)
+        # The api hands the new one to the web app within a few seconds.
+        get_vault(settings).store(settings.web_token_ref, generate_web_token())
         code = bootstrap.ensure_setup_code(settings, announce=False)
     typer.echo(f"New setup code: {code}")
     typer.echo("Open the web app and create the login again with this code.")
