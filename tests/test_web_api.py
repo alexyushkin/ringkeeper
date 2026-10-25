@@ -500,3 +500,27 @@ def test_messages_from_the_web_app_record_source_and_input(owner: TestClient) ->
     assert thread["messages"][0]["input"] == "voice"
     bad = owner.post("/messages", json={"body": "x", "source": "telegram"})
     assert bad.status_code == 422  # only the Telegram bridge posts as telegram
+
+
+def test_a_forgotten_password_is_reset_from_the_cli(owner: TestClient, data_dir: Path) -> None:
+    owner.post("/projects", json={"name": "acme-web", "owner": "acme"})
+    result = CliRunner().invoke(cli, ["web", "reset-login", "--yes"])
+    assert result.exit_code == 0, result.output
+    code = result.stdout.split("New setup code: ")[1].split()[0]
+    assert (data_dir / "setup-code.txt").read_text().strip() == code
+    assert owner.get("/settings").status_code == 401  # every session is gone
+    status = owner.get("/setup/status").json()
+    assert (status["owner"], status["projects"]) == (False, 1)  # the rest stays
+    again = owner.post(
+        "/setup/owner", json={"password": "a brand new passphrase", "setup_code": code}
+    )
+    assert again.status_code == 201
+
+
+def test_the_setup_code_command(admin: TestClient, setup_code: str) -> None:
+    shown = CliRunner().invoke(cli, ["web", "setup-code"])
+    assert (shown.exit_code, shown.stdout.strip()) == (0, setup_code)
+    admin.post("/setup/owner", json={"password": PASSWORD, "setup_code": setup_code})
+    done = CliRunner().invoke(cli, ["web", "setup-code"])
+    assert done.exit_code == 1
+    assert "reset-login" in done.stdout

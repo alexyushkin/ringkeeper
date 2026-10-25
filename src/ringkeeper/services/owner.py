@@ -167,6 +167,18 @@ def change_password(session: Session, current_token: str, old: str, new: str) ->
     session.flush()
 
 
+def reset_owner(session: Session) -> None:
+    """Forget the login (password, sessions, passkeys); setup can run again.
+
+    Everything else (projects, connections, secrets, history) stays.
+    """
+    session.execute(delete(OwnerSession))
+    session.execute(delete(Passkey))
+    session.execute(delete(Owner))
+    admin_audit.record(session, "owner.reset", "removed the login (password reset)", by="cli")
+    session.flush()
+
+
 # --- Sessions ---
 
 

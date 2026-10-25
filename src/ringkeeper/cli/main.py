@@ -17,6 +17,7 @@ from ringkeeper.cli import (
     tasks,
     telegram,
     tokens,
+    web,
 )
 from ringkeeper.cli.common import handle_errors
 from ringkeeper.scrub import install_log_scrubbing
@@ -60,6 +61,7 @@ app.add_typer(routing.app, name="routing")
 app.add_typer(inbox.app, name="inbox")
 app.command("ask")(inbox.ask)
 app.add_typer(telegram.app, name="telegram")
+app.add_typer(web.app, name="web")
 app.command("stop-all")(tasks.stop_all)
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)

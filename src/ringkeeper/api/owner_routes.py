@@ -105,8 +105,9 @@ def setup_status(session: SessionDep) -> SetupStatus:
         setup_code_hint=None
         if has_owner
         else (
-            "in the api service's log (docker compose logs api) or in "
-            f"{bootstrap.SETUP_CODE_FILE} in Ringkeeper's data folder"
+            "by running `docker compose exec api ringkeeper web setup-code` in the "
+            f"ringkeeper folder on the server (it's also in {bootstrap.SETUP_CODE_FILE} "
+            "in the .ringkeeper folder)"
         ),
     )
 

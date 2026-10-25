@@ -46,6 +46,9 @@ services:
       RINGKEEPER_CLAUDE_AUTH_MODE: ${RINGKEEPER_CLAUDE_AUTH_MODE:-api_key}
       RINGKEEPER_WORKSPACES_ROOT: ${RINGKEEPER_WORKSPACES_ROOT:-}
       RINGKEEPER_MAX_CONCURRENT_WORKERS: ${RINGKEEPER_MAX_CONCURRENT_WORKERS:-4}
+      # Must match the `workers` network's name below (a second install on the
+      # same machine needs its own).
+      RINGKEEPER_WORKER_NETWORK: ${RINGKEEPER_WORKER_NETWORK:-ringkeeper_workers}
       # The router turns `ringkeeper ask` / POST /messages into tasks.
       RINGKEEPER_ROUTER: ${RINGKEEPER_ROUTER:-1}
       RINGKEEPER_ROUTER_CONFIDENCE_THRESHOLD: ${RINGKEEPER_ROUTER_CONFIDENCE_THRESHOLD:-0.8}
@@ -199,8 +202,8 @@ networks:
   # The web app and the api, nothing else.
   frontend: {}
   workers:
-    # A fixed name: the session manager attaches workers to it by name.
-    name: ringkeeper_workers
+    # A known name (RINGKEEPER_WORKER_NETWORK): the session manager attaches workers to it.
+    name: ${RINGKEEPER_WORKER_NETWORK:-ringkeeper_workers}
 
 volumes:
   pgdata:
