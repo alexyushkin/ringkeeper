@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { HOST_REFUSED, hostAllowed } from "@/lib/hosts";
+
 /**
  * Runs before every page: a strict Content-Security-Policy with a fresh nonce
  * (no inline scripts or styles without it, nothing from other sites), and a
@@ -10,6 +12,9 @@ import { NextRequest, NextResponse } from "next/server";
 const OPEN_PAGES = ["/login", "/setup"];
 
 export function proxy(request: NextRequest): NextResponse {
+  if (!hostAllowed(request.headers)) {
+    return new NextResponse(HOST_REFUSED, { status: 421, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const dev = process.env.NODE_ENV === "development";
   const csp = [

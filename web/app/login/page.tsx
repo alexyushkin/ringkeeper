@@ -7,6 +7,17 @@ import { Suspense, useEffect, useState } from "react";
 import { Alert, Button, Card, Field } from "@/components/ui";
 import { ApiError, api } from "@/lib/client/api";
 
+/** Only a path on this site: never //evil.example or /\\evil.example. */
+function safeNext(value: string): string {
+  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/";
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.origin === window.location.origin ? `${url.pathname}${url.search}${url.hash}` : "/";
+  } catch {
+    return "/";
+  }
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -26,7 +37,7 @@ function LoginForm() {
     setPasskeys(browserSupportsWebAuthn() && window.isSecureContext);
   }, [router]);
 
-  const done = () => router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  const done = () => router.replace(safeNext(next));
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault();

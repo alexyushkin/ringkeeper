@@ -9,6 +9,7 @@ recent confirmation (deps.check_recent_auth): a stolen session cookie alone
 can't point Telegram approvals at another chat or send a key elsewhere.
 """
 
+import re
 from typing import Annotated, Any
 
 from fastapi import (
@@ -224,8 +225,25 @@ class ConnectionBindingIn(Input):
     preapproved_writes: CleanList = Field(default_factory=list[str])
 
 
+WORKSPACE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*")
+
+
+def _check_workspace(path: str | None) -> None:
+    """From the web app, a folder inside RINGKEEPER_WORKSPACES_ROOT only: an absolute
+    path would let a worker mount anything on the host. (The CLI may still set one.)"""
+    if path is None:
+        return
+    if not WORKSPACE_PATTERN.fullmatch(path) or ".." in path.split("/"):
+        raise HTTPException(
+            422,
+            detail="The folder must be a name inside the workspaces folder, like acme-web "
+            "(letters, digits, - _ . and /).",
+        )
+
+
 @router.post("/projects", status_code=201)
 def create_project(data: ProjectIn, session: WriteSessionDep) -> dict[str, str]:
+    _check_workspace(data.workspace_path)
     project = projects.create_project(session, data)
     admin_audit.record(
         session, "project.create", f"created project {project.name}", by=OWNER,
@@ -241,6 +259,8 @@ def update_project(
     project = projects.get_project(session, name)
     if data.autonomy is not None and data.autonomy != project.autonomy:
         check_recent_auth(request, token)  # autonomy decides what runs without asking
+    if data.workspace_path != project.workspace_path:
+        _check_workspace(data.workspace_path)
     current = ProjectIn.model_validate(
         {
             "name": project.name, "owner": project.owner, "description": project.description,

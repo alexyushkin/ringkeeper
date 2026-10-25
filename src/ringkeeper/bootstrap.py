@@ -19,6 +19,8 @@ import os
 import sys
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 from ringkeeper.admin_token import (
     generate_api_token,
     generate_web_token,
@@ -44,6 +46,18 @@ def setup_code_path(settings: Settings) -> Path:
 def _hand_over(settings: Settings, path: Path) -> None:
     if settings.data_uid is not None and sys.platform != "win32" and path.exists():
         os.chown(path, settings.data_uid, -1)
+
+
+WEAK_PASSWORDS = frozenset({"ringkeeper", "postgres", "change-me-to-32-random-letters-and-digits"})
+
+
+def warn_weak_database_password(settings: Settings) -> None:
+    password = make_url(settings.database_url).password or ""
+    if password in WEAK_PASSWORDS or len(password) < 16:
+        logger.warning(
+            "the database password is weak or the default: set POSTGRES_PASSWORD in .env "
+            "(docs/INSTALL.md, 'Change the database password')"
+        )
 
 
 def ensure_master_key(settings: Settings) -> None:
@@ -98,6 +112,7 @@ def clear_setup_code(settings: Settings) -> None:
 
 def run(settings: Settings) -> None:
     """Each step on its own: a read-only data dir (CLI-managed installs) is fine."""
+    warn_weak_database_password(settings)
     for step in (ensure_master_key, ensure_admin_token, ensure_setup_code):
         try:
             step(settings)

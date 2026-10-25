@@ -423,6 +423,12 @@ def test_relative_workspace_without_root_is_an_error() -> None:
         resolve_workspace("acme-web", None)
 
 
+@pytest.mark.parametrize("path", ["../etc", "acme/../../etc", "/srv/../etc", "C:\\work\\..\\x"])
+def test_workspace_paths_cant_climb_out(path: str) -> None:
+    with pytest.raises(Exception, match=r"can't contain '\.\.'"):
+        resolve_workspace(path, "/srv/workspaces")
+
+
 @pytest.mark.parametrize(
     ("path", "expected"),
     [

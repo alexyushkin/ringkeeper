@@ -187,6 +187,21 @@ with session_scope() as session:
     await expect(dialog).toBeHidden();
   });
 
+  await test.step("other host names and oversized bodies are refused", async () => {
+    const rebound = await page.request.get("/login", { headers: { Host: "attacker.example:13000" } });
+    expect(rebound.status()).toBe(421);
+    const bff = await page.request.get("/bff/setup/status", { headers: { Host: "attacker.example" } });
+    expect(bff.status()).toBe(421);
+    const sneaky = await page.request.get("/bff/projects/acme-web%2F..%2F..%2Fsettings");
+    expect(sneaky.status()).toBe(404);
+    const csrf = (await page.context().cookies()).find((c) => c.name === "rk_csrf")?.value ?? "";
+    const big = await page.request.post("/bff/messages", {
+      headers: { "x-csrf-token": csrf, origin: "http://localhost:13000", "content-type": "application/json" },
+      data: JSON.stringify({ text: "x".repeat(1_100_000) }),
+    });
+    expect(big.status()).toBe(413);
+  });
+
   await test.step("the phone layout at 375 px, and the app installs", async () => {
     await page.setViewportSize({ width: 375, height: 812 });
     for (const path of ["/", "/approvals", "/tasks", "/projects", "/connections", "/activity", "/settings"]) {

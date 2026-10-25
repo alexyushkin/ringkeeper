@@ -20,8 +20,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ringkeeper}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ringkeeper}
       POSTGRES_DB: ${POSTGRES_DB:-ringkeeper}
-    ports:
-      - "127.0.0.1:${RINGKEEPER_DB_PORT:-5432}:5432"
+    # No published port: only the api and gateway reach it. For the host CLI
+    # and database tools, add docker-compose.dev.yml.
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks: [internal]
@@ -133,8 +133,10 @@ services:
       RINGKEEPER_API_TOKEN_FILE: /run/ringkeeper-web/api-token
       # Trust X-Forwarded-For (for sign-in rate limits) only behind your own proxy.
       RINGKEEPER_WEB_TRUST_PROXY: ${RINGKEEPER_WEB_TRUST_PROXY:-0}
-      # Its HTTPS address, if any: sign-in cookies there are always Secure.
+      # Its HTTPS address, if any: sign-in cookies there are always Secure. The
+      # app answers only on localhost, this address and RINGKEEPER_WEB_ALLOWED_HOSTS.
       RINGKEEPER_WEB_ORIGIN: ${RINGKEEPER_WEB_ORIGIN:-}
+      RINGKEEPER_WEB_ALLOWED_HOSTS: ${RINGKEEPER_WEB_ALLOWED_HOSTS:-}
     volumes:
       - web-token:/run/ringkeeper-web:ro
     ports:
@@ -176,6 +178,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # It parses untrusted audio: no extra privileges, and bounded resources.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: ${RINGKEEPER_STT_MEMORY:-3g}
+    cpus: ${RINGKEEPER_STT_CPUS:-2}
+    pids_limit: 256
     restart: unless-stopped
 
   # Demo only: three fictional clients' "Supabase" databases (plain Postgres).

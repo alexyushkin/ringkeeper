@@ -1,9 +1,12 @@
 import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ringkeeper import __version__
 from ringkeeper.api import live_routes, manage_routes, owner_routes, work_routes
@@ -13,6 +16,56 @@ from ringkeeper.config import get_settings
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
 from ringkeeper.scrub import install_log_scrubbing
 from ringkeeper.services import owner
+
+MAX_BODY_BYTES = 1_000_000
+# Endpoints with their own (bigger) limit, checked as they stream.
+OWN_LIMIT_PATHS = frozenset({"/voice/transcribe"})
+
+
+class BodyLimit:
+    """Refuse request bodies over 1 MB (nothing here needs more), by the
+    Content-Length header and while reading, so a big body is never buffered."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] in OWN_LIMIT_PATHS:
+            await self.app(scope, receive, send)
+            return
+        declared = dict(scope["headers"]).get(b"content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY_BYTES):
+            response = JSONResponse(status_code=413, content={"detail": "the request is too big"})
+            await response(scope, receive, send)
+            return
+        seen = 0
+
+        async def limited() -> Message:
+            nonlocal seen
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > MAX_BODY_BYTES:
+                    raise HTTPException(413, detail="the request is too big")
+            return message
+
+        await self.app(scope, limited, send)
+
+
+async def _invalid(_request: Request, error: Exception) -> JSONResponse:
+    """422 with where and what, but never the submitted value: it may be a secret."""
+    problems: list[dict[str, Any]] = (
+        list(error.errors()) if isinstance(error, RequestValidationError) else []
+    )
+    detail = [
+        {
+            "loc": [str(part) for part in p.get("loc", ())],
+            "msg": str(p.get("msg", "")),
+            "type": str(p.get("type", "")),
+        }
+        for p in problems
+    ]
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 async def _not_found(_request: Request, error: Exception) -> JSONResponse:
@@ -89,6 +142,8 @@ def create_app() -> FastAPI:
     app.include_router(manage_routes.router)
     app.include_router(work_routes.router)
     app.include_router(live_routes.router)
+    app.add_middleware(BodyLimit)
+    app.add_exception_handler(RequestValidationError, _invalid)
     app.add_exception_handler(NotFoundError, _not_found)
     app.add_exception_handler(RuleViolationError, _rule_violation)
     app.add_exception_handler(AlreadyExistsError, _rule_violation)

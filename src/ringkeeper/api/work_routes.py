@@ -263,6 +263,9 @@ def list_audit(
     return [_audit_row(e) for e in session.scalars(query.limit(limit))]
 
 
+MAX_EXPORT_ROWS = 50_000
+
+
 @router.get("/audit.csv")
 def export_audit(
     session: SessionDep,
@@ -272,8 +275,10 @@ def export_audit(
     since: datetime | None = None,
     until: datetime | None = None,
 ) -> StreamingResponse:
-    """The audit log as CSV, e.g. per client (`?project=`). Arguments are left out."""
-    rows = session.scalars(_audit_query(project, instance, outcome, since, until)).all()
+    """The audit log as CSV, e.g. per client (`?project=`). Arguments are left out.
+    At most MAX_EXPORT_ROWS rows, newest first: narrow it with since/until for more."""
+    query = _audit_query(project, instance, outcome, since, until).limit(MAX_EXPORT_ROWS)
+    rows = session.scalars(query).all()
 
     def lines() -> Iterator[str]:
         buffer = io.StringIO()

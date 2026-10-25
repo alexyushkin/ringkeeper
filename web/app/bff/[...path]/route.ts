@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { HOST_REFUSED, hostAllowed } from "@/lib/hosts";
 import { ApiUnavailableError, callApi, sessionIsValid } from "@/lib/server/api";
 import {
   CSRF_COOKIE,
@@ -32,7 +33,9 @@ const PUBLIC = new Set([
   "POST auth/passkeys/login",
 ]);
 const SIGNS_IN = new Set(["setup/owner", "auth/login", "auth/passkeys/login"]);
-const SAFE_PATH = /^[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~%-]+)*$/;
+// Each path segment as the app's own calls make them; never "." or "..".
+const SAFE_SEGMENT = /^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$/;
+const MAX_BODY_BYTES = 1_000_000; // voice uploads stream through with their own limit
 
 function problem(status: number, detail: string): NextResponse {
   return NextResponse.json({ detail }, { status });
@@ -50,8 +53,9 @@ function sameOrigin(request: NextRequest): boolean {
 }
 
 async function handle(request: NextRequest, path: string[]): Promise<Response> {
+  if (!hostAllowed(request.headers)) return problem(421, HOST_REFUSED);
+  if (path.length === 0 || !path.every((segment) => SAFE_SEGMENT.test(segment))) return problem(404, "not found");
   const joined = path.join("/");
-  if (!SAFE_PATH.test(joined) || path.includes("..")) return problem(404, "not found");
   const method = request.method.toUpperCase();
   const session = request.cookies.get(SESSION_COOKIE)?.value;
   const isPublic = PUBLIC.has(`${method} ${joined}`);
@@ -73,12 +77,24 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
   }
 
   const streamingUpload = joined === "voice/transcribe";
+  let body: BodyInit | null = null;
+  if (method !== "GET" && method !== "HEAD") {
+    if (streamingUpload) {
+      body = request.body;
+    } else {
+      const declared = Number(request.headers.get("content-length") ?? "0");
+      if (!Number.isFinite(declared) || declared > MAX_BODY_BYTES) return problem(413, "That's too big to send.");
+      const bytes = await request.arrayBuffer();
+      if (bytes.byteLength > MAX_BODY_BYTES) return problem(413, "That's too big to send.");
+      body = bytes;
+    }
+  }
   let upstream: Response;
   try {
     upstream = await callApi(joined, {
       method,
       search: request.nextUrl.search,
-      body: method === "GET" || method === "HEAD" ? null : streamingUpload ? request.body : await request.text(),
+      body,
       contentType: request.headers.get("content-type"),
       session: session ?? null, // public paths too: setup/status says more when signed in
       client: clientAddress(request.headers),

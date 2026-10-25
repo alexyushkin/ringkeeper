@@ -109,6 +109,8 @@ class Collected:
 def resolve_workspace(path: str | None, root: str | None) -> str:
     if not path:
         raise RingkeeperError("the project has no workspace_path; set one in the registry")
+    if ".." in PurePosixPath(path).parts or ".." in PureWindowsPath(path).parts:
+        raise RingkeeperError(f"workspace_path '{path}' can't contain '..'")
     if PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute():
         return path
     if not root:

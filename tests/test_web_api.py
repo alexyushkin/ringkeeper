@@ -383,6 +383,56 @@ def test_loosening_connections_needs_a_recent_confirmation(
     assert owner.patch("/projects/acme-web", json={"description": "x"}).status_code == 200
 
 
+# --- Input limits ---
+
+
+def test_validation_errors_never_echo_the_input(owner: TestClient) -> None:
+    secret = "sk-ant-api03-" + "z" * 40
+    response = owner.put("/secrets/claude", json={"mode": "nonsense", "value": secret})
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert response.json()["detail"][0]["loc"] == ["body", "mode"]
+
+
+def test_request_bodies_are_capped(owner: TestClient) -> None:
+    big = {"name": "acme-web", "owner": "acme", "description": "x" * 1_100_000}
+    assert owner.post("/projects", json=big).status_code == 413
+    chunked = owner.post(
+        "/projects",
+        content=iter(
+            [b'{"name": "acme-web", "owner": "acme", "description": "', b"x" * 1_100_000, b'"}']
+        ),
+        headers={"Content-Type": "application/json"},
+    )
+    assert chunked.status_code == 413
+
+
+@pytest.mark.parametrize(
+    "path", ["/var/run/docker.sock", "/", "../outside", "acme/../../etc", "C:\\Users", "~/x"]
+)
+def test_workspaces_from_the_app_stay_inside_the_root(owner: TestClient, path: str) -> None:
+    project = {"name": "acme-web", "owner": "acme", "workspace_path": path}
+    assert owner.post("/projects", json=project).status_code == 422
+    assert (
+        owner.post("/projects", json={**project, "workspace_path": "acme/web"}).status_code == 201
+    )
+    assert owner.patch("/projects/acme-web", json={"workspace_path": path}).status_code == 422
+
+
+def test_a_weak_database_password_is_warned_about(caplog: pytest.LogCaptureFixture) -> None:
+    settings = get_settings().model_copy(
+        update={"database_url": "postgresql+psycopg://ringkeeper:ringkeeper@postgres/ringkeeper"}
+    )
+    bootstrap.warn_weak_database_password(settings)
+    assert "database password is weak" in caplog.text
+    caplog.clear()
+    strong = settings.model_copy(
+        update={"database_url": "postgresql+psycopg://ringkeeper:Qm7x2Lp9Zr4Tn8Wv@postgres/rk"}
+    )
+    bootstrap.warn_weak_database_password(strong)
+    assert caplog.text == ""
+
+
 def test_too_many_live_streams_are_refused(owner: TestClient) -> None:
     from ringkeeper.api import live_routes  # noqa: PLC0415
 

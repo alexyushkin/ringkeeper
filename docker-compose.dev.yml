@@ -1,0 +1,12 @@
+# Development only: publish Postgres on this machine (127.0.0.1) for the
+# `uv run ringkeeper` CLI and database tools. A normal install doesn't need it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Anyone with a shell on this machine and the password can then reach the
+# database, so set a strong POSTGRES_PASSWORD in .env.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${RINGKEEPER_DB_PORT:-5432}:5432"
