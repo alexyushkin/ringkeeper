@@ -437,6 +437,105 @@ docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
   where only the api calls it (`RINGKEEPER_STT_URL`, default `http://stt:9000`;
   empty turns voice off).
 
+## Install
+
+You need Docker with Compose (Docker Desktop on Windows and Mac, Docker
+Engine on Linux) and git. Python and uv are only needed for the CLI and for
+development.
+
+### On your computer
+
+```bash
+git clone https://github.com/alexyushkin/ringkeeper.git
+cd ringkeeper
+cp .env.example .env
+```
+
+In `.env`, set at least:
+
+- `POSTGRES_PASSWORD`: a long random password (and the same one in
+  `RINGKEEPER_DATABASE_URL`, which only the CLI uses);
+- `RINGKEEPER_WORKSPACES_ROOT`: the folder that holds your client projects'
+  folders (a Windows path like `C:\work\ringkeeper` is fine). Each project's
+  **Folder** in the app is a folder inside it; a git repository works best,
+  since every task works on its own branch.
+
+Then:
+
+```bash
+docker compose --profile worker build worker   # the image tasks run in (once, and after updates)
+docker compose --profile stt up -d --build     # everything, with voice (leave out --profile stt for no voice)
+docker compose logs api | grep "setup code"     # the code the setup wizard asks for
+```
+
+Open http://localhost:3000 and follow the wizard ([The web app](#the-web-app)).
+The first start with voice downloads the speech model (about 500 MB for
+`small`). Every port is published on 127.0.0.1 only. To use the app from your
+phone, see [On your phone](#on-your-phone-https-with-tailscale-serve).
+
+### On a cloud server (private, through Tailscale)
+
+The same stack on a virtual server, reachable only from your own devices (and
+your team's) on your tailnet: no port is opened to the internet. A public
+HTTPS address with a client's own domain comes in a later milestone.
+
+1. **A server:** a current Ubuntu LTS with 2 vCPUs and 4 GB of RAM (8 GB with
+   voice) and 40 GB of disk. Install [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)
+   and git. Don't open any inbound port except SSH (or use Tailscale SSH and
+   close that too).
+2. **Ringkeeper:** as on your computer, with an absolute workspaces folder:
+
+   ```bash
+   sudo mkdir -p /srv/ringkeeper/workspaces
+   git clone https://github.com/alexyushkin/ringkeeper.git && cd ringkeeper
+   cp .env.example .env    # POSTGRES_PASSWORD, RINGKEEPER_WORKSPACES_ROOT=/srv/ringkeeper/workspaces
+   docker compose --profile worker build worker
+   docker compose --profile stt up -d --build
+   ```
+
+3. **Tailscale and HTTPS:**
+
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   # admin console: DNS > enable MagicDNS and HTTPS Certificates
+   sudo tailscale serve --bg --https=443 http://127.0.0.1:3000
+   tailscale serve status   # https://<server>.<tailnet>.ts.net
+   ```
+
+   Put that address in `.env` as `RINGKEEPER_WEB_ORIGIN`, add
+   `RINGKEEPER_WEB_TRUST_PROXY=1`, and run `docker compose --profile stt up -d`.
+4. **Setup:** `docker compose logs api | grep "setup code"`, then open the
+   address from your laptop or phone (signed in to the same tailnet) and run
+   the wizard.
+
+On Linux, the files the api creates in `.ringkeeper/` belong to root and the
+gateway's user, so run CLI commands inside the api container:
+`docker compose exec api ringkeeper <command>`.
+
+### Backups and updates
+
+Back up the database and the data folder, and keep the recovery key from the
+wizard somewhere else (a password manager):
+
+```bash
+docker compose exec postgres pg_dump -U ringkeeper ringkeeper > ringkeeper-$(date +%F).sql
+tar czf ringkeeper-data-$(date +%F).tgz .ringkeeper
+```
+
+If `master.key` is lost but the vault survives, put the recovery key in `.env`
+as `RINGKEEPER_MASTER_KEY`. Without either, you'll need to re-enter your
+connection secrets.
+
+To update: pull, rebuild the worker image, and restart. The api applies
+database migrations on start.
+
+```bash
+git pull
+docker compose --profile worker build worker
+docker compose --profile stt up -d --build
+```
+
 ## The web app
 
 The `web` service is a phone-first app for running Ringkeeper without a
@@ -455,12 +554,8 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 
 ### First start, without a terminal
 
-```bash
-docker compose up -d --build
-docker compose logs api | grep "setup code"     # or open .ringkeeper/setup-code.txt
-```
-
-Open http://localhost:3000. The setup wizard asks for the **setup code** the
+After [installing](#install), open http://localhost:3000 (or your Tailscale
+address). The setup wizard asks for the **setup code** the
 api printed on its first start (so whoever reaches a freshly exposed server
 first can't claim it), then walks through:
 
