@@ -76,7 +76,10 @@ def test_database_enforces_one_default_per_type(session: Session) -> None:
     second = make_instance(session, "acme-supabase-staging", env=Env.STAGING)
     for instance in (first, second):
         session.add(ProjectInstance(project=project, instance=instance, is_default=True))
-    with pytest.raises(IntegrityError, match="uq_project_instances_one_default_per_type"):
+    with pytest.raises(
+        IntegrityError,
+        match=r"uq_project_instances_one_default_per_type|UNIQUE constraint failed: project_inst",
+    ):
         session.flush()
 
 

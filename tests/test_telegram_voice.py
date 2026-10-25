@@ -27,6 +27,7 @@ from ringkeeper.telegram import api as telegram_api
 from ringkeeper.telegram.api import BotApi
 from ringkeeper.telegram.bridge import EXPIRED, NOT_A_PERSON, REQUESTS_OFF, Bridge
 from tests.fake_telegram import AUDIO_MARKER, BOT_TOKEN, ME, STRANGER, FakeStt, FakeTelegram
+from tests.helpers import table_text
 
 pytestmark = pytest.mark.usefixtures("task_registry")
 
@@ -412,5 +413,5 @@ def test_no_audio_is_kept_anywhere(
     with session_scope() as session:
         for table in ("voice_confirmations", "decisions", "messages", "audit_events",
                       "notifications", "sessions", "settings_kv"):  # fmt: skip
-            rows = session.execute(text(f"SELECT t::text FROM {table} t")).scalars().all()  # noqa: S608
+            rows = table_text(session, table)
             assert not any("OggS" in row for row in rows), table

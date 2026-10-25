@@ -15,7 +15,7 @@ from pathlib import Path
 import psycopg
 import pytest
 import uvicorn
-from sqlalchemy import Engine, create_engine, make_url, text
+from sqlalchemy import Engine, make_url, text
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
@@ -24,33 +24,59 @@ from ringkeeper.adapters import n8n
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.gateway.app import create_app
-from ringkeeper.models import Autonomy, Env, InstanceType
+from ringkeeper.models import Autonomy, Base, Env, InstanceType
+from ringkeeper.storage import sqlite_baseline
+from ringkeeper.storage.sql import make_engine
 from ringkeeper.vault import Vault, get_vault
 from tests.fake_n8n import API_KEY, FakeN8n
 from tests.helpers import bind, make_instance, make_project
 
 POSTGRES_IMAGE = "postgres:16-alpine"
+# Which database Ringkeeper's own state lives in for this run: postgres (server
+# mode, the default) or sqlite (desktop mode). Client databases that the
+# Supabase connector talks to are always Postgres.
+TEST_DB = os.environ.get("RINGKEEPER_TEST_DB", "postgres")
+SQLITE = TEST_DB == "sqlite"
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if SQLITE and item.get_closest_marker("postgres_only"):
+            item.add_marker(pytest.mark.skip(reason="Ringkeeper's own database is SQLite here"))
 
 
 @pytest.fixture(scope="session")
-def database_url() -> Iterator[str]:
-    """A throwaway Postgres 16, migrated to head, shared by the whole run."""
+def postgres_url() -> Iterator[str]:
+    """A throwaway Postgres 16 for the whole run (started only if a test needs it)."""
+    if os.environ.get("RINGKEEPER_TEST_NO_DOCKER") == "1":
+        pytest.skip("needs a Postgres, and there's no Docker here")
     with PostgresContainer(POSTGRES_IMAGE, driver="psycopg") as postgres:
-        url: str = postgres.get_connection_url()
-        migrate.upgrade(url)
-        # The CLI and API resolve their engine from settings, so point them here too.
-        previous = os.environ.get("RINGKEEPER_DATABASE_URL")
-        os.environ["RINGKEEPER_DATABASE_URL"] = url
-        yield url
-        if previous is None:
-            os.environ.pop("RINGKEEPER_DATABASE_URL", None)
-        else:
-            os.environ["RINGKEEPER_DATABASE_URL"] = previous
+        yield postgres.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def database_url(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[str]:
+    """Ringkeeper's own database, migrated to head, shared by the whole run."""
+    if SQLITE:
+        url = f"sqlite:///{tmp_path_factory.mktemp('db') / 'ringkeeper.db'}"
+    else:
+        url = request.getfixturevalue("postgres_url")
+    migrate.upgrade(url)
+    # The CLI and API resolve their engine from settings, so point them here too.
+    previous = os.environ.get("RINGKEEPER_DATABASE_URL")
+    os.environ["RINGKEEPER_DATABASE_URL"] = url
+    yield url
+    if previous is None:
+        os.environ.pop("RINGKEEPER_DATABASE_URL", None)
+    else:
+        os.environ["RINGKEEPER_DATABASE_URL"] = previous
 
 
 @pytest.fixture(scope="session")
 def engine(database_url: str) -> Iterator[Engine]:
-    engine = create_engine(database_url)
+    engine = make_engine(database_url)
     yield engine
     engine.dispose()
 
@@ -65,13 +91,13 @@ def _fresh_scrubber() -> Iterator[None]:
 
 
 @pytest.fixture(scope="session")
-def target_dsn(database_url: str) -> str:
+def target_dsn(postgres_url: str) -> str:
     """A separate database standing in for a client's Supabase project."""
-    admin = database_url.replace("postgresql+psycopg://", "postgresql://")
+    admin = postgres_url.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(admin, autocommit=True) as conn:
         conn.execute(f"CREATE ROLE target_rw LOGIN PASSWORD '{TARGET_PASSWORD}'")
         conn.execute("CREATE DATABASE target OWNER target_rw")
-    url = make_url(database_url)
+    url = make_url(postgres_url)
     return f"postgresql://target_rw:{TARGET_PASSWORD}@{url.host}:{url.port}/target"
 
 
@@ -98,14 +124,27 @@ def _clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     if engine is None:
         return
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                "TRUNCATE notifications, voice_confirmations, routing_examples, settings_kv, "
-                "owner, owner_sessions, passkeys, login_attempts, "
-                "session_events, sessions, tasks, token_revocations, audit_events, decisions, "
-                "messages, threads, project_instances, projects, instances CASCADE"
+        if not SQLITE:
+            connection.execute(
+                text(
+                    "TRUNCATE notifications, voice_confirmations, routing_examples, settings_kv, "
+                    "owner, owner_sessions, passkeys, login_attempts, "
+                    "session_events, sessions, tasks, token_revocations, audit_events, "
+                    "decisions, messages, threads, project_instances, projects, instances CASCADE"
+                )
             )
-        )
+            return
+        # No TRUNCATE in SQLite, and DELETE fires the audit log's append-only
+        # triggers: drop them for the cleanup and put them back.
+        guards = {n: v for n, v in sqlite_baseline.TRIGGERS.items() if n.startswith("audit")}
+        for name in guards:
+            connection.exec_driver_sql(f"DROP TRIGGER {name}")
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(table.delete())
+        for name, (event, table_name, body, when) in guards.items():
+            connection.exec_driver_sql(
+                sqlite_baseline.trigger_sql(name, event, table_name, body, when)
+            )
 
 
 @pytest.fixture

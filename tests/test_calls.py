@@ -4,7 +4,7 @@ from typing import Any
 
 import psycopg
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
@@ -14,7 +14,7 @@ from ringkeeper.services import bindings, decisions, projects
 from ringkeeper.services.calls import RefusalError, approve, deny, run_call
 from ringkeeper.vault import Vault
 from tests.fake_n8n import FakeN8n
-from tests.helpers import bind
+from tests.helpers import age_decisions, bind
 
 pytestmark = pytest.mark.anyio
 
@@ -247,12 +247,7 @@ async def test_approve_rechecks_the_binding(registry: None, target_dsn: str, vau
 async def test_expired_decision_cannot_be_approved(registry: None, vault: Vault) -> None:
     decision_id = await held(vault)
     with session_scope() as session:
-        session.execute(
-            text(
-                "UPDATE decisions SET created_at = now() - interval '2 days', "
-                "expires_at = now() - interval '1 day'"
-            )
-        )
+        age_decisions(session)
     with pytest.raises(RuleViolationError, match=r"expired at .* can no longer be approved"):
         await approve(decision_id, vault=vault)
     with session_scope() as session:

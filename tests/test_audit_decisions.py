@@ -1,13 +1,14 @@
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from ringkeeper import scrub
 from ringkeeper.calls import Caller, ToolCall, args_hash
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import AuditOutcome, DecisionStatus, InstanceType
+from ringkeeper.models import AuditOutcome, Decision, DecisionStatus, InstanceType
 from ringkeeper.services import audit, decisions
+from tests.helpers import age_decisions
 
 CALLER = Caller(project="acme-web", session_id="s-1", token_id="t-1")
 CANARY = "canary-aud1t-5e3f"
@@ -115,13 +116,7 @@ def test_denied_cannot_be_approved(session: Session) -> None:
 
 
 def _age(session: Session, decision_id: object) -> None:
-    session.execute(
-        text(
-            "UPDATE decisions SET created_at = now() - interval '2 days', "
-            "expires_at = now() - interval '1 day' WHERE id = :id"
-        ),
-        {"id": decision_id},
-    )
+    age_decisions(session, str(decision_id))
     session.expire_all()
 
 
@@ -160,7 +155,7 @@ def test_database_requires_decided_at_once_decided(session: Session) -> None:
     held = decisions.hold(session, call(), "acme-supabase-prod")
     with pytest.raises(IntegrityError, match="ck_decisions_decided_iff_not_pending"):
         session.execute(
-            text("UPDATE decisions SET status = 'denied' WHERE id = :id"), {"id": held.id}
+            update(Decision).where(Decision.id == held.id).values(status=DecisionStatus.DENIED)
         )
 
 

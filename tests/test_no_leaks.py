@@ -11,7 +11,6 @@ from urllib.parse import quote
 import pytest
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
-from sqlalchemy import text
 from typer.testing import CliRunner
 
 from ringkeeper.adapters import supabase
@@ -20,6 +19,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.tokens import issue_token
 from tests.conftest import TARGET_PASSWORD
 from tests.fake_n8n import API_KEY
+from tests.helpers import table_text
 
 pytestmark = pytest.mark.anyio
 
@@ -103,9 +103,7 @@ async def test_secrets_never_escape(
 
     with session_scope() as session:
         for table in ("audit_events", "decisions"):
-            statement = text(f"SELECT row_to_json(t)::text FROM {table} t")  # noqa: S608 (fixed names)
-            rows = session.execute(statement).scalars()
-            seen.extend((f"{table} row", row) for row in rows)
+            seen.extend((f"{table} row", row) for row in table_text(session, table))
 
     seen.append(("logs", logs.text))
     seen.extend(("log record", r.getMessage()) for r in logs.records)

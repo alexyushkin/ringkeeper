@@ -38,11 +38,17 @@ jobs:
       - run: uv run pyright
 
   tests:
+    # Ringkeeper's own database: Postgres (server mode) and SQLite (desktop
+    # mode). Client databases for the Supabase connector are Postgres either way.
+    name: tests (${{ matrix.python }}, ${{ matrix.db }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.12", "3.13"]
+        include:
+          - { python: "3.12", db: postgres }
+          - { python: "3.13", db: postgres }
+          - { python: "3.12", db: sqlite }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -52,6 +58,24 @@ jobs:
       - run: uv sync --locked
       # testcontainers starts Postgres 16 on the runner's Docker.
       - run: uv run pytest
+        env:
+          RINGKEEPER_TEST_DB: ${{ matrix.db }}
+
+  tests-windows:
+    # The desktop app's main platform: SQLite, no Docker (Windows runners have
+    # no Linux containers, so tests that need a Postgres or a worker image skip).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run pytest -m "not container"
+        env:
+          RINGKEEPER_TEST_DB: sqlite
+          RINGKEEPER_TEST_NO_DOCKER: "1"
 
   gitleaks:
     runs-on: ubuntu-latest

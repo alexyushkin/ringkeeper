@@ -57,7 +57,9 @@ def test_database_restricts_deleting_a_bound_instance(session: Session) -> None:
     make_project(session)
     make_instance(session, "acme-supabase-dev")
     bind(session, "acme-web", "acme-supabase-dev")
-    with pytest.raises(IntegrityError, match="fk_project_instances_instance"):
+    with pytest.raises(
+        IntegrityError, match=r"fk_project_instances_instance|FOREIGN KEY constraint failed"
+    ):
         session.execute(text("DELETE FROM instances WHERE name = 'acme-supabase-dev'"))
 
 

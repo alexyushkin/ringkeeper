@@ -171,7 +171,8 @@ def events_of(task_id: str) -> dict[str, list[dict[str, Any]]]:
     with session_scope() as session:
         task = tasks.get_task(session, task_id)
         ids = [s.id for s in task.sessions]
-        for event in session.scalars(select(SessionEvent).where(SessionEvent.session_id.in_(ids))):
+        found = select(SessionEvent).where(SessionEvent.session_id.in_(ids))
+        for event in session.scalars(found.order_by(SessionEvent.id)):
             by_type.setdefault(event.type, []).append(event.payload)
     return by_type
 
@@ -181,6 +182,7 @@ def status_of(task_id: str) -> TaskStatus:
         return tasks.get_task(session, task_id).status
 
 
+@pytest.mark.postgres_only  # probes that Ringkeeper's own Postgres is out of reach
 def test_worker_sees_only_its_workspace_and_one_credential(
     worker_setup: Callable[..., Run],
     workspace: Path,

@@ -735,7 +735,15 @@ uv run pre-commit install
 uv run ruff check . && uv run ruff format --check .
 uv run pyright
 uv run pytest            # starts a throwaway Postgres 16 with testcontainers
+RINGKEEPER_TEST_DB=sqlite uv run pytest   # the same suite on SQLite (desktop mode)
 ```
+
+Ringkeeper's own database is Postgres in server mode and SQLite in desktop
+mode. Services use the ORM; anything database-specific (column types, upserts,
+locks, NOTIFY/LISTEN) lives in `src/ringkeeper/storage/`, and a test fails if
+it shows up anywhere else. Migrations from 0009 on must run on both (`ringkeeper
+db upgrade` against a `sqlite:///` URL to try one); 0001–0008 are Postgres-only,
+and SQLite gets their result in one step (`storage/sqlite_baseline.py`).
 
 Adding a service means one module in `src/ringkeeper/adapters/` (tools declared
 `@read` or `@write`), one entry in `adapters/__init__.py`, and tests. See

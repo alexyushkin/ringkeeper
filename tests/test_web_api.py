@@ -6,13 +6,14 @@ import json
 import threading
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from typer.testing import CliRunner
 
 from ringkeeper import bootstrap, voice
@@ -21,11 +22,22 @@ from ringkeeper.api.app import create_app
 from ringkeeper.cli.main import app as cli
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import AuditEvent, AuditOutcome, Instance, Passkey, Task, TaskStatus
+from ringkeeper.models import (
+    AuditEvent,
+    AuditOutcome,
+    Instance,
+    LoginAttempt,
+    OwnerSession,
+    Passkey,
+    Setting,
+    Task,
+    TaskStatus,
+)
 from ringkeeper.services import runtime, secrets_in, tasks
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.vault import get_vault
 from tests.fake_telegram import AUDIO_MARKER, BOT_TOKEN, FakeStt, FakeTelegram
+from tests.helpers import table_text
 
 PASSWORD = "correct horse battery staple"
 API_KEY = "sk-ant-api03-" + "k" * 40
@@ -58,7 +70,7 @@ def owner(admin: TestClient, setup_code: str) -> TestClient:
 
 def audit_text() -> str:
     with session_scope() as session:
-        rows = session.execute(text("SELECT a::text FROM audit_events a")).scalars().all()
+        rows = table_text(session, "audit_events")
         return "\n".join(rows)
 
 
@@ -110,8 +122,7 @@ def age_confirmation(minutes: int = 11) -> None:
     """Pretend the owner signed in (or confirmed) a while ago."""
     with session_scope() as session:
         session.execute(
-            text("UPDATE owner_sessions SET confirmed_at = now() - make_interval(mins => :m)"),
-            {"m": minutes},
+            update(OwnerSession).values(confirmed_at=datetime.now(UTC) - timedelta(minutes=minutes))
         )
 
 
@@ -156,9 +167,8 @@ def test_sign_in_sessions_and_sign_out(owner: TestClient) -> None:
 
 def age_attempts(seconds: int) -> None:
     with session_scope() as session:
-        session.execute(
-            text("UPDATE login_attempts SET at = at - make_interval(secs => :s)"), {"s": seconds}
-        )
+        for attempt in session.scalars(select(LoginAttempt)):
+            attempt.at -= timedelta(seconds=seconds)
 
 
 def test_sign_in_is_rate_limited_per_client(owner: TestClient) -> None:
@@ -302,13 +312,11 @@ def test_passkey_challenges_are_capped(owner: TestClient, monkeypatch: pytest.Mo
         assert owner.post("/auth/passkeys/login/options").status_code == 200
     assert owner.post("/auth/passkeys/login/options").status_code == 429
     with session_scope() as session:  # expired ones are cleared on the next request
-        session.execute(
-            text(
-                "UPDATE settings_kv SET value = jsonb_set(value, '{expires}', "
-                "to_jsonb((now() - interval '1 minute')::text)) "
-                "WHERE key LIKE 'webauthn.challenge.%'"
-            )
-        )
+        expired = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+        for row in session.scalars(
+            select(Setting).where(Setting.key.startswith("webauthn.challenge."))
+        ):
+            row.value = {**row.value, "expires": expired}
     assert owner.post("/auth/passkeys/login/options").status_code == 200
 
 
@@ -681,7 +689,7 @@ def test_voice_upload_returns_only_the_transcript(owner: TestClient, stt: FakeSt
     assert stt.received == [audio]
     with session_scope() as session:  # nothing about it is stored
         for table in ("messages", "audit_events", "settings_kv", "voice_confirmations"):
-            rows = session.execute(text(f"SELECT t::text FROM {table} t")).scalars().all()  # noqa: S608
+            rows = table_text(session, table)
             assert not any("OggS" in r for r in rows)
 
 

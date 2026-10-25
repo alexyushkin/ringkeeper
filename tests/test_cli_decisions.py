@@ -3,7 +3,6 @@ from typing import Any
 import anyio
 import psycopg
 import pytest
-from sqlalchemy import text
 from typer.testing import CliRunner, Result
 
 from ringkeeper.calls import Caller, ToolCall
@@ -12,6 +11,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.models import InstanceType
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import Vault
+from tests.helpers import age_decisions
 
 runner = CliRunner()
 INSERT = "INSERT INTO notes (body) VALUES ('approved write')"
@@ -76,12 +76,7 @@ def test_deny(vault: Vault, target_dsn: str) -> None:
 def test_expired_cannot_be_approved(vault: Vault) -> None:
     decision_id = held(vault)
     with session_scope() as session:
-        session.execute(
-            text(
-                "UPDATE decisions SET created_at = now() - interval '2 days', "
-                "expires_at = now() - interval '1 day'"
-            )
-        )
+        age_decisions(session)
     result = cli("decision", "approve", decision_id)
     assert result.exit_code == 1
     assert "can no longer be approved" in result.stderr

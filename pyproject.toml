@@ -24,6 +24,7 @@ dependencies = [
     "fastapi>=0.115",
     "fastmcp>=4.1.3",
     "httpx2>=2.16.0",
+    "keyring>=25",
     "psycopg[binary]>=3.2",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
@@ -91,6 +92,9 @@ executionEnvironments = [{ root = "worker", pythonPlatform = "Linux", extraPaths
 testpaths = ["tests"]
 pythonpath = ["worker", "stt"]
 addopts = "-ra --strict-markers"
-markers = ["container: starts real worker or stt containers (needs Docker)"]
+markers = [
+    "container: starts real worker or stt containers (needs Docker)",
+    "postgres_only: about Ringkeeper's own database being Postgres (skipped with RINGKEEPER_TEST_DB=sqlite)",
+]
 # A silently skipped flush (e.g. an object never added) must fail loudly.
 filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
