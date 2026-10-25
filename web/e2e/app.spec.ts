@@ -157,9 +157,9 @@ with session_scope() as session:
     await page.mouse.up();
     const heard = page.getByText("I heard:").locator("..");
     // Synthetic speech through a fake microphone and the small "base" model: the
-    // robotic "Voice works" varies by machine ("Moise works", "My swergs"), while
-    // "add a line to the notes" comes through every time.
-    await expect(heard).toContainText(/add (a )?line to the notes/i, { timeout: 120_000 });
+    // robotic speech varies by machine ("Moise works", "My swergs", "the nodes"),
+    // while "add a line to the ..." comes through every time.
+    await expect(heard).toContainText(/add (a )?line to the \w+/i, { timeout: 120_000 });
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page).toHaveURL(/\/threads\//);
     await expect(page.getByText(/Spoken/)).toBeVisible();
