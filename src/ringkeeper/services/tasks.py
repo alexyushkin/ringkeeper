@@ -14,7 +14,7 @@ from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
-from ringkeeper.errors import NotFoundError, RuleViolationError
+from ringkeeper.errors import NotFoundError, RingkeeperError, RuleViolationError
 from ringkeeper.model_choice import session_model
 from ringkeeper.models import (
     RESUMABLE_STATUSES,
@@ -40,6 +40,19 @@ from ringkeeper.storage import events as storage_events
 NOTIFY_CHANNEL = "ringkeeper_tasks"
 # Not finished, but no container running: stopping just marks them stopped.
 IDLE_STATUSES = (TaskStatus.QUEUED, TaskStatus.NEEDS_INPUT, TaskStatus.WAITING)
+
+
+def agent_workspace(settings: Settings, workspace_path: str | None) -> str:
+    """The workspace as the agent sees it: /workspace in a container, the real
+    folder for a local process (desktop)."""
+    if settings.worker_runtime == "docker":
+        return "/workspace"
+    from ringkeeper.workers.manager import resolve_workspace  # noqa: PLC0415 (cycle)
+
+    try:
+        return resolve_workspace(workspace_path, settings.workspaces_root)
+    except RingkeeperError:
+        return "the project's folder (your current directory)"
 
 
 def notify(session: Session) -> None:
@@ -115,7 +128,11 @@ def create_task(
     session.add(task)
     session.flush()
     role = SessionRole.ARCHITECT if kind is TaskKind.FEATURE else SessionRole.WORKER
-    first_prompt = brief(record.name, prompt, outcome) if role is SessionRole.ARCHITECT else prompt
+    first_prompt = (
+        brief(record.name, prompt, outcome, agent_workspace(settings, record.workspace_path))
+        if role is SessionRole.ARCHITECT
+        else prompt
+    )
     task.sessions = [
         WorkerSession(
             task_id=task.id,

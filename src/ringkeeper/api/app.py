@@ -12,10 +12,11 @@ from ringkeeper import __version__
 from ringkeeper.api import live_routes, manage_routes, owner_routes, work_routes
 from ringkeeper.api.routes import public, router
 from ringkeeper.api.supervisor import Supervisor
-from ringkeeper.config import get_settings
+from ringkeeper.config import Settings, get_settings
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
 from ringkeeper.scrub import install_log_scrubbing
 from ringkeeper.services import owner
+from ringkeeper.workers.runtime import ContainerRuntime
 
 MAX_BODY_BYTES = 1_000_000
 # Endpoints with their own (bigger) limit, checked as they stream.
@@ -87,6 +88,17 @@ async def _too_many(_request: Request, error: Exception) -> JSONResponse:
     )
 
 
+def worker_runtime(settings: Settings) -> ContainerRuntime:
+    """Docker containers (server mode) or local processes (desktop mode)."""
+    if settings.worker_runtime == "process":
+        from ringkeeper.workers.process import ProcessRuntime  # noqa: PLC0415
+
+        return ProcessRuntime(settings.data_dir / "workers", tools_path=settings.worker_tools_path)
+    from ringkeeper.workers.runtime import DockerRuntime  # noqa: PLC0415 (only the api needs it)
+
+    return DockerRuntime()
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Run the session manager, router and Telegram bridge alongside the API.
@@ -112,10 +124,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     if settings.session_manager:
         from ringkeeper.vault import get_vault  # noqa: PLC0415 (Docker and the vault: only here)
         from ringkeeper.workers.manager import Manager  # noqa: PLC0415
-        from ringkeeper.workers.runtime import DockerRuntime  # noqa: PLC0415
 
         install_log_scrubbing()
-        manager = Manager(DockerRuntime(), get_vault())
+        manager = Manager(worker_runtime(settings), get_vault())
         threading.Thread(
             target=manager.run_forever, args=(stop,), daemon=True, name="rk-manager"
         ).start()

@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     web_token_ref: str = "file://ringkeeper/web-token"  # noqa: S105 (a ref)
 
     # Session manager (runs inside the api service).
+    # How workers run: docker containers (server mode) or local processes
+    # (desktop mode, the default there; see workers/process.py).
+    worker_runtime: Literal["docker", "process"] = "docker"
+    # Process workers: folders put first on their PATH (the bundled git, say).
+    worker_tools_path: list[str] = []
     worker_image: str = "ringkeeper-worker:latest"
     # The network workers join. Only the gateway is on it, not Postgres or the api.
     worker_network: str = "ringkeeper_workers"
@@ -134,9 +139,12 @@ class Settings(BaseSettings):
         return None if value == "" else value
 
     @model_validator(mode="after")
-    def _desktop_database(self) -> Self:
-        if self.mode == "desktop" and "database_url" not in self.model_fields_set:
-            self.database_url = f"sqlite:///{(self.data_dir / 'ringkeeper.db').as_posix()}"
+    def _desktop_defaults(self) -> Self:
+        if self.mode == "desktop":
+            if "database_url" not in self.model_fields_set:
+                self.database_url = f"sqlite:///{(self.data_dir / 'ringkeeper.db').as_posix()}"
+            if "worker_runtime" not in self.model_fields_set:
+                self.worker_runtime = "process"
         return self
 
 

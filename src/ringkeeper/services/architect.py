@@ -34,7 +34,7 @@ DISALLOWED_TOOLS = [
 
 BRIEF = """\
 You are the architect for a feature in the project "{project}". You can read the
-workspace at /workspace, but you can't change it: a worker writes the code on a
+workspace at {workspace}, but you can't change it: a worker writes the code on a
 branch, and you plan and review. Use the ringkeeper-architect tools; each call
 ends your turn, and you are resumed when the next step is ready.
 
@@ -56,9 +56,10 @@ The feature request:
 {outcome}"""
 
 
-def brief(project: str, prompt: str, outcome: str | None) -> str:
+def brief(project: str, prompt: str, outcome: str | None, workspace: str = "/workspace") -> str:
     return BRIEF.format(
         project=project,
+        workspace=workspace,
         prompt=prompt,
         outcome=f"\nWhat done looks like: {outcome}" if outcome else "",
         max_reviews=MAX_REVIEWS,

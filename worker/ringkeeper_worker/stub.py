@@ -9,6 +9,7 @@ a result message shaped like the SDK's. It never reports env var values.
 import asyncio
 import os
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,8 @@ PSEUDO_MOUNTS = ("/proc", "/sys", "/dev")
 
 
 def mount_points() -> list[str]:
+    if not Path("/proc/self/mountinfo").exists():  # not Linux: a local process (desktop)
+        return []
     points: list[str] = []
     for line in Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
         point = line.split()[4]
@@ -36,6 +39,8 @@ def mount_points() -> list[str]:
 
 
 def current_uid() -> int:
+    if not Path("/proc/self/status").exists():
+        return -1
     for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
         if line.startswith("Uid:"):
             return int(line.split()[1])
@@ -96,11 +101,17 @@ def tamper(workspace: Path) -> None:
         config.write("[core]\n\tfsmonitor = touch /workspace/FSMONITOR-RAN\n")
     (git / "info").mkdir(exist_ok=True)
     (git / "info" / "attributes").write_text("* filter=evil\n", encoding="utf-8")
+    # Python, not sh, so it runs anywhere a worker runs (a container, Windows, macOS).
+    late = git / "hooks" / "pre-commit"
     loop = (
-        "while true; do printf '#!/bin/sh\\ntouch /workspace/LATE-HOOK-RAN\\n' "
-        "> /workspace/.git/hooks/pre-commit 2>/dev/null; sleep 0.05; done"
+        "import pathlib, time\n"
+        f"p = pathlib.Path({str(late)!r})\n"
+        "while True:\n"
+        "    try: p.write_text('#!/bin/sh\\ntouch LATE-HOOK-RAN\\n')\n"
+        "    except OSError: pass\n"
+        "    time.sleep(0.05)\n"
     )
-    subprocess.Popen(["sh", "-c", loop], start_new_session=True)  # noqa: S603, S607
+    subprocess.Popen([sys.executable, "-c", loop], start_new_session=True)  # noqa: S603
     nested = workspace / "vendor" / "lib" / ".git" / "hooks"
     nested.mkdir(parents=True, exist_ok=True)
     (nested / "post-checkout").write_text("#!/bin/sh\n", encoding="utf-8")
@@ -127,9 +138,19 @@ async def run(config: WorkerConfig) -> bool:
         mounts=mount_points(),
         env_names=sorted(os.environ),
         forbidden_present=[p for p in FORBIDDEN_PATHS if os.path.exists(p)],
-        master_keys=find_files("master.key"),
+        # Searching the whole disk only makes sense inside a container.
+        master_keys=find_files("master.key") if mount_points() else [],
         workspace_writable=os.access(config.workspace, os.W_OK),
+        workspace=config.workspace,
+        home=os.environ.get("HOME"),
+        claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
     )
+    if stub.get("leave_behind"):
+        # A process that outlives the agent, like a dev server it forgot to stop.
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True
+        )
+        emit("stub.left_behind", pid=child.pid)
     for host, port in stub.get("probe", []):
         emit("stub.probe", host=host, port=port, reachable=await reachable(str(host), int(port)))
     for name, url in config.mcp_servers.items():
