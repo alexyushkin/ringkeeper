@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     # and extra /etc/hosts entries so a worker can reach a test gateway.
     worker_stub: str | None = None
     worker_extra_hosts: dict[str, str] = {}
+    # Where workers' Claude Code sends model requests, if not Anthropic's API
+    # directly (a company proxy; tests point it at a fake).
+    worker_anthropic_base_url: str | None = None
 
     # Models by role, and by task complexity for workers the router dispatched.
     # A project's `models` in the registry overrides any of these for that project.

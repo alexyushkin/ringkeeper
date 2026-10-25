@@ -236,13 +236,17 @@ class Manager:
     def _on_notify(self, _channel: str, _payload: str) -> None:
         self._wake.set()
 
-    def tick(self) -> None:
+    def tick(self, max_new: int | None = None) -> None:
+        """Start queued sessions up to the concurrency cap (or `max_new` of them:
+        tests that drive the loop step by step)."""
         self._enforce_limits()
         settings = self.settings
         if settings.paused:  # "Stop everything": nothing new starts until resumed
             return
         cap = settings.max_concurrent_workers
-        while True:
+        started = 0
+        while max_new is None or started < max_new:
+            started += 1
             with self._lock:
                 if len(self._active) >= cap:
                     return
@@ -386,7 +390,7 @@ class Manager:
         spec = WorkerSpec(
             name=f"ringkeeper-worker-{job.session_id}",
             image=settings.worker_image,
-            env=worker_env(credential, task, token),
+            env=worker_env(credential, task, token, settings.worker_anthropic_base_url),
             workspace=workspace,
             state_volume=job.state_volume,
             network=settings.worker_network,

@@ -28,10 +28,15 @@ TOKEN_ENV = "RINGKEEPER_GATEWAY_TOKEN"  # noqa: S105 (an env var name)
 
 
 def worker_env(
-    credential: ClaudeCredential, task: dict[str, Any], gateway_token: str
+    credential: ClaudeCredential,
+    task: dict[str, Any],
+    gateway_token: str,
+    anthropic_base_url: str | None = None,
 ) -> dict[str, str]:
     env = dict(FIXED_ENV)
     env[TASK_ENV] = json.dumps(task, separators=(",", ":"))
     env[TOKEN_ENV] = gateway_token
     env.update(credential.env())  # exactly one variable
+    if anthropic_base_url:
+        env["ANTHROPIC_BASE_URL"] = anthropic_base_url
     return env

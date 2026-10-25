@@ -119,6 +119,7 @@ def setup_status(
             "in the .ringkeeper folder)"
         )
     )
+    signed_in = signed_in or caller(request) is Caller.DESKTOP
     if not signed_in and caller(request) is not Caller.ADMIN:
         return SetupStatus(owner=has_owner, signed_in=False, setup_code_hint=hint)
     recovery = session.get(Setting, RECOVERY_SAVED_KEY)

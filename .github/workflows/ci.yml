@@ -77,6 +77,41 @@ jobs:
           RINGKEEPER_TEST_DB: sqlite
           RINGKEEPER_TEST_NO_DOCKER: "1"
 
+  claude-cli-windows-no-bash:
+    # The desktop app's usual machine: Windows without Git for Windows. Claude
+    # Code then has no Git Bash and falls back to PowerShell; workers use MinGit
+    # (git without bash), as the desktop bundle does. The real CLI runs against
+    # a fake Anthropic API (tests/fake_anthropic.py): no key, no cost.
+    runs-on: windows-latest
+    env:
+      MINGIT_URL: https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip
+      MINGIT_SHA256: da35e72aa21c005a5a0d298cfbae110bc1609a815730ea0dde84b01a1b3cd3be
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: MinGit instead of Git for Windows, and no bash anywhere
+        shell: pwsh
+        run: |
+          Invoke-WebRequest $env:MINGIT_URL -OutFile mingit.zip
+          if ((Get-FileHash mingit.zip -Algorithm SHA256).Hash -ne $env:MINGIT_SHA256) { throw "MinGit checksum mismatch" }
+          Expand-Archive mingit.zip -DestinationPath C:\mingit
+          if (Get-ChildItem C:\mingit -Recurse -Filter bash.exe) { throw "this MinGit has a bash" }
+          foreach ($dir in "C:\Program Files\Git", "C:\msys64", "C:\cygwin64") {
+            if (Test-Path $dir) { Rename-Item $dir ((Split-Path $dir -Leaf) + "-hidden") }
+          }
+          $bash = Get-Command bash -ErrorAction SilentlyContinue
+          if ($bash) { Write-Output "note: a bash is still on PATH: $($bash.Source)" }
+          "RINGKEEPER_WORKER_TOOLS_PATH=C:\mingit\cmd" >> $env:GITHUB_ENV
+      - run: uv run pytest tests/test_claude_cli.py -p no:cacheprovider
+        env:
+          RINGKEEPER_TEST_DB: sqlite
+          RINGKEEPER_TEST_NO_DOCKER: "1"
+          RINGKEEPER_EXPECT_SHELL: PowerShell
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:
@@ -111,6 +146,8 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+      # The desktop app's copy: the same app exported as static files.
+      - run: node scripts/build-desktop.mjs
 
   e2e:
     # The whole stack in Docker (fresh each run) and Chromium with a fake

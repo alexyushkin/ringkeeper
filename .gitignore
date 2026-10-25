@@ -27,3 +27,6 @@ workspaces/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Desktop mode run from source (ringkeeper desktop --data-dir ./.desktop-data)
+.desktop-data/

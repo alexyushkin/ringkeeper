@@ -111,9 +111,16 @@ def clear_setup_code(settings: Settings) -> None:
 
 
 def run(settings: Settings) -> None:
-    """Each step on its own: a read-only data dir (CLI-managed installs) is fine."""
-    warn_weak_database_password(settings)
-    for step in (ensure_master_key, ensure_admin_token, ensure_setup_code):
+    """Each step on its own: a read-only data dir (CLI-managed installs) is fine.
+
+    Desktop mode has no database password and no sign-in (so no setup code):
+    just the master key (in the keychain) and the admin token for the CLI.
+    """
+    desktop = settings.mode == "desktop"
+    if not desktop:
+        warn_weak_database_password(settings)
+    steps = (ensure_master_key, ensure_admin_token, *(() if desktop else (ensure_setup_code,)))
+    for step in steps:
         try:
             step(settings)
         except (RingkeeperError, OSError) as error:

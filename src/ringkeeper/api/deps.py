@@ -54,8 +54,16 @@ def client_address(
 ClientDep = Annotated[str, Depends(client_address)]
 
 
-def require_owner(x_ringkeeper_session: Annotated[str | None, Header()] = None) -> str:
-    """The owner's session token, if it is valid (idle and absolute expiry checked)."""
+DESKTOP_OWNER = "desktop"  # what require_owner returns for the desktop app's window
+
+
+def require_owner(
+    request: Request, x_ringkeeper_session: Annotated[str | None, Header()] = None
+) -> str:
+    """The owner's session token, if it is valid (idle and absolute expiry checked).
+    The desktop app's window is the owner by being the window (see api/auth.py)."""
+    if caller(request) is Caller.DESKTOP:
+        return DESKTOP_OWNER
     if not x_ringkeeper_session:
         raise HTTPException(401, detail="sign in first")
     try:
@@ -73,6 +81,8 @@ CONFIRM_HEADER = "X-Ringkeeper-Confirm"
 def check_recent_auth(request: Request, token: str | None) -> None:
     """Raise unless the owner confirmed recently. Admin-token scripts without a
     session are trusted as they are."""
+    if caller(request) is Caller.DESKTOP:
+        return  # one local user, already at their own computer
     if token is None and caller(request) is Caller.ADMIN:
         return
     if token is None:

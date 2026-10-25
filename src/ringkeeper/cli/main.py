@@ -8,6 +8,7 @@ from ringkeeper.cli import (
     auth,
     bindings,
     decisions,
+    desktop,
     inbox,
     instances,
     projects,
@@ -65,6 +66,7 @@ app.add_typer(web.app, name="web")
 app.command("stop-all")(tasks.stop_all)
 app.command("bind")(bindings.bind)
 app.command("unbind")(bindings.unbind)
+app.command("desktop")(desktop.desktop)
 
 db_app = typer.Typer(help="Database maintenance.", no_args_is_help=True)
 app.add_typer(db_app, name="db")

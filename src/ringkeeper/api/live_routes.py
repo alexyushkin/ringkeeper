@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ringkeeper.api.auth import AdminDep
-from ringkeeper.api.deps import OwnerToken, require_owner
+from ringkeeper.api.deps import DESKTOP_OWNER, OwnerToken, require_owner
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.services import owner
@@ -87,6 +87,8 @@ def _next_payloads(subscription: storage_events.Subscription) -> list[str]:
 
 
 def _still_signed_in(token: str) -> bool:
+    if token == DESKTOP_OWNER:
+        return True  # the desktop window stays "signed in" while the app runs
     try:
         with session_scope() as session:
             owner.verify_session(session, get_settings(), token)

@@ -128,7 +128,8 @@ def feature(complexity: str = "medium") -> str:
 
 
 def run(manager: Manager) -> None:
-    manager.tick()
+    """One step: a session that finishes fast mustn't let this tick start the next."""
+    manager.tick(max_new=1)
     manager.wait_idle()
 
 
