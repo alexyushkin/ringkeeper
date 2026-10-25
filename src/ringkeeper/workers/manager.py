@@ -11,6 +11,7 @@ stores the worker's JSON lines as session events, and when the worker ends
 import json
 import logging
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -25,10 +26,12 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
 from ringkeeper.models import (
+    TERMINAL_STATUSES,
     AuthMode,
     Autonomy,
     DecisionKind,
     SessionRole,
+    Task,
     TaskKind,
     TaskStatus,
     WorkerSession,
@@ -38,7 +41,13 @@ from ringkeeper.services.runtime import current_settings
 from ringkeeper.tokens import TokenRole, issue_token
 from ringkeeper.vault import Vault
 from ringkeeper.workers.env import worker_env
-from ringkeeper.workers.runtime import LABEL_SESSION, LABEL_TASK, ContainerRuntime, WorkerSpec
+from ringkeeper.workers.runtime import (
+    LABEL_SESSION,
+    LABEL_TASK,
+    STATE_PREFIX,
+    ContainerRuntime,
+    WorkerSpec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +60,7 @@ DISALLOWED_TOOLS = {
 }
 MAX_EVENT_BYTES = 64 * 1024
 REVOKED_BY = "session-manager"
+VOLUME_SWEEP_SECONDS = 3600
 
 
 @dataclass(frozen=True)
@@ -186,9 +196,13 @@ class Manager:
     def run_forever(self, stop: threading.Event) -> None:
         self.recover()
         start_listener(self.settings, [tasks.NOTIFY_CHANNEL], self._on_notify, stop, "rk-listen")
+        swept = 0.0
         while not stop.is_set():
             try:
                 self.tick()
+                if time.monotonic() - swept > VOLUME_SWEEP_SECONDS:
+                    swept = time.monotonic()
+                    self.sweep_state_volumes()
             except Exception:
                 logger.exception("session manager tick failed")
             self._wake.wait(self.settings.manager_poll_seconds)
@@ -196,6 +210,28 @@ class Manager:
 
     def wake(self) -> None:
         self._wake.set()
+
+    def sweep_state_volumes(self) -> int:
+        """Remove the SDK state (agent transcripts, so client data) of tasks that
+        finished more than `retention_days` ago. Only tasks in this install's
+        database: another install's volumes on the same Docker are left alone."""
+        cutoff = datetime.now(UTC) - timedelta(days=self.settings.retention_days)
+        removed = 0
+        with session_scope() as session:
+            for name in self.runtime.state_volumes():
+                try:
+                    task_id = uuid.UUID(name.removeprefix(STATE_PREFIX)[:36])
+                except ValueError:
+                    continue
+                task = session.get(Task, task_id)
+                if task is None or task.status not in TERMINAL_STATUSES:
+                    continue
+                expired = task.finished_at is not None and task.finished_at < cutoff
+                if expired and self.runtime.remove_volume(name):
+                    removed += 1
+        if removed:
+            logger.info("removed %d finished tasks' state volumes", removed)
+        return removed
 
     def _on_notify(self, _channel: str, _payload: str) -> None:
         self._wake.set()

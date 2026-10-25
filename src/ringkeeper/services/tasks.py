@@ -46,8 +46,11 @@ def notify(session: Session) -> None:
     session.execute(text(f"NOTIFY {NOTIFY_CHANNEL}"))
 
 
-def state_volume_name(task_id: uuid.UUID) -> str:
-    return f"ringkeeper-state-{task_id}"
+def state_volume_name(task_id: uuid.UUID, role: SessionRole) -> str:
+    """The SDK state (transcripts for resume) for one role of one task: an architect
+    session (which reads but never writes the workspace) and a worker session never
+    share files."""
+    return f"ringkeeper-state-{task_id}-{role.value}"
 
 
 def branch_name(task_id: uuid.UUID) -> str:
@@ -120,7 +123,7 @@ def create_task(
             status=TaskStatus.QUEUED,
             role=role,
             model=session_model(settings, record, role, complexity),
-            state_volume=state_volume_name(task.id),
+            state_volume=state_volume_name(task.id, role),
         )
     ]
     session.add_all(task.sessions)
@@ -210,7 +213,15 @@ def add_session(
             task.failed_check_rounds,
         ),
         sdk_session_id=sdk_session_id,
-        state_volume=state_volume_name(task.id),
+        # Tasks from before per-role volumes keep the volume their transcripts are on.
+        state_volume=next(
+            (
+                s.state_volume
+                for s in sorted(task.sessions, key=lambda s: -s.ordinal)
+                if s.role is role
+            ),
+            state_volume_name(task.id, role),
+        ),
     )
     session.add(worker_session)
     task.sessions.append(worker_session)

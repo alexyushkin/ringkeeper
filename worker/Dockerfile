@@ -32,6 +32,8 @@ ENV PYTHONPATH=/opt \
     GIT_COMMITTER_NAME="Ringkeeper worker" \
     GIT_COMMITTER_EMAIL=worker@ringkeeper.invalid
 
-USER worker
+# The runner starts as root, with only the capabilities the session manager
+# grants (SETUID, SETGID, KILL, DAC_READ_SEARCH): the agent, git and checks
+# run as `worker`, so the runner can clean up after them.
 WORKDIR /workspace
 ENTRYPOINT ["python", "-m", "ringkeeper_worker"]

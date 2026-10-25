@@ -2,12 +2,14 @@
 
 Each check is a shell command run in /workspace with a minimal environment:
 no Claude credential and no gateway token, since checks run project code.
+They run as the worker user, like the agent.
 """
 
 import os
 import subprocess
 
 from ringkeeper_worker.emit import emit
+from ringkeeper_worker.privileges import as_worker_kwargs
 
 OUTPUT_CHARS = 8000
 TIMEOUT_SECONDS = 600
@@ -38,6 +40,7 @@ def run_checks(commands: list[str], workspace: str) -> dict[str, object]:
                 text=True,
                 timeout=TIMEOUT_SECONDS,
                 check=False,
+                **as_worker_kwargs(),
             )
             code, output = done.returncode, (done.stdout or "") + (done.stderr or "")
         except subprocess.TimeoutExpired as expired:

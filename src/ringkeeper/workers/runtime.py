@@ -18,7 +18,11 @@ from ringkeeper.workers.env import STATE_DIR, WORKSPACE
 LABEL = "ringkeeper.role"
 LABEL_SESSION = "ringkeeper.session"
 LABEL_TASK = "ringkeeper.task"
-WORKER_UID = "1000:1000"
+STATE_PREFIX = "ringkeeper-state-"  # + task id (+ role): see tasks.state_volume_name
+# The runner starts as root and runs the agent, git and checks as uid 1000
+# (see worker/ringkeeper_worker/privileges.py), with only these capabilities.
+RUNNER_USER = "0:0"
+RUNNER_CAPS = ["SETUID", "SETGID", "KILL", "DAC_READ_SEARCH"]
 
 _WINDOWS_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -63,6 +67,8 @@ class ContainerRuntime(Protocol):
     def kill(self, container_id: str) -> None: ...
     def remove(self, container_id: str) -> None: ...
     def running_workers(self) -> dict[str, str]: ...  # container id -> session id
+    def state_volumes(self) -> list[str]: ...  # names starting with STATE_PREFIX
+    def remove_volume(self, name: str) -> bool: ...  # False if missing or in use
 
 
 class DockerRuntime:
@@ -93,10 +99,11 @@ class DockerRuntime:
                 environment=spec.env,
                 mounts=mounts,
                 network=spec.network,
-                user=WORKER_UID,
+                user=RUNNER_USER,
                 read_only=True,
                 tmpfs={"/tmp": "", "/home/worker": "uid=1000,gid=1000"},  # noqa: S108
                 cap_drop=["ALL"],
+                cap_add=RUNNER_CAPS,
                 security_opt=["no-new-privileges"],
                 pids_limit=512,
                 mem_limit=spec.memory,
@@ -144,3 +151,16 @@ class DockerRuntime:
     def running_workers(self) -> dict[str, str]:
         containers = self._client.containers.list(filters={"label": f"{LABEL}=worker"})
         return {c.id: c.labels.get(LABEL_SESSION, "") for c in containers}
+
+    def state_volumes(self) -> list[str]:
+        volumes = self._client.volumes.list(filters={"name": STATE_PREFIX})
+        return [v.name for v in volumes if str(v.name).startswith(STATE_PREFIX)]
+
+    def remove_volume(self, name: str) -> bool:
+        from docker.errors import APIError, NotFound  # noqa: PLC0415
+
+        try:
+            self._client.volumes.get(name).remove()
+        except (NotFound, APIError):  # gone already, or a container still uses it
+            return False
+        return True

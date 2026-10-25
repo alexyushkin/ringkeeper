@@ -303,3 +303,33 @@ def test_checks_run_without_secrets_and_report_each_result(
     assert "must-not-leak" not in out.getvalue()
     [event] = [json.loads(x) for x in out.getvalue().splitlines()]
     assert event["type"] == "ringkeeper.checks"
+
+
+# --- What the agent may not leave in .git ---
+
+
+def test_gitguard_puts_config_hooks_and_info_back(tmp_path: Path) -> None:
+    from ringkeeper_worker import gitguard  # noqa: PLC0415
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)  # noqa: S603, S607
+    git = tmp_path / ".git"
+    config = (git / "config").read_bytes()
+    before = gitguard.capture(tmp_path)
+    assert before is not None
+    assert gitguard.differences(before, tmp_path) == []
+
+    (git / "hooks" / "post-commit").write_text("#!/bin/sh\necho owned\n", encoding="utf-8")
+    (git / "config").write_bytes(config + b"[core]\n\tfsmonitor = evil\n")
+    (git / "info" / "attributes").write_text("* filter=evil\n", encoding="utf-8")
+    (git / "hooks" / "deep").mkdir()
+    (git / "hooks" / "deep" / "x").write_text("x", encoding="utf-8")
+    (tmp_path / "vendor" / ".git").mkdir(parents=True)
+    assert gitguard.differences(before, tmp_path) == [
+        "config", "hooks/deep/x", "hooks/post-commit", "info/attributes",
+    ]  # fmt: skip
+    gitguard.restore(before, tmp_path)
+    assert gitguard.differences(before, tmp_path) == []
+    assert (git / "config").read_bytes() == config
+    assert not (git / "hooks" / "post-commit").exists()
+    assert not (git / "hooks" / "deep").exists()
+    assert gitguard.nested_repos(tmp_path) == ["vendor/.git"]

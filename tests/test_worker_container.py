@@ -30,6 +30,7 @@ from ringkeeper.models import (
     DecisionKind,
     Project,
     SessionEvent,
+    SessionRole,
     TaskKind,
     TaskStatus,
 )
@@ -151,7 +152,7 @@ def worker_setup(
                 max_runtime_s=max_runtime_s,
             )
             task_id = str(task.id)
-        volumes.append(tasks.state_volume_name(task.id))
+        volumes.extend(tasks.state_volume_name(task.id, role) for role in SessionRole)
         runtime = RecordingRuntime()
         manager = Manager(runtime, get_vault())
         manager.tick()
@@ -280,6 +281,46 @@ def test_git_workspace_gets_a_task_branch(
     assert git("show", f"{branch}:NOTES.md") == "notes"
 
 
+def test_a_hijacked_agent_cant_plant_code_for_the_host(
+    worker_setup: Callable[..., Run], workspace: Path
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.run(  # noqa: S603
+            ["git", "-C", str(workspace), *args],  # noqa: S607
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "dev@example.com")
+    git("config", "user.name", "Dev")
+    (workspace / "README.md").write_text("acme\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "initial")
+    for path in [workspace, *workspace.rglob("*")]:
+        path.chmod(0o777)
+    dot_git = workspace / ".git"
+    config_before = (dot_git / "config").read_bytes()
+    hooks_before = sorted(p.name for p in (dot_git / "hooks").iterdir())
+
+    task_id = worker_setup({"tamper": True, "write": {"NOTES.md": "notes\n"}}).task_id
+    events = events_of(task_id)
+    assert status_of(task_id) is TaskStatus.SUCCEEDED, events.get("ringkeeper.error")
+
+    # Everything it planted under .git is gone, the leftover loop included.
+    assert (dot_git / "config").read_bytes() == config_before
+    assert sorted(p.name for p in (dot_git / "hooks").iterdir()) == hooks_before
+    assert not (dot_git / "info" / "attributes").exists()
+    for marker in ("HOOK-RAN", "FSMONITOR-RAN", "LATE-HOOK-RAN"):
+        assert not (workspace / marker).exists(), marker
+    assert "ringkeeper.error" not in events, events["ringkeeper.error"]
+    [restored] = events["ringkeeper.git_restored"]
+    assert {"config", "hooks/post-commit", "info/attributes"} <= set(restored["paths"])
+    [warning] = events["ringkeeper.warning"]
+    assert "vendor/lib/.git" in warning["message"]
+    # And the work itself was still committed.
+    assert git("show", f"ringkeeper/{task_id}:NOTES.md") == "notes"
+
+
 def test_max_runtime_kills_a_real_worker(
     worker_setup: Callable[..., Run], docker_client: Any
 ) -> None:
@@ -390,6 +431,6 @@ def test_feature_loop_in_real_containers_with_real_checks(
         assert done.summary == "format_plan() with a test"
         assert done.git_branch == f"ringkeeper/{task_id}"
         assert done.changed_files == ["src/acme_web/plans.py", "tests/test_plans.py"]
-    for name in {tasks.state_volume_name(uuid.UUID(task_id))}:
+    for name in {tasks.state_volume_name(uuid.UUID(task_id), role) for role in SessionRole}:
         for volume in docker.from_env().volumes.list(filters={"name": name}):
             volume.remove(force=True)

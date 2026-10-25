@@ -63,6 +63,7 @@ class FakeRuntime:
         self.started: list[WorkerSpec] = []
         self.removed: list[str] = []
         self.killed: list[str] = []
+        self.volumes: set[str] = set()  # state volumes, as Docker would list them
         self.peak = 0
         self._running = 0
         self._lock = threading.Lock()
@@ -109,6 +110,15 @@ class FakeRuntime:
 
     def running_workers(self) -> dict[str, str]:
         return {}
+
+    def state_volumes(self) -> list[str]:
+        return sorted(self.volumes)
+
+    def remove_volume(self, name: str) -> bool:
+        if name not in self.volumes:
+            return False
+        self.volumes.discard(name)
+        return True
 
     @property
     def running(self) -> int:

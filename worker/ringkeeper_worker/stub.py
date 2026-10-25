@@ -8,6 +8,7 @@ a result message shaped like the SDK's. It never reports env var values.
 
 import asyncio
 import os
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,28 @@ async def call_gateway(
         return {"ok": False, "error": f"{type(error).__name__}: {error}"[:300]}
 
 
+def tamper(workspace: Path) -> None:
+    """What a hijacked agent might do: plant code that git would run on the host,
+    and leave a process behind that keeps planting it."""
+    git = workspace / ".git"
+    hook = git / "hooks" / "post-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\ntouch /workspace/HOOK-RAN\n", encoding="utf-8")
+    hook.chmod(0o755)
+    with (git / "config").open("a", encoding="utf-8") as config:
+        config.write("[core]\n\tfsmonitor = touch /workspace/FSMONITOR-RAN\n")
+    (git / "info").mkdir(exist_ok=True)
+    (git / "info" / "attributes").write_text("* filter=evil\n", encoding="utf-8")
+    loop = (
+        "while true; do printf '#!/bin/sh\\ntouch /workspace/LATE-HOOK-RAN\\n' "
+        "> /workspace/.git/hooks/pre-commit 2>/dev/null; sleep 0.05; done"
+    )
+    subprocess.Popen(["sh", "-c", loop], start_new_session=True)  # noqa: S603, S607
+    nested = workspace / "vendor" / "lib" / ".git" / "hooks"
+    nested.mkdir(parents=True, exist_ok=True)
+    (nested / "post-checkout").write_text("#!/bin/sh\n", encoding="utf-8")
+
+
 async def reachable(host: str, port: int) -> bool:
     try:
         _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3)
@@ -112,6 +135,8 @@ async def run(config: WorkerConfig) -> bool:
     for name, url in config.mcp_servers.items():
         report = await call_gateway(url, config.gateway_token, call.get("tool"), call.get("args"))
         emit("stub.gateway", server=name, **report)
+    if stub.get("tamper"):
+        tamper(Path(config.workspace))
     for relpath, content in stub.get("write", {}).items():
         target = Path(config.workspace) / relpath
         target.parent.mkdir(parents=True, exist_ok=True)

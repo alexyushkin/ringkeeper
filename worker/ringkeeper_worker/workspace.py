@@ -7,12 +7,19 @@ checked out. The default branch is never moved: if the agent moved it anyway,
 its new tip is kept on `<task branch>-from-<name>` and the branch is put back.
 Nothing is pushed. Without a repo: a before/after snapshot gives the changed
 paths.
+
+Git runs as the worker user, with a minimal environment (no Claude
+credential), never runs hooks or an fsmonitor, and commits with --no-verify:
+the repository's own config and hooks are the client's, and gitguard puts
+them back if the agent changed them.
 """
 
 import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ringkeeper_worker.privileges import WORKER_HOME, as_worker_kwargs, is_root
 
 GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "Ringkeeper worker",
@@ -21,6 +28,8 @@ GIT_IDENTITY = {
     "GIT_COMMITTER_EMAIL": "worker@ringkeeper.invalid",
 }
 MAX_SNAPSHOT_FILES = 50_000
+SAFE_GIT = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat")
+GIT_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
 
 
 class WorkspaceError(Exception):
@@ -47,13 +56,21 @@ class Outcome:
         }
 
 
+def _git_env() -> dict[str, str]:
+    env = {k: os.environ[k] for k in GIT_ENV if k in os.environ}
+    env["HOME"] = WORKER_HOME if is_root() else os.environ.get("HOME", "")
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return {**env, **GIT_IDENTITY}
+
+
 def _git(root: Path, *args: str, check: bool = True) -> str:
     result = subprocess.run(  # noqa: S603 (fixed argv, no shell)
-        ["git", "-C", str(root), *args],  # noqa: S607
+        ["git", *SAFE_GIT, "-C", str(root), *args],  # noqa: S607
         capture_output=True,
         text=True,
-        env={**os.environ, **GIT_IDENTITY},
+        env=_git_env(),
         check=False,
+        **as_worker_kwargs(),
     )
     if check and result.returncode != 0:
         raise WorkspaceError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
@@ -154,10 +171,10 @@ class Workspace:
             _git(self.root, "add", "-A", "--", *touched[start : start + 200], check=False)
         staged = _git(self.root, "diff", "--cached", "--name-only")
         if staged:
-            _git(self.root, "commit", "-q", "-m", message)
+            _git(self.root, "commit", "-q", "--no-verify", "-m", message)
         outcome.commit = _git(self.root, "rev-parse", self.branch)
         if self._base:
-            diff = _git(self.root, "diff", "--name-only", self._base, self.branch)
+            diff = _git(self.root, "diff", "--no-ext-diff", "--name-only", self._base, self.branch)
             outcome.changed_files = sorted(line for line in diff.splitlines() if line)
         if self._protected:
             outcome.protected_branch = self._protected[0]
@@ -168,7 +185,9 @@ class Workspace:
         """The task branch's cumulative diff against where it started (git only)."""
         if not self.git or not self._base:
             return None
-        text = _git(self.root, "diff", "--no-color", self._base, self.branch, check=False)
+        text = _git(
+            self.root, "diff", "--no-color", "--no-ext-diff", self._base, self.branch, check=False
+        )
         return text if len(text) <= limit else text[:limit] + "\n… [diff truncated]"
 
     def _restore_protected(self) -> str | None:

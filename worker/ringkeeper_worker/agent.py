@@ -6,6 +6,7 @@ from claude_agent_sdk.types import McpHttpServerConfig, McpServerConfig
 from ringkeeper_worker import inbox
 from ringkeeper_worker.config import WorkerConfig
 from ringkeeper_worker.emit import emit, message_type
+from ringkeeper_worker.privileges import is_root
 
 # Appended to Claude Code's own system prompt. Nobody reads a worker's final
 # message as it happens, so a question asked in prose would go unanswered.
@@ -42,6 +43,8 @@ def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> Cl
         permission_mode="bypassPermissions",
         disallowed_tools=config.disallowed_tools,
         stderr=lambda line: emit("sdk.stderr", line=line),
+        # The agent runs as the worker user, never as the runner (root).
+        user="worker" if is_root() else None,
     )
 
 

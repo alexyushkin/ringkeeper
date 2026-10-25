@@ -2,7 +2,9 @@
 
 import json
 import time
+import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -13,6 +15,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
     SessionEvent,
+    SessionRole,
     Task,
     TaskStatus,
     TokenRevocation,
@@ -119,7 +122,7 @@ def test_a_task_runs_and_everything_is_recorded() -> None:
 
     [spec] = runtime.started
     assert spec.workspace == "/srv/workspaces/acme-web"
-    assert spec.state_volume == f"ringkeeper-state-{task_id}"
+    assert spec.state_volume == f"ringkeeper-state-{task_id}-worker"
     assert spec.network == "ringkeeper_workers"
     assert runtime.removed  # containers are cleaned up
 
@@ -445,3 +448,25 @@ def test_settings_defaults() -> None:
     settings = Settings()
     assert settings.max_concurrent_workers == 4
     assert settings.session_manager is False
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_finished_tasks_state_volumes_are_swept_after_retention() -> None:
+    m, runtime = manager()
+    old, recent, running = run_task(), run_task(), run_task()
+    m.tick()
+    m.wait_idle()
+    other_install = "ringkeeper-state-00000000-0000-0000-0000-000000000000-worker"
+    runtime.volumes = {
+        *(tasks.state_volume_name(uuid.UUID(t), SessionRole.WORKER) for t in (old, recent)),
+        tasks.state_volume_name(uuid.UUID(running), SessionRole.WORKER),
+        other_install,
+    }
+    with session_scope() as session:
+        long_ago = datetime.now(UTC) - timedelta(days=get_settings().retention_days + 1)
+        session.get_one(Task, old).finished_at = long_ago
+        session.get_one(Task, running).status = TaskStatus.RUNNING
+        session.get_one(Task, running).finished_at = long_ago
+    assert m.sweep_state_volumes() == 1
+    assert tasks.state_volume_name(uuid.UUID(old), SessionRole.WORKER) not in runtime.volumes
+    assert len(runtime.volumes) == 3  # recent, still running, and another install's
