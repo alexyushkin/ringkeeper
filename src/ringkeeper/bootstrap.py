@@ -74,8 +74,9 @@ def ensure_setup_code(settings: Settings) -> str | None:
                 handle.write(code + "\n")
             _hand_over(settings, path)
     logger.warning(
-        "Ringkeeper setup code: %s  (open the web app to finish setup; the code is also in %s)",
-        code, path,
+        "Ringkeeper setup code: %s  (open the web app to finish setup; the code is also in "
+        "%s in Ringkeeper's data folder, .ringkeeper)",
+        code, path.name,
     )  # fmt: skip
     return code
 

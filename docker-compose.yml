@@ -133,8 +133,8 @@ services:
       RINGKEEPER_API_TOKEN_FILE: /run/ringkeeper-web/api-token
       # Trust X-Forwarded-For (for sign-in rate limits) only behind your own proxy.
       RINGKEEPER_WEB_TRUST_PROXY: ${RINGKEEPER_WEB_TRUST_PROXY:-0}
-      # Only for plain http on a LAN address while trying things out.
-      RINGKEEPER_WEB_INSECURE_COOKIES: ${RINGKEEPER_WEB_INSECURE_COOKIES:-0}
+      # Its HTTPS address, if any: sign-in cookies there are always Secure.
+      RINGKEEPER_WEB_ORIGIN: ${RINGKEEPER_WEB_ORIGIN:-}
     volumes:
       - web-token:/run/ringkeeper-web:ro
     ports:

@@ -1,44 +1,53 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import type { NextResponse } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
 
 /**
  * The browser's session cookie holds the owner session token: httpOnly (no
  * script can read it), SameSite=Strict (never sent from another site), and
- * Secure whenever the app is served over HTTPS. A second, readable cookie
- * holds the CSRF token that every change must echo in a header.
+ * Secure whenever the request came over HTTPS (directly, or through a proxy
+ * like Tailscale Serve that says so in X-Forwarded-Proto). On plain
+ * http://localhost it can't be Secure: some browsers (Safari) would drop it.
+ * A second, readable cookie holds the CSRF token that every change echoes.
  */
 
 export const SESSION_COOKIE = "rk_session";
 export const CSRF_COOKIE = "rk_csrf";
 export const CSRF_HEADER = "x-csrf-token";
 
-export function secureCookies(): boolean {
-  // Off only for plain-http development on localhost.
-  return process.env.RINGKEEPER_WEB_INSECURE_COOKIES !== "1";
+export function secureCookies(request: NextRequest): boolean {
+  if (process.env.RINGKEEPER_WEB_INSECURE_COOKIES === "1") return false;
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if ((forwarded ?? request.nextUrl.protocol.replace(":", "")) === "https") return true;
+  // Reached through the configured HTTPS address (e.g. Tailscale Serve), even if
+  // the proxy doesn't say so.
+  const origin = process.env.RINGKEEPER_WEB_ORIGIN ?? "";
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+  return origin.startsWith("https://") && host !== "" && new URL(origin).host === host;
 }
 
-export function setSession(response: NextResponse, token: string, expires: Date): void {
+export function setSession(request: NextRequest, response: NextResponse, token: string, expires: Date): void {
+  const secure = secureCookies(request);
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: secureCookies(),
+    secure,
     sameSite: "strict",
     path: "/",
     expires,
   });
   response.cookies.set(CSRF_COOKIE, randomBytes(24).toString("base64url"), {
     httpOnly: false,
-    secure: secureCookies(),
+    secure,
     sameSite: "strict",
     path: "/",
     expires,
   });
 }
 
-export function clearSession(response: NextResponse): void {
+export function clearSession(request: NextRequest, response: NextResponse): void {
   for (const name of [SESSION_COOKIE, CSRF_COOKIE]) {
-    response.cookies.set(name, "", { path: "/", expires: new Date(0), secure: secureCookies() });
+    response.cookies.set(name, "", { path: "/", expires: new Date(0), secure: secureCookies(request) });
   }
 }
 

@@ -68,7 +68,7 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
   }
   if (!isPublic && !(await sessionIsValid(session))) {
     const response = problem(401, "sign in first");
-    clearSession(response);
+    clearSession(request, response);
     return response;
   }
 
@@ -94,12 +94,12 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
   if (SIGNS_IN.has(joined) && upstream.ok) {
     const { token, expires_at } = (await upstream.json()) as { token: string; expires_at: string };
     const response = NextResponse.json({ ok: true }, { status: upstream.status });
-    setSession(response, token, new Date(expires_at));
+    setSession(request, response, token, new Date(expires_at));
     return response;
   }
   if (joined === "auth/logout") {
     const response = new NextResponse(null, { status: 204 });
-    clearSession(response);
+    clearSession(request, response);
     return response;
   }
 

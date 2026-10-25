@@ -1,15 +1,19 @@
 # Ringkeeper
 
 Ringkeeper is a self-hosted orchestrator that routes tasks to projects and runs
-coding-agent workers against them. It is MIT licensed and early. So far it
-ships:
-- the registries: projects, instances and the bindings between them
+coding-agent workers against them. It is MIT licensed and early. It ships:
+- a web app (installable on your phone) with a setup wizard, approvals, live
+  tasks and transcripts, and voice requests
+- the registries: projects, connections (instances) and the bindings between them
 - a vault for credentials
 - an MCP gateway that enforces the bindings
 - held approvals for prod writes, and an append-only audit log
+- a router that splits requests into tasks, and an architect loop for features
 - a session manager that runs Claude Agent SDK workers in containers
+- Telegram notifications, and voice notes
 
-There is no router, inbox UI or architect yet.
+**To install it, follow [docs/INSTALL.md](docs/INSTALL.md)**: your computer, your
+phone or a cloud server, in about 30 minutes, no programming needed.
 
 ## The idea: instances bound to projects
 
@@ -81,8 +85,9 @@ token stops verifying. There is no recovery: you would have to re-enter every
 secret and issue new tokens.
 
 The key lives in `RINGKEEPER_MASTER_KEY` if that is set. Otherwise it lives in
-`<data dir>/master.key`, which the CLI creates on first use. The data dir is
-`./.ringkeeper` by default and holds `vault.json` too.
+`<data dir>/master.key`, which the api creates on its first start (or the CLI,
+if it runs first). The data dir is `./.ringkeeper` by default and holds
+`vault.json` too. The setup wizard gives you this key as your **recovery key**.
 
 **Back it up** like any other root credential:
 
@@ -237,7 +242,8 @@ the api like root. Build the worker image once with
 
 ### Subscription mode: personal use only
 
-`api_key` is the default and the only mode setup offers. Anthropic's Agent
+`api_key` is the default. The setup wizard offers subscription mode only
+under **Advanced**, labeled personal use on your own account. Anthropic's Agent
 SDK terms don't allow offering claude.ai (subscription) login in products
 built on the SDK without Anthropic's approval. Subscription mode therefore exists only for running
 Ringkeeper yourself on **your own** Claude account. Never use it to run work
@@ -368,13 +374,16 @@ app." The full details stay in the CLI and API.
 - questions: reply to the message with your answer, typed or as a voice note
   (see [Voice input](#voice-input))
 
+The setup wizard (or **Settings → Telegram**) connects it: paste the bot token
+from @BotFather, message the bot, pick your chat. From a terminal instead:
+
 ```bash
-uv run ringkeeper telegram login          # the bot token from @BotFather (hidden prompt)
+docker compose exec api ringkeeper telegram login   # the bot token (hidden prompt)
 # message the bot from your phone, then:
-uv run ringkeeper telegram chats          # find your chat id
-# .env: RINGKEEPER_TELEGRAM=1 and RINGKEEPER_TELEGRAM_CHAT_IDS='[123456789]'
-uv run ringkeeper telegram test
-docker compose up -d                      # the api service runs the bridge (long polling)
+docker compose exec api ringkeeper telegram chats   # find your chat id
+# .env: RINGKEEPER_TELEGRAM=1 and RINGKEEPER_TELEGRAM_CHAT_IDS=[123456789]
+docker compose up -d                                # the api service runs the bridge
+docker compose exec api ringkeeper telegram test
 ```
 
 Only chats in `RINGKEEPER_TELEGRAM_CHAT_IDS` get notifications, and button
@@ -439,102 +448,19 @@ docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
 
 ## Install
 
-You need Docker with Compose (Docker Desktop on Windows and Mac, Docker
-Engine on Linux) and git. Python and uv are only needed for the CLI and for
-development.
-
-### On your computer
+See **[docs/INSTALL.md](docs/INSTALL.md)**. In short, with Docker and git:
 
 ```bash
-git clone https://github.com/alexyushkin/ringkeeper.git
-cd ringkeeper
-cp .env.example .env
-```
-
-In `.env`, set at least:
-
-- `POSTGRES_PASSWORD`: a long random password (and the same one in
-  `RINGKEEPER_DATABASE_URL`, which only the CLI uses);
-- `RINGKEEPER_WORKSPACES_ROOT`: the folder that holds your client projects'
-  folders (a Windows path like `C:\work\ringkeeper` is fine). Each project's
-  **Folder** in the app is a folder inside it; a git repository works best,
-  since every task works on its own branch.
-
-Then:
-
-```bash
-docker compose --profile worker build worker   # the image tasks run in (once, and after updates)
-docker compose --profile stt up -d --build     # everything, with voice (leave out --profile stt for no voice)
-docker compose logs api | grep "setup code"     # the code the setup wizard asks for
-```
-
-Open http://localhost:3000 and follow the wizard ([The web app](#the-web-app)).
-The first start with voice downloads the speech model (about 500 MB for
-`small`). Every port is published on 127.0.0.1 only. To use the app from your
-phone, see [On your phone](#on-your-phone-https-with-tailscale-serve).
-
-### On a cloud server (private, through Tailscale)
-
-The same stack on a virtual server, reachable only from your own devices (and
-your team's) on your tailnet: no port is opened to the internet. A public
-HTTPS address with a client's own domain comes in a later milestone.
-
-1. **A server:** a current Ubuntu LTS with 2 vCPUs and 4 GB of RAM (8 GB with
-   voice) and 40 GB of disk. Install [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)
-   and git. Don't open any inbound port except SSH (or use Tailscale SSH and
-   close that too).
-2. **Ringkeeper:** as on your computer, with an absolute workspaces folder:
-
-   ```bash
-   sudo mkdir -p /srv/ringkeeper/workspaces
-   git clone https://github.com/alexyushkin/ringkeeper.git && cd ringkeeper
-   cp .env.example .env    # POSTGRES_PASSWORD, RINGKEEPER_WORKSPACES_ROOT=/srv/ringkeeper/workspaces
-   docker compose --profile worker build worker
-   docker compose --profile stt up -d --build
-   ```
-
-3. **Tailscale and HTTPS:**
-
-   ```bash
-   curl -fsSL https://tailscale.com/install.sh | sh
-   sudo tailscale up
-   # admin console: DNS > enable MagicDNS and HTTPS Certificates
-   sudo tailscale serve --bg --https=443 http://127.0.0.1:3000
-   tailscale serve status   # https://<server>.<tailnet>.ts.net
-   ```
-
-   Put that address in `.env` as `RINGKEEPER_WEB_ORIGIN`, add
-   `RINGKEEPER_WEB_TRUST_PROXY=1`, and run `docker compose --profile stt up -d`.
-4. **Setup:** `docker compose logs api | grep "setup code"`, then open the
-   address from your laptop or phone (signed in to the same tailnet) and run
-   the wizard.
-
-On Linux, the files the api creates in `.ringkeeper/` belong to root and the
-gateway's user, so run CLI commands inside the api container:
-`docker compose exec api ringkeeper <command>`.
-
-### Backups and updates
-
-Back up the database and the data folder, and keep the recovery key from the
-wizard somewhere else (a password manager):
-
-```bash
-docker compose exec postgres pg_dump -U ringkeeper ringkeeper > ringkeeper-$(date +%F).sql
-tar czf ringkeeper-data-$(date +%F).tgz .ringkeeper
-```
-
-If `master.key` is lost but the vault survives, put the recovery key in `.env`
-as `RINGKEEPER_MASTER_KEY`. Without either, you'll need to re-enter your
-connection secrets.
-
-To update: pull, rebuild the worker image, and restart. The api applies
-database migrations on start.
-
-```bash
-git pull
+git clone https://github.com/alexyushkin/ringkeeper.git && cd ringkeeper
+cp .env.example .env          # set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
 docker compose --profile worker build worker
 docker compose --profile stt up -d --build
+docker compose exec api ringkeeper web setup-code
 ```
+
+Then open http://localhost:3000 and follow the setup wizard. The guide also
+covers using it from your phone, a cloud server, updates, backups and
+restore, a forgotten password, and troubleshooting.
 
 ## The web app
 
@@ -554,10 +480,11 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 
 ### First start, without a terminal
 
-After [installing](#install), open http://localhost:3000 (or your Tailscale
-address). The setup wizard asks for the **setup code** the
-api printed on its first start (so whoever reaches a freshly exposed server
-first can't claim it), then walks through:
+After [installing](docs/INSTALL.md), open http://localhost:3000 (or your
+Tailscale address). The setup wizard asks for the **setup code** the
+api printed on its first start (`docker compose exec api ringkeeper web
+setup-code` shows it; whoever reaches a freshly exposed server first can't
+claim it without it), then walks through:
 
 1. your login (a password; you can add a passkey later) and your **recovery
    key**, a file to keep somewhere safe. If you lose it, you'll need to
@@ -576,24 +503,12 @@ over `.env`; they apply without a restart.
 
 ### On your phone: HTTPS with Tailscale Serve
 
-Installing the app, the microphone and passkeys all need HTTPS. The simplest
-way for your own install is [Tailscale](https://tailscale.com): your phone
-and the server join your tailnet, and Tailscale Serve gives the app a real
-HTTPS address that only your devices can reach.
-
-```bash
-# on the server, after installing Tailscale and `tailscale up`
-tailscale serve --bg --https=443 http://127.0.0.1:3000
-tailscale serve status      # shows https://<machine>.<tailnet>.ts.net
-```
-
-Then in `.env` set `RINGKEEPER_WEB_ORIGIN=https://<machine>.<tailnet>.ts.net`
-(for passkeys) and `RINGKEEPER_WEB_TRUST_PROXY=1` (sign-in limits then count
-per device), and `docker compose up -d`. On your phone, open that address
-in Safari or Chrome and choose **Add to Home Screen** (iPhone) or **Install
-app** (Android). Turn on HTTPS certificates in the Tailscale admin console
-first (DNS > HTTPS Certificates). A public address with your own domain
-(for client installs on cloud servers) comes in a later milestone.
+Installing the app, the microphone and passkeys all need HTTPS. Tailscale
+Serve gives the app an HTTPS address only your own devices can reach; set
+`RINGKEEPER_WEB_ORIGIN` to it. Step by step:
+[docs/INSTALL.md, "Use it from your phone"](docs/INSTALL.md#3-use-it-from-your-phone).
+A public address with your own domain, for client installs on cloud servers,
+comes in a later milestone.
 
 ### How the web app is secured
 
@@ -616,12 +531,13 @@ first (DNS > HTTPS Certificates). A public address with your own domain
   the audit log stay.
 - The service worker caches the app shell only, never pages or data.
 
-## Quick start
+## Developer quick start (CLI)
 
-Requirements: Docker with Compose, and [uv](https://docs.astral.sh/uv/).
-
-The web app's wizard does all of this without a terminal (see
-[The web app](#the-web-app)). From the CLI instead:
+Not needed to use Ringkeeper: [docs/INSTALL.md](docs/INSTALL.md) and the setup
+wizard cover installing. This is the terminal route, for developers. It needs
+[uv](https://docs.astral.sh/uv/) and bash, and `RINGKEEPER_DATABASE_URL` in
+`.env` (uncommented, with your password). Every `uv run ringkeeper ...`
+command also works as `docker compose exec api ringkeeper ...`, with no uv.
 
 ```bash
 cp .env.example .env                # then set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
@@ -697,6 +613,7 @@ ringkeeper ask      "<message>" [--thread <id>] [--no-wait]
 ringkeeper inbox    list [--kind] | show <id> | answer <id> <reply> [--note]
 ringkeeper routing  examples list | examples delete <id>
 ringkeeper telegram login | chats | test
+ringkeeper web      setup-code | reset-login [--yes]
 ringkeeper task     run --project <name> "<prompt>" [--max-turns] [--max-runtime] [--budget] [--detach]
 ringkeeper task     list | show <id> | stop <id> | resume <id> "<follow-up>"
 ringkeeper stop-all

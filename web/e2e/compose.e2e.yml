@@ -5,8 +5,8 @@
 #     --profile stt --profile demo up -d --build
 #
 # Differences from a real install: a fake Anthropic API for the wizard's key
-# check, no router and no Telegram (they'd need real accounts), plain-http
-# cookies, and the smaller `base` speech model.
+# check, no router and no Telegram (they'd need real accounts), and the
+# smaller `base` speech model.
 
 services:
   postgres:
@@ -33,8 +33,6 @@ services:
       - "127.0.0.1:18100:8100"
 
   web:
-    environment:
-      RINGKEEPER_WEB_INSECURE_COOKIES: "1"
     ports: !override
       - "127.0.0.1:13000:3000"
 
