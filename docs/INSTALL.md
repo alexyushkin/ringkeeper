@@ -171,8 +171,8 @@ Open **http://localhost:3000** in your browser. The wizard asks for:
    safe, like a password manager. If you lose it, you'll need to re-enter
    your connection secrets.
 2. **Your Anthropic API key.** It's checked, then stored encrypted.
-3. **Telegram** (or **Skip for now**): paste the bot token, send your bot a
-   message, and pick your chat when it appears.
+3. **Telegram** (or **Skip for now**): paste the bot token, send your bot the
+   code the app shows, and pick your chat when it appears.
 4. **Your first project**: the client, a name, a short description, and its
    **Folder**: the subfolder's name from step 2 (`acme-web`).
 5. **Your first connection**: Supabase or n8n, "Production" or "Test", and
@@ -216,7 +216,9 @@ one that only your own devices can reach.
    RINGKEEPER_WEB_TRUST_PROXY=1
    ```
 
-   Then apply it: `docker compose --profile stt up -d`
+   Then apply it: `docker compose --profile stt up -d`. The app only answers
+   on `localhost` and this address: reached any other way, it says the
+   address isn't one it answers on.
 5. On your phone, install the **Tailscale** app, sign in to the same account,
    and keep it switched on.
 6. Open your address in Safari (iPhone) or Chrome (Android) and sign in. The
@@ -432,13 +434,27 @@ and put it in `.env` as `RINGKEEPER_MASTER_KEY=<the key>` (delete the `#`).
 docker compose exec api ringkeeper web reset-login
 ```
 
-It removes the login (and passkeys) and prints a new setup code. Open the app
-and create the login again; your projects, connections and history stay.
+It removes the login (and passkeys), signs out every browser, gives the web
+app a new token and prints a new setup code. Open the app and create the
+login again; your projects, connections and history stay.
+
+### Change the database password
+
+If the api's log says the database password is weak or the default, set a
+new one. Pick 32 random letters and digits, then (put yours in place of
+`NEW-PASSWORD`):
+
+```bash
+docker compose exec postgres psql -U ringkeeper -d ringkeeper -c "ALTER USER ringkeeper PASSWORD 'NEW-PASSWORD'"
+```
+
+Put the same password in `.env` as `POSTGRES_PASSWORD=NEW-PASSWORD` and
+start again: `docker compose --profile stt up -d`.
 
 ### Lost the recovery key
 
 As long as Ringkeeper still runs, download it again: **Settings → Recovery key
-→ Download it again** (it asks for your password).
+→ Download it again** (it may ask for your password first).
 
 ### Uninstall
 
@@ -460,14 +476,18 @@ To see what a part of Ringkeeper is doing: `docker compose logs api` (or
 | What you see | What to do |
 | --- | --- |
 | `error during connect` / `Cannot connect to the Docker daemon` | Docker Desktop isn't running: open it and wait until it says it's running. |
-| `port is already allocated` | Another program uses that port (often 5432 or 3000). In `.env`, delete the `#` in front of the matching `RINGKEEPER_..._PORT` line and pick another number (for example `RINGKEEPER_DB_PORT=5442`), then start again. If you change `RINGKEEPER_WEB_PORT`, open that port instead of 3000, and use it in `tailscale serve`. |
+| `port is already allocated` | Another program uses that port (often 3000 or 8000). In `.env`, delete the `#` in front of the matching `RINGKEEPER_..._PORT` line and pick another number (for example `RINGKEEPER_WEB_PORT=3010`), then start again. If you change `RINGKEEPER_WEB_PORT`, open that port instead of 3000, and use it in `tailscale serve`. |
 | You want a second Ringkeeper on the same machine (a test install, say) | In the second one's `.env`, set its own `COMPOSE_PROJECT_NAME` (for example `ringkeeper2`), its own `RINGKEEPER_WORKER_NETWORK` (`ringkeeper2_workers`) and different ports (see `.env.example`). Without its own project name, its commands control the first install. Keep both on the same version: they share the `ringkeeper-web`, `ringkeeper-stt` and `ringkeeper-worker` images. |
 | `dependency failed to start: container ... api ... is unhealthy` | Run `docker compose logs api`. `password authentication failed` means the database was first started with a different `POSTGRES_PASSWORD`: put the old one back, or, on a fresh install with nothing to keep, run `docker compose down -v` and start again. |
 | `localhost:3000` doesn't load | Run `docker compose ps`: `web` should be `Up`. If it was just started, wait a minute. |
 | The app says "can't find Ringkeeper's API token yet" | The api is still starting: wait a minute and reload. |
 | The setup code isn't accepted | Run `docker compose exec api ringkeeper web setup-code` again and use the code it prints (letters aren't case-sensitive; the dash is optional). After 5 wrong tries, wait 15 minutes. |
 | `setup-code` says setup is done, but you never finished | A login exists from an earlier try: run `docker compose exec api ringkeeper web reset-login`. |
-| "Too many tries" at sign-in | Wait 15 minutes. Forgot the password? See [Forgot your password](#forgot-your-password). |
+| "Too many tries" at sign-in | Wait a few seconds and try again (after many wrong passwords, one try every few seconds is allowed). Behind your own proxy with `RINGKEEPER_WEB_TRUST_PROXY=1`, a device with 5 wrong tries waits 15 minutes. Forgot the password? See [Forgot your password](#forgot-your-password). |
+| "This address isn't one Ringkeeper answers on" | Set `RINGKEEPER_WEB_ORIGIN` in `.env` to the address you open (for Tailscale, your `https://….ts.net` address), or list other names in `RINGKEEPER_WEB_ALLOWED_HOSTS`, then start again. |
+| The api's log warns that the database password is weak | See [Change the database password](#change-the-database-password). |
+| A project's **Folder** isn't accepted | Give the name of a folder inside your workspaces folder, like `acme-web` or `clients/acme-web`: no full paths and no `..`. |
+| **Test connection** says the address isn't allowed | Connections can't point at Ringkeeper's own services, at `localhost` or at cloud metadata addresses. For a database on this same machine during development, set `RINGKEEPER_ALLOW_LOCAL_CONNECTIONS=1` in `.env`. |
 | The Anthropic key isn't accepted | Check that it starts with `sk-ant-api03-`, that the account has credit, and that the key wasn't deleted in the console. |
 | **Test connection** fails | Read the message: a wrong password, a wrong address, or (Supabase) use the **Session pooler** string, not "Direct connection". |
 | A task fails with "workspace_path ... RINGKEEPER_WORKSPACES_ROOT isn't set" | Set `RINGKEEPER_WORKSPACES_ROOT` in `.env` (without the `#`), then `docker compose --profile stt up -d`. |

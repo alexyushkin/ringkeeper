@@ -45,6 +45,8 @@ services:
       RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
       RINGKEEPER_CLAUDE_AUTH_MODE: ${RINGKEEPER_CLAUDE_AUTH_MODE:-api_key}
       RINGKEEPER_WORKSPACES_ROOT: ${RINGKEEPER_WORKSPACES_ROOT:-}
+      # Connections to this machine (localhost): development only.
+      RINGKEEPER_ALLOW_LOCAL_CONNECTIONS: ${RINGKEEPER_ALLOW_LOCAL_CONNECTIONS:-0}
       RINGKEEPER_MAX_CONCURRENT_WORKERS: ${RINGKEEPER_MAX_CONCURRENT_WORKERS:-4}
       # Must match the `workers` network's name below (a second install on the
       # same machine needs its own).
@@ -104,6 +106,7 @@ services:
         postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:-ringkeeper}@postgres:5432/${POSTGRES_DB:-ringkeeper}
       RINGKEEPER_DATA_DIR: /var/lib/ringkeeper
       RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
+      RINGKEEPER_ALLOW_LOCAL_CONNECTIONS: ${RINGKEEPER_ALLOW_LOCAL_CONNECTIONS:-0}
     # The vault and master.key, shared with the host CLI. Read-only: the gateway
     # never writes secrets. Workers must never get this directory.
     volumes:

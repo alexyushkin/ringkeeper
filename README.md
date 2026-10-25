@@ -72,8 +72,21 @@ audit log records the precise reason.
 - **Prod writes wait for a human** unless the binding pre-approves that tool.
   A held write becomes a *decision*. It expires after 24h (configurable). On
   approval it is re-checked against the current registry before it runs.
+- **Writes that destroy data need the connection's name typed.** Deleting
+  rows, dropping or altering objects, anything the SQL check can't read
+  (`DO $$`, function calls, `E''` strings) and any n8n tool other than
+  activate/deactivate counts. The rule is worked out again when the write is
+  approved and when it runs, from the stored arguments, so a tampered flag
+  can't skip it. Telegram can deny these but never approve them.
+- **Connections can't point at Ringkeeper itself**: not at its own services
+  (Postgres, api, gateway, web, stt), loopback, link-local or cloud metadata
+  addresses, by name or by what the name resolves to, checked when saved and
+  again when connecting. LAN addresses are fine. For a service published on
+  the same machine during development, set
+  `RINGKEEPER_ALLOW_LOCAL_CONNECTIONS=1`.
 - **Bound instances are protected.** Removing an instance that a project still
-  uses fails unless you pass `--force`.
+  uses fails unless you pass `--force`. Removing a connection removes its
+  secret from the vault.
 
 ## The vault and the master key
 
@@ -200,7 +213,9 @@ default 4) queues anything beyond it.
   absolute, or relative to `RINGKEEPER_WORKSPACES_ROOT` as the Docker host sees
   it; Windows paths are translated for Docker Desktop.
 - a per-task volume for the SDK's own state, so `task resume` continues the
-  same Claude session
+  same Claude session (one per role: architect sessions and worker sessions
+  share no files). It holds transcripts, so it is removed once the task has
+  been finished for `RINGKEEPER_RETENTION_DAYS`.
 - a gateway token scoped to the project, valid for the task's max runtime and
   revoked when the session ends
 - exactly one Claude credential: `ANTHROPIC_API_KEY` in `api_key` mode. Its
@@ -208,18 +223,33 @@ default 4) queues anything beyond it.
   (`ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `ANTHROPIC_BASE_URL`, …)
   is ever inherited.
 
-It never gets the master key, the data dir or the Docker socket. It runs as a
-non-root user on a read-only root filesystem, with all capabilities dropped and
-memory and process limits. It is on a network that holds only the gateway, so
-it can't reach Postgres or the api by name. Settings files (user, project,
-local) aren't loaded, and the project's `autonomy` removes tools: `strict` has
-no Bash and no web access, `standard` has no web access.
+It never gets the master key, the data dir or the Docker socket. It has a
+read-only root filesystem and memory and process limits. The runner starts
+as root with only four capabilities (setuid, setgid, kill, read-search); the
+agent, git and the project's checks all run as an unprivileged `worker`
+user. It is on a network that holds only the gateway, so it can't reach
+Postgres or the api by name. Settings files (user, project, local) aren't
+loaded, and the project's `autonomy` removes tools: `strict` has no Bash and
+no web access, `standard` has no web access.
 
 **Git:** if the workspace is a git repo, the worker commits on
 `ringkeeper/<task-id>` and never moves `main`. If the agent moves `main`
 anyway, it's put back and the moved commits are kept on a side branch. Only
 files the worker touched are committed, never your own uncommitted edits.
 Nothing is pushed. Without a repo, the task records the list of changed files.
+
+**Nothing planted for your machine.** The workspace is your real folder, and
+git runs hooks and commands from `.git` on *your* machine later. So after the
+agent (and after the checks), the runner kills anything the agent left
+running, then puts `.git/config`, `.git/hooks` and `.git/info` back exactly as
+they were (the task's events say what was undone). Its own git commands never
+run hooks. New `.git` folders deeper in the workspace are reported: check
+them before running git there.
+
+**Workspaces set from the web app** must be a folder inside
+`RINGKEEPER_WORKSPACES_ROOT` (no absolute paths, no `..`): a worker mounts
+it, so an absolute path could expose anything on the host. The CLI and the
+registry can still set an absolute path.
 
 **The session manager** lives in the api service. It is the only service that
 mounts the Docker socket, which makes it root-equivalent on the host: guard
@@ -228,17 +258,25 @@ the api like root. Build the worker image once with
 
 ### Known risks (not solved yet)
 
-- **The worker holds the Claude credential in its environment.** A
-  prompt-injected worker with Bash could read it and send it out. Egress
-  allowlisting comes later; until then, prefer `strict` autonomy (no Bash)
-  for anything that reads untrusted content.
+- **The worker holds the Claude credential in its environment** (the agent
+  needs it to call Claude). A prompt-injected worker with Bash could read it
+  and send it out. Egress allowlisting comes later; until then, prefer
+  `strict` autonomy (no Bash) for anything that reads untrusted content, and
+  use an API key from a workspace with a spend limit.
 - **Workers have open internet access**, which they need for the Anthropic
   API.
+- **Costs are what the worker reports.** Budgets and the cost estimate come
+  from the SDK inside the worker; a hijacked worker could report less than it
+  spent. Anthropic's own spend limits (in the console) are the real cap.
+- **What the agent writes is its work.** Ringkeeper protects `.git`, but a
+  changed `Makefile`, `package.json` script or test file runs whatever it says
+  when you run it. Read the task's diff before running the project's code.
 - **Host-published ports are reachable by IP.** On Docker Desktop, the
   host-gateway address forwards to the host's loopback, so a worker that knows
-  that address could reach anything published there, including Postgres.
-  The host name `host.docker.internal` is blocked, but the IP isn't. Set a
-  strong `POSTGRES_PASSWORD` in `.env`.
+  that address could reach what's published there: the api, gateway and web
+  app (each needs a token), and Postgres if you added `docker-compose.dev.yml`.
+  The host name `host.docker.internal` is blocked, but the IP isn't. Keep a
+  strong `POSTGRES_PASSWORD`; Ringkeeper warns at start if it's weak.
 
 ### Subscription mode: personal use only
 
@@ -512,15 +550,33 @@ comes in a later milestone.
 
 ### How the web app is secured
 
-- **The browser never sees the admin token.** Next.js server code (the
-  backend-for-frontend, `/bff`) calls the API with it. The api writes a copy
-  into a volume only the api and web mount; the web container never mounts
-  the vault or the data dir, and secrets go browser → web → api → vault
-  without being logged.
+- **The web app doesn't hold the admin token.** Next.js server code (the
+  backend-for-frontend, `/bff`) calls the API with its own *web token*, which
+  on its own reaches only setup and sign-in: everything else also needs a
+  signed-in owner's session. So even a taken-over web container can't use
+  the API without you. The api hands the token over in a volume only the api
+  and web mount; the web container never mounts the vault or the data dir,
+  and secrets go browser → web → api → vault without being logged.
+  `ringkeeper web reset-login` replaces the token and signs everyone out.
 - **One owner account**: an argon2id password, sessions in an httpOnly,
   `Secure`, `SameSite=Strict` cookie (only a hash is stored), ending after a
-  week unused or 30 days at most. Sign-in is rate limited per device and
-  overall. Optional passkeys.
+  week unused or 30 days at most. Optional passkeys (they need your
+  fingerprint, face or PIN each time, and a password change removes them).
+- **Guessing is slowed, never locked.** After 5 wrong passwords in 15
+  minutes there's one try every 3 seconds, for everyone; a single device is
+  blocked only when its address is known (`RINGKEEPER_WEB_TRUST_PROXY=1`
+  behind your proxy). Nobody can lock you out, and passkey sign-in is never
+  held up.
+- **Sensitive changes ask for the password again** if you signed in more
+  than 10 minutes ago: adding a passkey, downloading the recovery key,
+  storing a secret, a connection's address or secret, taking a connection out
+  of prod, Telegram chats and requests, preapproved writes and autonomy. A
+  stolen session alone can't redirect approvals or take your keys.
+- **Only your addresses**: the app answers on localhost, the host of
+  `RINGKEEPER_WEB_ORIGIN` and `RINGKEEPER_WEB_ALLOWED_HOSTS`, so another
+  website can't reach it through your browser (DNS rebinding). Requests over
+  1 MB are refused (voice uploads have their own limit), and errors never
+  echo what you typed.
 - **Every change** must come from the app's own origin and carry the CSRF
   token (double submit). A strict Content-Security-Policy with a fresh nonce
   per page allows no inline or third-party scripts.
@@ -535,16 +591,18 @@ comes in a later milestone.
 
 Not needed to use Ringkeeper: [docs/INSTALL.md](docs/INSTALL.md) and the setup
 wizard cover installing. This is the terminal route, for developers. It needs
-[uv](https://docs.astral.sh/uv/) and bash, and `RINGKEEPER_DATABASE_URL` in
-`.env` (uncommented, with your password). Every `uv run ringkeeper ...`
-command also works as `docker compose exec api ringkeeper ...`, with no uv.
+[uv](https://docs.astral.sh/uv/) and bash, `RINGKEEPER_DATABASE_URL` in
+`.env` (uncommented, with your password), and Postgres published on this
+machine with `docker-compose.dev.yml` (a normal install doesn't publish it).
+Every `uv run ringkeeper ...` command also works as
+`docker compose exec api ringkeeper ...`, with no uv and no published port.
 
 ```bash
 cp .env.example .env                # then set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
 uv run ringkeeper secret init        # creates .ringkeeper/master.key: back it up
 uv run ringkeeper auth login         # the Anthropic API key workers and the router use
 docker compose --profile worker build worker
-docker compose up -d --build        # postgres, api (session manager, router), gateway, web
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 uv run ringkeeper registry apply examples/registry.yaml
 curl http://localhost:8000/health
 curl http://localhost:8100/health
@@ -628,7 +686,8 @@ ringkeeper db upgrade
 ## API
 
 Every endpoint except `/health` needs the admin token, reads included, because
-project names, decisions and audit rows are client data.
+project names, decisions and audit rows are client data. (The web app's own
+token works only with a signed-in owner's session.)
 `ringkeeper auth api-token` prints it, creating a random one in the vault on
 first use; `--rotate` replaces it, and the old one stops working at once. The
 OpenAPI schema and docs pages are off.
@@ -643,15 +702,17 @@ OpenAPI schema and docs pages are off.
 | `GET /decisions`, `/decisions/{id}`   | the inbox (`?status=`, `?kind=`), in full    |
 | `POST /decisions/{id}/answer`         | `{"choice": ..., "text": ..., "by": ...}`; `confirm` (the connection's name) for a write that deletes data |
 
-The web app's endpoints need the admin token **and** a signed-in owner
+The web app's endpoints need a token **and** a signed-in owner
 (`X-Ringkeeper-Session`, which the web app's server adds). Writes are
-audited as `changed`, and secret endpoints are write-only:
+audited as `changed`, and secret endpoints are write-only. Sensitive ones
+answer `403` with `X-Ringkeeper-Confirm: password` unless the session signed
+in or confirmed (`POST /auth/confirm`) in the last 10 minutes:
 
 | Area | Endpoints |
 | --- | --- |
-| Setup and sign-in | `GET /setup/status`, `POST /setup/owner` (with the setup code), `POST /setup/recovery-key`, `POST /auth/login`, `/auth/logout`, `GET /auth/session`, `POST /auth/password`, passkeys under `/auth/passkeys` |
+| Setup and sign-in | `GET /setup/status`, `POST /setup/owner` (with the setup code), `POST /setup/recovery-key`, `POST /auth/login`, `/auth/confirm`, `/auth/logout`, `GET /auth/session`, `POST /auth/password`, passkeys under `/auth/passkeys` |
 | Settings | `GET`/`PATCH /settings`, `POST /stop-all`, `POST /resume-all` |
-| Secrets (write-only) | `PUT /secrets/claude`, `PUT /secrets/telegram`, `PUT /connections/{name}/secret`; `GET /telegram/detect` |
+| Secrets (write-only) | `PUT /secrets/claude`, `PUT /secrets/telegram`, `PUT /connections/{name}/secret`; `GET /telegram/detect?code=` (only the chat that sent the app's pairing code) |
 | Projects | `POST /projects`, `PATCH`/`DELETE /projects/{name}`, `PUT`/`DELETE /projects/{name}/connections/{connection}` |
 | Connections | `GET`/`POST /connections`, `PATCH`/`DELETE /connections/{name}`, `POST /connections/{name}/test` |
 | Work | `GET /threads`, `/threads/{id}/tasks`, `/tasks`, `/tasks/{id}`, `/tasks/{id}/events`; `POST /tasks/{id}/stop`, `/tasks/{id}/resume` |
