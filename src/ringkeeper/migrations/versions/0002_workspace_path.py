@@ -19,8 +19,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.alter_column("projects", "worktree_path", new_column_name="workspace_path")
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.alter_column("projects", "workspace_path", new_column_name="worktree_path")

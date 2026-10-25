@@ -18,6 +18,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.add_column(
         "messages",
         sa.Column("input", sa.Text(), server_default=sa.text("'text'"), nullable=False),
@@ -83,6 +85,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.execute("DELETE FROM notifications WHERE decision_id IS NULL")
     op.drop_constraint("ck_notifications_one_subject", "notifications")
     op.drop_constraint("uq_notifications_task", "notifications")

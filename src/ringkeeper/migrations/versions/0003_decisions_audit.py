@@ -33,6 +33,8 @@ def _ts(name: str, *, nullable: bool = False, now: bool = False) -> sa.Column[da
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     bind = op.get_bind()
     decision_status.create(bind)
     audit_outcome.create(bind)
@@ -112,6 +114,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.execute("DROP TRIGGER audit_events_append_only ON audit_events")
     op.execute("DROP FUNCTION audit_events_append_only()")
     op.drop_table("audit_events")

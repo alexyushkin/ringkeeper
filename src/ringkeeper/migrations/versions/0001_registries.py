@@ -47,6 +47,8 @@ def _timestamps() -> list[sa.Column[datetime]]:
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     bind = op.get_bind()
     autonomy.create(bind)
     instance_type.create(bind)
@@ -125,6 +127,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.drop_index("uq_project_instances_one_default_per_type", table_name="project_instances")
     op.drop_table("project_instances")
     op.drop_table("instances")

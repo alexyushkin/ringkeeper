@@ -53,6 +53,8 @@ def _uuid_pk() -> sa.Column[uuid.UUID]:
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     bind = op.get_bind()
     for enum in NEW_TYPES:
         enum.create(bind)
@@ -205,6 +207,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     # Values added to existing enums (answered, needs_input, waiting) stay:
     # Postgres can't drop enum values, and unused values are harmless.
     op.drop_column("sessions", "checks")

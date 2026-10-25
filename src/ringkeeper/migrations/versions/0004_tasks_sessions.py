@@ -31,6 +31,8 @@ def _ts(name: str, *, now: bool = False) -> sa.Column[datetime]:
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     bind = op.get_bind()
     task_status.create(bind)
     auth_mode.create(bind)
@@ -119,6 +121,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     op.drop_table("token_revocations")
     op.drop_table("session_events")
     op.drop_table("sessions")

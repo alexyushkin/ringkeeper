@@ -12,6 +12,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from ringkeeper.storage import sqlite_baseline
+
 revision: str = "0008"
 down_revision: str | None = "0007"
 branch_labels: str | Sequence[str] | None = None
@@ -22,6 +24,9 @@ NEW_STATUSES = "status IN ('pending', 'confirmed', 'redone', 'expired', 'used')"
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "sqlite":
+        sqlite_baseline.upgrade()  # 0001-0007 did nothing there
+        return
     op.add_column(
         "owner_sessions", sa.Column("confirmed_at", sa.DateTime(timezone=True), nullable=True)
     )
@@ -32,6 +37,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "sqlite":
+        sqlite_baseline.downgrade()
+        return
     op.execute("UPDATE voice_confirmations SET status = 'redone' WHERE status = 'used'")
     op.drop_constraint("ck_voice_confirmations_status", "voice_confirmations")
     op.create_check_constraint("ck_voice_confirmations_status", "voice_confirmations", OLD_STATUSES)

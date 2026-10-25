@@ -74,6 +74,8 @@ def _now(name: str) -> sa.Column[datetime]:
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     # ADD VALUE can't run inside the migration's transaction block on older
     # servers; autocommit_block makes it its own statement.
     with op.get_context().autocommit_block():
@@ -129,6 +131,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return  # SQLite gets the whole 0008 schema at once (storage.sqlite_baseline)
     for table, function in (
         ("messages", "ringkeeper_notify_message"),
         ("decisions", "ringkeeper_notify_decision"),
