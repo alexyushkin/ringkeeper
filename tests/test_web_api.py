@@ -524,3 +524,33 @@ def test_the_setup_code_command(admin: TestClient, setup_code: str) -> None:
     done = CliRunner().invoke(cli, ["web", "setup-code"])
     assert done.exit_code == 1
     assert "reset-login" in done.stdout
+
+
+def test_a_connection_address_can_only_change_with_its_secret(owner: TestClient) -> None:
+    n8n = {"name": "acme-flows", "type": "n8n", "env": "dev", "owner": "acme",
+           "base_url": "https://n8n.example.com", "secret": "n8n-key-1234"}  # fmt: skip
+    assert owner.post("/connections", json=n8n).status_code == 201
+    moved = owner.patch("/connections/acme-flows", json={"base_url": "https://evil.example"})
+    assert moved.status_code == 422
+    assert "needs the secret again" in moved.json()["detail"]
+    with_key = owner.patch(
+        "/connections/acme-flows",
+        json={"base_url": "https://n8n2.example.com", "secret": "n8n-key-5678"},
+    )
+    assert with_key.status_code == 200
+    assert with_key.json()["base_url"] == "https://n8n2.example.com"
+    bad = {**n8n, "name": "meta", "base_url": "http://169.254.169.254/latest"}
+    assert owner.post("/connections", json=bad).status_code == 422
+    creds = {**n8n, "name": "creds", "base_url": "https://u:p@n8n.example.com"}
+    assert owner.post("/connections", json=creds).status_code == 422
+
+
+def test_removing_a_connection_removes_its_secret(owner: TestClient, target_dsn: str) -> None:
+    connection = {"name": "acme-db", "type": "supabase", "env": "dev", "owner": "acme",
+                  "secret": target_dsn}  # fmt: skip
+    assert owner.post("/connections", json=connection).status_code == 201
+    ref = secrets_in.CONNECTION_REF.format(name="acme-db")
+    assert get_vault().resolve(ref).reveal() == target_dsn
+    assert owner.delete("/connections/acme-db").status_code == 204
+    with pytest.raises(Exception, match="not in the vault"):
+        get_vault().resolve(ref)

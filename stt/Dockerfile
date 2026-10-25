@@ -2,7 +2,7 @@
 # The optional speech-to-text service: faster-whisper on CPU (int8) behind
 # POST /transcribe. Kept out of the api image so the api stays lean. It holds
 # no secrets and is reachable only on the compose `internal` network.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-trixie
 
 ARG FASTER_WHISPER_VERSION=1.2.1
 # PyAV 19 dropped an argument faster-whisper's decoder still passes.

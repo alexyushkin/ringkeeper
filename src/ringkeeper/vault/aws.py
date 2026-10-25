@@ -44,6 +44,20 @@ class AwsSecretsManagerBackend:
             raise VaultError(f"secret_ref '{ref}' is a binary secret; only strings are supported")
         return response["SecretString"]
 
+    def delete(self, ref: str) -> None:
+        try:
+            # AWS keeps it recoverable for 7 days, then deletes it.
+            self._client.delete_secret(SecretId=secret_id(ref), RecoveryWindowInDays=7)
+        except ClientError as error:
+            if _code(error) != "ResourceNotFoundException":
+                raise VaultError(
+                    f"cannot delete secret_ref '{ref}' in AWS: {_code(error)}"
+                ) from None
+        except BotoCoreError as error:
+            raise VaultError(
+                f"cannot reach AWS Secrets Manager for '{ref}': {type(error).__name__}"
+            ) from None
+
     def put(self, ref: str, value: str) -> None:
         name = secret_id(ref)
         try:

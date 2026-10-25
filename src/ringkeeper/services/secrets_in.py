@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import anthropic
 from sqlalchemy.orm import Session
 
+from ringkeeper import netpolicy
 from ringkeeper.claude_auth import check_format, credential_ref, normalize
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
@@ -99,12 +100,20 @@ def check_connection_secret(kind: InstanceType, secret: str) -> str:
     secret = secret.strip()
     if not secret:
         raise RuleViolationError("The secret is empty.")
-    if kind is InstanceType.SUPABASE and not secret.startswith(("postgres://", "postgresql://")):
-        raise RuleViolationError(
-            "For Supabase, paste the database connection string "
-            "(it starts with postgresql://). Find it under Project Settings > Database."
-        )
+    if kind is InstanceType.SUPABASE:
+        if not secret.startswith(("postgres://", "postgresql://")):
+            raise RuleViolationError(
+                "For Supabase, paste the database connection string "
+                "(it starts with postgresql://). Find it under Connect > Session pooler."
+            )
+        netpolicy.check_dsn(secret)
     return secret
+
+
+def forget(settings: Settings, ref: str) -> None:
+    """Remove a removed connection's secret from the vault (when it's one we stored)."""
+    if ref.startswith(CONNECTION_REF.split("{", 1)[0]):
+        get_vault(settings).delete(ref)
 
 
 def store_connection(

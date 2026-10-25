@@ -2,7 +2,7 @@
 # The worker image: Python, the Claude Agent SDK (which bundles the Claude Code
 # CLI), git, pytest and uv for project checks, and the small runner. It never contains the master key, the data
 # dir or a Docker socket, and none of them are ever mounted into it.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-trixie
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \

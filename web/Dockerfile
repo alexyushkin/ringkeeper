@@ -4,7 +4,7 @@
 # vault or the data dir; it reads the API admin token from a volume only the
 # api and this service share.
 
-FROM node:24.11.1-bookworm-slim AS build
+FROM node:24.22.1-trixie-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
@@ -12,8 +12,13 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM node:24.11.1-bookworm-slim
+FROM node:24.22.1-trixie-slim
 WORKDIR /app
+# The app runs as `node server.js`: npm, npx, yarn and corepack aren't needed at
+# runtime, and their bundled packages are where most known CVEs in the image are.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \

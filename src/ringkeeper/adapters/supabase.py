@@ -23,6 +23,7 @@ from psycopg import sql as pgsql
 from psycopg.conninfo import conninfo_to_dict
 from pydantic import Field
 
+from ringkeeper import netpolicy
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, read, write
 from ringkeeper.models import InstanceType
 
@@ -48,6 +49,12 @@ def dsn_fragments(dsn: str) -> list[str]:
 
 
 def _connect(target: Target) -> psycopg.Connection[tuple[Any, ...]]:
+    try:
+        # Checked at connect time too: not Ringkeeper's own database, not loopback
+        # or link-local (see netpolicy).
+        netpolicy.check_dsn(target.secret.reveal())
+    except netpolicy.AddressNotAllowedError as error:
+        raise ToolError(f"instance '{target.name}' can't be used: {error}") from None
     try:
         return psycopg.connect(
             target.secret.reveal(), connect_timeout=CONNECT_TIMEOUT, autocommit=False

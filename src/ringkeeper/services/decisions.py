@@ -168,10 +168,51 @@ def held_call(decision: Decision) -> ToolCall:
     return ToolCall(caller, decision.service, decision.tool, decision.instance, decision.args)
 
 
-def claim_for_approval(session: Session, ident: str, by: str | None = None) -> Decision:
+def confirmation_needed(decision: Decision) -> str | None:
+    """Why approving this held write needs the connection's name typed, or None.
+
+    Worked out from the held arguments every time, with today's rules: never
+    from a flag stored with the decision, which a database write could change.
+    """
+    if decision.kind is not DecisionKind.APPROVE:
+        return None
+    return destructive.reason(decision.service, decision.tool, decision.args)
+
+
+def check_confirmation(decision: Decision, confirm: str | None, via: str) -> None:
+    """A write that needs confirmation: never from Telegram, and only with the name typed."""
+    why = confirmation_needed(decision)
+    if why is None:
+        return
+    if via == "telegram":
+        raise RuleViolationError(
+            f"This write {why}. Approve it in the Ringkeeper app, where you can see all of it."
+        )
+    if (confirm or "").strip() != decision.instance:
+        raise RuleViolationError(
+            f"This write {why}. To approve it, type the connection's name "
+            f"({decision.instance}) to confirm."
+        )
+
+
+def claim_for_approval(
+    session: Session, ident: str, by: str | None = None, *, confirm: str | None = None
+) -> Decision:
+    """Claim a held write to run it. Re-checks, at run time, that its arguments are
+    the ones that were held, and that a write needing confirmation got it: either
+    `confirm` now (the CLI) or with the recorded answer (the app, the API)."""
     decision = get_decision(session, ident, lock=True)
     held_call(decision)  # only held writes are approved here; other kinds are answered
     _require_pending(decision)
+    if args_hash(decision.args or {}) != decision.args_hash:
+        raise RuleViolationError(
+            f"decision {decision.id}'s arguments changed after it was held; it can't run"
+        )
+    answer = decision.answer or {}
+    if answer:
+        check_confirmation(decision, answer.get("confirm"), decision.answered_via or "")
+    else:
+        check_confirmation(decision, confirm, "cli")
     decision.status = DecisionStatus.APPROVED
     decision.decided_at = datetime.now(UTC)
     decision.decided_by = by or current_user()

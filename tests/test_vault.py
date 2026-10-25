@@ -215,3 +215,25 @@ def test_log_scrubbing_keeps_formatters_that_read_args_working() -> None:
         "x", logging.INFO, __file__, 1, "%s", (Leaky(),), None
     )
     assert leaky.getMessage() == "conn [redacted]"
+
+
+def test_delete_and_concurrent_writes_keep_every_entry(data_dir: Path) -> None:
+    import threading  # noqa: PLC0415
+
+    vault = get_vault()
+    threads = [
+        threading.Thread(target=vault.store, args=(f"file://t/{i}", f"value-{i}"))
+        for i in range(20)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert [vault.resolve(f"file://t/{i}").reveal() for i in range(20)] == [
+        f"value-{i}" for i in range(20)
+    ]
+    vault.delete("file://t/3")
+    vault.delete("file://t/missing")  # fine
+    with pytest.raises(VaultError):
+        vault.resolve("file://t/3")
+    assert vault.resolve("file://t/4").reveal() == "value-4"

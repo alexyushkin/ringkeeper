@@ -322,13 +322,15 @@ def _finish(decision_id: str, call: ToolCall, outcome: AuditOutcome, **fields: A
         return decision
 
 
-async def approve(ident: str, *, by: str | None = None, vault: Vault) -> Decision:
+async def approve(
+    ident: str, *, by: str | None = None, vault: Vault, confirm: str | None = None
+) -> Decision:
     """Claim a pending decision, re-check it against today's registry, then run it."""
 
     def claim(session: Session) -> tuple[str, ToolCall, JSON | None]:
         decisions.expire_stale(session)
         session.commit()
-        decision = decisions.claim_for_approval(session, ident, by)
+        decision = decisions.claim_for_approval(session, ident, by, confirm=confirm)
         return str(decision.id), decisions.held_call(decision), decision.precondition
 
     decision_id, call, stored_precondition = await _db(claim)

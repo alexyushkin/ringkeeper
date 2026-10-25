@@ -38,7 +38,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import examples, projects, tasks
+from ringkeeper.services import decisions, examples, projects, tasks
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -195,34 +195,18 @@ def _answer_approve(decision: Decision, answer: Answer, by: str, via: Via) -> bo
     if choice == "deny":
         _close(decision, DecisionStatus.DENIED, by, via, answer)
         return False
-    check_destructive_confirmation(decision, answer.confirm, via)
+    decisions.check_confirmation(decision, answer.confirm, via.value)
     decision.answered_via = via.value
     decision.answer = {"choice": "approve", "by": by}
+    if decisions.confirmation_needed(decision):
+        # Checked again when the gateway runs it (decisions.claim_for_approval).
+        decision.answer["confirm"] = (answer.confirm or "").strip()
     return via is Via.CLI
 
 
 def destructive_reason(decision: Decision) -> str | None:
-    return (
-        (decision.payload or {}).get("destructive")
-        if decision.kind is DecisionKind.APPROVE
-        else None
-    )
-
-
-def check_destructive_confirmation(decision: Decision, confirm: str | None, via: Via) -> None:
-    """A write that deletes or drops data: not from Telegram, and only with the name typed."""
-    why = destructive_reason(decision)
-    if why is None:
-        return
-    if via is Via.TELEGRAM:
-        raise RuleViolationError(
-            f"This write {why}. Approve it in the Ringkeeper app, where you can see all of it."
-        )
-    if (confirm or "").strip() != decision.instance:
-        raise RuleViolationError(
-            f"This write {why}. To approve it, type the connection's name "
-            f"({decision.instance}) to confirm."
-        )
+    """Why approving needs the connection's name typed (see decisions.confirmation_needed)."""
+    return decisions.confirmation_needed(decision)
 
 
 def _answer_plan(

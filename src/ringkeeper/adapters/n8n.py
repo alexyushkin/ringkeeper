@@ -5,11 +5,13 @@ deprecated in current n8n in favour of `publish`/`unpublish`, but they work
 there and are the only option on older self-hosted versions, so we use them.
 """
 
+import re
 from typing import Annotated, Any, cast
 
 import httpx2
 from pydantic import Field
 
+from ringkeeper import netpolicy
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, guarded_write, read, write
 from ringkeeper.models import InstanceType
 
@@ -20,7 +22,20 @@ WRITABLE_WORKFLOW_FIELDS = ("name", "nodes", "connections", "settings")
 # Tests swap in httpx2.MockTransport; production uses the real network.
 transport: httpx2.AsyncBaseTransport | None = None
 
-WorkflowId = Annotated[str, Field(description="The n8n workflow id.")]
+# n8n ids are short alphanumeric strings. Anything else (a `/`, `..`, `%`) could
+# point a request at a different API path than the tool names, so it's refused.
+ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+_ID = re.compile(ID_PATTERN)
+WorkflowId = Annotated[str, Field(description="The n8n workflow id.", pattern=ID_PATTERN)]
+ExecutionId = Annotated[str, Field(description="The n8n execution id.", pattern=ID_PATTERN)]
+
+
+def _id(value: str) -> str:
+    if not _ID.fullmatch(value):
+        raise ToolError("that isn't an n8n id (letters, digits, - and _ only)")
+    return value
+
+
 Limit = Annotated[int, Field(ge=1, le=250, description="Page size (n8n caps it at 250).")]
 Cursor = Annotated[str | None, Field(description="next_cursor from a previous page.")]
 
@@ -28,6 +43,10 @@ Cursor = Annotated[str | None, Field(description="next_cursor from a previous pa
 def _client(target: Target) -> httpx2.AsyncClient:
     if not target.base_url:
         raise ToolError(f"instance '{target.name}' has no base_url; set it in the registry")
+    try:
+        netpolicy.check_url(target.base_url)  # the API key only goes to an allowed host
+    except netpolicy.AddressNotAllowedError as error:
+        raise ToolError(f"instance '{target.name}' can't be used: {error}") from None
     return httpx2.AsyncClient(
         base_url=target.base_url.rstrip("/") + API_PREFIX,
         headers={"X-N8N-API-KEY": target.secret.reveal(), "Accept": "application/json"},
@@ -114,7 +133,7 @@ async def list_workflows(
 @read
 async def get_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Get one workflow, including its nodes and connections."""
-    return await _call(target, "GET", f"/workflows/{workflow_id}")
+    return await _call(target, "GET", f"/workflows/{_id(workflow_id)}")
 
 
 @read
@@ -135,29 +154,29 @@ async def list_executions(
 @read
 async def get_execution(
     target: Target,
-    execution_id: Annotated[str, Field(description="The n8n execution id.")],
+    execution_id: ExecutionId,
     include_data: Annotated[bool, Field(description="Include per-node run data.")] = False,
 ) -> JSON:
     """Get one execution; set include_data for the detailed run data."""
     params = {"includeData": str(include_data).lower()}
-    return await _call(target, "GET", f"/executions/{execution_id}", params=params)
+    return await _call(target, "GET", f"/executions/{_id(execution_id)}", params=params)
 
 
 @write
 async def activate_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Activate (publish) a workflow so its triggers start running."""
-    return await _call(target, "POST", f"/workflows/{workflow_id}/activate")
+    return await _call(target, "POST", f"/workflows/{_id(workflow_id)}/activate")
 
 
 @write
 async def deactivate_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Deactivate a workflow so its triggers stop running."""
-    return await _call(target, "POST", f"/workflows/{workflow_id}/deactivate")
+    return await _call(target, "POST", f"/workflows/{_id(workflow_id)}/deactivate")
 
 
 async def _updated_at(target: Target, workflow_id: str, **_ignored: object) -> JSON:
     """Precondition for update_workflow: approval is refused if this changes."""
-    workflow = await _call(target, "GET", f"/workflows/{workflow_id}")
+    workflow = await _call(target, "GET", f"/workflows/{_id(workflow_id)}")
     return {"updatedAt": workflow.get("updatedAt")}
 
 
@@ -188,7 +207,7 @@ async def update_workflow(
     }
     # Never rely on n8n's default (publishIfActive=true): going live must be explicit.
     params = {"publishIfActive": str(republish).lower()}
-    return await _call(target, "PUT", f"/workflows/{workflow_id}", params=params, body=body)
+    return await _call(target, "PUT", f"/workflows/{_id(workflow_id)}", params=params, body=body)
 
 
 ADAPTER = Adapter(

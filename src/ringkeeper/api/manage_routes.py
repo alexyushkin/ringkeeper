@@ -16,6 +16,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from ringkeeper import netpolicy
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OWNER, OwnerToken, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.api.supervisor import Supervisor
@@ -281,6 +282,9 @@ class ConnectionPatch(Input):
     env: Env | None = None
     owner: NonEmpty | None = None
     base_url: str | None = None
+    # Required with a new base_url: the key goes wherever the address points, so
+    # an address can't be changed to send the stored key somewhere else.
+    secret: str | None = Field(default=None, repr=False)
 
 
 class ConnectionSecretIn(Input):
@@ -320,6 +324,7 @@ def list_connections(session: SessionDep) -> list[ConnectionOut]:
 def create_connection(data: ConnectionIn, session: WriteSessionDep) -> ConnectionOut:
     if data.type is InstanceType.N8N and not data.base_url:
         raise HTTPException(422, detail="n8n needs its address (base URL)")
+    base_url = _checked_url(data.base_url)
     if instances.find_instance(session, data.name) is not None:
         raise HTTPException(409, detail=f"a connection named '{data.name}' already exists")
     try:
@@ -332,7 +337,7 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
         session,
         InstanceIn(
             name=data.name, type=data.type, env=data.env, secret_ref=ref, owner=data.owner,
-            base_url=data.base_url,
+            base_url=base_url,
         ),
     )  # fmt: skip
     admin_audit.record(
@@ -345,11 +350,23 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
 @router.patch("/connections/{name}")
 def update_connection(name: str, data: ConnectionPatch, session: WriteSessionDep) -> ConnectionOut:
     instance = instances.get_instance(session, name)
-    changes = data.model_dump(exclude_unset=True)
+    changes = data.model_dump(exclude_unset=True, exclude={"secret"})
+    base_url = instance.base_url
+    if "base_url" in changes and changes["base_url"] != instance.base_url:
+        if not data.secret:
+            raise HTTPException(
+                422, detail="Changing the address needs the secret again, in the same request."
+            )
+        base_url = _checked_url(changes["base_url"])
+        try:
+            secrets_in.store_connection(session, get_settings(), name, instance.type, data.secret)
+        except RuleViolationError as error:
+            raise HTTPException(422, detail=str(error)) from None
+        instance.last_test_at = instance.last_test_ok = instance.last_test_message = None
     merged = InstanceIn(
         name=instance.name, type=instance.type, env=changes.get("env", instance.env),
         secret_ref=instance.secret_ref, owner=changes.get("owner", instance.owner),
-        base_url=changes.get("base_url", instance.base_url),
+        base_url=base_url,
     )  # fmt: skip
     instances.update_instance(session, merged)
     admin_audit.record(
@@ -377,12 +394,23 @@ def replace_connection_secret(
 def delete_connection(
     name: str, session: WriteSessionDep, force: Annotated[bool, Field()] = False
 ) -> None:
+    secret_ref = instances.get_instance(session, name).secret_ref
     unbound = instances.remove_instance(session, name, force=force)
+    secrets_in.forget(get_settings(), secret_ref)  # the client's secret leaves the vault too
     admin_audit.record(
         session, "connection.delete",
         f"removed {name}" + (f" (unbound from {', '.join(unbound)})" if unbound else ""),
         by=OWNER, instance=name,
     )  # fmt: skip
+
+
+def _checked_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        return netpolicy.check_url(url)
+    except netpolicy.AddressNotAllowedError as error:
+        raise HTTPException(422, detail=str(error)) from None
 
 
 @router.post("/connections/{name}/test")

@@ -10,6 +10,9 @@ import os
 import secrets
 import sys
 import tempfile
+import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -73,11 +76,51 @@ class FileBackend:
         return plain.decode()
 
     def put(self, ref: str, value: str) -> None:
-        entries = self._read()
-        nonce = secrets.token_bytes(NONCE_BYTES)
-        ciphertext = self._aead.encrypt(nonce, value.encode(), ref.encode())
-        entries[ref] = {"nonce": _b64(nonce), "ciphertext": _b64(ciphertext)}
-        self._write({"version": 1, "entries": dict(sorted(entries.items()))})
+        with self._locked():
+            entries = self._read()
+            nonce = secrets.token_bytes(NONCE_BYTES)
+            ciphertext = self._aead.encrypt(nonce, value.encode(), ref.encode())
+            entries[ref] = {"nonce": _b64(nonce), "ciphertext": _b64(ciphertext)}
+            self._write({"version": 1, "entries": dict(sorted(entries.items()))})
+
+    def delete(self, ref: str) -> None:
+        with self._locked():
+            entries = self._read()
+            if entries.pop(ref, None) is not None:
+                self._write({"version": 1, "entries": dict(sorted(entries.items()))})
+
+    @contextmanager
+    def _locked(self) -> Generator[None]:
+        """One writer at a time (api threads, the CLI): read-modify-write never loses an entry."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = self.path.with_name(self.path.name + ".lock")
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            if sys.platform == "win32":
+                import msvcrt  # noqa: PLC0415
+
+                for _ in range(200):  # up to ~10 s
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        time.sleep(0.05)
+                else:
+                    raise VaultError("the vault is busy; try again")
+                try:
+                    yield
+                finally:
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl  # noqa: PLC0415
+
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
     def _write(self, data: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,6 +130,8 @@ class FileBackend:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
                 handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())  # on disk before it replaces the old vault
             os.chmod(tmp, 0o600)
             if self._owner_uid is not None and sys.platform != "win32":
                 os.chown(tmp, self._owner_uid, -1)

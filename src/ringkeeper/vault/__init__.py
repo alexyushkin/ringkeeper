@@ -46,6 +46,7 @@ class Secret:
 class Backend(Protocol):
     def get(self, ref: str) -> str: ...
     def put(self, ref: str, value: str) -> None: ...
+    def delete(self, ref: str) -> None: ...
 
 
 def scheme_of(ref: str) -> str:
@@ -70,6 +71,10 @@ class Vault:
 
     def resolve(self, ref: str, extra_fragments: Iterable[str] = ()) -> Secret:
         return Secret(ref, self._backend(ref).get(ref), extra_fragments)
+
+    def delete(self, ref: str) -> None:
+        """Remove a secret (a removed connection's). Missing is fine."""
+        self._backend(ref).delete(ref)
 
     def store(self, ref: str, value: str) -> None:
         if not value:
