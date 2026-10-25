@@ -19,7 +19,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    DateTime,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -33,8 +32,9 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from ringkeeper.storage.types import BigID, Doc, TextList, UTCDateTime, UUIDValue
 
 SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
 SECRET_REF_SCHEMES = ("file", "aws-sm")
@@ -184,13 +184,13 @@ message_role_enum = Enum(MessageRole, name="message_role", values_callable=_enum
 
 
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map = {uuid.UUID: UUIDValue()}  # noqa: RUF012 (SQLAlchemy's own hook)
 
 
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UTCDateTime(), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -204,16 +204,16 @@ class Project(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(63), unique=True)
     owner: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, server_default="")
-    aliases: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    aliases: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     repo_url: Mapped[str | None] = mapped_column(Text)
     workspace_path: Mapped[str | None] = mapped_column(Text)
     autonomy: Mapped[Autonomy] = mapped_column(
         autonomy_enum, server_default=Autonomy.STANDARD.value
     )
     # Commands run in the worker container after each worker turn (architect loop).
-    checks: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    checks: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     # Model overrides for this project: keys architect, worker, low, medium, high.
-    models: Mapped[dict[str, str]] = mapped_column(JSONB, server_default="{}")
+    models: Mapped[dict[str, str]] = mapped_column(Doc, server_default="{}")
 
     bindings: Mapped[list["ProjectInstance"]] = relationship(
         back_populates="project",
@@ -243,7 +243,7 @@ class Instance(TimestampMixin, Base):
     secret_ref: Mapped[str] = mapped_column(Text)
     owner: Mapped[str] = mapped_column(Text)
     # The last "Test connection" (a read-only probe): when, whether it worked, and what it said.
-    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_test_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_test_ok: Mapped[bool | None] = mapped_column(Boolean)
     last_test_message: Mapped[str | None] = mapped_column(Text)
 
@@ -272,6 +272,7 @@ class ProjectInstance(Base):
             "instance_type",
             unique=True,
             postgresql_where=text("is_default"),
+            sqlite_where=text("is_default"),
         ),
     )
 
@@ -283,8 +284,8 @@ class ProjectInstance(Base):
     instance_type: Mapped[InstanceType] = mapped_column(instance_type_enum)
     instance_env: Mapped[Env] = mapped_column(instance_env_enum)
     is_default: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    allowed_tools: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
-    preapproved_writes: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    allowed_tools: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
+    preapproved_writes: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
 
     project: Mapped[Project] = relationship(back_populates="bindings")
     instance: Mapped[Instance] = relationship(back_populates="bindings")
@@ -332,13 +333,13 @@ class Decision(Base):
     tool: Mapped[str | None] = mapped_column(Text)
     # Exact arguments, needed to execute on approval. They come from the agent,
     # never from the vault.
-    args: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    args: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     args_hash: Mapped[str | None] = mapped_column(Text)
     # route: {"message", "candidates": [{project, confidence}...], "task": {...}};
     # plan: {"plan", "worker_prompt"}; question: {"question", "open_issues"?}.
-    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     # {"choice": ...} or {"text": ...}; who and how are below.
-    answer: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    answer: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     answered_via: Mapped[str | None] = mapped_column(Text)  # telegram, cli, api
     task_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL", name="fk_decisions_task")
@@ -350,15 +351,15 @@ class Decision(Base):
         ForeignKey("messages.id", ondelete="SET NULL", name="fk_decisions_message")
     )
     # State captured at hold time that must still hold at approval (e.g. n8n updatedAt).
-    precondition: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    precondition: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     result: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     decided_by: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
-    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    executed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class AuditEvent(Base):
@@ -371,8 +372,8 @@ class AuditEvent(Base):
         Index("ix_audit_events_outcome_at", "outcome", "at"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(BigID, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     # Null only when the token itself was refused: an unverified token names no one.
     project: Mapped[str | None] = mapped_column(Text)
     session_id: Mapped[str | None] = mapped_column(Text)
@@ -382,7 +383,7 @@ class AuditEvent(Base):
     tool: Mapped[str | None] = mapped_column(Text)
     outcome: Mapped[AuditOutcome] = mapped_column(audit_outcome_enum)
     reason: Mapped[str | None] = mapped_column(Text)
-    args: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    args: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     args_hash: Mapped[str | None] = mapped_column(Text)
     result: Mapped[str | None] = mapped_column(Text)
     decision_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -421,12 +422,12 @@ class Task(Base):
     budget_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
     git_branch: Mapped[str | None] = mapped_column(Text)
     git_commit: Mapped[str | None] = mapped_column(Text)
-    changed_files: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    changed_files: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     error: Mapped[str | None] = mapped_column(Text)
     stop_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     # Set when the router created the task.
     thread_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("threads.id", ondelete="SET NULL", name="fk_tasks_thread")
@@ -475,9 +476,9 @@ class WorkerSession(Base):
     )
     model: Mapped[str | None] = mapped_column(Text)
     # Architect sessions: the loop step they asked for (submit_plan, dispatch_worker, ...).
-    action: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    action: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     # Worker turns in the architect loop: {"passed": bool, "results": [...]}.
-    checks: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    checks: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     sdk_session_id: Mapped[str | None] = mapped_column(Text)
     container_id: Mapped[str | None] = mapped_column(Text)
     state_volume: Mapped[str] = mapped_column(Text)
@@ -486,13 +487,13 @@ class WorkerSession(Base):
     turns: Mapped[int | None] = mapped_column(Integer)
     # The SDK's own estimate from list prices; not billing data.
     cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6, asdecimal=False))
-    usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    model_usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    usage: Mapped[dict[str, Any] | None] = mapped_column(Doc)
+    model_usage: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     result_subtype: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     task: Mapped[Task] = relationship(back_populates="sessions")
 
@@ -506,14 +507,14 @@ class SessionEvent(Base):
         Index("ix_session_events_at", "at"),  # the retention job
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigID, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sessions.id", ondelete="CASCADE", name="fk_session_events_session")
     )
     seq: Mapped[int] = mapped_column(Integer)
-    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     type: Mapped[str] = mapped_column(Text)
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    payload: Mapped[dict[str, Any]] = mapped_column(Doc)
 
 
 class TokenRevocation(Base):
@@ -522,11 +523,11 @@ class TokenRevocation(Base):
     __tablename__ = "token_revocations"
 
     jti: Mapped[str] = mapped_column(Text, primary_key=True)
-    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     reason: Mapped[str] = mapped_column(Text)
     revoked_by: Mapped[str] = mapped_column(Text)
     # After this the token is dead anyway, so the row can be cleaned up.
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class Thread(Base):
@@ -541,9 +542,9 @@ class Thread(Base):
     source: Mapped[str] = mapped_column(Text)  # cli, api, web, telegram
     # For a Telegram request: the chat it came from, the only one its notices go to.
     origin_chat_id: Mapped[int | None] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UTCDateTime(), server_default=func.now(), onupdate=func.now()
     )
 
     messages: Mapped[list["Message"]] = relationship(
@@ -560,6 +561,7 @@ class Message(Base):
             "ix_messages_unrouted",
             "created_at",
             postgresql_where=text("role = 'user' AND routed_at IS NULL"),
+            sqlite_where=text("role = 'user' AND routed_at IS NULL"),
         ),
         CheckConstraint("input IN ('text', 'voice')", name="ck_messages_input"),
     )
@@ -577,10 +579,10 @@ class Message(Base):
     # How the user gave it: typed, or a voice note (only its transcript is kept).
     input: Mapped[str] = mapped_column(Text, server_default=text("'text'"))
     # The router's validated output for this message.
-    routing: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    routed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    routing: Mapped[dict[str, Any] | None] = mapped_column(Doc)
+    routed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     route_error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
     thread: Mapped[Thread] = relationship(back_populates="messages")
 
@@ -602,7 +604,7 @@ class RoutingExample(Base):
         ForeignKey("decisions.id", ondelete="SET NULL", name="fk_routing_examples_decision")
     )
     created_by: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
 class Notification(Base):
@@ -623,7 +625,7 @@ class Notification(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigID, primary_key=True, autoincrement=True)
     decision_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("decisions.id", ondelete="CASCADE", name="fk_notifications_decision")
     )
@@ -638,7 +640,7 @@ class Notification(Base):
     external_id: Mapped[int | None] = mapped_column(BigInteger)  # Telegram message_id
     status: Mapped[str] = mapped_column(Text)  # sent, failed, closed
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
 class VoiceConfirmation(Base):
@@ -668,6 +670,7 @@ class VoiceConfirmation(Base):
             "ix_voice_confirmations_pending",
             "expires_at",
             postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
         ),
     )
 
@@ -685,9 +688,9 @@ class VoiceConfirmation(Base):
     # The Telegram user who sent the voice note: only they can confirm or redo it.
     user_id: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
 class Setting(Base):
@@ -696,7 +699,7 @@ class Setting(Base):
     __tablename__ = "settings_kv"
 
     key: Mapped[str] = mapped_column(Text, primary_key=True)
-    value: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    value: Mapped[dict[str, Any]] = mapped_column(Doc)
 
 
 class Owner(Base):
@@ -707,10 +710,8 @@ class Owner(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, server_default=text("1"))
     password_hash: Mapped[str] = mapped_column(Text)  # argon2id
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    password_changed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    password_changed_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
 class OwnerSession(Base):
@@ -719,16 +720,14 @@ class OwnerSession(Base):
     __tablename__ = "owner_sessions"
 
     token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
     method: Mapped[str] = mapped_column(Text)  # password, passkey
     user_agent: Mapped[str | None] = mapped_column(Text)
     # Last time the owner proved it was them (password, or a passkey with user
     # verification): sensitive actions need this to be recent.
-    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class Passkey(Base):
@@ -744,9 +743,9 @@ class Passkey(Base):
     public_key: Mapped[bytes] = mapped_column(LargeBinary)
     sign_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     name: Mapped[str] = mapped_column(Text)
-    transports: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    transports: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class LoginAttempt(Base):
@@ -755,7 +754,7 @@ class LoginAttempt(Base):
     __tablename__ = "login_attempts"
     __table_args__ = (Index("ix_login_attempts_key_at", "key", "at"),)
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigID, primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(Text)  # e.g. "ip:203.0.113.7", "all"
     ok: Mapped[bool] = mapped_column(Boolean)
-    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())

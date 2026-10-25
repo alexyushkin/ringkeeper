@@ -14,7 +14,6 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert
 
 from ringkeeper import bootstrap
 from ringkeeper.api.auth import AdminDep, Caller, caller
@@ -34,6 +33,7 @@ from ringkeeper.models import AuthMode, Instance, OwnerSession, Passkey, Project
 from ringkeeper.schemas import Input
 from ringkeeper.services import admin_audit, owner
 from ringkeeper.services.runtime import current_settings
+from ringkeeper.storage.sql import insert
 from ringkeeper.vault import get_vault
 
 router = APIRouter(dependencies=[AdminDep])
@@ -179,7 +179,7 @@ def recovery_key(session: WriteSessionDep, token: OwnerToken) -> dict[str, str]:
 @router.post("/setup/recovery-key/saved", status_code=204)
 def recovery_key_saved(session: WriteSessionDep, token: OwnerToken) -> None:
     del token
-    statement = insert(Setting).values(key=RECOVERY_SAVED_KEY, value={"saved": True})
+    statement = insert(session, Setting).values(key=RECOVERY_SAVED_KEY, value={"saved": True})
     session.execute(statement.on_conflict_do_nothing(index_elements=["key"]))
 
 

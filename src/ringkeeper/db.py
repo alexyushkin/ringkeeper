@@ -1,10 +1,11 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from ringkeeper.config import get_settings
+from ringkeeper.storage.sql import READ_ONLY, make_engine
 
 _engines: dict[tuple[str, int], Engine] = {}
 
@@ -12,9 +13,7 @@ _engines: dict[tuple[str, int], Engine] = {}
 def _engine_for(url: str, connect_timeout: int) -> Engine:
     key = (url, connect_timeout)
     if key not in _engines:
-        _engines[key] = create_engine(
-            url, pool_pre_ping=True, connect_args={"connect_timeout": connect_timeout}
-        )
+        _engines[key] = make_engine(url, connect_timeout=connect_timeout)
     return _engines[key]
 
 
@@ -36,7 +35,10 @@ def session_scope(*, commit: bool = True) -> Generator[Session]:
     With commit=False everything is rolled back, which is how dry runs see
     the exact same rule checks as real runs without keeping any writes.
     """
-    session = Session(get_engine(), expire_on_commit=False)
+    engine = get_engine()
+    if not commit:  # lets SQLite start a reader, not a writer (storage.sql)
+        engine = engine.execution_options(**{READ_ONLY: True})
+    session = Session(engine, expire_on_commit=False)
     try:
         yield session
         if commit:

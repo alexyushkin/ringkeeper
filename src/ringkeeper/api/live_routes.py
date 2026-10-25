@@ -6,7 +6,7 @@
   shows "I heard: ..." and sends the text only after you confirm it.
 - GET /events: server-sent events for task status, transcript lines,
   approvals and routed messages (ids only; the app fetches the rest). They
-  come from Postgres NOTIFY triggers, so every writer is covered. The
+  come from database triggers (storage.events), so every writer is covered. The
   session is checked again at every heartbeat (a stream ends soon after
   sign-out), and only a few streams may be open at once.
 """
@@ -17,10 +17,8 @@ import time
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from psycopg import sql
 
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OwnerToken, require_owner
@@ -28,6 +26,7 @@ from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.services import owner
 from ringkeeper.services.runtime import current_settings
+from ringkeeper.storage import events as storage_events
 from ringkeeper.voice import SttClient, VoiceError, megabytes, vocabulary
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
@@ -82,9 +81,9 @@ async def transcribe(
     return {"transcript": text}
 
 
-def _next_payloads(conn: psycopg.Connection[tuple[object, ...]]) -> list[str]:
+def _next_payloads(subscription: storage_events.Subscription) -> list[str]:
     """Block until a notification arrives (returning it right away) or the heartbeat is due."""
-    return [n.payload for n in conn.notifies(timeout=HEARTBEAT_SECONDS, stop_after=1)]
+    return [payload for _, payload in subscription.get(timeout=HEARTBEAT_SECONDS)]
 
 
 def _still_signed_in(token: str) -> bool:
@@ -97,19 +96,18 @@ def _still_signed_in(token: str) -> bool:
 
 
 async def _notifications(request: Request, token: str) -> AsyncIterator[str]:
-    # A blocking connection waited on in a worker thread: psycopg's async mode
+    # A blocking subscription waited on in a worker thread: psycopg's async mode
     # can't use the Windows event loop, and one stream per signed-in browser is
     # a handful of threads at most.
-    url = get_settings().database_url.replace("postgresql+psycopg://", "postgresql://")
+    url = get_settings().database_url
     _streams["open"] += 1
     try:
-        conn = await asyncio.to_thread(psycopg.connect, url, autocommit=True)
+        subscription = await asyncio.to_thread(storage_events.subscribe, url, [EVENTS_CHANNEL])
         try:
-            conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(EVENTS_CHANNEL)))
             yield "retry: 3000\n\n"
             checked = time.monotonic()
             while not await request.is_disconnected():
-                payloads = await asyncio.to_thread(_next_payloads, conn)
+                payloads = await asyncio.to_thread(_next_payloads, subscription)
                 if time.monotonic() - checked >= HEARTBEAT_SECONDS:
                     if not await asyncio.to_thread(_still_signed_in, token):
                         return  # signed out or expired: the browser reconnects and gets a 401
@@ -125,7 +123,7 @@ async def _notifications(request: Request, token: str) -> AsyncIterator[str]:
                         continue
                     yield f"event: {kind}\ndata: {payload}\n\n"
         finally:
-            await asyncio.to_thread(conn.close)
+            await asyncio.to_thread(subscription.close)
     finally:
         _streams["open"] -= 1
 

@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, cast, func, select, text, update
+from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
@@ -35,6 +35,7 @@ from ringkeeper.models import (
 from ringkeeper.services import projects, revocations
 from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, current_user
+from ringkeeper.storage import events as storage_events
 
 NOTIFY_CHANNEL = "ringkeeper_tasks"
 # Not finished, but no container running: stopping just marks them stopped.
@@ -43,7 +44,7 @@ IDLE_STATUSES = (TaskStatus.QUEUED, TaskStatus.NEEDS_INPUT, TaskStatus.WAITING)
 
 def notify(session: Session) -> None:
     """Wake the session manager (delivered when the transaction commits)."""
-    session.execute(text(f"NOTIFY {NOTIFY_CHANNEL}"))
+    storage_events.notify(session, NOTIFY_CHANNEL)
 
 
 def state_volume_name(task_id: uuid.UUID, role: SessionRole) -> str:

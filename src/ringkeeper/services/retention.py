@@ -10,10 +10,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import CursorResult, delete
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ringkeeper.models import SessionEvent, Setting
+from ringkeeper.storage.sql import insert
 
 LAST_RUN_KEY = "retention.last_run"
 EVERY = timedelta(days=1)
@@ -27,7 +27,7 @@ def purge(session: Session, days: int, now: datetime | None = None) -> int:
         session.execute(delete(SessionEvent).where(SessionEvent.at < now - timedelta(days=days))),
     )
     deleted = int(result.rowcount or 0)
-    statement = insert(Setting).values(
+    statement = insert(session, Setting).values(
         key=LAST_RUN_KEY, value={"at": now.isoformat(), "deleted": deleted}
     )
     session.execute(

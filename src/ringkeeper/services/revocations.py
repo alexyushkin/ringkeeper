@@ -3,10 +3,10 @@
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ringkeeper.models import TokenRevocation
+from ringkeeper.storage.sql import insert
 
 
 def revoke(
@@ -19,7 +19,7 @@ def revoke(
 ) -> bool:
     """Revoke a token. Returns False if it was already revoked (the first reason stays)."""
     statement = (
-        insert(TokenRevocation)
+        insert(session, TokenRevocation)
         .values(jti=jti, reason=reason, revoked_by=by, expires_at=expires_at)
         .on_conflict_do_nothing(index_elements=[TokenRevocation.jti])
         .returning(TokenRevocation.jti)

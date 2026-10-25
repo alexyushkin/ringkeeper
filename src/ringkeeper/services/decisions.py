@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, cast, select, text, update
+from sqlalchemy import String, cast, select, update
 from sqlalchemy.orm import Session
 
 from ringkeeper import destructive
@@ -24,6 +24,7 @@ from ringkeeper.config import get_settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Decision, DecisionKind, DecisionStatus
 from ringkeeper.services.audit import safe_text
+from ringkeeper.storage import events
 
 MIN_ID_PREFIX = 8
 # New decisions of every kind are announced here (Telegram listens).
@@ -32,10 +33,7 @@ DECISIONS_CHANNEL = "ringkeeper_decisions"
 
 def notify_new(session: Session, decision: Decision) -> None:
     """Delivered when the transaction commits."""
-    session.execute(
-        text("SELECT pg_notify(:channel, :id)"),
-        {"channel": DECISIONS_CHANNEL, "id": str(decision.id)},
-    )
+    events.notify(session, DECISIONS_CHANNEL, str(decision.id))
 
 
 def current_user() -> str:

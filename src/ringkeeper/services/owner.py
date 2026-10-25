@@ -27,8 +27,7 @@ from typing import Any, cast
 import webauthn
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from sqlalchemy import DateTime, delete, func, select, text
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 from webauthn.helpers.exceptions import WebAuthnException
@@ -43,6 +42,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import LoginAttempt, Owner, OwnerSession, Passkey, Setting
 from ringkeeper.services import admin_audit
+from ringkeeper.storage.sql import insert, lock
 
 SETUP_CODE_KEY = "setup.code"
 CHALLENGE_KEY = "webauthn.challenge."
@@ -57,9 +57,10 @@ SLOW_SECONDS = 3
 WINDOW = timedelta(minutes=15)
 CONFIRM_FOR = timedelta(minutes=10)  # how long a confirmation lets sensitive actions run
 MAX_CHALLENGES = 20
-ATTEMPTS_LOCK = 0x52_4B_4C_47  # pg advisory lock: one guess is checked at a time
+ATTEMPTS_LOCK = 0x52_4B_4C_47  # one guess is checked at a time (storage.sql.lock)
 UNKNOWN_CLIENT = "direct"
 CHALLENGE_TTL = timedelta(minutes=5)
+EPOCH = "1970-01-01T00:00:00+00:00"  # a challenge without an expiry counts as expired
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L
 OWNER = "owner"
 
@@ -98,7 +99,9 @@ def normalize_code(code: str) -> str:
 
 
 def store_setup_code(session: Session, code: str) -> None:
-    statement = insert(Setting).values(key=SETUP_CODE_KEY, value={"hash": token_hash(code)})
+    statement = insert(session, Setting).values(
+        key=SETUP_CODE_KEY, value={"hash": token_hash(code)}
+    )
     session.execute(
         statement.on_conflict_do_update(
             index_elements=["key"], set_={"value": statement.excluded.value}
@@ -118,7 +121,7 @@ def setup_code_matches(session: Session, code: str) -> bool:
 
 def _check_rate(session: Session, client: str) -> None:
     """Before checking a guess: one at a time, block a known client, pace everyone."""
-    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ATTEMPTS_LOCK})
+    lock(session, ATTEMPTS_LOCK)
     now = _now()
     failed = (LoginAttempt.ok.is_(False), LoginAttempt.at >= now - WINDOW)
     if client != UNKNOWN_CLIENT:
@@ -300,12 +303,15 @@ def _rp(settings: Settings) -> tuple[str, str]:
 
 def _save_challenge(session: Session, challenge: bytes, purpose: str) -> str:
     # Expired ones go; a flood of new ones (this is reachable signed out) is refused.
-    session.execute(
-        delete(Setting).where(
-            Setting.key.startswith(CHALLENGE_KEY),
-            Setting.value["expires"].astext.cast(DateTime(timezone=True)) <= _now(),
-        )
-    )
+    # At most MAX_CHALLENGES rows, so they're checked here rather than in SQL.
+    now = _now()
+    expired = [
+        row.key
+        for row in session.scalars(select(Setting).where(Setting.key.startswith(CHALLENGE_KEY)))
+        if datetime.fromisoformat(str(row.value.get("expires", EPOCH))) <= now
+    ]
+    if expired:
+        session.execute(delete(Setting).where(Setting.key.in_(expired)))
     outstanding = session.scalar(
         select(func.count()).select_from(Setting).where(Setting.key.startswith(CHALLENGE_KEY))
     )

@@ -10,13 +10,13 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import String, cast, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ringkeeper.errors import NotFoundError
 from ringkeeper.models import RoutingExample, TaskKind
 from ringkeeper.services.decisions import MIN_ID_PREFIX
 from ringkeeper.services.threads import normalize
+from ringkeeper.storage.sql import insert
 
 
 def save(
@@ -38,7 +38,7 @@ def save(
         "created_by": by,
     }
     statement = (
-        insert(RoutingExample)
+        insert(session, RoutingExample)
         .values(**values)
         .on_conflict_do_update(index_elements=["normalized"], set_=values)
         .returning(RoutingExample)

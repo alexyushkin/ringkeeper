@@ -10,12 +10,13 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, cast, select, text
+from sqlalchemy import String, cast, select
 from sqlalchemy.orm import Session
 
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Message, MessageRole, Thread
 from ringkeeper.services.decisions import MIN_ID_PREFIX
+from ringkeeper.storage import events
 
 MESSAGES_CHANNEL = "ringkeeper_messages"
 SOURCES = frozenset({"cli", "api", "web", "telegram"})
@@ -25,7 +26,7 @@ MAX_MESSAGE_CHARS = 20_000
 
 
 def notify_router(session: Session) -> None:
-    session.execute(text(f"NOTIFY {MESSAGES_CHANNEL}"))
+    events.notify(session, MESSAGES_CHANNEL)
 
 
 def normalize(body: str) -> str:

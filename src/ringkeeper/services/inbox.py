@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper.config import Settings
@@ -42,6 +42,7 @@ from ringkeeper.services import decisions, examples, projects, tasks
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
+from ringkeeper.storage import events
 
 APPROVALS_CHANNEL = "ringkeeper_approvals"
 NO_PROJECT = "none"
@@ -338,10 +339,7 @@ def answer(
             created = _answer_route(session, settings, decision, reply, by, via)
     _audit(session, decision, reply, by, via)
     if decision.kind is DecisionKind.APPROVE and decision.status is DecisionStatus.PENDING:
-        session.execute(
-            text("SELECT pg_notify(:channel, :id)"),
-            {"channel": APPROVALS_CHANNEL, "id": str(decision.id)},
-        )
+        events.notify(session, APPROVALS_CHANNEL, str(decision.id))
     session.flush()
     return Answered(decision, run_held_write=run_now, task=created)
 

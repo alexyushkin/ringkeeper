@@ -29,7 +29,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ringkeeper.config import Settings, get_settings
@@ -53,6 +52,7 @@ from ringkeeper.models import (
 from ringkeeper.scrub import scrub
 from ringkeeper.services import inbox, threads
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
+from ringkeeper.storage.sql import insert
 from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.voice import SttClient, VoiceError, VoiceNote, vocabulary
@@ -616,7 +616,7 @@ class Bridge:
 
     def _save_offset(self, offset: int) -> None:
         with session_scope() as session:
-            statement = insert(Setting).values(key=OFFSET_KEY, value={"offset": offset})
+            statement = insert(session, Setting).values(key=OFFSET_KEY, value={"offset": offset})
             session.execute(
                 statement.on_conflict_do_update(
                     index_elements=["key"], set_={"value": statement.excluded.value}

@@ -12,8 +12,6 @@ import logging
 from typing import Annotated, Any
 
 from pydantic import Field
-from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,6 +20,8 @@ from ringkeeper.db import session_scope
 from ringkeeper.models import AuthMode, Setting
 from ringkeeper.schemas import Input, ModelId
 from ringkeeper.services import admin_audit
+from ringkeeper.storage import events
+from ringkeeper.storage.sql import insert
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def current_settings(base: Settings | None = None) -> Settings:
     """.env plus saved changes. Falls back to .env alone if the database can't be read."""
     base = base or get_settings()
     try:
-        with session_scope() as session:
+        with session_scope(commit=False) as session:  # only reads
             return effective(session, base)
     except SQLAlchemyError:
         logger.warning("runtime settings unavailable; using the environment's")
@@ -91,12 +91,12 @@ def update(session: Session, changes: dict[str, Any], *, by: str) -> dict[str, A
             saved.pop(key, None)
         else:
             saved[key] = value
-    statement = insert(Setting).values(key=RUNTIME_KEY, value=saved)
+    statement = insert(session, Setting).values(key=RUNTIME_KEY, value=saved)
     session.execute(statement.on_conflict_do_update(index_elements=["key"], set_={"value": saved}))
     admin_audit.record(
         session, "settings.update", f"changed settings: {', '.join(sorted(changes))}", by=by,
         details={k: changes[k] for k in sorted(changes)},
     )  # fmt: skip
-    session.execute(text(f"NOTIFY {SETTINGS_CHANNEL}"))
+    events.notify(session, SETTINGS_CHANNEL)
     session.flush()
     return saved

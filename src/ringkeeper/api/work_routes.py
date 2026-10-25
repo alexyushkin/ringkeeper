@@ -16,7 +16,6 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
 
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OWNER, SessionDep, WriteSessionDep, require_owner
@@ -80,12 +79,21 @@ def list_threads(
             .group_by(Decision.thread_id)
         )
     }
+    # Each thread's latest user message (a window function: works on both databases).
+    newest = (
+        select(
+            Message.thread_id,
+            Message.body,
+            func.row_number()
+            .over(partition_by=Message.thread_id, order_by=Message.created_at.desc())
+            .label("rank"),
+        )
+        .where(Message.thread_id.in_(ids), Message.role == MessageRole.USER)
+        .subquery()
+    )
     last: dict[uuid.UUID, str] = {}
     for thread_id, body in session.execute(
-        select(Message.thread_id, Message.body)
-        .where(Message.thread_id.in_(ids), Message.role == MessageRole.USER)
-        .order_by(Message.thread_id, Message.created_at.desc())
-        .ext(distinct_on(Message.thread_id))
+        select(newest.c.thread_id, newest.c.body).where(newest.c.rank == 1)
     ):
         last[thread_id] = body[:200]
     return [
