@@ -5,18 +5,24 @@ import { useState } from "react";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { Alert, Badge, Button, Card, Details, Empty, EnvBadge, Field, LinkButton, Loading, PageHeader, Select, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { sameClient, useScope } from "@/lib/client/scope";
 import { SERVICE } from "@/lib/client/words";
 
 export default function ConnectionsPage() {
   const connections = useApi<ConnectionData[]>("connections");
+  const scope = useScope();
+  // The switcher: a client's connections, or the ones a project uses.
+  const shown = (connections.data ?? []).filter(
+    (c) => (!scope.client || sameClient(c.owner, scope.client)) && (!scope.project || c.projects.includes(scope.project)),
+  );
   return (
     <>
       <PageHeader title="Connections" subtitle="Databases and automation tools your projects use. Secrets are stored encrypted and never shown again." action={<LinkButton href="/connections/new" kind="primary">Add</LinkButton>} />
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      {connections.data?.length === 0 ? <Empty>No connections yet.</Empty> : null}
+      {connections.data && shown.length === 0 ? <Empty>{connections.data.length ? "None for this client or project." : "No connections yet."}</Empty> : null}
       <div className="space-y-3">
-        {connections.data?.map((connection) => (
+        {shown.map((connection) => (
           <ConnectionCard key={connection.name} connection={connection} onChange={connections.reload} />
         ))}
       </div>

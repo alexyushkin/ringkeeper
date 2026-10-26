@@ -4,9 +4,11 @@ import Link from "@/components/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { ScopeSwitcher } from "@/components/scope-switcher";
 import { Loading } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
+import { ScopeProvider } from "@/lib/client/scope";
 
 /* Phone: a bottom tab bar (Home, Approvals, Tasks, More). Desktop: a sidebar. */
 
@@ -68,6 +70,7 @@ export function Shell({ children }: { children: ReactNode }) {
   if (!ready) return <Loading />;
 
   return (
+    <ScopeProvider>
     <div className="md:flex">
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r border-line bg-surface p-4 md:flex">
         <Link href="/" className="mb-4 flex items-center gap-2 px-2 text-lg font-semibold">
@@ -99,6 +102,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
         ) : null}
+        <ScopeSwitcher />
         <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28 md:pb-10">{children}</main>
       </div>
 
@@ -138,5 +142,6 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       ) : null}
     </div>
+    </ScopeProvider>
   );
 }

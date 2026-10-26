@@ -6,6 +6,7 @@ import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Empty, Loading, PageHeader, Select } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
+import { useScope } from "@/lib/client/scope";
 
 const STATUSES: [string, string][] = [
   ["", "Any status"],
@@ -19,12 +20,11 @@ const STATUSES: [string, string][] = [
 ];
 
 export default function TasksPage() {
-  const [project, setProject] = useState("");
+  const scope = useScope();
   const [status, setStatus] = useState("");
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
-  const projects = useApi<{ name: string }[]>("projects");
-  const tasks = useApi<TaskCard[]>("tasks", { project, status, q: query.trim() || undefined, archived: archived || undefined });
+  const tasks = useApi<TaskCard[]>("tasks", { ...scope.query, status, q: query.trim() || undefined, archived: archived || undefined });
   const pick = useSelection();
   useLive((event) => {
     if (event.type === "task") tasks.reload();
@@ -34,7 +34,6 @@ export default function TasksPage() {
     <>
       <PageHeader title="Tasks" subtitle="Every piece of work, live." />
       <div className="mb-4 grid grid-cols-2 gap-2">
-        <Select label="Project" value={project} onChange={setProject} options={[["", "All projects"], ...(projects.data ?? []).map((p): [string, string] => [p.name, p.name])]} />
         <Select label="Status" value={status} onChange={setStatus} options={STATUSES} />
       </div>
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="tasks" />

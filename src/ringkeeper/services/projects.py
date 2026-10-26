@@ -51,3 +51,19 @@ def remove_project(session: Session, name: str) -> int:
     session.delete(project)
     session.flush()
     return removed_bindings
+
+
+def owners(session: Session) -> dict[str, str]:
+    """Project name -> its client, for labelling lists ("client > project")."""
+    return dict(session.execute(select(Project.name, Project.owner)).tuples().all())
+
+
+def in_scope(session: Session, client: str | None, project: str | None) -> list[str] | None:
+    """The projects a client/project filter picks (None: no filter). A client is
+    matched like everywhere in the app: ignoring case and surrounding spaces."""
+    if project:
+        return [project]
+    if not client:
+        return None
+    wanted = client.strip().casefold()
+    return [name for name, owner in owners(session).items() if owner.strip().casefold() == wanted]

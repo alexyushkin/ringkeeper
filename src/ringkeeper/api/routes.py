@@ -9,6 +9,7 @@ from fastapi import APIRouter, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import object_session
 
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import SessionDep, WriteSessionDep
@@ -102,12 +103,17 @@ def get_thread(thread_id: str, session: SessionDep) -> ThreadOut:
     )
 
 
-def _decision_out(decision: Decision) -> DecisionOut:
+def _decision_out(decision: Decision, owners: dict[str, str] | None = None) -> DecisionOut:
+    session = object_session(decision)
+    if owners is None:
+        owners = projects.owners(session) if session is not None else {}
     return DecisionOut.model_validate(
         {
             **{c: getattr(decision, c) for c in DecisionOut.model_fields if hasattr(decision, c)},
             "kind": decision.kind.value,
             "status": decision.status.value,
+            "client": owners.get(decision.project or ""),
+            "production": inbox.production_hold(decision),
             "summary": inbox.summary(decision),
             "heading": inbox.heading(decision),
             "options": inbox.options(decision),
@@ -122,12 +128,16 @@ def list_decisions(
     kind: DecisionKind | None = None,
     project: str | None = None,
     limit: int = 50,
+    client: str | None = None,
 ) -> list[DecisionOut]:
+    """Newest first; `client`/`project` narrow it to those projects' decisions."""
     # A write session: listing marks stale decisions expired first.
     found = inbox.list_decisions(
-        session, status=status, kind=kind, project=project, limit=min(max(limit, 1), 1000)
-    )
-    return [_decision_out(d) for d in found]
+        session, status=status, kind=kind, limit=min(max(limit, 1), 1000),
+        projects=projects.in_scope(session, client, project),
+    )  # fmt: skip
+    owners = projects.owners(session)
+    return [_decision_out(d, owners) for d in found]
 
 
 @router.get("/decisions/{decision_id}")

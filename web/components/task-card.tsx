@@ -4,10 +4,12 @@ import Link from "@/components/link";
 
 import { StatusBadge, money, timeAgo } from "@/components/ui";
 import { taskHref } from "@/lib/client/routes";
+import { place } from "@/lib/client/scope";
 
 export interface TaskCard {
   id: string;
   project: string;
+  client?: string | null;
   status: string;
   kind: string | null;
   phase: string | null;
@@ -34,7 +36,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
   return (
     <Link href={taskHref(task.id)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{task.project}</span>
+        <span className="font-medium">{place(task.client, task.project)}</span>
         <StatusBadge status={task.status} />
         {task.archived ? <span className="text-xs text-muted">archived</span> : null}
         {task.phase && task.status !== "succeeded" ? <span className="text-xs text-muted">{PHASE[task.phase] ?? task.phase}</span> : null}

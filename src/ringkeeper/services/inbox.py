@@ -125,9 +125,13 @@ def list_decisions(
     kind: DecisionKind | None = None,
     project: str | None = None,
     limit: int = 50,
+    projects: list[str] | None = None,
 ) -> Sequence[Decision]:
+    """`projects`: only decisions about these (the client/project switcher)."""
     expire_stale(session)
     query = select(Decision).order_by(Decision.created_at.desc()).limit(limit)
+    if projects is not None:
+        query = query.where(Decision.project.in_(projects))
     if status is not None:
         query = query.where(Decision.status == status)
     if kind is not None:
@@ -381,6 +385,17 @@ def _one_line(text: str, limit: int) -> str:
 
 DATA_SERVICES = (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE)
 SENDS = (InstanceType.TWILIO, InstanceType.GMAIL)
+
+
+def production_hold(decision: Decision) -> bool:
+    """A held call on a production connection: listed first in Approvals."""
+    if decision.kind is not DecisionKind.APPROVE or decision.instance is None:
+        return False
+    session = object_session(decision)
+    if session is None:
+        return False
+    env = session.scalar(select(Instance.env).where(Instance.name == decision.instance))
+    return env is Env.PROD
 
 
 def heading(decision: Decision) -> str | None:

@@ -190,6 +190,8 @@ class DecisionOut(_Output):
     status: str
     summary: str
     heading: str | None = None  # a held call: what it is, in a few words
+    client: str | None = None  # the project's client
+    production: bool = False  # a held call on a production connection
     options: list[str]
     project: str | None
     instance: str | None

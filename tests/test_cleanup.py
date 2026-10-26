@@ -13,7 +13,11 @@ from ringkeeper.db import session_scope
 from ringkeeper.models import AuditEvent, Decision, DecisionKind, SessionEvent, Task, TaskStatus
 from ringkeeper.services import cleanup, inbox, tasks, threads
 from tests.helpers import make_project
-from tests.test_web_api import admin, owner, setup_code  # noqa: F401 (fixtures)
+from tests.test_web_api import (  # noqa: F401 (fixtures)
+    admin,  # pyright: ignore[reportUnusedImport]
+    owner,  # pyright: ignore[reportUnusedImport]
+    setup_code,  # pyright: ignore[reportUnusedImport]
+)
 
 GIT = (
     "git",

@@ -8,6 +8,7 @@ import { Composer } from "@/components/composer";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
+import { useScope } from "@/lib/client/scope";
 import { threadHref } from "@/lib/client/routes";
 
 interface Thread {
@@ -19,6 +20,7 @@ interface Thread {
   tasks: Record<string, number>;
   pending_approvals: number;
   archived: boolean;
+  places: string[];
 }
 
 const SOURCE: Record<string, string> = { web: "app", api: "API", cli: "terminal", telegram: "Telegram" };
@@ -27,7 +29,8 @@ export default function Home() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
-  const threads = useApi<Thread[]>("threads", { q: query.trim() || undefined, archived: archived || undefined });
+  const scope = useScope();
+  const threads = useApi<Thread[]>("threads", { ...scope.query, q: query.trim() || undefined, archived: archived || undefined });
   const pick = useSelection();
   useLive((event) => {
     if (["message", "message_routed", "task", "approval"].includes(event.type)) threads.reload();
@@ -58,6 +61,7 @@ export default function Home() {
                   <span className="truncate font-medium">{thread.title}</span>
                   <span className="ml-auto shrink-0 text-xs text-muted">{timeAgo(thread.updated_at)}</span>
                 </div>
+                {thread.places.length ? <p className="mt-1 text-xs text-muted">{thread.places.join(" · ")}</p> : null}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {thread.pending_approvals ? <Badge tone="warn">{thread.pending_approvals} waiting for you</Badge> : null}
                   {running ? <Badge tone="accent">{running} working</Badge> : null}

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.orm import object_session
 
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OWNER, SessionDep, WriteSessionDep, require_owner
@@ -33,7 +34,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.schemas import Input, NonEmpty
-from ringkeeper.services import cleanup, tasks
+from ringkeeper.services import cleanup, projects, tasks
 from ringkeeper.services.runtime import current_settings
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
@@ -56,6 +57,8 @@ class ThreadSummary(BaseModel):
     tasks: dict[str, int]  # status -> count
     pending_approvals: int
     archived: bool = False
+    # Where its tasks went: "client > project" labels, one per project.
+    places: list[str] = []
 
 
 def _like(text: str) -> str:
@@ -69,10 +72,18 @@ def list_threads(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     archived: bool = False,
     q: Annotated[str | None, Query(max_length=200)] = None,
+    client: str | None = None,
+    project: str | None = None,
 ) -> list[ThreadSummary]:
     """The latest conversations: archived ones only when asked, or when searching
-    (a search finds archived ones too)."""
+    (a search finds archived ones too). `client`/`project`: ones with work there."""
     query = select(Thread).order_by(Thread.updated_at.desc()).limit(limit)
+    names = projects.in_scope(session, client, project)
+    if names is not None:
+        query = query.where(
+            Thread.id.in_(select(Task.thread_id).where(Task.project.in_(names)))
+            | Thread.id.in_(select(Decision.thread_id).where(Decision.project.in_(names)))
+        )
     if q and q.strip():
         pattern = _like(q.strip())
         said = select(Message.thread_id).where(Message.body.ilike(pattern, escape="\\"))
@@ -91,6 +102,13 @@ def list_threads(
     ):
         if thread_id is not None:
             counts.setdefault(thread_id, {})[str(status)] = int(count)
+    owners = projects.owners(session)
+    places: dict[uuid.UUID, list[str]] = {}
+    for thread_id, name in session.execute(
+        select(Task.thread_id, Task.project).where(Task.thread_id.in_(ids)).distinct()
+    ):
+        if thread_id is not None:
+            places.setdefault(thread_id, []).append(_place(owners, name))
     pending: dict[uuid.UUID | None, int] = {
         thread_id: int(count)
         for thread_id, count in session.execute(
@@ -121,6 +139,7 @@ def list_threads(
             id=t.id, title=t.title, source=t.source, updated_at=t.updated_at,
             last_message=last.get(t.id), tasks=counts.get(t.id, {}),
             pending_approvals=int(pending.get(t.id, 0)), archived=t.archived_at is not None,
+            places=sorted(places.get(t.id, [])),
         )
         for t in found
     ]  # fmt: skip
@@ -142,10 +161,19 @@ def _cost(rows: list[WorkerSession]) -> float | None:
     return round(sum(costs), 6) if costs else None
 
 
-def _task_card(task: Task) -> dict[str, Any]:
+def _place(owners: dict[str, str], project: str) -> str:
+    client = owners.get(project)
+    return f"{client} \u203a {project}" if client else project
+
+
+def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, Any]:
     rows = list(task.sessions)
+    session = object_session(task)
+    if owners is None:
+        owners = projects.owners(session) if session is not None else {}
     return {
         "id": str(task.id), "project": task.project, "status": task.status.value,
+        "client": owners.get(task.project),
         "kind": task.kind.value if task.kind else None,
         "phase": task.phase.value if task.phase else None, "outcome": task.outcome,
         "summary": task.summary, "error": task.error, "thread_id": task.thread_id,
@@ -164,12 +192,15 @@ def list_tasks(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     archived: bool = False,
     q: Annotated[str | None, Query(max_length=200)] = None,
+    client: str | None = None,
 ) -> list[dict[str, Any]]:
     found = tasks.list_tasks(
-        session, status=status, project=project, limit=limit, archived=archived,
+        session, status=status, limit=limit, archived=archived,
         search=_like(q.strip()) if q and q.strip() else None,
+        projects=projects.in_scope(session, client, project),
     )  # fmt: skip
-    return [_task_card(t) for t in found]
+    owners = projects.owners(session)
+    return [_task_card(t, owners) for t in found]
 
 
 @router.get("/tasks/{task_id}")
@@ -297,15 +328,15 @@ def resume_task(task_id: str, data: ResumeIn, session: WriteSessionDep) -> dict[
 
 
 def _audit_query(
-    project: str | None,
+    names: list[str] | None,
     instance: str | None,
     outcome: AuditOutcome | None,
     since: datetime | None,
     until: datetime | None,
 ) -> Any:
     query = select(AuditEvent).order_by(AuditEvent.at.desc(), AuditEvent.id.desc())
-    if project is not None:
-        query = query.where(AuditEvent.project == project)
+    if names is not None:
+        query = query.where(AuditEvent.project.in_(names))
     if instance is not None:
         query = query.where(AuditEvent.instance == instance)
     if outcome is not None:
@@ -317,9 +348,10 @@ def _audit_query(
     return query
 
 
-def _audit_row(event: AuditEvent) -> dict[str, Any]:
+def _audit_row(event: AuditEvent, owners: dict[str, str] | None = None) -> dict[str, Any]:
     return {
-        "id": event.id, "at": event.at, "project": event.project, "instance": event.instance,
+        "id": event.id, "at": event.at, "project": event.project,
+        "client": (owners or {}).get(event.project or ""), "instance": event.instance,
         "service": event.service.value if event.service else None, "tool": event.tool,
         "outcome": event.outcome.value, "reason": event.reason, "args": event.args,
         "result": event.result, "session_id": event.session_id,
@@ -337,11 +369,14 @@ def list_audit(
     until: datetime | None = None,
     before_id: int | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    client: str | None = None,
 ) -> list[dict[str, Any]]:
-    query = _audit_query(project, instance, outcome, since, until)
+    names = projects.in_scope(session, client, project)
+    query = _audit_query(names, instance, outcome, since, until)
     if before_id is not None:
         query = query.where(AuditEvent.id < before_id)
-    return [_audit_row(e) for e in session.scalars(query.limit(limit))]
+    owners = projects.owners(session)
+    return [_audit_row(e, owners) for e in session.scalars(query.limit(limit))]
 
 
 MAX_EXPORT_ROWS = 50_000
@@ -355,10 +390,12 @@ def export_audit(
     outcome: AuditOutcome | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    client: str | None = None,
 ) -> StreamingResponse:
     """The audit log as CSV, e.g. per client (`?project=`). Arguments are left out.
     At most MAX_EXPORT_ROWS rows, newest first: narrow it with since/until for more."""
-    query = _audit_query(project, instance, outcome, since, until).limit(MAX_EXPORT_ROWS)
+    names = projects.in_scope(session, client, project)
+    query = _audit_query(names, instance, outcome, since, until).limit(MAX_EXPORT_ROWS)
     rows = session.scalars(query).all()
 
     def lines() -> Iterator[str]:

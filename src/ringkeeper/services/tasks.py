@@ -189,6 +189,7 @@ def list_tasks(
     limit: int = 50,
     archived: bool = False,
     search: str | None = None,
+    projects: list[str] | None = None,
 ) -> Sequence[Task]:
     """`search`: a LIKE pattern over the request, outcome, summary and project; it
     finds archived tasks too. Otherwise archived ones are listed only when asked."""
@@ -209,6 +210,8 @@ def list_tasks(
         query = query.where(Task.status == status)
     if project is not None:
         query = query.where(Task.project == project)
+    if projects is not None:
+        query = query.where(Task.project.in_(projects))
     return session.scalars(query).all()
 
 

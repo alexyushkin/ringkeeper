@@ -3,8 +3,9 @@
 import Link from "@/components/link";
 import { useState } from "react";
 
-import { Alert, Badge, Button, Card, Code, Details, Empty, Field, Loading, PageHeader, TextArea, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, Code, Details, Empty, Field, Loading, PageHeader, Select, TextArea, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
+import { place, useScope } from "@/lib/client/scope";
 import { KIND } from "@/lib/client/words";
 import { taskHref } from "@/lib/client/routes";
 
@@ -16,6 +17,8 @@ interface Decision {
   heading: string | null;
   options: string[];
   project: string | null;
+  client: string | null;
+  production: boolean;
   instance: string | null;
   tool: string | null;
   args: Record<string, unknown> | null;
@@ -27,20 +30,35 @@ interface Decision {
 }
 
 /** Everything waiting for you, in full: the SQL, the plan, the question. Telegram only gets summaries. */
+const KINDS: [string, string][] = [
+  ["", "Everything"],
+  ["approve", "Held calls"],
+  ["plan", "Plans"],
+  ["question", "Questions"],
+  ["route", "Which project"],
+];
+
 export default function ApprovalsPage() {
-  const decisions = useApi<Decision[]>("decisions", { status: "pending", limit: 200 });
+  const scope = useScope();
+  const [kind, setKind] = useState("");
+  const decisions = useApi<Decision[]>("decisions", { ...scope.query, kind, status: "pending", limit: 200 });
   useLive((event) => {
     if (event.type === "approval") decisions.reload();
   });
+  // Production holds first; otherwise newest first, as the API lists them.
+  const ordered = [...(decisions.data ?? [])].sort((a, b) => Number(b.production) - Number(a.production));
 
   return (
     <>
       <PageHeader title="Approvals" subtitle="Things that wait for you before Ringkeeper goes on." />
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        <Select label="Show" value={kind} onChange={setKind} options={KINDS} />
+      </div>
       {decisions.error ? <Alert>{decisions.error}</Alert> : null}
       {decisions.loading && !decisions.data ? <Loading /> : null}
       {decisions.data?.length === 0 ? <Empty>Nothing is waiting for you.</Empty> : null}
       <div className="space-y-4">
-        {decisions.data?.map((decision) => (
+        {ordered.map((decision) => (
           <DecisionCard key={decision.id} decision={decision} onDone={decisions.reload} />
         ))}
       </div>
@@ -75,7 +93,8 @@ function DecisionCard({ decision, onDone }: { decision: Decision; onDone: () => 
     <Card className={destructive ? "border-bad" : ""}>
       <div id={decision.id} className="flex flex-wrap items-center gap-2">
         <Badge tone={decision.kind === "approve" ? "bad" : decision.kind === "question" ? "accent" : "warn"}>{KIND[decision.kind] ?? decision.kind}</Badge>
-        {decision.project ? <span className="font-medium">{decision.project}</span> : null}
+        {decision.project ? <span className="font-medium">{place(decision.client, decision.project)}</span> : null}
+        {decision.production ? <Badge tone="bad">production</Badge> : null}
         {decision.instance ? <span className="text-sm text-muted">on {decision.instance}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(decision.created_at)}</span>
       </div>
