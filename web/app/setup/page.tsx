@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
@@ -96,8 +97,8 @@ export default function SetupPage() {
         <>
           {step === 0 ? <ClaudeStep onDone={next} /> : null}
           {step === 1 ? (
-            <ProjectStep
-              onSaved={(name, result) => {
+            <DesktopProjectsStep
+              onDone={(name, result) => {
                 setProject(name);
                 setSaved(result ?? null);
                 next();
@@ -137,13 +138,51 @@ export default function SetupPage() {
 
 function ProjectStep({ onSaved }: { onSaved: (name: string, saved?: ProjectSaved) => void }) {
   return (
+    <Card>
+      <h2 className="mb-1 text-lg font-semibold">Add your first project</h2>
+      <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
+      <ProjectForm onSaved={onSaved} />
+    </Card>
+  );
+}
+
+/** Desktop: projects from Claude Code's folders or by hand, and Claude Desktop's servers for them. */
+function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: ProjectSaved) => void }) {
+  const projects = useApi<{ name: string }[]>("projects");
+  const [last, setLast] = useState<{ name: string; saved?: ProjectSaved } | null>(null);
+  const [form, setForm] = useState(0); // a fresh form after each project added by hand
+  const names = (projects.data ?? []).map((p) => p.name);
+  return (
     <div className="space-y-4">
-      <ClaudeCodeFolders onAdded={(names) => onSaved(names.join(", "))} />
+      <ClaudeCodeFolders
+        onAdded={(added) => {
+          setLast({ name: added.join(", ") });
+          projects.reload();
+        }}
+      />
+      <ClaudeDesktopImport projects={names} quiet />
       <Card>
-        <h2 className="mb-1 text-lg font-semibold">Add your first project</h2>
+        <h2 className="mb-1 text-lg font-semibold">{names.length ? "Add another project" : "Add your first project"}</h2>
         <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
-        <ProjectForm onSaved={onSaved} />
+        <ProjectForm
+          key={form}
+          onSaved={(name, saved) => {
+            setLast({ name, saved });
+            setForm((n) => n + 1);
+            projects.reload();
+          }}
+        />
       </Card>
+      {names.length ? (
+        <Card className="space-y-3">
+          <p className="text-sm">
+            Your projects: <strong>{names.join(", ")}</strong>
+          </p>
+          <Button kind="primary" onClick={() => onDone(last?.name ?? names.join(", "), last?.saved)}>
+            Continue
+          </Button>
+        </Card>
+      ) : null}
     </div>
   );
 }

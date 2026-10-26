@@ -149,6 +149,7 @@ export interface ConnectionData {
   env: string;
   owner: string;
   base_url: string | null;
+  config: { preview?: string; read_only_tools?: string[]; [key: string]: unknown };
   secret_stored: boolean;
   projects: string[];
   last_test_at: string | null;

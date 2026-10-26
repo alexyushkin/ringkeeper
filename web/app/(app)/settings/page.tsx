@@ -3,6 +3,7 @@
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 import { useEffect, useState } from "react";
 
+import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -97,6 +98,7 @@ export default function SettingsPage() {
       </Card>
 
       {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
+      {DESKTOP ? <ImportFromClaudeDesktop /> : null}
 
       <ClaudeCard settings={settings.data} onSaved={settings.reload} />
 
@@ -253,6 +255,15 @@ function ThisComputer({ startAtLogin, onChange }: { startAtLogin: boolean; onCha
         hint="It waits in the tray, so requests and approvals keep coming in. Closing the window keeps it running; to stop it, right-click the tray icon and choose Quit."
       />
     </Card>
+  );
+}
+
+function ImportFromClaudeDesktop() {
+  const projects = useApi<{ name: string }[]>("projects");
+  return (
+    <div className="mb-4">
+      <ClaudeDesktopImport projects={(projects.data ?? []).map((p) => p.name)} />
+    </div>
   );
 }
 

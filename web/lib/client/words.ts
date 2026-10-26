@@ -17,12 +17,15 @@ export const AUTONOMY: Record<string, [string, string]> = {
 };
 
 export const SERVICE: Record<string, string> = {
-  supabase: "Supabase (database)",
+  supabase: "Database",
   n8n: "n8n (automations)",
   neon: "Neon",
   vercel: "Vercel",
   airtable: "Airtable",
   google: "Google",
+  twilio: "Twilio",
+  gmail: "Gmail",
+  mcp: "MCP server",
 };
 
 export const ENVS: [string, string][] = [

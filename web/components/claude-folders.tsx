@@ -52,6 +52,8 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
         taken.add(name);
         added.push(name);
       }
+      setClients({});
+      folders.reload();
       onAdded(added);
     } catch (err) {
       setError(`${added.length ? `Added ${added.join(", ")}; then: ` : ""}${err instanceof Error ? err.message : String(err)}`);
