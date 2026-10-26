@@ -1,0 +1,14 @@
+# gitleaks: its default rules, plus the made-up values the tests use, which look
+# like API keys but aren't. Allow only exact fakes here, never a pattern a real
+# secret could match.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake values in the tests"
+condition = "AND"  # in tests/ AND one of these exact values
+paths = ['''^tests/''']
+regexes = [
+  '''^wrkspc_01AbC$''',  # a made-up Anthropic workspace ID
+  '''^--api-key=abc123$''',  # a fake CLI argument
+]

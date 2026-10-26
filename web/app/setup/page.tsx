@@ -222,9 +222,8 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
           ) : null}
           <h3 className="font-medium">Sign in to a service</h3>
           <RemoteServices key={`remote-${project.name}`} client={project.owner} project={project.name} onAdded={setAdded} />
-          <Details label="Other services (a database, n8n, Twilio, Gmail…)">
-            <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
-          </Details>
+          <h3 className="font-medium">Or paste a key</h3>
+          <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
           <Button kind="ghost" onClick={skip}>
             Skip for now
           </Button>
@@ -550,9 +549,8 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
               <RemoteServices client={owner} project={project ?? undefined} onAdded={setSignedIn} />
             </>
           ) : null}
-          <Details label={owner ? "Other services (a database, n8n, Twilio, Gmail…)" : "Add a connection"}>
-            <ConnectionForm onSaved={setConnection} />
-          </Details>
+          {owner ? <h3 className="font-medium">Or paste a key</h3> : null}
+          <ConnectionForm onSaved={setConnection} />
         </>
       )}
     </Card>
