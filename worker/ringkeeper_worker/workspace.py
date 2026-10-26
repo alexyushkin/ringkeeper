@@ -60,7 +60,8 @@ def _git_env() -> dict[str, str]:
     env = {k: os.environ[k] for k in GIT_ENV if k in os.environ}
     env["HOME"] = WORKER_HOME if is_root() else os.environ.get("HOME", "")
     env["GIT_TERMINAL_PROMPT"] = "0"
-    return {**env, **GIT_IDENTITY}
+    # The desktop app passes the user's own identity; the image sets its own.
+    return {**env, **{k: os.environ.get(k) or v for k, v in GIT_IDENTITY.items()}}
 
 
 def _git(root: Path, *args: str, check: bool = True) -> str:

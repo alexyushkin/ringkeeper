@@ -93,7 +93,7 @@ async def test_prod_write_is_held(gateway: str) -> None:
         )
     assert result.structured_content is not None
     assert result.structured_content["status"] == "held_for_approval"
-    assert "Held for approval" in result.structured_content["message"]
+    assert "waits for the user's approval" in result.structured_content["message"]
 
 
 async def http_post(url: str, headers: dict[str, str]) -> httpx2.Response:

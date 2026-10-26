@@ -5,13 +5,15 @@ an audit row (only the fact that something was stored). Each kind is
 checked before it's stored, so a typo shows up in the wizard and not on the
 first task:
 
-- an Anthropic API key: one free `models.list` call with the official SDK;
+- an Anthropic API key: one free `models.list` call with the official SDK (with
+  its workspace, if it needs one; a 4xx answer shows Anthropic's own message);
 - a subscription token: its shape only (checking it would use your plan);
 - a Telegram bot token: Telegram's getMe;
 - a connection secret: its shape here, and the Test connection button after.
 """
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import anthropic
 from sqlalchemy.orm import Session
@@ -19,10 +21,11 @@ from sqlalchemy.orm import Session
 from ringkeeper import netpolicy
 from ringkeeper.adapters import gmail, mcp, twilio
 from ringkeeper.adapters.base import ToolError
-from ringkeeper.claude_auth import check_format, credential_ref, normalize
+from ringkeeper.claude_auth import WORKSPACE_HEADER, check_format, credential_ref, normalize
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import AuthMode, InstanceType
+from ringkeeper.scrub import scrub
 from ringkeeper.services import admin_audit
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.vault import get_vault
@@ -40,22 +43,34 @@ class Stored:
     message: str
 
 
-def check_anthropic_key(key: str) -> None:
-    client = anthropic.Anthropic(api_key=key, max_retries=1, timeout=20.0)
+def _anthropic_says(error: anthropic.APIStatusError) -> str:
+    """Anthropic's own explanation from an error answer (it never echoes the key)."""
+    raw: object = error.body
+    body = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+    detail = body.get("error")
+    message = cast(dict[str, Any], detail).get("message") if isinstance(detail, dict) else None
+    return scrub(str(message or error.message))[:500]
+
+
+def check_anthropic_key(key: str, workspace: str | None = None) -> None:
+    headers = {WORKSPACE_HEADER: workspace} if workspace else None
+    client = anthropic.Anthropic(api_key=key, max_retries=1, timeout=20.0, default_headers=headers)
     try:
         client.models.list(limit=1)
-    except anthropic.AuthenticationError:
+    except anthropic.AuthenticationError as error:
         raise RuleViolationError(
-            "Anthropic didn't accept this key. Check it and try again."
+            f"Anthropic didn't accept this key: {_anthropic_says(error)}"
         ) from None
-    except anthropic.PermissionDeniedError:
-        raise RuleViolationError("This key works but isn't allowed to use the API.") from None
     except (anthropic.APIConnectionError, anthropic.APITimeoutError):
         raise CheckUnavailableError(
             "Couldn't reach Anthropic to check the key. Check the internet "
             "connection and try again."
         ) from None
+    except anthropic.RateLimitError:
+        raise CheckUnavailableError("Anthropic is busy right now; try again in a minute.") from None
     except anthropic.APIStatusError as error:
+        if error.status_code < 500:  # the key or workspace: say what Anthropic said
+            raise RuleViolationError(f"Anthropic said: {_anthropic_says(error)}") from None
         raise CheckUnavailableError(
             f"Anthropic answered with an error ({error.status_code}); try again in a minute."
         ) from None
@@ -63,11 +78,14 @@ def check_anthropic_key(key: str) -> None:
         client.close()
 
 
-def store_claude(session: Session, settings: Settings, mode: AuthMode, value: str) -> Stored:
+def store_claude(
+    session: Session, settings: Settings, mode: AuthMode, value: str, workspace: str | None = None
+) -> Stored:
+    """`workspace` is the key's Anthropic workspace, if it needs one (checked with it)."""
     value = normalize(value)
     check_format(mode, value)
     if mode is AuthMode.API_KEY:
-        check_anthropic_key(value)
+        check_anthropic_key(value, workspace)
         result = Stored(True, "Anthropic accepted the key.")
     else:
         result = Stored(None, "Saved. It's checked on the first task (personal use only).")

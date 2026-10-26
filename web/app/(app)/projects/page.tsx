@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 
 import { Alert, Badge, Empty, LinkButton, Loading, PageHeader } from "@/components/ui";
 import { useApi } from "@/lib/client/api";

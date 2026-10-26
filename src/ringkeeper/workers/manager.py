@@ -32,11 +32,18 @@ from ringkeeper.models import (
     DecisionKind,
     SessionRole,
     Task,
-    TaskKind,
     TaskStatus,
     WorkerSession,
 )
-from ringkeeper.services import architect, architect_loop, inbox, projects, revocations, tasks
+from ringkeeper.services import (
+    architect,
+    architect_loop,
+    holds,
+    inbox,
+    projects,
+    revocations,
+    tasks,
+)
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.tokens import TokenRole, issue_token
 from ringkeeper.vault import Vault
@@ -99,7 +106,7 @@ class Job:
             started_at=row.started_at or datetime.now(UTC),
             role=row.role,
             model=row.model,
-            feature=task.kind is TaskKind.FEATURE,
+            feature=task.phase is not None,  # architect-led (tasks.planned)
         )
 
 
@@ -241,6 +248,8 @@ class Manager:
         tests that drive the loop step by step)."""
         self._enforce_limits()
         settings = self.settings
+        with session_scope() as session:
+            holds.resume_decided(session, settings)
         if settings.paused:  # "Stop everything": nothing new starts until resumed
             return
         cap = settings.max_concurrent_workers
@@ -476,6 +485,9 @@ class Manager:
                     task.changed_files = sorted(set(task.changed_files) | set(changed))
                 if job.feature:
                     row.checks = collected.checks
+                # Held calls first: the session is resumed once the user decides them.
+                waiting = holds.session_ended(session, self.settings, row, status)
+                if job.feature and not waiting:
                     review = {
                         "checks": collected.checks,
                         "diff": collected.diff,
@@ -483,7 +495,7 @@ class Manager:
                         "error": error,
                     }
                     architect_loop.advance(session, self.settings, row, status, review)
-                if status is TaskStatus.NEEDS_INPUT:
+                if status is TaskStatus.NEEDS_INPUT and not waiting:
                     payload = {"question": collected.question, "role": job.role.value}
                     inbox.create(
                         session,

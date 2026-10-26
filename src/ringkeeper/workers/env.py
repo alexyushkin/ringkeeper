@@ -36,7 +36,7 @@ def worker_env(
     env = dict(FIXED_ENV)
     env[TASK_ENV] = json.dumps(task, separators=(",", ":"))
     env[TOKEN_ENV] = gateway_token
-    env.update(credential.env())  # exactly one variable
+    env.update(credential.env())  # the credential (and its workspace header)
     if anthropic_base_url:
         env["ANTHROPIC_BASE_URL"] = anthropic_base_url
     return env

@@ -108,6 +108,7 @@ def _decision_out(decision: Decision) -> DecisionOut:
             "kind": decision.kind.value,
             "status": decision.status.value,
             "summary": inbox.summary(decision),
+            "heading": inbox.heading(decision),
             "options": inbox.options(decision),
         }
     )

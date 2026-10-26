@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";

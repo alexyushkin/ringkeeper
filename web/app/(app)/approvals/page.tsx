@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 import { useState } from "react";
 
 import { Alert, Badge, Button, Card, Code, Details, Empty, Field, Loading, PageHeader, TextArea, timeAgo } from "@/components/ui";
@@ -13,6 +13,7 @@ interface Decision {
   kind: string;
   status: string;
   summary: string;
+  heading: string | null;
   options: string[];
   project: string | null;
   instance: string | null;
@@ -82,7 +83,7 @@ function DecisionCard({ decision, onDone }: { decision: Decision; onDone: () => 
       {decision.kind === "approve" ? (
         <div className="mt-3 space-y-3">
           <p className="text-sm">
-            A change to <strong>live client data</strong> is waiting for your OK. Nothing has run yet.
+            <strong>{decision.heading ?? "A change"}</strong> is waiting for your OK. Nothing has run yet.
           </p>
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
           <Details>

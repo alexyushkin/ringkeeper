@@ -23,10 +23,11 @@ from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
 from ringkeeper.models import DecisionKind, InstanceType, TaskStatus
-from ringkeeper.services import claude_desktop, inbox, instances, secrets_in, tasks
+from ringkeeper.services import claude_desktop, inbox, instances, tasks
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
+from tests.helpers import fake_key_check
 from tests.test_vault import MemoryKeyring
 
 
@@ -256,8 +257,7 @@ def test_first_run_in_the_app(
     assert status["workspaces_root"] == str(desktop["workspaces"])
 
     # Claude: an API key only (no claude.ai sign-in in a third-party app), checked live.
-    checked: list[str] = []
-    monkeypatch.setattr(secrets_in, "check_anthropic_key", checked.append)
+    checked = fake_key_check(monkeypatch)
     token = "sk-ant-oat01-" + "x" * 40
     subscription = win.put("/bff/secrets/claude", json={"mode": "subscription", "value": token})
     assert subscription.status_code == 422
@@ -407,7 +407,7 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
     assert b"hunter2" not in database
     [connection] = [c for c in win.get("/bff/connections").json() if c["name"] == "notes"]
     assert connection["type"] == "mcp"
-    assert connection["env"] == "prod"
+    assert connection["env"] == "dev"  # Test: a local tool, not client data
     assert connection["projects"] == ["acme-web"]
     assert connection["config"]["server"] == "notes"
 

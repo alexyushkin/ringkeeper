@@ -99,7 +99,7 @@ def test_new_decisions_go_to_allowed_chats_as_short_scrubbed_summaries(
     assert {m["chat_id"] for m in telegram.sent} == {ME}
     write_msg, plan_msg = telegram.sent
     assert write_msg["text"].startswith("Prod write · acme-web · acme-supabase-prod\n")
-    assert "execute on acme-supabase-prod" in write_msg["text"]
+    assert "'execute' on acme-supabase-prod: waits for your OK" in write_msg["text"]
     for text in (write_msg["text"], plan_msg["text"]):
         assert "UPDATE" not in text
         assert "vip@acme.test" not in text

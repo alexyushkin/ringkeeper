@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     claude_auth_mode: AuthMode = AuthMode.API_KEY
     claude_api_key_ref: str = "file://ringkeeper/anthropic-api-key"
     claude_oauth_token_ref: str = "file://ringkeeper/claude-oauth-token"  # noqa: S105 (a ref)
+    # The Anthropic workspace an API key belongs to, for keys that must name one
+    # (sent as the anthropic-workspace-id header wherever the key is used).
+    anthropic_workspace_id: str | None = None
     # Bearer token for every API endpoint except /health (`ringkeeper auth api-token`).
     api_token_ref: str = "file://ringkeeper/api-token"  # noqa: S105 (a ref)
     # The web app's token: useless without a signed-in owner (see admin_token.py).

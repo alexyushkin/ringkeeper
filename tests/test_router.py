@@ -116,6 +116,16 @@ def test_a_message_is_split_into_one_task_per_project() -> None:
     assert "globex-portal" in reply
 
 
+def test_a_small_clear_feature_skips_the_architect() -> None:
+    thread_id = ask("Add hello.txt to acme-web")
+    route(FakeModel([output(routed("acme-web", 0.95, kind="feature", complexity="low"))]))
+    [task] = all_tasks()
+    assert (task.kind, task.phase) == (TaskKind.FEATURE, None)
+    [first] = task.sessions
+    assert (first.role, first.model) == (SessionRole.WORKER, "claude-haiku-5-5")
+    assert "worker queued" in thread_bodies(thread_id)[1][1]
+
+
 def test_the_router_sees_cards_history_tasks_decisions_and_no_secrets() -> None:
     thread_id = ask("first")
     route(FakeModel([output(routed("acme-web"))]))

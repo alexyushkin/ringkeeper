@@ -22,18 +22,43 @@ from ringkeeper import destructive
 from ringkeeper.calls import Caller, ToolCall, args_hash
 from ringkeeper.config import get_settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Instance, InstanceType
+from ringkeeper.models import (
+    Decision,
+    DecisionKind,
+    DecisionStatus,
+    Instance,
+    InstanceType,
+    WorkerSession,
+)
 from ringkeeper.services.audit import safe_text
 from ringkeeper.storage import events
 
 MIN_ID_PREFIX = 8
 # New decisions of every kind are announced here (Telegram listens).
 DECISIONS_CHANNEL = "ringkeeper_decisions"
+# The session manager's channel (services.tasks): a decided held call may let a
+# waiting task go on (services.holds).
+TASKS_CHANNEL = "ringkeeper_tasks"
+UNSETTLED = (DecisionStatus.PENDING, DecisionStatus.APPROVED)
 
 
 def notify_new(session: Session, decision: Decision) -> None:
     """Delivered when the transaction commits."""
     events.notify(session, DECISIONS_CHANNEL, str(decision.id))
+
+
+def notify_settled(session: Session) -> None:
+    """A held call was decided: wake the session manager (delivered on commit)."""
+    events.notify(session, TASKS_CHANNEL)
+
+
+def _task_id(session: Session, session_id: str) -> uuid.UUID | None:
+    """The task whose worker session made a call (None for a caller outside a task)."""
+    try:
+        row = session.get(WorkerSession, uuid.UUID(session_id))
+    except ValueError:
+        return None
+    return row.task_id if row is not None else None
 
 
 def _config(session: Session | None, service: InstanceType | None, instance: str | None) -> Any:
@@ -72,6 +97,7 @@ def hold(
         args=call.args,
         args_hash=args_hash(call.args),
         kind=DecisionKind.APPROVE,
+        task_id=_task_id(session, caller.session_id),
         precondition=precondition,
         # Deleting or dropping data needs the connection's name typed to approve.
         payload={"destructive": why}
@@ -144,6 +170,8 @@ def expire_stale(session: Session) -> int:
         .execution_options(synchronize_session=False)
     ).all()
     session.expire_all()
+    if expired:
+        notify_settled(session)
     return len(expired)
 
 
@@ -238,6 +266,7 @@ def deny(session: Session, ident: str, *, by: str | None = None, reason: str | N
     decision.decided_by = by or current_user()
     decision.reason = reason
     session.flush()
+    notify_settled(session)
     return decision
 
 
@@ -251,4 +280,5 @@ def finish(
     decision.result = None if result is None else safe_text(result)
     decision.error = None if error is None else safe_text(error)
     session.flush()
+    notify_settled(session)
     return decision

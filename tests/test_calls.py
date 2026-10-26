@@ -187,7 +187,7 @@ async def test_prod_read_runs_without_approval(registry: None, vault: Vault) -> 
 async def test_prod_write_is_held(registry: None, target_dsn: str, vault: Vault) -> None:
     result = await run_call(call("execute", "acme-supabase-prod", sql=INSERT), vault)
     assert result["status"] == "held_for_approval"
-    assert "Held for approval" in result["message"]
+    assert "waits for the user's approval" in result["message"]
     assert note_count(target_dsn) == 1  # nothing ran
 
     [event] = audit_rows()
@@ -358,7 +358,7 @@ async def test_a_text_waits_even_on_test_data_and_preapproved(
         ToolCall(ACME, InstanceType.TWILIO, "send_sms", "acme-twilio", text), vault
     )
     assert result["status"] == "held_for_approval"
-    assert "reaches real people" in result["message"]
+    assert "'send_sms' on acme-twilio waits for the user's approval" in result["message"]
     assert not http.requests  # nothing was sent
     decision = await approve(result["decision_id"], vault=vault)  # no typed name needed
     assert decision.status is DecisionStatus.EXECUTED

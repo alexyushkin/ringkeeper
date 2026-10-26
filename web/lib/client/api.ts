@@ -162,21 +162,43 @@ export interface LiveEvent {
 
 const LIVE_TYPES = ["task", "session_event", "approval", "message", "message_routed"];
 
+// One stream per window, shared by every component that listens: each stream
+// holds a connection open, and a browser allows only six per site.
+type Listener = (event: LiveEvent) => void;
+const listeners = new Set<Listener>();
+let source: EventSource | null = null;
+
+function dispatch(message: MessageEvent<string>): void {
+  let event: LiveEvent;
+  try {
+    event = JSON.parse(message.data) as LiveEvent;
+  } catch {
+    return; // a malformed line
+  }
+  for (const listener of [...listeners]) listener(event);
+}
+
+function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  if (source === null) {
+    source = new EventSource("/bff/events");
+    for (const type of LIVE_TYPES) source.addEventListener(type, dispatch as EventListener);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0 && source !== null) {
+      source.close();
+      source = null;
+    }
+  };
+}
+
 /** Live updates (server-sent events) from the app's server; reconnects by itself. */
 export function useLive(onEvent: (event: LiveEvent) => void, enabled = true): void {
   const handler = useRef(onEvent);
   handler.current = onEvent;
   useEffect(() => {
     if (!enabled) return;
-    const source = new EventSource("/bff/events");
-    const listener = (message: MessageEvent<string>) => {
-      try {
-        handler.current(JSON.parse(message.data) as LiveEvent);
-      } catch {
-        /* ignore a malformed line */
-      }
-    };
-    for (const type of LIVE_TYPES) source.addEventListener(type, listener as EventListener);
-    return () => source.close();
+    return subscribe((event) => handler.current(event));
   }, [enabled]);
 }

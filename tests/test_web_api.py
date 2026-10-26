@@ -37,7 +37,7 @@ from ringkeeper.services import runtime, secrets_in, tasks
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.vault import get_vault
 from tests.fake_telegram import AUDIO_MARKER, BOT_TOKEN, FakeStt, FakeTelegram
-from tests.helpers import table_text
+from tests.helpers import fake_key_check, table_text
 
 PASSWORD = "correct horse battery staple"
 API_KEY = "sk-ant-api03-" + "k" * 40
@@ -493,8 +493,7 @@ def test_stop_everything_pauses_and_stops_tasks(owner: TestClient, task_registry
 def test_the_claude_key_is_checked_stored_and_never_returned(
     owner: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    checked: list[str] = []
-    monkeypatch.setattr(secrets_in, "check_anthropic_key", checked.append)
+    checked = fake_key_check(monkeypatch)
     wrong_kind = owner.put("/secrets/claude", json={"value": "sk-ant-oat01-" + "x" * 40})
     assert wrong_kind.status_code == 422
     assert "sk-ant-oat01" not in wrong_kind.text
@@ -524,8 +523,7 @@ def test_the_claude_key_is_checked_stored_and_never_returned(
 def test_any_anthropic_key_goes_to_anthropic_and_tokens_are_refused(
     owner: TestClient, monkeypatch: pytest.MonkeyPatch, value: str, outcome: str
 ) -> None:
-    checked: list[str] = []
-    monkeypatch.setattr(secrets_in, "check_anthropic_key", checked.append)
+    checked = fake_key_check(monkeypatch)
     response = owner.put("/secrets/claude", json={"value": f" {value}\n"})
     if outcome == "checked":
         assert response.status_code == 200
@@ -542,7 +540,7 @@ def test_any_anthropic_key_goes_to_anthropic_and_tokens_are_refused(
 def test_a_rejected_claude_key_is_not_stored(
     owner: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def reject(_key: str) -> None:
+    def reject(_key: str, _workspace: str | None = None) -> None:
         raise secrets_in.RuleViolationError("Anthropic didn't accept this key.")
 
     monkeypatch.setattr(secrets_in, "check_anthropic_key", reject)
@@ -830,3 +828,26 @@ def test_removing_a_connection_removes_its_secret(owner: TestClient, target_dsn:
     assert owner.delete("/connections/acme-db").status_code == 204
     with pytest.raises(Exception, match="not in the vault"):
         get_vault().resolve(ref)
+
+
+def test_a_workspace_id_is_checked_with_the_key_and_saved(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checked: list[tuple[str, str | None]] = []
+
+    def check(key: str, workspace: str | None = None) -> None:
+        checked.append((key, workspace))
+
+    monkeypatch.setattr(secrets_in, "check_anthropic_key", check)
+    body = {"value": API_KEY, "workspace_id": " wrkspc_01AbC "}
+    assert owner.put("/secrets/claude", json=body).status_code == 200
+    assert checked == [(API_KEY, "wrkspc_01AbC")]
+    assert owner.get("/settings").json()["values"]["anthropic_workspace_id"] == "wrkspc_01AbC"
+    # Left out, the saved one is used; "" clears it.
+    owner.put("/secrets/claude", json={"value": API_KEY})
+    assert checked[-1] == (API_KEY, "wrkspc_01AbC")
+    owner.put("/secrets/claude", json={"value": API_KEY, "workspace_id": ""})
+    assert checked[-1] == (API_KEY, None)
+    assert owner.get("/settings").json()["values"]["anthropic_workspace_id"] is None
+    bad = owner.put("/secrets/claude", json={"value": API_KEY, "workspace_id": "a: b\r\nX: y"})
+    assert bad.status_code == 422  # it goes into a header

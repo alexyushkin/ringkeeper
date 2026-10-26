@@ -138,13 +138,13 @@ def import_server(session: Session, settings: Settings, server: Server, project:
         "server": server.name,
         "transport": server.transport,
         "preview": server.preview,
-        "read_only_tools": [],
     }
-    # Production: every call is held anyway, and it can never be a default.
+    # Test: a local tool isn't client data by default, and its calls still wait
+    # for approval by its tool rules (adapters.mcp). It can be set to Production.
     instances.create_instance(
         session,
         InstanceIn(
-            name=name, type=InstanceType.MCP, env=Env.PROD, secret_ref=ref, owner=owner,
+            name=name, type=InstanceType.MCP, env=Env.DEV, secret_ref=ref, owner=owner,
             config=config,
         ),
     )  # fmt: skip

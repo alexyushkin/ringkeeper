@@ -390,7 +390,7 @@ def test_feature_loop_in_real_containers_with_real_checks(
     with session_scope() as session:
         task = tasks.create_task(
             session, get_settings(), project="acme-web", prompt="add format_plan",
-            kind=TaskKind.FEATURE, complexity=Complexity.LOW,
+            kind=TaskKind.FEATURE, complexity=Complexity.MEDIUM,
         )  # fmt: skip
         task_id = str(task.id)
     runtime = RecordingRuntime()

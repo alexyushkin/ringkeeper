@@ -48,8 +48,10 @@ Rules:
   (workflows, deploys, configuration).
 - risk: read (only looks), write (changes non-prod things or code on a
   branch), prod-write (changes production data or workflows).
-- complexity: low (a lookup or a one-file change), medium (a few files or
-  steps), high (design work, many files, or unclear requirements).
+- complexity: low (a lookup, or a small, clear change: one file or a few
+  lines, like adding a file or fixing a typo), medium (a few files or steps),
+  high (design work, many files, or unclear requirements). Low features skip
+  planning and run on a cheaper model, so don't inflate it.
 - outcome: one sentence saying what done looks like.
 - prompt: complete instructions for the worker who does this task. It sees only
   this prompt and its own project, so restate everything it needs from the

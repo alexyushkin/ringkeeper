@@ -174,7 +174,8 @@ A worker only gets the endpoints of the services its project is connected to.
   only a preview with secret-looking args masked. A command server runs on the
   gateway's machine for each call, with a small environment (no Claude
   credential, nothing of Ringkeeper's) in its own folder. Each tool's default
-  comes from the server's MCP annotations: eadOnlyHint runs without asking,
+  comes from the server's MCP annotations: 
+eadOnlyHint runs without asking,
   destructiveHint needs the connection's name typed to approve, and anything
   else waits for approval (with no annotations, a tool whose name says it
   deletes needs the name typed). The annotations are remembered whenever the
@@ -379,7 +380,9 @@ instances.
 
 ## The architect loop (feature tasks)
 
-A `feature` task starts with an **architect** session, not a worker. It runs
+A `feature` task starts with an **architect** session, not a worker, unless
+the router rated it low complexity (a small, clear change such as adding a
+file): those go straight to a worker on the low-tier model. The architect runs
 in the worker image with the workspace mounted read-only and no write tools
 (no Write, Edit or Bash). Its token is an architect token, which only opens
 the gateway's `/mcp/architect` endpoint: a worker token can't call it, and an

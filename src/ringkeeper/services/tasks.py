@@ -34,10 +34,10 @@ from ringkeeper.models import (
 )
 from ringkeeper.services import projects, revocations
 from ringkeeper.services.architect import brief
-from ringkeeper.services.decisions import MIN_ID_PREFIX, current_user
+from ringkeeper.services.decisions import MIN_ID_PREFIX, TASKS_CHANNEL, current_user
 from ringkeeper.storage import events as storage_events
 
-NOTIFY_CHANNEL = "ringkeeper_tasks"
+NOTIFY_CHANNEL = TASKS_CHANNEL
 # Not finished, but no container running: stopping just marks them stopped.
 IDLE_STATUSES = (TaskStatus.QUEUED, TaskStatus.NEEDS_INPUT, TaskStatus.WAITING)
 
@@ -53,6 +53,16 @@ def agent_workspace(settings: Settings, workspace_path: str | None) -> str:
         return resolve_workspace(workspace_path, settings.workspaces_root)
     except RingkeeperError:
         return "the project's folder (your current directory)"
+
+
+def planned(kind: TaskKind | None, complexity: Complexity | None) -> bool:
+    """Whether a task goes through the architect loop (plan, approval, build, review).
+
+    Only features that aren't low complexity: a small, clear change goes straight
+    to a worker on the cheap tier, since planning and reviewing it would cost more
+    than the change itself.
+    """
+    return kind is TaskKind.FEATURE and complexity is not Complexity.LOW
 
 
 def notify(session: Session) -> None:
@@ -87,8 +97,8 @@ def create_task(
     thread_id: uuid.UUID | None = None,
     message_id: uuid.UUID | None = None,
 ) -> Task:
-    """Queue a task. A feature starts with the architect (plan first), anything
-    else with a worker."""
+    """Queue a task. A feature starts with the architect (plan first), unless it's
+    small and clear (see `planned`); anything else starts with a worker."""
     record = projects.get_project(session, project)
     if not prompt.strip():
         raise RuleViolationError("the prompt is empty")
@@ -123,11 +133,11 @@ def create_task(
         outcome=outcome,
         thread_id=thread_id,
         message_id=message_id,
-        phase=ArchitectPhase.PLANNING if kind is TaskKind.FEATURE else None,
+        phase=ArchitectPhase.PLANNING if planned(kind, complexity) else None,
     )
     session.add(task)
     session.flush()
-    role = SessionRole.ARCHITECT if kind is TaskKind.FEATURE else SessionRole.WORKER
+    role = SessionRole.ARCHITECT if task.phase is not None else SessionRole.WORKER
     first_prompt = (
         brief(record.name, prompt, outcome, agent_workspace(settings, record.workspace_path))
         if role is SessionRole.ARCHITECT

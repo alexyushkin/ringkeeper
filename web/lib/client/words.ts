@@ -49,3 +49,7 @@ export function download(filename: string, text: string): void {
   link.click();
   URL.revokeObjectURL(url);
 }
+
+/** Next to the Anthropic key, wherever it's entered. */
+export const WORKSPACE_HINT =
+  "Some keys only work inside one Anthropic workspace. If Anthropic says the key isn't scoped to a workspace, copy the ID from platform.claude.com (Settings › Workspaces).";

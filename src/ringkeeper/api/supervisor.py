@@ -94,7 +94,7 @@ class Supervisor:
             key = (
                 settings.model_router, settings.model_architect, settings.model_worker,
                 settings.model_low, settings.model_medium, settings.model_high,
-                settings.claude_auth_mode,
+                settings.claude_auth_mode, settings.anthropic_workspace_id,
             )  # fmt: skip
             self._ensure("router", key, lambda: self._router(settings))
         token = self._telegram_token(settings) if settings.telegram else None

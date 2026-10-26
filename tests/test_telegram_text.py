@@ -81,7 +81,7 @@ def test_approvals_and_plans_stay_one_short_line() -> None:
         args={"sql": "UPDATE customers SET plan = 'gold' WHERE email = 'vip@acme.test'"},
     )  # fmt: skip
     rendered = render(held, SETTINGS)
-    assert rendered.splitlines()[1] == "execute on acme-supabase-prod (prod write held)"
+    assert rendered.splitlines()[1] == "'execute' on acme-supabase-prod: waits for your OK"
     assert "UPDATE" not in rendered
     assert "vip@acme.test" not in rendered
     assert text.SHORTENED not in rendered

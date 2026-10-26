@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
@@ -31,6 +31,9 @@ from ringkeeper.models import (
     Decision,
     DecisionKind,
     DecisionStatus,
+    Env,
+    Instance,
+    InstanceType,
     SessionRole,
     Task,
     TaskKind,
@@ -38,7 +41,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import decisions, examples, projects, tasks
+from ringkeeper.services import decisions, examples, holds, projects, tasks
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -206,6 +209,9 @@ def _answer_approve(decision: Decision, answer: Answer, by: str, via: Via) -> bo
     choice = _choice(answer, ["approve", "deny"])
     if choice == "deny":
         _close(decision, DecisionStatus.DENIED, by, via, answer)
+        session = object_session(decision)
+        if session is not None:
+            decisions.notify_settled(session)
         return False
     decisions.check_confirmation(decision, answer.confirm, via.value)
     decision.answered_via = via.value
@@ -373,6 +379,27 @@ def _one_line(text: str, limit: int) -> str:
     return flat if len(flat) <= limit else flat[: max(limit - 1, 1)] + "…"
 
 
+DATA_SERVICES = (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE)
+SENDS = (InstanceType.TWILIO, InstanceType.GMAIL)
+
+
+def heading(decision: Decision) -> str | None:
+    """What a held call is, in a few words: live client data only when it is."""
+    if decision.kind is not DecisionKind.APPROVE:
+        return None
+    if decision.service in SENDS:
+        return "A message to real people"
+    session = object_session(decision)
+    env = (
+        session.scalar(select(Instance.env).where(Instance.name == decision.instance))
+        if session is not None
+        else None
+    )
+    if decision.service in DATA_SERVICES and env is Env.PROD:
+        return "A change to live client data"
+    return holds.label(decision)
+
+
 def summary(decision: Decision, limit: int = 160) -> str:
     """A short, scrubbed description: never SQL, arguments, diffs or plan text.
 
@@ -381,7 +408,7 @@ def summary(decision: Decision, limit: int = 160) -> str:
     payload = decision.payload or {}
     match decision.kind:
         case DecisionKind.APPROVE:
-            text = f"{decision.tool} on {decision.instance} (prod write held)"
+            text = f"{holds.label(decision)}: waits for your OK"
         case DecisionKind.ROUTE:
             names = " or ".join(c["project"] for c in payload.get("candidates", []))
             text = f"Which project ({names})? {payload.get('task', {}).get('outcome', '')}"

@@ -42,7 +42,7 @@ from ringkeeper.models import (
     ProjectInstance,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import audit, decisions, mcp_tools, revocations
+from ringkeeper.services import audit, decisions, holds, mcp_tools, revocations
 from ringkeeper.vault import Vault, VaultError
 
 logger = logging.getLogger(__name__)
@@ -303,27 +303,28 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
             )
             raise
 
-    def hold(session: Session) -> tuple[str, str]:
+    def hold(session: Session) -> tuple[str, str, str]:
         decision = decisions.hold(session, call, target.name, precondition=precondition)
         audit.record(session, call, AuditOutcome.HELD, decision_id=decision.id)
-        return str(decision.id), decision.expires_at.isoformat()
+        return str(decision.id), decision.expires_at.isoformat(), holds.label(decision)
 
-    decision_id, expires_at = await _db(hold)
-    why = (
-        f"instance '{target.name}' reaches real people, so it"
-        if spec.hold is Hold.ALWAYS
-        else f"prod instance '{target.name}'"
-    )
+    decision_id, expires_at, label = await _db(hold)
     return {
         "status": "held_for_approval",
         "decision_id": decision_id,
         "expires_at": expires_at,
-        "message": (
-            f"Held for approval: '{call.tool}' on {why} needs a human. "
-            f"Decision {decision_id} (expires {expires_at}). Approve with "
-            f"`ringkeeper decision approve {decision_id}`."
-        ),
+        "message": HELD_MESSAGE.format(label=label),
     }
+
+
+# What the agent reads. The user already sees the held call in Approvals, so the
+# agent mustn't ask about it (one action would show up twice) or retry it.
+HELD_MESSAGE = (
+    "Held: {label} waits for the user's approval in Ringkeeper. They already see it, "
+    "so don't ask them about it and don't call it again. Finish anything that doesn't "
+    "depend on it, then end your turn with a one-line note of what's waiting. You'll be "
+    "resumed with the result once they decide."
+)
 
 
 # --- Approval ---

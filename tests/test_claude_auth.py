@@ -217,3 +217,20 @@ def test_interactive_login_asks_once_without_confirmation(monkeypatch: pytest.Mo
     assert "Get-Clipboard -Raw" in result.stderr
     settings = Settings(claude_auth_mode=AuthMode.SUBSCRIPTION)
     assert resolve(get_vault(settings), settings).secret.reveal() == OAUTH_TOKEN
+
+
+def test_a_workspace_goes_with_an_api_key_as_a_header() -> None:
+    settings = Settings(anthropic_workspace_id="wrkspc_01AbC")
+    vault = get_vault(settings)
+    vault.store(settings.claude_api_key_ref, USER_KEY)
+    env = resolve(vault, settings).env()
+    assert env == {
+        "ANTHROPIC_API_KEY": USER_KEY,
+        "ANTHROPIC_CUSTOM_HEADERS": "anthropic-workspace-id: wrkspc_01AbC",
+    }
+    assert "ANTHROPIC_CUSTOM_HEADERS" in BILLING_ENV_VARS  # never inherited
+    subscription = Settings(
+        anthropic_workspace_id="wrkspc_01AbC", claude_auth_mode=AuthMode.SUBSCRIPTION
+    )
+    vault.store(subscription.claude_oauth_token_ref, OAUTH_TOKEN)
+    assert resolve(vault, subscription).env() == {"CLAUDE_CODE_OAUTH_TOKEN": OAUTH_TOKEN}

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import AuthMode, Setting
-from ringkeeper.schemas import Input, ModelId
+from ringkeeper.schemas import Input, ModelId, WorkspaceId
 from ringkeeper.services import admin_audit
 from ringkeeper.storage import events
 from ringkeeper.storage.sql import insert
@@ -35,6 +35,7 @@ class RuntimeIn(Input):
     """Every field optional: a PATCH changes only what it names. null resets to .env."""
 
     claude_auth_mode: AuthMode | None = None
+    anthropic_workspace_id: WorkspaceId | None = None
     telegram: bool | None = None
     telegram_chat_ids: list[int] | None = None
     telegram_requests: bool | None = None

@@ -59,6 +59,7 @@ WINDOWS_ENV = (
 POSIX_ENV = ("LANG", "LC_ALL", "TZ")
 REGISTRY = "workers.json"  # pids of running workers, to clean up after a crash
 MARKER = "RK_RUN_ID"  # in every worker process's environment, inherited by its children
+DEFAULT_GIT_IDENTITY = ("Ringkeeper", "ringkeeper@localhost")
 # Once the runner has exited and its tree is gone, how long its output may still trickle in.
 DRAIN_SECONDS = 2.0
 # Its own process group, and no console window popping up.
@@ -87,6 +88,25 @@ def worker_pythonpath() -> str | None:
         candidate = Path(__file__).resolve().parents[3] / "worker"  # a source checkout
         return str(candidate) if (candidate / "ringkeeper_worker").is_dir() else None
     return str(Path(next(iter(spec.submodule_search_locations))).parent)
+
+
+def git_identity(workspace: Path, path: str) -> tuple[str, str]:
+    """Who the worker commits as: the user's own git identity for this folder (the
+    repository's config, else their global one), else Ringkeeper's default."""
+
+    def get(key: str) -> str:
+        try:
+            found = subprocess.run(  # noqa: S603 (fixed argv, no shell)
+                ["git", "-C", str(workspace), "config", "--get", key],  # noqa: S607
+                capture_output=True, text=True, check=False, timeout=10,
+                env={**os.environ, "PATH": path},  # the user's own home and config
+            )  # fmt: skip
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return found.stdout.strip() if found.returncode == 0 else ""
+
+    name, email = get("user.name"), get("user.email")
+    return (name, email) if name and email else DEFAULT_GIT_IDENTITY
 
 
 def _gitguard() -> Any:
@@ -153,6 +173,12 @@ class ProcessRuntime:
         else:
             env["TMPDIR"] = str(state / "tmp")
         env |= {"PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+        # Its own home has no ~/.gitconfig, so commits need an identity given here.
+        name, email = git_identity(Path(spec.workspace), env["PATH"])
+        env |= {
+            "GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email,
+        }  # fmt: skip
         env[MARKER] = spec.name
         if pythonpath := worker_pythonpath():
             env["PYTHONPATH"] = pythonpath

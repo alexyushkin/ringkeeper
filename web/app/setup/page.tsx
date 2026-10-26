@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -11,7 +11,7 @@ import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, Select, Toggle } from "@/components/ui";
 import { ApiError, api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
-import { download } from "@/lib/client/words";
+import { WORKSPACE_HINT, download } from "@/lib/client/words";
 
 interface Status {
   owner: boolean;
@@ -389,6 +389,7 @@ function OwnerStep({ status, onDone }: { status: Status; onDone: () => void }) {
 
 function ClaudeStep({ onDone }: { onDone: () => void }) {
   const [key, setKey] = useState("");
+  const [workspace, setWorkspace] = useState("");
   const [mode, setMode] = useState<"api_key" | "subscription">("api_key");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -399,7 +400,8 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await api<{ message: string }>("secrets/claude", { method: "PUT", json: { mode, value: key } });
+      const json = { mode, value: key, workspace_id: mode === "api_key" ? workspace.trim() : null };
+      const result = await api<{ message: string }>("secrets/claude", { method: "PUT", json });
       setKey("");
       setMessage(result.message);
     } catch (err) {
@@ -442,6 +444,9 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
             placeholder={mode === "api_key" ? "sk-ant-…" : "sk-ant-oat01-…"}
             required
           />
+          {mode === "api_key" ? (
+            <Field label="Workspace ID (if your key needs one)" value={workspace} onChange={setWorkspace} placeholder="wrkspc_…" hint={WORKSPACE_HINT} />
+          ) : null}
           {DESKTOP ? null : (
             <Details label="Advanced">
               <Toggle

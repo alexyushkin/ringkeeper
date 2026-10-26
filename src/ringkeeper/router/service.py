@@ -20,7 +20,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
 from ringkeeper.model_choice import router_model
-from ringkeeper.models import Decision, DecisionKind, Message, MessageRole, Task, TaskKind
+from ringkeeper.models import Decision, DecisionKind, Message, MessageRole, Task
 from ringkeeper.router.model import RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
 from ringkeeper.router.schema import (
@@ -133,7 +133,7 @@ def _apply_example(session: Session, message: Message, output: RouterOutput) -> 
 def _reply(routed: Routed, output: RouterOutput) -> str:
     lines: list[str] = []
     for task in routed.tasks:
-        how = "architect plans first" if task.kind is TaskKind.FEATURE else "worker queued"
+        how = "architect plans first" if task.phase is not None else "worker queued"
         lines.append(f"→ {task.project}: task {str(task.id)[:8]} ({task.kind}, {how})")
     for decision in routed.decisions:
         names = ", ".join(c["project"] for c in (decision.payload or {}).get("candidates", []))

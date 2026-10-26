@@ -56,7 +56,11 @@ def choose(settings: Settings, text: str | None, name: str) -> Path:
             "Pick a folder for this project, not a whole drive or your home folder."
         )
     data_dir = Path(os.path.normpath(settings.data_dir.absolute()))
-    if path == data_dir or data_dir in path.parents:
+    # The workspaces folder may be set inside the data folder (a test setup does
+    # that); a project folder within it is the user's, not Ringkeeper's own.
+    workspaces = Path(os.path.normpath(root(settings).absolute()))
+    in_workspaces = workspaces in path.parents
+    if (path == data_dir or data_dir in path.parents) and not in_workspaces:
         raise RuleViolationError("That's Ringkeeper's own data folder. Pick another folder.")
     if path.exists() and not path.is_dir():
         raise RuleViolationError("That's a file, not a folder.")

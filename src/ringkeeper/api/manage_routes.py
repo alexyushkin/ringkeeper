@@ -52,6 +52,7 @@ from ringkeeper.schemas import (
     NonEmpty,
     ProjectIn,
     Slug,
+    WorkspaceId,
 )
 from ringkeeper.scrub import scrub
 from ringkeeper.services import (
@@ -156,6 +157,8 @@ def resume_everything(session: WriteSessionDep) -> dict[str, bool]:
 class ClaudeSecretIn(Input):
     mode: AuthMode = AuthMode.API_KEY
     value: str = Field(repr=False)
+    # The key's Anthropic workspace: None leaves the saved one, "" clears it.
+    workspace_id: WorkspaceId | Literal[""] | None = None
 
 
 class TelegramSecretIn(Input):
@@ -168,16 +171,26 @@ def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[st
     if settings.mode == "desktop" and data.mode is not AuthMode.API_KEY:
         # Anthropic's terms don't let a third-party app offer claude.ai sign-in.
         raise HTTPException(422, detail="The desktop app uses an Anthropic API key.")
+    workspace = settings.anthropic_workspace_id if data.workspace_id is None else data.workspace_id
     try:
-        stored = secrets_in.store_claude(session, settings, data.mode, data.value)
+        stored = secrets_in.store_claude(
+            session, settings, data.mode, data.value, workspace or None
+        )
     except ClaudeAuthError as error:
         raise HTTPException(422, detail=str(error)) from None
     except RuleViolationError as error:
         raise HTTPException(422, detail=str(error)) from None
     except secrets_in.CheckUnavailableError as error:
         raise _unavailable(error) from None
+    changes: dict[str, Any] = {}
     if settings.claude_auth_mode is not data.mode:
-        runtime.update(session, {"claude_auth_mode": data.mode.value}, by=OWNER)
+        changes["claude_auth_mode"] = data.mode.value
+    if data.workspace_id is not None and (data.workspace_id or None) != (
+        settings.anthropic_workspace_id
+    ):
+        changes["anthropic_workspace_id"] = data.workspace_id or None
+    if changes:
+        runtime.update(session, changes, by=OWNER)
     return {"stored": True, "verified": stored.verified, "message": stored.message}
 
 

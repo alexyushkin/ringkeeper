@@ -90,9 +90,10 @@ def _finish(config: WorkerConfig, workspace: Workspace, guard: Guard) -> None:
         # Always run, even if committing failed: a broken repository mustn't skip them.
         run_checks(config.checks, config.workspace)
         guard.protect()  # the checks ran project code too
-        diff = workspace.diff()
-        if diff is not None:
-            emit("ringkeeper.diff", text=diff)
+    # With or without checks: the architect reviews this diff.
+    diff = workspace.diff()
+    if diff is not None:
+        emit("ringkeeper.diff", text=diff)
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 import { useId, useState, type ReactNode } from "react";
 
 /* Small building blocks. Plain language on the surface; technical detail behind "Show details". */

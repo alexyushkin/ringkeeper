@@ -127,9 +127,9 @@ def _agent_description(spec: ToolSpec) -> str:
     if spec.kind is ToolKind.READ:
         return f"{spec.description}\n\n[read]"
     return (
-        f"{spec.description}\n\n[write] Name the instance explicitly. On prod instances this is "
-        "held for human approval unless pre-approved; the result then says so and gives a "
-        "decision id."
+        f"{spec.description}\n\n[write] Name the instance explicitly. It may be held for the "
+        "user's approval; the result then says so. Don't ask about it: end your turn, and "
+        "you're resumed with the outcome."
     )
 
 

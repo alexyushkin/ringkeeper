@@ -8,11 +8,12 @@ import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
-import { download } from "@/lib/client/words";
+import { WORKSPACE_HINT, download } from "@/lib/client/words";
 
 interface Settings {
   values: {
     claude_auth_mode: string;
+    anthropic_workspace_id: string | null;
     telegram: boolean;
     telegram_chat_ids: number[];
     telegram_requests: boolean;
@@ -199,6 +200,8 @@ function TextSetting({ label, value, onSave }: { label: string; value: string; o
 function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => void }) {
   const [mode, setMode] = useState(settings.claude.mode);
   const [key, setKey] = useState("");
+  const savedWorkspace = settings.values.anthropic_workspace_id ?? "";
+  const [workspace, setWorkspace] = useState(savedWorkspace);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -206,9 +209,16 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
     setBusy(true);
     setError(null);
     try {
-      const result = await api<{ message: string }>("secrets/claude", { method: "PUT", json: { mode, value: key } });
-      setKey("");
-      setMessage(result.message);
+      if (key) {
+        const json = { mode, value: key, workspace_id: workspace.trim() };
+        const result = await api<{ message: string }>("secrets/claude", { method: "PUT", json });
+        setKey("");
+        setMessage(result.message);
+      } else {
+        // Only the workspace changed: it's sent with the saved key from the next request.
+        await api("settings", { method: "PATCH", json: { anthropic_workspace_id: workspace.trim() || null } });
+        setMessage("Saved the workspace.");
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -233,8 +243,11 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
       )}
       <p className="text-sm text-muted">{stored ? "A key is saved (hidden)." : "No key saved for this option yet."}</p>
       <Field label={stored ? "Replace the key" : "Key"} type="password" value={key} onChange={setKey} />
-      <Button kind="primary" busy={busy} disabled={!key} onClick={save}>
-        Check and save
+      {mode === "api_key" ? (
+        <Field label="Workspace ID (if your key needs one)" value={workspace} onChange={setWorkspace} placeholder="wrkspc_…" hint={WORKSPACE_HINT} />
+      ) : null}
+      <Button kind="primary" busy={busy} disabled={!key && workspace.trim() === savedWorkspace} onClick={save}>
+        {key ? "Check and save" : "Save"}
       </Button>
       {message ? <Alert tone="good">{message}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}

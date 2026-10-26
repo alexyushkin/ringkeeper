@@ -323,3 +323,14 @@ def test_a_worker_session_cannot_take_architect_steps() -> None:
         caller = Caller("acme-web", str(task.sessions[0].id), "jti")
         with pytest.raises(RuleViolationError, match="isn't tied to an architect session"):
             architect.submit_plan(session, caller, title="t", plan="p", worker_prompt="w")
+
+
+def test_the_review_shows_changed_files_when_no_diff_came_back() -> None:
+    task = Task(review_round=1, changed_files=["hello.txt"])
+    prompt = architect.review_prompt(task, TaskStatus.SUCCEEDED, None, None, "done", None)
+    assert "Files changed on the task branch:\n- hello.txt" in prompt
+    assert "no changes" not in prompt
+    empty = Task(review_round=1, changed_files=[])
+    assert "has no changes" in architect.review_prompt(
+        empty, TaskStatus.SUCCEEDED, None, "", "done", None
+    )

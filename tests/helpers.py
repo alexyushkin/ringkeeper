@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -57,3 +58,16 @@ def table_text(session: Session, table: str) -> list[str]:
     """Every row of a table as text, to look for things that must never be stored."""
     rows = session.execute(select(Base.metadata.tables[table])).all()
     return [repr(tuple(row)) for row in rows]
+
+
+def fake_key_check(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Stand in for the live Anthropic key check; returns the keys it was given."""
+    from ringkeeper.services import secrets_in  # noqa: PLC0415
+
+    checked: list[str] = []
+
+    def check(key: str, _workspace: str | None = None) -> None:
+        checked.append(key)
+
+    monkeypatch.setattr(secrets_in, "check_anthropic_key", check)
+    return checked

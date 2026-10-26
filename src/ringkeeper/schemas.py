@@ -58,6 +58,11 @@ ModelKey = Literal["architect", "worker", "low", "medium", "high"]
 ModelId = Annotated[
     str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z0-9][a-z0-9.\-]*$")
 ]
+# An Anthropic workspace (wrkspc_...): letters, digits, _ and - only, since it
+# goes into a request header.
+WorkspaceId = Annotated[
+    str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9_\-]{1,100}$")
+]
 
 
 class _Input(BaseModel):
@@ -183,6 +188,7 @@ class DecisionOut(_Output):
     kind: str
     status: str
     summary: str
+    heading: str | None = None  # a held call: what it is, in a few words
     options: list[str]
     project: str | None
     instance: str | None

@@ -34,7 +34,9 @@ BILLING_ENV_VARS = (
     "ANTHROPIC_PROFILE",
     "ANTHROPIC_FEDERATION_RULE_ID",
     "ANTHROPIC_ORGANIZATION_ID",
+    "ANTHROPIC_CUSTOM_HEADERS",  # could name another workspace
 )
+WORKSPACE_HEADER = "anthropic-workspace-id"
 
 ANTHROPIC_PREFIX = "sk-ant-"
 # Subscription (OAuth) tokens are the one kind told apart by prefix. API keys
@@ -99,10 +101,15 @@ class ClaudeCredential:
     mode: AuthMode
     ref: str
     secret: Secret
+    workspace: str | None = None  # an API key's Anthropic workspace, when it needs one
 
     def env(self) -> dict[str, str]:
-        """Exactly one variable. Callers build the rest of the env from an allowlist."""
-        return {CREDENTIAL_ENV[self.mode]: self.secret.reveal()}
+        """The credential, plus its workspace header if it has one. Callers build the
+        rest of the env from an allowlist."""
+        env = {CREDENTIAL_ENV[self.mode]: self.secret.reveal()}
+        if self.mode is AuthMode.API_KEY and self.workspace:
+            env["ANTHROPIC_CUSTOM_HEADERS"] = f"{WORKSPACE_HEADER}: {self.workspace}"
+        return env
 
 
 def resolve(vault: Vault, settings: Settings, mode: AuthMode | None = None) -> ClaudeCredential:
@@ -111,9 +118,11 @@ def resolve(vault: Vault, settings: Settings, mode: AuthMode | None = None) -> C
     try:
         secret = vault.resolve(ref)
     except RingkeeperError as error:
+        if settings.mode == "desktop":  # the app shows this; no CLI there
+            raise ClaudeAuthError("No Anthropic API key is stored. Add one in Settings.") from None
         raise ClaudeAuthError(
             f"no Claude credential for {mode} mode ({error}); run `ringkeeper auth login"
             f"{' --subscription' if mode is AuthMode.SUBSCRIPTION else ''}`"
         ) from None
     check_format(mode, secret.reveal())
-    return ClaudeCredential(mode, ref, secret)
+    return ClaudeCredential(mode, ref, secret, settings.anthropic_workspace_id)

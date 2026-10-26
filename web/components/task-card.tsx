@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 
 import { StatusBadge, money, timeAgo } from "@/components/ui";
 import { taskHref } from "@/lib/client/routes";

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/link";
 
 import { Composer } from "@/components/composer";
 import { TaskCardView, type TaskCard } from "@/components/task-card";

@@ -176,6 +176,9 @@ def test_git_work_lands_on_the_task_branch(run_stub: Callable[..., Run], workspa
         task = tasks.get_task(session, run.task_id)
         assert task.git_branch == tasks.branch_name(task.id)
         assert task.changed_files == ["NOTES.md"]
+    # Reported without any checks configured: the architect reviews it.
+    [diff] = events_of(run.task_id)["ringkeeper.diff"]
+    assert "+++ b/NOTES.md" in diff["text"]
     log = git("-C", str(workspace), "log", "--oneline", "main")
     assert len(log.splitlines()) == 1  # main didn't move
 
@@ -241,6 +244,40 @@ def test_the_worker_inherits_nothing_from_ringkeeper(
     assert Path(env["CLAUDE_CONFIG_DIR"]) == runtime.state_dir(spec.state_volume) / "claude"
     assert json.loads(env[TASK_ENV])["workspace"] == str(tmp_path)
     assert env["PATH"].split(os.pathsep)[0] == str(tmp_path / "git" / "cmd")
+
+
+def test_workers_commit_as_the_user_else_as_ringkeeper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A worker's own home has no ~/.gitconfig: its identity comes from the user's."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-global-config"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    runtime = ProcessRuntime(tmp_path / "workers")
+
+    def identity(folder: Path) -> tuple[str, ...]:
+        spec = WorkerSpec(
+            name="w", image="", workspace=str(folder), network="",
+            state_volume=f"ringkeeper-state-{uuid.uuid4()}-worker",
+            env={TASK_ENV: json.dumps({"task_id": "t"})},
+        )  # fmt: skip
+        env = runtime.environment(spec)
+        keys = ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL")
+        return tuple(env[k] for k in keys)
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    default = ("Ringkeeper", "ringkeeper@localhost")
+    assert identity(plain) == default * 2
+
+    (tmp_path / "global").write_text("[user]\n\tname = Ada\n\temail = ada@example.com\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "global"))
+    assert identity(plain) == ("Ada", "ada@example.com") * 2
+
+    repo = tmp_path / "repo"
+    git("init", "-q", str(repo))
+    git("-C", str(repo), "config", "user.name", "Ada at work")
+    git("-C", str(repo), "config", "user.email", "ada@work.example")
+    assert identity(repo) == ("Ada at work", "ada@work.example") * 2  # the repo's own wins
 
 
 def test_memory_sizes() -> None:

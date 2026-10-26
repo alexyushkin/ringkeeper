@@ -98,11 +98,18 @@ def review_prompt(
     status = f"ended with {worker_status}" + (f": {error}" if error else "")
     if worker_status is TaskStatus.SUCCEEDED:
         status = "finished"
+    if diff:
+        shown = "Diff of the task branch:\n```diff\n" + _clip(diff, DIFF_CHARS) + "\n```"
+    elif task.changed_files:  # no diff came back, but files did change
+        files = "\n".join(f"- {path}" for path in task.changed_files[:200])
+        shown = f"No diff was reported. Files changed on the task branch:\n{files}"
+    else:
+        shown = "The task branch has no changes."
     parts = [
         f"Worker turn {task.review_round} {status}. This is review {task.review_round} of "
         f"{MAX_REVIEWS}.",
         f"Checks: {'all passed' if passed else 'FAILED'}\n{checks_block(checks)}",
-        "Diff of the task branch:\n```diff\n" + _clip(diff or "(no changes)", DIFF_CHARS) + "\n```",
+        shown,
     ]
     if worker_result:
         parts.append("The worker's final message:\n" + _clip(worker_result, 4000))
