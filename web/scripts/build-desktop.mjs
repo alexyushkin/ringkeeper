@@ -21,6 +21,7 @@ const SKIP = new Set([
 const SERVER_ONLY = [
   "proxy.ts",
   "app/bff",
+  "app/oauth",
   "lib/server",
   "app/(app)/projects/[name]",
   "app/(app)/tasks/[id]",

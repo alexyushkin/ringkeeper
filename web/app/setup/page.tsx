@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
+import { RemoteServices } from "@/components/connection-library";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, Select, Toggle } from "@/components/ui";
@@ -204,7 +205,7 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
     <Card className="space-y-4">
       <h2 className="text-lg font-semibold">Connect a service (optional)</h2>
       <p className="text-sm text-muted">
-        Give a project access to a service it works with: its database, automations, Airtable, Vercel, Twilio or Gmail. Ringkeeper keeps the key; the assistants never see it. You can add more on each project's page.
+        Give a project access to a service it works with. Sign in with one click where the service allows it, or paste a key. Ringkeeper keeps it; the assistants never see it. You can add more on each client's page.
       </p>
       {added ? (
         <div className="space-y-4">
@@ -219,7 +220,11 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
           {list.length > 1 ? (
             <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} />
           ) : null}
-          <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
+          <h3 className="font-medium">Sign in to a service</h3>
+          <RemoteServices key={`remote-${project.name}`} client={project.owner} project={project.name} onAdded={setAdded} />
+          <Details label="Other services (a database, n8n, Twilio, Gmail…)">
+            <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
+          </Details>
           <Button kind="ghost" onClick={skip}>
             Skip for now
           </Button>
@@ -489,6 +494,9 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
   const [ok, setOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [project, setProject] = useState<string | null>(added);
+  const [signedIn, setSignedIn] = useState<string | null>(null);
+  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const owner = projects.data?.find((p) => p.name === project)?.owner ?? null;
 
   useEffect(() => {
     // Picked up again after a reload: use the project made in the previous step.
@@ -527,8 +535,25 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
             {project ? `Connect it to ${project} and finish` : "Finish"}
           </Button>
         </div>
+      ) : signedIn ? (
+        <div className="space-y-4">
+          <Alert tone="good">Connected {signedIn}{project ? ` and linked it to ${project}` : ""}.</Alert>
+          <Button kind="primary" onClick={onDone}>
+            Finish
+          </Button>
+        </div>
       ) : (
-        <ConnectionForm onSaved={setConnection} />
+        <>
+          {owner ? (
+            <>
+              <h3 className="font-medium">Sign in to a service</h3>
+              <RemoteServices client={owner} project={project ?? undefined} onAdded={setSignedIn} />
+            </>
+          ) : null}
+          <Details label={owner ? "Other services (a database, n8n, Twilio, Gmail…)" : "Add a connection"}>
+            <ConnectionForm onSaved={setConnection} />
+          </Details>
+        </>
       )}
     </Card>
   );

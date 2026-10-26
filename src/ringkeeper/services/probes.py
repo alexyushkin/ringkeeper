@@ -19,7 +19,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import scrub
-from ringkeeper.services import admin_audit, instances, mcp_tools
+from ringkeeper.services import admin_audit, instances, mcp_oauth, mcp_tools
 from ringkeeper.vault import get_vault
 
 TIMEOUT_SECONDS = 20
@@ -78,7 +78,7 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         config = dict(instance.config or {})
     timeout = MCP_TIMEOUT_SECONDS if kind is InstanceType.MCP else TIMEOUT_SECONDS
     try:
-        secret = get_vault().resolve(ref)
+        secret = mcp_oauth.resolve(get_vault(), name, ref)
         if kind in ADAPTERS:
             secret.also_scrub(*ADAPTERS[kind].secret_fragments(secret.reveal()))
         target = Target(name, env, base_url, secret, config)

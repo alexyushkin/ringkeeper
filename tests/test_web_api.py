@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx2
 import pytest
@@ -33,7 +34,7 @@ from ringkeeper.models import (
     Task,
     TaskStatus,
 )
-from ringkeeper.services import runtime, secrets_in, tasks
+from ringkeeper.services import instances, mcp_oauth, runtime, secrets_in, tasks
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.vault import get_vault
 from tests.fake_telegram import AUDIO_MARKER, BOT_TOKEN, FakeStt, FakeTelegram
@@ -878,3 +879,79 @@ def test_a_pasted_psql_command_gets_a_plain_hint() -> None:
         secrets_in.check_connection_secret(InstanceType.SUPABASE, "mysql://u:p@h/db")
     assert "Neon" in str(refused.value)
     assert not str(refused.value).startswith("For Supabase")
+
+
+# --- Remote services (M5.5) ---
+
+
+def test_signing_in_to_a_remote_service_adds_a_narrowed_connection(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_mcp_oauth import FakeAuthServer  # noqa: PLC0415
+
+    fake = FakeAuthServer()
+    monkeypatch.setattr(mcp_oauth, "transport", httpx2.MockTransport(fake.handle))
+    owner.post("/projects", json={"name": "acme-web", "owner": "acme"})
+    owner.post("/projects", json={"name": "globex-portal", "owner": "globex"})
+    catalog = {s["key"]: s for s in owner.get("/remote-services").json()}
+    assert catalog["neon"]["signin"] is True
+    assert catalog["github"]["signin"] is False
+    assert "stripe" not in catalog
+    assert [f["key"] for f in catalog["neon"]["scope"]] == ["project", "branch"]
+
+    body = {
+        "remote": "neon", "name": "acme-neon", "owner": "acme", "project": "acme-web",
+        "scope": {"project": "p-alpha"},
+    }  # fmt: skip
+    refused = owner.post("/connections/signin", json=body)
+    assert refused.status_code == 409  # server mode needs its public address
+    assert "RINGKEEPER_WEB_ORIGIN" in refused.text
+    monkeypatch.setenv("RINGKEEPER_WEB_ORIGIN", "https://rk.example")
+    other_client = owner.post("/connections/signin", json={**body, "project": "globex-portal"})
+    assert other_client.status_code == 409  # another client's project
+    started = owner.post("/connections/signin", json=body)
+    assert started.status_code == 200, started.text
+    page_url: str = started.json()["url"]
+    query = {k: v[0] for k, v in parse_qs(urlsplit(page_url).query).items()}
+    assert query["redirect_uri"] == "https://rk.example/oauth/callback"
+    fake.challenge = query["code_challenge"]
+
+    page = owner.get("/oauth/callback", params={"state": query["state"], "code": "good"})
+    assert page.status_code == 200, page.text
+    assert "connected as &#x27;acme-neon&#x27;" in page.text
+    again = owner.get("/oauth/callback", params={"state": query["state"], "code": "good"})
+    assert again.status_code == 400  # a sign-in is used once
+
+    [connection] = [c for c in owner.get("/connections").json() if c["name"] == "acme-neon"]
+    assert connection["type"] == "mcp"
+    assert connection["config"]["remote"] == "neon"
+    assert connection["links"] == [
+        {"project": "acme-web", "scope": {"project": "p-alpha"}, "is_default": False}
+    ]
+    assert "access-token-one" not in json.dumps(owner.get("/connections").json())
+    oauth = json.loads(get_vault().resolve(connection_ref("acme-neon")).reveal())["oauth"]
+    assert oauth["refresh_token"] == "refresh-token-one"
+
+
+def test_a_remote_service_with_a_pasted_token(owner: TestClient) -> None:
+    owner.post("/projects", json={"name": "acme-web", "owner": "acme"})
+    body = {"remote": "github", "name": "acme-github", "owner": "acme", "token": " ghp_x1y2z3 "}
+    assert owner.post("/connections/remote", json=body).status_code == 201
+    stored = json.loads(get_vault().resolve(connection_ref("acme-github")).reveal())
+    assert stored == {
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {"Authorization": "Bearer ghp_x1y2z3"},
+    }
+    sign_in_only = {"remote": "atlassian", "name": "acme-jira", "owner": "acme", "token": "t"}
+    assert owner.post("/connections/remote", json=sign_in_only).status_code == 409
+    link = owner.put(
+        "/projects/acme-web/connections/acme-github", json={"scope": {"owner": "acme-inc"}}
+    )
+    assert link.json()["scope"] == {"owner": "acme-inc"}
+    bad = owner.put("/projects/acme-web/connections/acme-github", json={"scope": {"repo": "x"}})
+    assert bad.status_code == 409  # the repository needs its owner first
+
+
+def connection_ref(name: str) -> str:
+    with session_scope() as session:
+        return instances.get_instance(session, name).secret_ref

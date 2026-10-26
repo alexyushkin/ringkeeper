@@ -7,9 +7,10 @@ with the launch secret (/desktop/api/..., see desktop/server.py); the window
 through /bff like the rest of the API.
 """
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import Field
 from sqlalchemy import select
 
 from ringkeeper.api.auth import AdminDep
@@ -62,24 +63,27 @@ def claude_code_folders(session: SessionDep) -> list[dict[str, str]]:
 
 @router.get("/claude-desktop-servers")
 def claude_desktop_servers(session: SessionDep) -> dict[str, Any]:
-    """The MCP servers in Claude Desktop's settings: name, a preview with secrets
-    masked, how many secrets it has, and what's in the way of importing it."""
-    path = claude_desktop.find_config()
-    if path is None:
-        return {"config": None, "servers": []}
+    """The MCP servers in Claude Desktop's settings and its installed extensions: name,
+    a preview with secrets masked, how many secrets, what an extension still needs,
+    and what's in the way of importing it."""
+    config, extensions = claude_desktop.find_config(), claude_desktop.find_extensions()
     done = claude_desktop.imported(session)
     return {
-        "config": str(path),
+        "config": str(config) if config else None,
+        "extensions": str(extensions) if extensions else None,
         "servers": [
-            s.summary() | {"imported_as": done.get(s.name)}
-            for s in claude_desktop.read_servers(path)
+            s.summary() | {"imported_as": done.get(s.key)} for s in claude_desktop.everything()
         ],
     }
 
 
 class ImportChoice(Input):
-    name: str
+    name: str  # the server's key (its name, or extension:<folder>)
     project: Slug
+    # What an extension needs that Claude Desktop's files don't show (an API key).
+    values: dict[str, Annotated[str, Field(max_length=4000)]] = Field(
+        default_factory=dict[str, str], repr=False
+    )
 
 
 class ImportIn(Input):
@@ -89,11 +93,11 @@ class ImportIn(Input):
 @router.post("/claude-desktop-servers/import", dependencies=[RecentAuth])
 def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> dict[str, Any]:
     """Import the chosen servers, each linked to its project. The secrets are read
-    here from Claude Desktop's file and go straight into the vault."""
-    path = claude_desktop.find_config()
-    if path is None:
-        raise HTTPException(404, detail="Claude Desktop's settings file isn't on this computer.")
-    found = {s.name: s for s in claude_desktop.read_servers(path)}
+    here from Claude Desktop's files (or typed for an extension) and go straight
+    into the vault."""
+    found = {s.key: s for s in claude_desktop.everything()}
+    if not found and claude_desktop.find_config() is None:
+        raise HTTPException(404, detail="Claude Desktop's settings aren't on this computer.")
     done = claude_desktop.imported(session)
     created: dict[str, str] = {}
     for choice in data.servers:
@@ -102,11 +106,11 @@ def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> d
             raise HTTPException(404, detail=f"Claude Desktop has no server named {choice.name}.")
         if choice.name in done:
             raise HTTPException(
-                409, detail=f"{choice.name} is already imported as {done[choice.name]}."
+                409, detail=f"{server.name} is already imported as {done[choice.name]}."
             )
         try:
             created[choice.name] = claude_desktop.import_server(
-                session, get_settings(), server, choice.project
+                session, get_settings(), server, choice.project, dict(choice.values)
             )
         except RuleViolationError as error:
             raise HTTPException(422, detail=str(error)) from None

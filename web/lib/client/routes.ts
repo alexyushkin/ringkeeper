@@ -17,3 +17,8 @@ export function taskHref(id: string): string {
 export function threadHref(id: string): string {
   return DESKTOP ? `/thread?id=${encodeURIComponent(id)}` : `/threads/${id}`;
 }
+
+/** A client's page (their connection library): by query string in both apps. */
+export function clientHref(name: string): string {
+  return `/client?name=${encodeURIComponent(name)}`;
+}

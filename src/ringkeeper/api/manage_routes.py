@@ -24,7 +24,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from ringkeeper import netpolicy
+from ringkeeper import netpolicy, remote
 from ringkeeper.adapters import mcp
 from ringkeeper.adapters.base import Target, ToolError
 from ringkeeper.api.auth import AdminDep
@@ -51,6 +51,7 @@ from ringkeeper.schemas import (
     ModelKey,
     NonEmpty,
     ProjectIn,
+    ScopeValue,
     Slug,
     WorkspaceId,
 )
@@ -59,6 +60,7 @@ from ringkeeper.services import (
     admin_audit,
     bindings,
     instances,
+    mcp_oauth,
     mcp_tools,
     model_list,
     probes,
@@ -282,6 +284,7 @@ class ConnectionBindingIn(Input):
     is_default: bool = False
     allowed_tools: CleanList = Field(default_factory=list[str])
     preapproved_writes: CleanList = Field(default_factory=list[str])
+    scope: dict[Slug, ScopeValue] | None = None  # left out: the link keeps its scope
 
 
 WORKSPACE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*")
@@ -388,7 +391,10 @@ def bind_connection(
         f"{' as the default' if binding.is_default else ''}",
         by=OWNER, project=name, instance=instance,
     )  # fmt: skip
-    return {"project": name, "instance": instance, "is_default": binding.is_default}
+    return {
+        "project": name, "instance": instance, "is_default": binding.is_default,
+        "scope": binding.scope,
+    }  # fmt: skip
 
 
 @router.delete("/projects/{name}/connections/{instance}", status_code=204)
@@ -434,17 +440,33 @@ class ConnectionOut(BaseModel):
     base_url: str | None
     secret_stored: bool
     projects: list[str]
+    # Each project's link: what it's narrowed to (empty: the whole connection).
+    links: list[dict[str, Any]] = []
+    # What a link can be narrowed by (ringkeeper.remote); empty: it can't.
+    scope_fields: list[dict[str, str]] = []
     last_test_at: Any
     last_test_ok: bool | None
     last_test_message: str | None
 
 
+def _scope_fields(instance: Instance) -> list[dict[str, str]]:
+    rules = remote.spec_for(instance.type.value, instance.config)
+    fields = rules.fields if rules is not None else ()
+    return [{"key": f.key, "label": f.label, "hint": f.hint} for f in fields]
+
+
 def _connection_out(instance: Instance) -> ConnectionOut:
+    links = sorted(
+        ({"project": b.project.name, "scope": dict(b.scope or {}), "is_default": b.is_default}
+         for b in instance.bindings),
+        key=lambda link: str(link["project"]),
+    )  # fmt: skip
     return ConnectionOut(
         name=instance.name, type=instance.type, env=instance.env, owner=instance.owner,
         config=dict(instance.config or {}), base_url=instance.base_url,
         secret_stored=_stored(instance.secret_ref),
-        projects=instances.bound_project_names(instance), last_test_at=instance.last_test_at,
+        projects=instances.bound_project_names(instance), links=links,
+        scope_fields=_scope_fields(instance), last_test_at=instance.last_test_at,
         last_test_ok=instance.last_test_ok, last_test_message=instance.last_test_message,
     )  # fmt: skip
 
@@ -566,7 +588,7 @@ def connection_tools(name: str, session: SessionDep) -> dict[str, Any]:
     instance = instances.get_instance(session, name)
     if instance.type is not InstanceType.MCP:
         raise HTTPException(409, detail="Only MCP server connections list their tools here.")
-    secret = get_vault().resolve(instance.secret_ref)
+    secret = mcp_oauth.resolve(get_vault(), instance.name, instance.secret_ref)
     secret.also_scrub(*mcp.secret_fragments(secret.reveal()))
     target = Target(instance.name, instance.env, None, secret, dict(instance.config or {}))
     session.close()  # no transaction while the server starts
@@ -605,6 +627,6 @@ def project_connections(name: str, session: SessionDep, token: OwnerToken) -> li
     rows: list[ProjectInstance] = bindings.sorted_bindings(project)
     return [
         {"instance": b.instance.name, "type": b.instance_type, "env": b.instance_env,
-         "is_default": b.is_default}
+         "is_default": b.is_default, "scope": dict(b.scope or {})}
         for b in rows
     ]  # fmt: skip

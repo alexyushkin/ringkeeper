@@ -1,209 +1,79 @@
 "use client";
 
+import Link from "@/components/link";
 import { useState } from "react";
 
-import { TestButton, type ConnectionData } from "@/components/forms";
-import { Alert, Badge, Button, Card, Details, Empty, EnvBadge, Field, LinkButton, Loading, PageHeader, Select, timeAgo } from "@/components/ui";
-import { api, useApi } from "@/lib/client/api";
+import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
+import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Select } from "@/components/ui";
+import { useApi } from "@/lib/client/api";
+import { clientHref } from "@/lib/client/routes";
 import { sameClient, useScope } from "@/lib/client/scope";
-import { SERVICE } from "@/lib/client/words";
+import { ENVS } from "@/lib/client/words";
 
+/** Every client's connections at a glance. Each client's page holds their library. */
 export default function ConnectionsPage() {
-  const connections = useApi<ConnectionData[]>("connections");
+  const connections = useApi<LibraryConnection[]>("connections");
+  const services = useApi<RemoteService[]>("remote-services");
   const scope = useScope();
-  // The switcher: a client's connections, or the ones a project uses.
-  const shown = (connections.data ?? []).filter(
-    (c) => (!scope.client || sameClient(c.owner, scope.client)) && (!scope.project || c.projects.includes(scope.project)),
+  const [service, setService] = useState("");
+  const [env, setEnv] = useState("");
+  const [attention, setAttention] = useState("");
+  const all = connections.data ?? [];
+  const label = (c: LibraryConnection) => serviceName(c, services.data ?? []);
+  const shown = all.filter(
+    (c) =>
+      (!scope.client || sameClient(c.owner, scope.client)) &&
+      (!scope.project || c.projects.includes(scope.project)) &&
+      (!service || label(c) === service) &&
+      (!env || c.env === env) &&
+      (!attention || (attention === "failing" ? c.last_test_ok === false : c.projects.length === 0)),
   );
+  const clients = [...new Set(shown.map((c) => c.owner))].sort((a, b) => a.localeCompare(b));
+  const kinds = [...new Set(all.map(label))].sort();
+
   return (
     <>
-      <PageHeader title="Connections" subtitle="Databases and automation tools your projects use. Secrets are stored encrypted and never shown again." action={<LinkButton href="/connections/new" kind="primary">Add</LinkButton>} />
+      <PageHeader title="Connections" subtitle="Every client's services. Open a client to add, link or narrow theirs." action={<LinkButton href="/connections/new" kind="primary">Add</LinkButton>} />
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <Select label="Service" value={service} onChange={setService} options={[["", "Any service"], ...kinds.map((k): [string, string] => [k, k])]} />
+        <Select label="Kind of data" value={env} onChange={setEnv} options={[["", "Any"], ...ENVS]} />
+        <Select label="Show" value={attention} onChange={setAttention} options={[["", "All"], ["failing", "Last test failed"], ["unlinked", "Not linked to a project"]]} />
+      </div>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      {connections.data && shown.length === 0 ? <Empty>{connections.data.length ? "None for this client or project." : "No connections yet."}</Empty> : null}
-      <div className="space-y-3">
-        {shown.map((connection) => (
-          <ConnectionCard key={connection.name} connection={connection} onChange={connections.reload} />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function ConnectionCard({ connection, onChange }: { connection: ConnectionData; onChange: () => void }) {
-  const [secret, setSecret] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  async function replace() {
-    setError(null);
-    try {
-      await api(`connections/${connection.name}/secret`, { method: "PUT", json: { secret } });
-      setSecret("");
-      setSaved(true);
-      onChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function remove() {
-    if (!window.confirm(`Remove ${connection.name}? Its stored secret stays unused.`)) return;
-    try {
-      await api(`connections/${connection.name}`, { method: "DELETE" });
-      onChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  return (
-    <Card className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{connection.name}</span>
-        <EnvBadge env={connection.env} />
-        <span className="text-xs text-muted">{SERVICE[connection.type] ?? connection.type}</span>
-        {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
-        {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
-      </div>
-      <p className="text-sm text-muted">
-        Client {connection.owner}
-        {connection.projects.length ? ` · used by ${connection.projects.join(", ")}` : " · not linked to a project yet"}
-        {connection.last_test_at ? ` · tested ${timeAgo(connection.last_test_at)}` : ""}
-      </p>
-      {connection.type === "mcp" && connection.config.preview ? <p className="font-mono text-xs break-all text-muted">{connection.config.preview}</p> : null}
-      {connection.last_test_ok === false && connection.last_test_message ? <Alert>{connection.last_test_message}</Alert> : null}
-      <TestButton name={connection.name} onDone={() => onChange()} />
-      {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
-      <Details label="Change">
-        <div className="space-y-3">
-          {connection.type === "mcp" ? (
-            <p className="text-sm text-muted">Its settings came from Claude Desktop. To change them, change them there, remove this connection, and import it again.</p>
-          ) : (
-            <>
-              <p className="text-sm">Secret: {connection.secret_stored ? "saved ✓ (hidden)" : "missing"}</p>
-              <Field label="New secret" type="password" value={secret} onChange={setSecret} />
-            </>
-          )}
-          <div className="flex gap-2">
-            {connection.type === "mcp" ? null : (
-              <Button kind="primary" disabled={!secret} onClick={replace}>
-                Replace secret
-              </Button>
-            )}
-            <Button kind="danger" onClick={remove}>
-              Remove connection
-            </Button>
+      {connections.data && !shown.length ? <Empty>{all.length ? "Nothing matches." : "No connections yet."}</Empty> : null}
+      {clients.map((client) => (
+        <section key={client} className="mb-6">
+          <div className="mb-2 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-muted">{client}</h2>
+            <Link href={clientHref(client)} className="ml-auto text-sm text-accent">
+              Open {client}&apos;s connections ›
+            </Link>
           </div>
-          {saved ? <Alert tone="good">Saved. Test the connection to check it.</Alert> : null}
-        </div>
-      </Details>
-      {error ? <Alert>{error}</Alert> : null}
-    </Card>
-  );
-}
-
-type Level = "read" | "approve" | "confirm";
-
-interface McpTool {
-  name: string;
-  description: string;
-  rule: Level;
-  rule_from: "you" | "annotations" | "name" | "default";
-  default: Level;
-  default_from: "annotations" | "name" | "default";
-  hints: { read_only: boolean | null; destructive: boolean | null };
-}
-
-const RUNS: Record<Level, string> = {
-  read: "Runs without asking",
-  approve: "Waits for your approval",
-  confirm: "Waits; approving needs the name typed",
-};
-const FROM: Record<McpTool["default_from"], string> = {
-  annotations: "from the server's annotations",
-  name: "from its name",
-  default: "no annotations",
-};
-
-/** What the server says about a tool (its MCP annotations), if anything. */
-function hintBadge(tool: McpTool) {
-  if (tool.hints.read_only) return <Badge tone="good">Server: read-only</Badge>;
-  if (tool.hints.destructive) return <Badge tone="bad">Server: destructive</Badge>;
-  if (tool.hints.destructive === false) return <Badge>Server: not destructive</Badge>;
-  return null;
-}
-
-/** An imported MCP server's tools: what a call to each one needs. */
-function McpTools({ name, onChange }: { name: string; onChange: () => void }) {
-  const [open, setOpen] = useState(false);
-  const tools = useApi<{ tools: McpTool[] }>(open ? `connections/${name}/tools` : null);
-  const [edited, setEdited] = useState<Record<string, Level | ""> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  const listed = tools.data?.tools ?? [];
-  const chosen = edited ?? Object.fromEntries(listed.filter((t) => t.rule_from === "you").map((t) => [t.name, t.rule]));
-
-  async function save() {
-    setError(null);
-    setSaved(false);
-    try {
-      const rules = Object.fromEntries(Object.entries(chosen).filter(([, level]) => level));
-      await api(`connections/${name}/tool-rules`, { method: "PUT", json: { rules } });
-      setSaved(true);
-      setEdited(null);
-      tools.reload();
-      onChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  if (!open) {
-    return (
-      <button type="button" className="text-sm text-accent" onClick={() => setOpen(true)}>
-        Tools and approvals
-      </button>
-    );
-  }
-  return (
-    <div className="space-y-3 rounded-xl border border-line p-3">
-      <p className="text-sm text-muted">
-        Each tool starts from what its server says about it (its MCP annotations): read-only tools run without asking, destructive ones need the connection's name typed to approve, and the rest wait for your approval. With no annotations, a tool whose name sounds like deleting needs the name typed. Change any of them here.
-      </p>
-      {tools.loading ? <Loading /> : null}
-      {tools.error ? <Alert>{tools.error}</Alert> : null}
-      <ul className="space-y-3">
-        {listed.map((tool) => (
-          <li key={tool.name} className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm">{tool.name}</span>
-              {hintBadge(tool)}
-            </div>
-            {tool.description ? <p className="text-xs text-muted">{tool.description.slice(0, 200)}</p> : null}
-            <Select
-              label="When the agent calls it"
-              value={chosen[tool.name] ?? ""}
-              onChange={(level) => setEdited({ ...chosen, [tool.name]: level as Level | "" })}
-              options={[
-                ["", `${RUNS[tool.default]} (default, ${FROM[tool.default_from]})`],
-                ...(Object.keys(RUNS) as Level[]).map((level): [string, string] => [level, RUNS[level]]),
-              ]}
-            />
-          </li>
-        ))}
-      </ul>
-      {saved ? <Alert tone="good">Saved.</Alert> : null}
-      {error ? <Alert>{error}</Alert> : null}
-      <div className="flex gap-2">
-        <Button kind="primary" disabled={!tools.data || edited === null} onClick={save}>
-          Save
-        </Button>
-        <Button kind="ghost" onClick={() => setOpen(false)}>
-          Close
-        </Button>
-      </div>
-    </div>
+          <ul className="space-y-2">
+            {shown
+              .filter((c) => c.owner === client)
+              .map((c) => (
+                <li key={c.name}>
+                  <Link href={clientHref(client)} className="block rounded-2xl border border-line bg-surface p-3 hover:border-accent">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{c.name}</span>
+                      <EnvBadge env={c.env} />
+                      <span className="text-xs text-muted">{label(c)}</span>
+                      {c.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
+                      {c.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
+                    </div>
+                    <p className="mt-1 text-xs text-muted">
+                      {(c.links ?? []).length
+                        ? (c.links ?? []).map((l) => `${l.project} (${scopeText(l.scope, c.scope_fields)})`).join(" · ")
+                        : "Not linked to a project yet"}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ))}
+    </>
   );
 }

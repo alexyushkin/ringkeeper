@@ -18,17 +18,19 @@ LABELS = {mcp.READ: "runs without asking", mcp.APPROVE: "waits", mcp.CONFIRM: "n
 
 
 def remember(name: str, listed: JSON) -> None:
-    """Keep the hints from a list_tools answer with the connection, if they changed."""
-    hints = mcp.annotations_of(listed)
+    """Keep the hints (and argument names) from a list_tools answer with the connection."""
+    hints, arguments = mcp.annotations_of(listed), mcp.arguments_of(listed)
     with session_scope() as session:
         instance = instances.find_instance(session, name)
         if instance is None or instance.type is not InstanceType.MCP:
             return
         config = dict(instance.config or {})
-        if config.get("annotations") == hints:
+        if config.get("annotations") == hints and config.get("arguments") == arguments:
             return
         before = config.get("annotations")
-        instance.config = {**config, "annotations": hints}
+        instance.config = {**config, "annotations": hints, "arguments": arguments}
+        if before == hints:
+            return
         if before is not None:  # the first listing isn't news
             admin_audit.record(
                 session, "connection.tool_hints", f"{name}: the server changed its tool hints",

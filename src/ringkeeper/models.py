@@ -292,6 +292,9 @@ class ProjectInstance(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     allowed_tools: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     preapproved_writes: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
+    # IDs this project's calls are pinned to, e.g. {"project": ..., "branch": ...}
+    # (ringkeeper.remote.narrow). Empty: the whole connection.
+    scope: Mapped[dict[str, str]] = mapped_column(Doc, server_default="{}")
 
     project: Mapped[Project] = relationship(back_populates="bindings")
     instance: Mapped[Instance] = relationship(back_populates="bindings")

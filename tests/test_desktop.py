@@ -6,6 +6,7 @@ worker process (the stub agent, no LLM). No Docker, no Postgres.
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -503,3 +504,73 @@ def test_personal_subscription_mode_is_off_until_turned_on(
     ref = current.claude_oauth_token_ref
     assert get_vault(current).resolve(ref).reveal() == second
     assert first not in json.dumps(settings)
+
+
+def test_claude_desktop_extensions_are_imported_with_what_they_need(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    claude = tmp_path / "Claude"
+    folder = claude / "Claude Extensions" / "ant.dir.gh.acme.notes"
+    folder.mkdir(parents=True)
+    shutil.copy(Path(__file__).parent / "fixtures" / "fake_mcp_server.py", folder / "server.py")
+    manifest = {
+        "name": "notes", "display_name": "Acme Notes",
+        "server": {"type": "python", "entry_point": "server.py", "mcp_config": {
+            "command": sys.executable,
+            "args": ["${__dirname}/server.py", "${user_config.folders}"],
+            "env": {"FAKE_API_KEY": "${user_config.api_key}"},
+        }},
+        "user_config": {
+            "api_key": {"type": "string", "title": "Acme API key", "sensitive": True,
+                        "required": True},
+            "folders": {"type": "directory", "title": "Folders", "multiple": True,
+                        "required": True},
+        },
+    }  # fmt: skip
+    (folder / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    off = claude / "Claude Extensions" / "ant.dir.gh.acme.off"
+    off.mkdir()
+    (off / "manifest.json").write_text(
+        json.dumps({"name": "off", "server": {"mcp_config": {"command": sys.executable}}}),
+        encoding="utf-8",
+    )
+    saved = claude / "Claude Extensions Settings"
+    saved.mkdir()
+    folders = [str(tmp_path / "a"), str(tmp_path / "b")]
+    (saved / "ant.dir.gh.acme.notes.json").write_text(
+        json.dumps({"isEnabled": True, "userConfig": {"folders": folders}}), encoding="utf-8"
+    )
+    (saved / "ant.dir.gh.acme.off.json").write_text('{"isEnabled": false}', encoding="utf-8")
+    monkeypatch.setattr(
+        claude_desktop, "config_paths", lambda: [claude / "claude_desktop_config.json"]
+    )
+    win = window(desktop)
+    assert win.post("/bff/projects", json={"name": "acme-web", "owner": "acme"}).status_code == 201
+
+    listed = win.get("/bff/desktop/claude-desktop-servers").json()
+    assert listed["config"] is None  # no config file, only extensions
+    servers = {s["key"]: s for s in listed["servers"]}
+    notes = servers["extension:ant.dir.gh.acme.notes"]
+    assert (notes["name"], notes["kind"], notes["problem"]) == ("Acme Notes", "extension", None)
+    assert notes["needs"] == [{"key": "api_key", "title": "Acme API key", "secret": True}]
+    assert str(folder) in notes["preview"]
+    assert servers["extension:ant.dir.gh.acme.off"]["problem"] == "turned off in Claude Desktop"
+
+    choice = {"name": notes["key"], "project": "acme-web"}
+    missing = win.post("/bff/desktop/claude-desktop-servers/import", json={"servers": [choice]})
+    assert missing.status_code == 422
+    assert "needs Acme API key" in missing.text
+    key = "typed-key-0123456789"
+    made = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [{**choice, "values": {"api_key": key}}]},
+    )
+    assert made.json() == {"imported": {notes["key"]: "acme-notes"}}, made.text
+    with session_scope() as session:
+        ref = instances.get_instance(session, "acme-notes").secret_ref
+    spec = json.loads(get_vault().resolve(ref).reveal())
+    assert spec["env"] == {"FAKE_API_KEY": key}
+    assert spec["args"] == [f"{folder}/server.py", *folders]  # one argument per folder
+    listed = win.get("/bff/desktop/claude-desktop-servers").json()
+    assert {s["key"]: s["imported_as"] for s in listed["servers"]}[notes["key"]] == "acme-notes"
+    assert key not in json.dumps(listed)

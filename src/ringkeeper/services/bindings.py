@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from ringkeeper import remote
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Env, Instance, Project, ProjectInstance
 from ringkeeper.schemas import BindingIn
@@ -66,6 +67,11 @@ def set_binding(session: Session, data: BindingIn) -> tuple[ProjectInstance, boo
     project, instance = _resolve(session, data.project, data.instance)
     if data.is_default:
         check_default_allowed(project, instance)
+    rules = remote.spec_for(instance.type.value, instance.config)
+    try:
+        scope = None if data.scope is None else remote.check_scope(rules, data.scope)
+    except remote.ScopeError as error:
+        raise RuleViolationError(str(error)) from None
 
     binding = find_binding(project, instance)
     created = binding is None
@@ -75,6 +81,8 @@ def set_binding(session: Session, data: BindingIn) -> tuple[ProjectInstance, boo
     binding.is_default = data.is_default
     binding.allowed_tools = data.allowed_tools
     binding.preapproved_writes = data.preapproved_writes
+    if scope is not None or created:
+        binding.scope = scope or {}
     session.flush()
     return binding, created
 

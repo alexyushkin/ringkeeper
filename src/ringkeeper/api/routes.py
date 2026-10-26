@@ -64,6 +64,7 @@ def get_project(name: str, session: SessionDep) -> ProjectDetailOut:
             is_default=b.is_default,
             allowed_tools=b.allowed_tools,
             preapproved_writes=b.preapproved_writes,
+            scope=dict(b.scope or {}),
         )
         for b in bindings.sorted_bindings(project)
     ]

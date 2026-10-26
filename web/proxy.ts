@@ -9,7 +9,7 @@ import { HOST_REFUSED, hostAllowed } from "@/lib/hosts";
  * sessions itself, against the API.
  */
 
-const OPEN_PAGES = ["/login", "/setup"];
+const OPEN_PAGES = ["/login", "/setup", "/oauth/callback"];
 
 export function proxy(request: NextRequest): NextResponse {
   if (!hostAllowed(request.headers)) {

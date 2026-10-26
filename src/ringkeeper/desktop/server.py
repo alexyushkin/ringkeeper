@@ -142,7 +142,9 @@ class FrontDoor:
         self.hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
         self.origins = {f"http://{host}" for host in self.hosts}
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+    async def __call__(  # noqa: PLR0912 (one branch per kind of request)
+        self, scope: Scope, receive: Receive, send: Send
+    ) -> None:
         if scope["type"] == "lifespan":  # the API's: it runs the manager and router
             await self.api(scope, receive, send)
             return
@@ -169,6 +171,11 @@ class FrontDoor:
             response = self._no_secret()
         elif path == "/desktop/start" and method == "GET":
             response = self._start(scope)
+        elif path == "/oauth/callback" and method == "GET":
+            # A service's sign-in sends the browser back here (any browser, so no
+            # session); the one-time state is the check (api.remote_routes).
+            await self.api(self._to_api(scope, path, ""), receive, send)
+            return
         elif path == "/bff" or path.startswith("/bff/"):
             refusal = self._refuse_bff(method, headers)
             if refusal is None:

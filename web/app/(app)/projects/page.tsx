@@ -5,7 +5,7 @@ import Link from "@/components/link";
 import { Alert, Badge, Empty, LinkButton, Loading, PageHeader } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 import { AUTONOMY } from "@/lib/client/words";
-import { projectHref } from "@/lib/client/routes";
+import { clientHref, projectHref } from "@/lib/client/routes";
 
 interface Project {
   name: string;
@@ -28,7 +28,12 @@ export default function ProjectsPage() {
       {projects.data?.length === 0 ? <Empty>No projects yet.</Empty> : null}
       {[...byClient.entries()].map(([client, list]) => (
         <section key={client} className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-muted">{client}</h2>
+          <div className="mb-2 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-muted">{client}</h2>
+            <Link href={clientHref(client)} className="ml-auto text-sm text-accent">
+              {client}&apos;s connections ›
+            </Link>
+          </div>
           <ul className="space-y-2">
             {list.map((project) => (
               <li key={project.name}>

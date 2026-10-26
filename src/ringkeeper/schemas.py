@@ -95,12 +95,22 @@ class InstanceIn(_Input):
     config: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
+# An ID a link is narrowed to (a Neon project, an Airtable base): it is sent
+# to the service in calls, so only plain ID characters.
+ScopeValue = Annotated[
+    str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9_.:\-]{1,200}$")
+]
+
+
 class BindingIn(_Input):
     project: Slug
     instance: Slug
     is_default: bool = False
     allowed_tools: CleanList = Field(default_factory=list[str])
     preapproved_writes: CleanList = Field(default_factory=list[str])
+    # What this project's calls are narrowed to (ringkeeper.remote); empty: all of it.
+    # Left out (None): an existing link keeps its scope.
+    scope: dict[Slug, ScopeValue] | None = None
 
 
 class _Output(BaseModel):
@@ -133,6 +143,7 @@ class BoundInstanceOut(InstanceOut):
     is_default: bool
     allowed_tools: list[str]
     preapproved_writes: list[str]
+    scope: dict[str, str] = {}
 
 
 class ProjectDetailOut(ProjectOut):

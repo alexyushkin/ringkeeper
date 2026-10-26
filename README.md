@@ -36,6 +36,24 @@ project globex-portal ── globex-supabase-dev (default supabase)
 A worker running for `acme-web` can only ever reach `acme-*` instances. The
 `globex-*` instances don't exist from its point of view.
 
+In the web app a connection belongs to one client: it's added once, in that
+client's library, and linked to any of that client's projects (never another
+client's). A link can be narrowed: for example acme-web to one Neon project
+and branch, and acme-app to another, over the same connection. The gateway
+enforces it by argument name: an ID the link pins is filled in when a call
+leaves it out and refused when a call names another, and tools that work
+across the whole account are refused on a narrowed link.
+
+Services with an official remote MCP server (Neon, Supabase, Airtable,
+Sentry, Notion, Linear, Cloudflare, Atlassian) connect with one click: the
+service's own sign-in page, using MCP's OAuth with dynamic client
+registration. Tokens go to the vault and are refreshed before they expire.
+Pasting a token stays available, and is the only way for GitHub. Notion and
+Linear can't be narrowed below the workspace you sign in to. In server mode,
+sign-in needs `RINGKEEPER_WEB_ORIGIN` (the address the service sends you back
+to). SQL run through a remote service's SQL tool is checked like a database
+connection's: deleting or changing tables needs the connection's name typed.
+
 ## How a call flows
 
 ```
@@ -174,9 +192,8 @@ A worker only gets the endpoints of the services its project is connected to.
   only a preview with secret-looking args masked. A command server runs on the
   gateway's machine for each call, with a small environment (no Claude
   credential, nothing of Ringkeeper's) in its own folder. Each tool's default
-  comes from the server's MCP annotations: 
-eadOnlyHint runs without asking,
-  destructiveHint needs the connection's name typed to approve, and anything
+  comes from the server's MCP annotations: `readOnlyHint` runs without asking,
+  `destructiveHint` needs the connection's name typed to approve, and anything
   else waits for approval (with no annotations, a tool whose name says it
   deletes needs the name typed). The annotations are remembered whenever the
   tools are listed (Test, Connections, or the agent) and a change to them is

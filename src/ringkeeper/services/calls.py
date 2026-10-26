@@ -7,6 +7,8 @@ Checks run in a fixed order, and the first failure refuses the call:
 2. the instance exists (omitted only for reads, via the project's default)
 3. the instance is bound to the token's project
 4. the tool is in the binding's allowed_tools (empty = all)
+5. the call stays inside the binding's scope, if it has one: IDs it pins are
+   filled in or checked, and account-wide tools are refused (ringkeeper.remote)
 
 Then reads run; writes to dev/staging run and are audited; writes to prod are
 held as a decision unless the tool is in preapproved_writes.
@@ -16,16 +18,18 @@ can't discover another client's instance names; the audit row keeps the
 precise reason.
 """
 
+import inspect
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 import anyio.to_thread
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ringkeeper import remote
 from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
@@ -42,7 +46,7 @@ from ringkeeper.models import (
     ProjectInstance,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import audit, decisions, holds, mcp_tools, revocations
+from ringkeeper.services import audit, decisions, holds, mcp_oauth, mcp_tools, revocations
 from ringkeeper.vault import Vault, VaultError
 
 logger = logging.getLogger(__name__)
@@ -64,6 +68,7 @@ class Authorized:
     secret_ref: str
     preapproved: bool
     config: JSON
+    scope: dict[str, str] = field(default_factory=dict[str, str])
 
 
 async def _db[T](fn: Callable[[Session], T]) -> T:
@@ -149,7 +154,45 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
         secret_ref=instance.secret_ref,
         preapproved=call.tool in binding.preapproved_writes,
         config=dict(instance.config or {}),
+        scope=dict(binding.scope or {}),
     )
+
+
+def _takes(spec: ToolSpec) -> list[str]:
+    return list(inspect.signature(spec.handler).parameters)[1:]
+
+
+def narrowed(call: ToolCall, spec: ToolSpec, auth: Authorized) -> JSON:
+    """The call's arguments inside the binding's scope (check 5). Raises RefusalError."""
+    rules = remote.spec_for(call.service.value, auth.config)
+    if not auth.scope or rules is None:
+        return call.args
+    try:
+        if call.service is not InstanceType.MCP:
+            return remote.narrow(rules, auth.scope, call.tool, call.args, _takes(spec))
+        if call.tool != "call_tool":
+            return call.args  # list_tools: filtered after it answers
+        tool = str(call.args.get("tool", ""))
+        arguments = cast(JSON, call.args.get("arguments") or {})
+        takes = cast(JSON, auth.config.get("arguments") or {}).get(tool)
+        inner = remote.narrow(rules, auth.scope, tool, arguments, takes)
+        return {**call.args, "arguments": inner}
+    except remote.ScopeError as error:
+        raise RefusalError(str(error), f"outside the link's scope: {error}") from None
+
+
+def _limit_listing(result: JSON, auth: Authorized) -> JSON:
+    """A scoped link's tool list: only what it can call, and what it's limited to."""
+    rules = remote.spec_for(InstanceType.MCP.value, auth.config)
+    if not auth.scope or rules is None:
+        return result
+    listed = cast(list[JSON], result.get("tools") or [])
+    kept = [
+        t for t in listed
+        if remote.usable(rules, auth.scope, str(t.get("name")),
+                         list(cast(JSON, t.get("input_schema") or {}).get("properties") or {}))
+    ]  # fmt: skip
+    return {**result, "tools": kept, "limited_to": dict(auth.scope)}
 
 
 def _record(call: ToolCall, outcome: AuditOutcome, **fields: Any) -> None:
@@ -169,10 +212,15 @@ def _authorize_or_refuse(call: ToolCall, spec: ToolSpec) -> Authorized:
 
 def _target(vault: Vault, adapter: Adapter, auth: Authorized) -> Target:
     try:
-        secret = vault.resolve(auth.secret_ref)
+        secret = mcp_oauth.resolve(vault, auth.instance, auth.secret_ref)
     except VaultError as error:
         raise ToolError(
             f"the secret for instance '{auth.instance}' is unavailable: {error}"
+        ) from None
+    except mcp_oauth.SignInError as error:
+        raise ToolError(
+            f"the sign-in for '{auth.instance}' needs renewing ({error}); the user can sign "
+            "in again under Connections"
         ) from None
     secret.also_scrub(*adapter.secret_fragments(secret.reveal()))
     return Target(auth.instance, auth.env, auth.base_url, secret, auth.config)
@@ -248,6 +296,13 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     spec = adapter.tool(call.tool)
     auth = await anyio.to_thread.run_sync(_authorize_or_refuse, call, spec)
     call = replace(call, instance=auth.instance)
+    try:
+        call = replace(call, args=narrowed(call, spec, auth))
+    except RefusalError as refusal:
+        await anyio.to_thread.run_sync(
+            partial(_record, call, AuditOutcome.REFUSED, reason=refusal.reason)
+        )
+        raise
     is_write = spec.kind is ToolKind.WRITE
 
     try:
@@ -275,6 +330,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         if call.service is InstanceType.MCP and call.tool == "list_tools":
             # The server's hints decide later calls without starting it first.
             await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
+            result = _limit_listing(result, auth)
         return scrub_obj(result)
 
     if spec.hold is Hold.ALWAYS or (
@@ -362,6 +418,11 @@ async def approve(
             return refusal
 
     auth = await _db(recheck)
+    if not isinstance(auth, RefusalError):
+        try:  # the link's scope as it is now
+            narrowed(call, spec, auth)
+        except RefusalError as refusal:
+            auth = refusal
     if isinstance(auth, RefusalError):
         reason = f"no longer allowed: {auth.reason}"
         return await anyio.to_thread.run_sync(partial(finish, AuditOutcome.REFUSED, reason=reason))

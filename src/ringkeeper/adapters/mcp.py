@@ -4,6 +4,9 @@ The secret (in the vault) is how to start or reach the server, JSON:
 
     {"command": "npx", "args": ["-y", "some-server"], "env": {"API_KEY": "..."}}
     {"url": "https://example.com/mcp", "headers": {"Authorization": "Bearer ..."}}
+    {"url": "https://mcp.neon.tech/mcp", "oauth": {"access_token": "...", ...}}
+
+The last is a remote service signed in to (services.mcp_oauth, ringkeeper.remote).
 
 Args go in the vault too: they often hold a connection string or a token.
 The connection's `config` holds what isn't secret: a preview of the command
@@ -35,6 +38,7 @@ from fastmcp import Client
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
 from pydantic import Field
 
+from ringkeeper import remote
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -69,8 +73,13 @@ def server_spec(value: str) -> JSON:
         raise ToolError("this MCP server's settings aren't in the expected form") from None
     spec = cast(JSON, data) if isinstance(data, dict) else {}
     command, url = spec.get("command"), spec.get("url")
+    oauth = spec.get("oauth")
     if isinstance(url, str) and url.startswith(("https://", "http://")):
-        return {"url": url, "headers": _strings(spec.get("headers"))}
+        headers = _strings(spec.get("headers"))
+        if isinstance(oauth, dict) and (token := cast(JSON, oauth).get("access_token")):
+            # Signed in (services.mcp_oauth); the token is refreshed before it's read.
+            headers["Authorization"] = f"Bearer {token}"
+        return {"url": url, "headers": headers}
     if isinstance(command, str) and command.strip():
         raw: object = spec.get("args") or []
         items = cast(list[object], raw) if isinstance(raw, list) else None
@@ -94,6 +103,12 @@ def secret_fragments(value: str) -> list[str]:
     except ToolError:
         return []
     found = [*spec.get("env", {}).values(), *spec.get("headers", {}).values()]
+    found += [h.split(" ", 1)[1] for h in spec.get("headers", {}).values() if " " in h]
+    oauth: object = json.loads(value).get("oauth")
+    if isinstance(oauth, dict):
+        tokens = cast(JSON, oauth)
+        found += [str(tokens.get(k) or "") for k in ("access_token", "refresh_token")]
+        found += [str(cast(JSON, tokens.get("client") or {}).get("client_secret") or "")]
     found += [a for a in spec.get("args", []) if looks_secret(a)]
     return [f for f in found if len(f) >= 6]
 
@@ -150,6 +165,7 @@ READ, APPROVE, CONFIRM = "read", "approve", "confirm"
 LEVELS = (READ, APPROVE, CONFIRM)
 # Where that came from.
 BY_USER, BY_ANNOTATIONS, BY_NAME, BY_DEFAULT = "you", "annotations", "name", "default"
+BY_SQL = "sql"  # a remote service's SQL tool: the statement decides (ringkeeper.destructive)
 # A tool whose name says it deletes or resets something, when its server doesn't say.
 DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
 RUNS = {
@@ -186,6 +202,9 @@ def rule(config: Mapping[str, Any], tool: str) -> Rule:
         return Rule(str(chosen), BY_USER)
     if tool in cast(list[str], config.get("read_only_tools") or []):  # the first version's ticks
         return Rule(READ, BY_USER)
+    service = remote.BY_KEY.get(str(config.get("remote") or ""))
+    if service is not None and tool in service.sql_tools:
+        return Rule(APPROVE, BY_SQL)  # whatever its hints say: the SQL decides
     return default_rule(cast(JSON, config.get("annotations") or {}).get(tool), tool)
 
 
@@ -214,6 +233,8 @@ async def list_tools(target: Target) -> JSON:
     listed: list[JSON] = []
     for t in tools:
         now, default = rule(config, t.name), default_rule(hints[t.name], t.name)
+        if now.source == BY_SQL:
+            default = now  # a remote service's SQL tool: its statement decides
         listed.append(
             {
                 "name": t.name,
@@ -234,6 +255,16 @@ async def list_tools(target: Target) -> JSON:
 def annotations_of(listed: JSON) -> JSON:
     """The server's hints per tool, from list_tools' answer, to remember with the connection."""
     return {str(t["name"]): t["hints"] for t in cast(list[JSON], listed.get("tools") or [])}
+
+
+def arguments_of(listed: JSON) -> dict[str, list[str]]:
+    """Each tool's argument names, so a link's scope can fill in an ID (ringkeeper.remote)."""
+    return {
+        str(t["name"]): sorted(
+            cast(JSON, cast(JSON, t.get("input_schema") or {}).get("properties") or {})
+        )
+        for t in cast(list[JSON], listed.get("tools") or [])
+    }
 
 
 def _classify(target: Target, args: JSON) -> ToolKind:

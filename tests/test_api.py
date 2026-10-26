@@ -137,6 +137,7 @@ def test_get_project_includes_bound_instances_without_secrets(
         "is_default": False,
         "allowed_tools": ["list_tables", "describe_table", "query", "execute"],
         "preapproved_writes": [],
+        "scope": {},
     }
     # Another client's instances are nowhere in this project's view.
     assert "globex" not in response.text

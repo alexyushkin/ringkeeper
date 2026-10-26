@@ -14,7 +14,7 @@ so `UPDATE notes SET body = 'drop table'` is ordinary and
 
 import re
 import unicodedata
-from typing import Any
+from typing import Any, cast
 
 from ringkeeper.adapters import mcp
 from ringkeeper.models import InstanceType
@@ -129,6 +129,23 @@ def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
     return None
 
 
+SQL_ARGUMENTS = ("sql", "query", "sqlStatements", "sql_statements", "statements")
+
+
+def _sql_of(arguments: object) -> str | None:
+    """The SQL a remote service's SQL tool was given (one statement, or a list)."""
+    if not isinstance(arguments, dict):
+        return None
+    given = cast(dict[str, Any], arguments)
+    for key in SQL_ARGUMENTS:
+        value = given.get(key)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list) and value:
+            return ";\n".join(str(v) for v in cast(list[Any], value))
+    return None
+
+
 def reason(
     service: InstanceType | None,
     tool: str | None,
@@ -149,6 +166,9 @@ def reason(
         # Held unless it reads; the typed name is for the ones marked or sounding final.
         name = str(args.get("tool", ""))
         found = mcp.rule(config or {}, name)
+        if found.source == mcp.BY_SQL:
+            sql = _sql_of(args.get("arguments"))
+            return sql_reason(sql) if sql else "has no SQL to check"
         return (
             f"runs '{name}', which {MCP_REASONS[found.source]}"
             if found.level == mcp.CONFIRM
