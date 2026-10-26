@@ -42,7 +42,7 @@ A worker running for `acme-web` can only ever reach `acme-*` instances. The
 worker (Claude Code, …)
    │  MCP over HTTP, Authorization: Bearer <worker token>
    ▼
-gateway  /mcp/supabase  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail
+gateway  /mcp/supabase  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/mcp
    1. valid token?            (signed, short-lived, names project + session)
    2. instance exists?        (omitted only for reads: the project default)
    3. bound to the project?
@@ -141,18 +141,21 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | Endpoint | Reads | Writes |
 |---|---|---|
 | `/mcp/supabase` | `list_tables`, `describe_table`, `query` (READ ONLY transaction) | `execute` |
-| `/mcp/n8n` | `list_workflows`, `get_workflow`, `list_executions`, `get_execution` | `activate_workflow`, `deactivate_workflow`, `update_workflow` |
+| `/mcp/n8n` | `list_workflows`, `get_workflow`, `list_executions`, `get_execution` | `activate_workflow`, `deactivate_workflow`, `update_workflow`, `retry_execution`, `stop_execution` (all always held) |
 | `/mcp/airtable` | `list_bases`, `list_tables`, `list_records`, `get_record` | `create_records`, `update_records`, `delete_records` |
 | `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
 | `/mcp/gmail` | `search_messages`, `get_message` | `create_draft` (never held), `send_email` (always held) |
+| `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is marked read-only) |
 
 A worker only gets the endpoints of the services its project is connected to.
 
 - **supabase:** the secret is a Postgres connection string. Each call runs
   exactly one statement over the extended protocol, so `COMMIT; …` tricks
   can't escape a read-only transaction.
-- **n8n:** the secret is the API key and `base_url` is the host.
+- **n8n:** the secret is the API key and `base_url` is the host. Every write
+  waits for approval, even on test data. n8n's API can't run a workflow on
+  demand; `retry_execution` runs a past execution again.
   `update_workflow` never puts a live workflow's new version live unless you
   pass `republish=true`. A held update is refused at approval if the workflow
   changed after the hold (its `updatedAt` moved), so an old approval can't
@@ -165,6 +168,15 @@ A worker only gets the endpoints of the services its project is connected to.
   promote, roll back. No env changes, domains or purchases.
 - **twilio:** the secret is JSON with the Account SID and a Standard API key
   (SID and secret). Sending a text always waits for approval.
+- **mcp:** an MCP server imported from Claude Desktop (desktop app, Settings
+  or first run). How to start it (command, args, env; or URL and headers) is
+  read from Claude Desktop's file straight into the vault; the connection keeps
+  only a preview with secret-looking args masked. A command server runs on the
+  gateway's machine for each call, with a small environment (no Claude
+  credential, nothing of Ringkeeper's) in its own folder. We can't know what a
+  third-party tool does, so every call waits for approval unless you mark the
+  tool read-only under Connections; a tool whose name says it deletes needs the
+  connection's name typed.
 - **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
   JSON with the address and the app password. Reading never marks mail as
   read. Drafts run without asking; sending always waits for approval.

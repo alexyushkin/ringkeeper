@@ -80,9 +80,14 @@ Python core: routing, connectors, approvals, projects and tasks.
 
 Left for later milestones:
 
-- **After v1:** a generic "MCP server" connection (any remote URL plus a token,
-  every tool held unless marked read-only) and the Claude Desktop import that
-  depends on it.
+- **Added before M6** (2026-10-26, on request): Claude Desktop's MCP servers can
+  be imported (first run, next to the Claude Code folders, and Settings), each
+  given to a project; their secrets go from the file straight into the vault.
+  Every call to an imported server waits for approval unless the user marks the
+  tool read-only. Servers whose command isn't on the computer, and SSE servers,
+  are listed but can't be imported. n8n: every write now always waits
+  (activate, deactivate, update), plus retry and stop for executions. Still
+  open: adding an MCP server by hand (URL or command) outside the import.
 - **M6:** bundle the embedded Python at `resources/python` and the web files at
   `resources/web` (the shell looks there), and MinGit at `resources/mingit`
   (`shell/scripts/fetch-mingit.ps1`, pinned and checked). The app identifier is
