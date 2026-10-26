@@ -65,6 +65,7 @@ from ringkeeper.services import (
     projects,
     runtime,
     secrets_in,
+    subscription,
     tasks,
     workspaces,
 )
@@ -109,6 +110,8 @@ def _settings_out(request: Request, session: SessionDep) -> SettingsOut:
         overridden=sorted(runtime.overrides(session)),
         services=supervisor.status() if supervisor else {},
         claude={
+            "subscription_allowed": subscription.allowed(settings),
+            "subscription_note": subscription.NOTE,
             "mode": settings.claude_auth_mode.value,
             "api_key": _stored(credential_ref(settings, AuthMode.API_KEY)),
             "subscription": _stored(credential_ref(settings, AuthMode.SUBSCRIPTION)),
@@ -177,8 +180,9 @@ class TelegramSecretIn(Input):
 @router.put("/secrets/claude", dependencies=[RecentAuth])
 def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[str, Any]:
     settings = current_settings()
-    if settings.mode == "desktop" and data.mode is not AuthMode.API_KEY:
-        # Anthropic's terms don't let a third-party app offer claude.ai sign-in.
+    if data.mode is AuthMode.SUBSCRIPTION and not subscription.allowed(settings):
+        # Anthropic's terms don't let an app offer claude.ai sign-in to others; your
+        # own install may turn personal subscription mode on.
         raise HTTPException(422, detail="The desktop app uses an Anthropic API key.")
     workspace = settings.anthropic_workspace_id if data.workspace_id is None else data.workspace_id
     try:
@@ -194,12 +198,35 @@ def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[st
     changes: dict[str, Any] = {}
     if settings.claude_auth_mode is not data.mode:
         changes["claude_auth_mode"] = data.mode.value
+    if data.mode is AuthMode.SUBSCRIPTION:
+        changes["subscription_source"] = subscription.FROM_SETUP_TOKEN
     if data.workspace_id is not None and (data.workspace_id or None) != (
         settings.anthropic_workspace_id
     ):
         changes["anthropic_workspace_id"] = data.workspace_id or None
     if changes:
         runtime.update(session, changes, by=OWNER)
+    return {"stored": True, "verified": stored.verified, "message": stored.message}
+
+
+@router.post("/secrets/claude/from-claude-code", dependencies=[RecentAuth])
+def use_claude_code_login(session: WriteSessionDep) -> dict[str, Any]:
+    """Subscription mode with the Claude Code login on this computer (desktop, personal
+    mode only). Its token is copied into the vault, and again whenever it changes."""
+    settings = current_settings()
+    if settings.mode != "desktop" or not settings.allow_subscription:
+        raise HTTPException(422, detail="Turn on personal subscription mode first.")
+    stored = secrets_in.store_claude(
+        session, settings, AuthMode.SUBSCRIPTION, subscription.login_token()
+    )
+    runtime.update(
+        session,
+        {
+            "claude_auth_mode": AuthMode.SUBSCRIPTION.value,
+            "subscription_source": subscription.FROM_LOGIN,
+        },
+        by=OWNER,
+    )
     return {"stored": True, "verified": stored.verified, "message": stored.message}
 
 

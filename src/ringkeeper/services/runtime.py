@@ -9,7 +9,7 @@ manager reads the effective settings on every tick).
 """
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,6 +35,8 @@ class RuntimeIn(Input):
     """Every field optional: a PATCH changes only what it names. null resets to .env."""
 
     claude_auth_mode: AuthMode | None = None
+    allow_subscription: bool | None = None
+    subscription_source: Literal["setup-token", "claude-code"] | None = None
     anthropic_workspace_id: WorkspaceId | None = None
     telegram: bool | None = None
     telegram_chat_ids: list[int] | None = None

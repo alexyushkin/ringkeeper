@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # mode offered in setup; subscription is for your own install on your own
     # account (Agent SDK terms) and must be switched on explicitly.
     claude_auth_mode: AuthMode = AuthMode.API_KEY
+    # The desktop app offers subscription mode only when this is on (your own
+    # install: RINGKEEPER_ALLOW_SUBSCRIPTION=1, or Settings#personal).
+    allow_subscription: bool = False
+    # Where the subscription token comes from: setup-token (pasted) or claude-code
+    # (the local Claude Code login, copied again when it changes).
+    subscription_source: Literal["setup-token", "claude-code"] | None = None
     claude_api_key_ref: str = "file://ringkeeper/anthropic-api-key"
     claude_oauth_token_ref: str = "file://ringkeeper/claude-oauth-token"  # noqa: S105 (a ref)
     # The Anthropic workspace an API key belongs to, for keys that must name one

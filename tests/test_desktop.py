@@ -22,8 +22,8 @@ from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
-from ringkeeper.models import DecisionKind, InstanceType, TaskStatus
-from ringkeeper.services import claude_desktop, inbox, instances, tasks
+from ringkeeper.models import AuthMode, DecisionKind, InstanceType, TaskStatus
+from ringkeeper.services import claude_desktop, inbox, instances, subscription, tasks
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
@@ -460,3 +460,46 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
     listing = ToolCall(caller, InstanceType.MCP, "list_tools", "notes", {})
     assert len(asyncio.run(run_call(listing, vault))["tools"]) == 4
     assert run("read_notes")["structured"] == {"result": ["first note"]}
+
+
+def test_personal_subscription_mode_is_off_until_turned_on(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    login = tmp_path / "claude-code"
+    login.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(login))
+    first, second = "sk-ant-oat01-" + "a" * 40, "sk-ant-oat01-" + "b" * 40
+
+    def signed_in(token: str, expires_in: float = 3600) -> None:
+        oauth = {"accessToken": token, "expiresAt": (time.time() + expires_in) * 1000}
+        (login / ".credentials.json").write_text(json.dumps({"claudeAiOauth": oauth}))
+
+    win = window(desktop)
+    token = {"mode": "subscription", "value": "sk-ant-oat01-" + "s" * 40}
+    assert win.put("/bff/secrets/claude", json=token).status_code == 422
+    assert win.post("/bff/secrets/claude/from-claude-code").status_code == 422
+    claude = win.get("/bff/settings").json()["claude"]
+    assert claude["subscription_allowed"] is False
+
+    win.patch("/bff/settings", json={"allow_subscription": True})  # Settings#personal
+    assert win.get("/bff/settings").json()["claude"]["subscription_allowed"] is True
+    signed_in(first, expires_in=-60)
+    expired = win.post("/bff/secrets/claude/from-claude-code")
+    assert expired.status_code == 409
+    assert "expired" in expired.json()["detail"]
+    signed_in(first)
+    assert win.post("/bff/secrets/claude/from-claude-code").status_code == 200
+    settings = win.get("/bff/settings").json()
+    assert settings["values"]["claude_auth_mode"] == "subscription"
+    assert settings["values"]["subscription_source"] == "claude-code"
+
+    # Claude Code refreshed its login: the next task or routed request takes the new token.
+    signed_in(second)
+    current = get_settings().model_copy(
+        update={"claude_auth_mode": AuthMode.SUBSCRIPTION, "subscription_source": "claude-code",
+                "data_dir": desktop["data_dir"]}
+    )  # fmt: skip
+    subscription.refresh(get_vault(current), current)
+    ref = current.claude_oauth_token_ref
+    assert get_vault(current).resolve(ref).reveal() == second
+    assert first not in json.dumps(settings)

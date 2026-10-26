@@ -44,6 +44,9 @@ class AgentSdkModel:
 
     def complete(self, system: str, prompt: str, model: str) -> Completion:
         # Resolved per call, so `ringkeeper auth login` needs no restart.
+        from ringkeeper.services import subscription  # noqa: PLC0415 (cycle)
+
+        subscription.refresh(self._vault, self._settings)
         credential = resolve(self._vault, self._settings)
         return anyio.run(self._complete, credential, system, prompt, model)
 

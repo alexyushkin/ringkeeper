@@ -14,6 +14,7 @@ import { WORKSPACE_HINT, download } from "@/lib/client/words";
 interface Settings {
   values: {
     claude_auth_mode: string;
+    allow_subscription: boolean;
     anthropic_workspace_id: string | null;
     telegram: boolean;
     telegram_chat_ids: number[];
@@ -38,7 +39,7 @@ interface Settings {
   };
   overridden: string[];
   services: Record<string, { running: boolean; error: string | null }>;
-  claude: { mode: string; api_key: boolean; subscription: boolean };
+  claude: { mode: string; api_key: boolean; subscription: boolean; subscription_allowed: boolean; subscription_note: string };
   telegram: { token: boolean };
 }
 
@@ -100,6 +101,7 @@ export default function SettingsPage() {
       {DESKTOP ? <ImportFromClaudeDesktop /> : null}
 
       <ClaudeCard settings={settings.data} onSaved={settings.reload} />
+      <PersonalMode on={v.allow_subscription} onChange={(on) => change({ allow_subscription: on })} />
 
       <Card className="mb-4 space-y-4">
         <h2 className="font-semibold">Telegram</h2>
@@ -226,11 +228,24 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
       setBusy(false);
     }
   }
+  async function useLogin() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api<{ message: string }>("secrets/claude/from-claude-code", { method: "POST" });
+      setMessage(result.message);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
   const stored = mode === "api_key" ? settings.claude.api_key : settings.claude.subscription;
   return (
     <Card className="mb-4 space-y-3">
       <h2 className="font-semibold">Claude</h2>
-      {DESKTOP ? null : (
+      {!settings.claude.subscription_allowed ? null : (
         <Select
           label="How Ringkeeper pays for Claude"
           value={mode}
@@ -241,8 +256,14 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
           ]}
         />
       )}
+      {mode === "subscription" ? <p className="text-sm text-muted">{settings.claude.subscription_note}</p> : null}
       <p className="text-sm text-muted">{stored ? "A key is saved (hidden)." : "No key saved for this option yet."}</p>
-      <Field label={stored ? "Replace the key" : "Key"} type="password" value={key} onChange={setKey} />
+      {mode === "subscription" && DESKTOP ? (
+        <Button onClick={useLogin} busy={busy}>
+          Use my Claude Code login
+        </Button>
+      ) : null}
+      <Field label={mode === "subscription" ? "Token from `claude setup-token`" : stored ? "Replace the key" : "Key"} type="password" value={key} onChange={setKey} />
       {mode === "api_key" ? (
         <Field label="Workspace ID (if your key needs one)" value={workspace} onChange={setWorkspace} placeholder="wrkspc_…" hint={WORKSPACE_HINT} />
       ) : null}
@@ -383,5 +404,25 @@ function SignOut() {
     >
       Sign out
     </Button>
+  );
+}
+
+
+/** Hidden unless the page is opened at #personal: your own install may use your own
+ * Claude subscription. */
+function PersonalMode({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => setShown(window.location.hash === "#personal"), []);
+  if (!shown) return null;
+  return (
+    <Card className="mb-4 space-y-3">
+      <h2 className="font-semibold">Personal subscription mode</h2>
+      <Toggle
+        label="Let this install use my own Claude subscription"
+        checked={on}
+        onChange={onChange}
+        hint="Personal use only, on your own install. Then choose it under Claude above."
+      />
+    </Card>
   );
 }

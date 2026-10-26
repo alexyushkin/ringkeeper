@@ -47,6 +47,7 @@ from ringkeeper.services import (
     inbox,
     projects,
     revocations,
+    subscription,
     tasks,
 )
 from ringkeeper.services.runtime import current_settings
@@ -382,6 +383,7 @@ class Manager:
             served = {b.instance_type for b in project.bindings if b.instance_type in ADAPTERS}
             endpoints = sorted(agent_name(service) for service in served)
         architect_role = job.role is SessionRole.ARCHITECT
+        subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
         credential = resolve_credential(self.vault, settings, job.auth_mode)
         token, claims = issue_token(
             job.project,
