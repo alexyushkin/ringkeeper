@@ -3,9 +3,11 @@ an in-memory keychain, the front door's lock, and a task run by a local
 worker process (the stub agent, no LLM). No Docker, no Postgres.
 """
 
+import asyncio
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -16,11 +18,13 @@ import httpx2
 import keyring
 import pytest
 
+from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
-from ringkeeper.models import DecisionKind, TaskStatus
-from ringkeeper.services import inbox, secrets_in, tasks
+from ringkeeper.models import DecisionKind, InstanceType, TaskStatus
+from ringkeeper.services import claude_desktop, inbox, secrets_in, tasks
+from ringkeeper.services.calls import run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
 from tests.test_vault import MemoryKeyring
@@ -342,3 +346,86 @@ def test_claude_code_folders_are_offered_as_projects(
 
     (config / ".claude.json").write_text("not json", encoding="utf-8")
     assert win.get("/bff/desktop/claude-code-folders").json() == []
+
+
+def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server = Path(__file__).parent / "fixtures" / "fake_mcp_server.py"
+    key, dsn = "fake-key-1234567890", "postgresql://notes:hunter2-not-real@db.example/notes"
+    config = tmp_path / "claude_desktop_config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "notes": {
+                        "command": sys.executable,
+                        "args": [str(server), dsn],
+                        "env": {"FAKE_API_KEY": key},
+                    },
+                    "browser": {"command": "definitely-not-installed-xyz", "args": ["-y", "pkg"]},
+                    "legacy": {"type": "sse", "url": "https://legacy.example/sse"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(claude_desktop, "config_paths", lambda: [config])
+    win = window(desktop)
+    assert win.post("/bff/projects", json={"name": "acme-web", "owner": "acme"}).status_code == 201
+
+    listed = win.get("/bff/desktop/claude-desktop-servers").json()
+    assert listed["config"] == str(config)
+    servers = {s["name"]: s for s in listed["servers"]}
+    assert servers["notes"]["problem"] is None
+    assert servers["notes"]["secrets"] == 2  # the env value and the connection string
+    assert servers["notes"]["preview"].endswith("••••")
+    assert "isn't on this computer" in servers["browser"]["problem"]
+    assert "SSE" in servers["legacy"]["problem"]
+    assert key not in json.dumps(listed)
+    assert dsn not in json.dumps(listed)
+
+    refused = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [{"name": "browser", "project": "acme-web"}]},
+    )
+    assert refused.status_code == 422
+    made = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [{"name": "notes", "project": "acme-web"}]},
+    )
+    assert made.json() == {"imported": {"notes": "notes"}}, made.text
+    again = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [{"name": "notes", "project": "acme-web"}]},
+    )
+    assert again.status_code == 409
+    assert win.get("/bff/desktop/claude-desktop-servers").json()["servers"][0]["imported_as"]
+
+    database = (desktop["data_dir"] / "ringkeeper.db").read_bytes()
+    assert key.encode() not in database
+    assert b"hunter2" not in database
+    [connection] = [c for c in win.get("/bff/connections").json() if c["name"] == "notes"]
+    assert connection["type"] == "mcp"
+    assert connection["env"] == "prod"
+    assert connection["projects"] == ["acme-web"]
+    assert connection["config"]["server"] == "notes"
+
+    tested = win.post("/bff/connections/notes/test").json()
+    assert tested["ok"] is True, tested
+    assert "3 tools" in tested["message"]
+    tools = win.get("/bff/connections/notes/tools").json()["tools"]
+    assert {t["name"] for t in tools} == {"read_notes", "delete_note", "what_i_got"}
+    marked = win.put("/bff/connections/notes/read-only-tools", json={"tools": ["read_notes"]})
+    assert marked.json() == {"read_only_tools": ["read_notes"]}
+
+    # Through the call pipeline: the marked tool reads, the others wait for approval.
+    caller = Caller("acme-web", "session-1", "token-1")
+    vault = get_vault(get_settings())
+
+    def run(tool: str) -> dict[str, Any]:
+        call = ToolCall(caller, InstanceType.MCP, "call_tool", "notes", {"tool": tool})
+        return asyncio.run(run_call(call, vault))
+
+    assert run("read_notes")["structured"] == {"result": ["first note"]}
+    assert run("what_i_got")["status"] == "held_for_approval"
