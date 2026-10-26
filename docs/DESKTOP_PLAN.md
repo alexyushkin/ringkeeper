@@ -54,9 +54,10 @@ Left for later milestones:
   sign in" checkbox. Voice is off until the Voice component.
 - **M6:** bundle the embedded Python at `resources/python` and the web files at
   `resources/web` (the shell looks there), and MinGit at `resources/mingit`
-  (`shell/scripts/fetch-mingit.ps1`, pinned and checked). The app identifier
-  (`com.generalinformatics.ringkeeper`) can change until the first release. In a dev
-  build, notifications show as from PowerShell; an installed app shows its own name.
+  (`shell/scripts/fetch-mingit.ps1`, pinned and checked). The app identifier is
+  `com.geninfos.ringkeeper` (final: it names the app to Windows, so it must not
+  change after the first release). In a dev build, notifications show as from
+  PowerShell; an installed app shows its own name.
 - **Not verified yet:** a task with a real model (`docs/DESKTOP_REAL_TASK_CHECK.md`),
   and anything on macOS.
 - **To watch:** SQLite allows one writer at a time, so a request that holds a write

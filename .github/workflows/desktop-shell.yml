@@ -1,0 +1,75 @@
+name: Desktop shell
+
+# The app shell (shell/, Tauri) with the real backend: crash restart, reattach
+# after a shell crash, and a Quit that leaves nothing running. A Windows job
+# (slow, and Windows minutes count double), so it runs only when the shell or
+# the desktop backend changes, and always on tags. Path filters don't apply to
+# tag pushes, so every v* tag runs it.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "shell/**"
+      - "src/ringkeeper/desktop/**"
+      - "src/ringkeeper/api/desktop_routes.py"
+      - "src/ringkeeper/cli/desktop.py"
+      - "src/ringkeeper/__main__.py"
+      - "src/ringkeeper/workers/process.py"
+      - "src/ringkeeper/storage/**"
+      - "src/ringkeeper/keys.py"
+      - "tests/test_desktop_shell.py"
+      - ".github/workflows/desktop-shell.yml"
+  pull_request:
+    paths:
+      - "shell/**"
+      - "src/ringkeeper/desktop/**"
+      - "src/ringkeeper/api/desktop_routes.py"
+      - "src/ringkeeper/cli/desktop.py"
+      - "src/ringkeeper/__main__.py"
+      - "src/ringkeeper/workers/process.py"
+      - "src/ringkeeper/storage/**"
+      - "src/ringkeeper/keys.py"
+      - "tests/test_desktop_shell.py"
+      - ".github/workflows/desktop-shell.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-shell-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-shell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Rust (stable, with clippy and rustfmt)
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shell/target
+          key: shell-${{ runner.os }}-${{ hashFiles('shell/Cargo.lock') }}
+      - run: cargo fmt --check
+        working-directory: shell
+      - run: cargo clippy --all-targets --locked -- -D warnings
+        working-directory: shell
+      - run: cargo test --locked
+        working-directory: shell
+      - run: cargo build --locked
+        working-directory: shell
+      - run: uv run pytest tests/test_desktop_shell.py -p no:cacheprovider
+        env:
+          RINGKEEPER_TEST_DB: sqlite
+          RINGKEEPER_SHELL_EXE: ${{ github.workspace }}\shell\target\debug\ringkeeper.exe
