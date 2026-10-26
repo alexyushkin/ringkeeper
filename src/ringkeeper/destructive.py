@@ -33,7 +33,11 @@ SAFE_TOOLS = {
     (InstanceType.TWILIO, "send_sms"),
     (InstanceType.GMAIL, "send_email"),
     (InstanceType.GMAIL, "create_draft"),
+    (InstanceType.N8N, "retry_execution"),
+    (InstanceType.N8N, "stop_execution"),
 }
+# An imported MCP server's tool whose name says it deletes or resets something.
+_DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
 
 _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
 _ESCAPE_STRING = re.compile(r"(?<![\w'])[eE]'")
@@ -131,6 +135,14 @@ def reason(
         return sql_reason(sql) if isinstance(sql, str) else "has no SQL to check"
     if (service, tool) in SAFE_TOOLS:
         return None
+    if service is InstanceType.MCP and tool == "call_tool":
+        # Every call is held anyway; the typed name is for the ones that sound final.
+        name = str(args.get("tool", ""))
+        return (
+            f"runs '{name}', which sounds like it deletes"
+            if _DESTRUCTIVE_NAME.search(name)
+            else None
+        )
     if service is InstanceType.N8N and tool == "update_workflow":
         return "replaces a whole workflow"
     return "uses a tool whose effects can't be checked"

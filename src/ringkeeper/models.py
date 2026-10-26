@@ -57,6 +57,7 @@ class InstanceType(enum.StrEnum):
     GOOGLE = "google"
     TWILIO = "twilio"
     GMAIL = "gmail"  # IMAP/SMTP with an app password (no Google OAuth in v1)
+    MCP = "mcp"  # an MCP server imported from Claude Desktop, run behind the gateway
 
 
 class Env(enum.StrEnum):
@@ -244,6 +245,9 @@ class Instance(TimestampMixin, Base):
     base_url: Mapped[str | None] = mapped_column(Text)
     secret_ref: Mapped[str] = mapped_column(Text)
     owner: Mapped[str] = mapped_column(Text)
+    # Service-specific settings that aren't secret (an MCP server: how it runs, a
+    # preview of its command, which of its tools are read-only).
+    config: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")
     # The last "Test connection" (a read-only probe): when, whether it worked, and what it said.
     last_test_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_test_ok: Mapped[bool | None] = mapped_column(Boolean)

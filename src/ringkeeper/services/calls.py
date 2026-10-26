@@ -63,6 +63,7 @@ class Authorized:
     base_url: str | None
     secret_ref: str
     preapproved: bool
+    config: JSON
 
 
 async def _db[T](fn: Callable[[Session], T]) -> T:
@@ -146,6 +147,7 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
         base_url=instance.base_url,
         secret_ref=instance.secret_ref,
         preapproved=call.tool in binding.preapproved_writes,
+        config=dict(instance.config or {}),
     )
 
 
@@ -172,7 +174,7 @@ def _target(vault: Vault, adapter: Adapter, auth: Authorized) -> Target:
             f"the secret for instance '{auth.instance}' is unavailable: {error}"
         ) from None
     secret.also_scrub(*adapter.secret_fragments(secret.reveal()))
-    return Target(auth.instance, auth.env, auth.base_url, secret)
+    return Target(auth.instance, auth.env, auth.base_url, secret, auth.config)
 
 
 async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], tool: str) -> JSON:
@@ -255,6 +257,9 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
                 partial(_record, call, AuditOutcome.FAILED, reason=str(error))
             )
         raise
+
+    if spec.classify is not None:
+        is_write = spec.classify(target, call.args) is ToolKind.WRITE
 
     if scrub_obj(call.args) != call.args:
         # Held decisions keep args verbatim, so a secret must never get in there.

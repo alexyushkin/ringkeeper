@@ -87,6 +87,7 @@ class InstanceIn(_Input):
     secret_ref: SecretRef
     owner: NonEmpty
     base_url: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
 class BindingIn(_Input):

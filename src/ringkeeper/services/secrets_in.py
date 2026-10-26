@@ -17,7 +17,7 @@ import anthropic
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import gmail, twilio
+from ringkeeper.adapters import gmail, mcp, twilio
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.claude_auth import check_format, credential_ref, normalize
 from ringkeeper.config import Settings
@@ -114,6 +114,11 @@ def check_connection_secret(kind: InstanceType, secret: str) -> str:
             "Paste an Airtable personal access token (it starts with pat). Make one at "
             "airtable.com/create/tokens."
         )
+    elif kind is InstanceType.MCP:
+        try:
+            mcp.server_spec(secret)
+        except ToolError as error:
+            raise RuleViolationError(str(error)) from None
     elif kind in (InstanceType.TWILIO, InstanceType.GMAIL):
         try:  # JSON with the parts (the app's form builds it); checked like the adapter reads it
             (twilio.credentials if kind is InstanceType.TWILIO else gmail.credentials)(secret)

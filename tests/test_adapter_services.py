@@ -58,6 +58,12 @@ def test_every_service_has_its_adapter_and_sends_hold_always() -> None:
         (InstanceType.TWILIO, "send_sms"): Hold.ALWAYS,
         (InstanceType.GMAIL, "send_email"): Hold.ALWAYS,
         (InstanceType.GMAIL, "create_draft"): Hold.NEVER,
+        (InstanceType.N8N, "activate_workflow"): Hold.ALWAYS,
+        (InstanceType.N8N, "deactivate_workflow"): Hold.ALWAYS,
+        (InstanceType.N8N, "update_workflow"): Hold.ALWAYS,
+        (InstanceType.N8N, "retry_execution"): Hold.ALWAYS,
+        (InstanceType.N8N, "stop_execution"): Hold.ALWAYS,
+        (InstanceType.MCP, "call_tool"): Hold.ALWAYS,
     }
 
 

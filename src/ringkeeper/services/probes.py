@@ -13,10 +13,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy.orm import Session
-
-from ringkeeper.adapters import ADAPTERS, airtable, gmail, n8n, supabase, twilio, vercel
+from ringkeeper.adapters import ADAPTERS, airtable, gmail, mcp, n8n, supabase, twilio, vercel
 from ringkeeper.adapters.base import JSON, Target, ToolError
+from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import scrub
@@ -24,6 +23,7 @@ from ringkeeper.services import admin_audit, instances
 from ringkeeper.vault import get_vault
 
 TIMEOUT_SECONDS = 20
+MCP_TIMEOUT_SECONDS = mcp.TIMEOUT_SECONDS  # npx may download the server first
 # What the REST adapters say when the service turns the credential down.
 REFUSED = re.compile(r"returned 40[13]:")
 
@@ -34,7 +34,7 @@ class ProbeResult:
     message: str
 
 
-async def _probe(kind: InstanceType, target: Target) -> str:
+async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911 (one per service)
     match kind:
         case InstanceType.SUPABASE:
             result: JSON = await supabase.list_tables.handler(target, schema=None)
@@ -54,23 +54,36 @@ async def _probe(kind: InstanceType, target: Target) -> str:
             return "Connected to Twilio: the key works."
         case InstanceType.GMAIL:
             return await gmail.probe(target)
+        case InstanceType.MCP:
+            tools = (await mcp.list_tools.handler(target))["tools"]
+            names = ", ".join(t["name"] for t in tools[:8]) + (", ..." if len(tools) > 8 else "")
+            return f"Connected: {len(tools)} tool{'s' if len(tools) != 1 else ''} ({names})."
         case _:
             raise ToolError(f"Testing {kind} connections isn't supported yet.")
 
 
-def test_connection(session: Session, name: str, *, by: str) -> ProbeResult:
-    instance = instances.get_instance(session, name)
-    try:
-        secret = get_vault().resolve(instance.secret_ref)
-        if instance.type in ADAPTERS:
-            secret.also_scrub(*ADAPTERS[instance.type].secret_fragments(secret.reveal()))
-        target = Target(instance.name, instance.env, instance.base_url, secret)
-        message = asyncio.run(
-            asyncio.wait_for(_probe(instance.type, target), timeout=TIMEOUT_SECONDS)
+def test_connection(name: str, *, by: str) -> ProbeResult:
+    """Read the connection, probe it with no transaction open (an MCP server may take
+    a minute to start, and SQLite has one writer), then record the result."""
+    with session_scope(commit=False) as session:
+        instance = instances.get_instance(session, name)
+        kind, env, base_url, ref = (
+            instance.type,
+            instance.env,
+            instance.base_url,
+            instance.secret_ref,
         )
+        config = dict(instance.config or {})
+    timeout = MCP_TIMEOUT_SECONDS if kind is InstanceType.MCP else TIMEOUT_SECONDS
+    try:
+        secret = get_vault().resolve(ref)
+        if kind in ADAPTERS:
+            secret.also_scrub(*ADAPTERS[kind].secret_fragments(secret.reveal()))
+        target = Target(name, env, base_url, secret, config)
+        message = asyncio.run(asyncio.wait_for(_probe(kind, target), timeout=timeout))
         result = ProbeResult(True, message)
     except TimeoutError:
-        result = ProbeResult(False, "No answer within 20 seconds. Check the address.")
+        result = ProbeResult(False, f"No answer within {timeout} seconds. Check the address.")
     except (ToolError, RingkeeperError) as error:
         message = scrub(str(error))[:500]
         if REFUSED.search(message):
@@ -79,12 +92,13 @@ def test_connection(session: Session, name: str, *, by: str) -> ProbeResult:
                 f"hasn't expired or been revoked. ({message})"
             )
         result = ProbeResult(False, message)
-    instance.last_test_at = datetime.now(UTC)
-    instance.last_test_ok = result.ok
-    instance.last_test_message = result.message
-    admin_audit.record(
-        session, "connection.test", f"tested {name}: {'ok' if result.ok else 'failed'}", by=by,
-        instance=name, details={"ok": result.ok},
-    )  # fmt: skip
-    session.flush()
+    with session_scope() as session:
+        instance = instances.get_instance(session, name)
+        instance.last_test_at = datetime.now(UTC)
+        instance.last_test_ok = result.ok
+        instance.last_test_message = result.message
+        admin_audit.record(
+            session, "connection.test", f"tested {name}: {'ok' if result.ok else 'failed'}",
+            by=by, instance=name, details={"ok": result.ok},
+        )  # fmt: skip
     return result

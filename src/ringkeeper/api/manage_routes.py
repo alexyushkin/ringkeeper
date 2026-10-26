@@ -9,6 +9,7 @@ recent confirmation (deps.check_recent_auth): a stolen session cookie alone
 can't point Telegram approvals at another chat or send a key elsewhere.
 """
 
+import asyncio
 import re
 from pathlib import Path
 from typing import Annotated, Any
@@ -24,6 +25,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from ringkeeper import netpolicy
+from ringkeeper.adapters import mcp
+from ringkeeper.adapters.base import Target, ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import (
     OWNER,
@@ -50,6 +53,7 @@ from ringkeeper.schemas import (
     ProjectIn,
     Slug,
 )
+from ringkeeper.scrub import scrub
 from ringkeeper.services import (
     admin_audit,
     bindings,
@@ -375,6 +379,7 @@ class ConnectionOut(BaseModel):
     type: InstanceType
     env: Env
     owner: str
+    config: dict[str, Any]  # never secret (for an MCP server: a masked preview, read-only tools)
     base_url: str | None
     secret_stored: bool
     projects: list[str]
@@ -386,7 +391,8 @@ class ConnectionOut(BaseModel):
 def _connection_out(instance: Instance) -> ConnectionOut:
     return ConnectionOut(
         name=instance.name, type=instance.type, env=instance.env, owner=instance.owner,
-        base_url=instance.base_url, secret_stored=_stored(instance.secret_ref),
+        config=dict(instance.config or {}), base_url=instance.base_url,
+        secret_stored=_stored(instance.secret_ref),
         projects=instances.bound_project_names(instance), last_test_at=instance.last_test_at,
         last_test_ok=instance.last_test_ok, last_test_message=instance.last_test_message,
     )  # fmt: skip
@@ -498,9 +504,51 @@ def _checked_url(url: str | None) -> str | None:
 
 
 @router.post("/connections/{name}/test")
-def test_connection(name: str, session: WriteSessionDep) -> dict[str, Any]:
-    result = probes.test_connection(session, name, by=OWNER)
+def test_connection(name: str) -> dict[str, Any]:
+    result = probes.test_connection(name, by=OWNER)
     return {"ok": result.ok, "message": result.message}
+
+
+@router.get("/connections/{name}/tools")
+def connection_tools(name: str, session: SessionDep) -> dict[str, Any]:
+    """An MCP server's tools, asked of the server itself (it may take a while to start)."""
+    instance = instances.get_instance(session, name)
+    if instance.type is not InstanceType.MCP:
+        raise HTTPException(409, detail="Only MCP server connections list their tools here.")
+    secret = get_vault().resolve(instance.secret_ref)
+    secret.also_scrub(*mcp.secret_fragments(secret.reveal()))
+    target = Target(instance.name, instance.env, None, secret, dict(instance.config or {}))
+    session.close()  # no transaction while the server starts
+
+    async def ask() -> dict[str, Any]:
+        return await mcp.list_tools.handler(target)
+
+    try:
+        return asyncio.run(ask())
+    except ToolError as error:
+        raise HTTPException(502, detail=scrub(str(error))) from None
+
+
+class ReadOnlyToolsIn(Input):
+    tools: CleanList
+
+
+@router.put("/connections/{name}/read-only-tools", dependencies=[RecentAuth])
+def set_read_only_tools(
+    name: str, data: ReadOnlyToolsIn, session: WriteSessionDep
+) -> dict[str, Any]:
+    """Which of an MCP server's tools run without asking. Loosening approvals, so it
+    needs a recent confirmation like other such changes."""
+    instance = instances.get_instance(session, name)
+    if instance.type is not InstanceType.MCP:
+        raise HTTPException(409, detail="Only MCP server connections have read-only tools.")
+    instance.config = {**(instance.config or {}), "read_only_tools": sorted(set(data.tools))}
+    admin_audit.record(
+        session, "connection.read_only_tools",
+        f"{name}: read-only tools now {', '.join(sorted(set(data.tools))) or 'none'}",
+        by=OWNER, instance=name,
+    )  # fmt: skip
+    return {"read_only_tools": instance.config["read_only_tools"]}
 
 
 @router.get("/projects/{name}/connections")

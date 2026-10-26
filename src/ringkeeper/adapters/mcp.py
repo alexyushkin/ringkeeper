@@ -1,0 +1,206 @@
+"""MCP servers imported from Claude Desktop, run behind the gateway.
+
+The secret (in the vault) is how to start or reach the server, JSON:
+
+    {"command": "npx", "args": ["-y", "some-server"], "env": {"API_KEY": "..."}}
+    {"url": "https://example.com/mcp", "headers": {"Authorization": "Bearer ..."}}
+
+Args go in the vault too: they often hold a connection string or a token.
+The connection's `config` holds what isn't secret: a preview of the command
+with secrets masked, and the tools the user marked read-only.
+
+A local (command) server runs on the gateway's machine, so in practice the
+desktop app: started for each call with a small environment (no Claude
+credential, nothing of Ringkeeper's), in its own folder, and stopped after.
+The agent sees two tools: list_tools and call_tool. We can't know what a
+third-party tool does, so every call waits for approval unless the user
+marked that tool read-only.
+"""
+
+import json
+import os
+import re
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Annotated, Any, cast
+
+from fastmcp import Client
+from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
+from pydantic import Field
+
+from ringkeeper.adapters.base import (
+    JSON,
+    Adapter,
+    Hold,
+    Target,
+    ToolError,
+    ToolKind,
+    ToolSpec,
+    read,
+)
+from ringkeeper.claude_auth import BILLING_ENV_VARS
+from ringkeeper.config import get_settings
+from ringkeeper.models import InstanceType
+
+TIMEOUT_SECONDS = 120  # npx may download the server the first time
+# What a local server may see of the gateway's environment: enough for npx, uvx
+# and Windows itself to work; never a credential or Ringkeeper's own settings.
+PASSED_ENV = (
+    "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP",
+    "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES",
+    "PROGRAMFILES(X86)", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "LANG", "LC_ALL",
+    "TZ", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
+)  # fmt: skip
+ToolName = Annotated[str, Field(min_length=1, max_length=128, description="From list_tools.")]
+
+
+def server_spec(value: str) -> JSON:
+    """The stored JSON, checked: a command (with args and env) or a URL (with headers)."""
+    try:
+        data: Any = json.loads(value)
+    except ValueError:
+        raise ToolError("this MCP server's settings aren't in the expected form") from None
+    spec = cast(JSON, data) if isinstance(data, dict) else {}
+    command, url = spec.get("command"), spec.get("url")
+    if isinstance(url, str) and url.startswith(("https://", "http://")):
+        return {"url": url, "headers": _strings(spec.get("headers"))}
+    if isinstance(command, str) and command.strip():
+        raw: object = spec.get("args") or []
+        items = cast(list[object], raw) if isinstance(raw, list) else None
+        if items is None or not all(isinstance(a, str) for a in items):
+            raise ToolError("this MCP server's args must be a list of strings")
+        args = [str(a) for a in items]
+        return {"command": command, "args": args, "env": _strings(spec.get("env"))}
+    raise ToolError("this MCP server has neither a command nor a URL")
+
+
+def _strings(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(k): str(v) for k, v in cast(dict[Any, Any], value).items()}
+
+
+def secret_fragments(value: str) -> list[str]:
+    """Env and header values, and args that look secret, so none of them leaks alone."""
+    try:
+        spec = server_spec(value)
+    except ToolError:
+        return []
+    found = [*spec.get("env", {}).values(), *spec.get("headers", {}).values()]
+    found += [a for a in spec.get("args", []) if looks_secret(a)]
+    return [f for f in found if len(f) >= 6]
+
+
+SECRET_ARG = re.compile(
+    r"://[^/\s:@]+:[^/\s@]+@"  # a URL with a password in it
+    r"|^(sk-|pat|ghp_|gho_|github_pat_|xox[abpr]-|AKIA|eyJ|glpat-|shpat_|sk_live_|rk_live_)"
+    r"|(key|token|secret|password|passwd|auth)[^=]*=.+",
+    re.IGNORECASE,
+)
+
+
+def looks_secret(arg: str) -> bool:
+    return bool(SECRET_ARG.search(arg)) or (len(arg) >= 32 and " " not in arg and "/" not in arg
+                                            and "\\" not in arg and "." not in arg)  # fmt: skip
+
+
+def preview(spec: JSON) -> str:
+    """How the server starts, for people to read: secret-looking args masked."""
+    if "url" in spec:
+        return str(spec["url"])
+    parts = [str(spec["command"])] + [
+        "••••" if looks_secret(a) else a for a in cast(list[str], spec.get("args", []))
+    ]
+    return " ".join(parts)
+
+
+def _env(extra: Mapping[str, str]) -> dict[str, str]:
+    env = {k: v for k in PASSED_ENV if (v := os.environ.get(k)) is not None}
+    env |= dict(extra)
+    for name in BILLING_ENV_VARS:  # the server's own env may not switch Claude billing
+        env.pop(name, None)
+    return env
+
+
+def _transport(target: Target) -> ClientTransport:
+    spec = server_spec(target.secret.reveal())
+    if "url" in spec:
+        return StreamableHttpTransport(spec["url"], headers=spec["headers"])
+    folder = get_settings().data_dir / "mcp" / target.name
+    folder.mkdir(parents=True, exist_ok=True)
+    return StdioTransport(
+        spec["command"], spec["args"], env=_env(spec["env"]), cwd=str(Path(folder)),
+        keep_alive=False,
+    )  # fmt: skip
+
+
+def _client(target: Target) -> Client[Any]:
+    return Client(_transport(target), timeout=TIMEOUT_SECONDS)
+
+
+def read_only_tools(target: Target) -> set[str]:
+    return set(cast(list[str], target.config.get("read_only_tools") or []))
+
+
+@read
+async def list_tools(target: Target) -> JSON:
+    """List this server's tools: name, what it does, its arguments, and whether it's read-only
+    (read-only tools run without asking; every other call waits for the user's approval)."""
+    marked = read_only_tools(target)
+    try:
+        async with _client(target) as client:
+            tools = await client.list_tools()
+    except ToolError:
+        raise
+    except Exception as error:  # a server that won't start or answer
+        raise ToolError(f"the MCP server didn't answer: {type(error).__name__}: {error}") from None
+    return {
+        "tools": [
+            {
+                "name": t.name,
+                "description": (t.description or "")[:1000],
+                "input_schema": t.input_schema,
+                "read_only": t.name in marked,
+            }
+            for t in tools
+        ]
+    }
+
+
+def _classify(target: Target, args: JSON) -> ToolKind:
+    return ToolKind.READ if args.get("tool") in read_only_tools(target) else ToolKind.WRITE
+
+
+async def _call_tool(
+    target: Target, tool: ToolName, arguments: dict[str, Any] | None = None
+) -> JSON:
+    """Call one of the server's tools (see list_tools). Waits for the user's approval unless
+    the user marked that tool read-only."""
+    try:
+        async with _client(target) as client:
+            result = await client.call_tool(tool, arguments or {}, raise_on_error=False)
+    except Exception as error:
+        raise ToolError(f"the MCP server didn't answer: {type(error).__name__}: {error}") from None
+    text = "\n".join(getattr(block, "text", "") for block in result.content).strip()
+    if result.is_error:
+        raise ToolError(text or f"'{tool}' failed")
+    answer: JSON = {"text": text[:50_000]}
+    if result.structured_content is not None:
+        answer["structured"] = result.structured_content
+    return answer
+
+
+call_tool = ToolSpec(
+    name="call_tool",
+    kind=ToolKind.WRITE,  # the careful answer; _classify decides per call
+    description=(_call_tool.__doc__ or "").strip(),
+    handler=_call_tool,
+    hold=Hold.ALWAYS,
+    classify=_classify,
+)
+
+ADAPTER = Adapter(
+    service=InstanceType.MCP,
+    tools=(list_tools, call_tool),
+    secret_fragments=secret_fragments,
+)
