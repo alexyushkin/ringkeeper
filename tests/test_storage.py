@@ -80,22 +80,23 @@ def test_triggers_send_the_same_payloads_as_postgres(sqlite_engine: Engine) -> N
 
 
 def test_times_come_back_in_utc(sqlite_engine: Engine) -> None:
-    offset = datetime(2026, 10, 25, 9, 30, tzinfo=UTC).astimezone()  # local time, same instant
+    # In the future (the expiry must come after creation), as local time: the same instant.
+    expiry = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
     with Session(sqlite_engine) as session:
         session.add(
             Decision(
                 kind=DecisionKind.QUESTION, payload={"question": "?"},
-                expires_at=offset + timedelta(days=1),
+                expires_at=expiry.astimezone(),
             )
         )  # fmt: skip
         session.commit()
     with Session(sqlite_engine) as session:
         decision = session.scalars(select(Decision)).one()
-        assert decision.expires_at == datetime(2026, 10, 26, 9, 30, tzinfo=UTC)
+        assert decision.expires_at == expiry
         assert decision.created_at.tzinfo is UTC  # the database's own default too
         assert abs(datetime.now(UTC) - decision.created_at) < timedelta(minutes=1)
         found = session.scalars(
-            select(Decision).where(Decision.expires_at > datetime(2026, 10, 26, 9, 29, tzinfo=UTC))
+            select(Decision).where(Decision.expires_at > expiry - timedelta(minutes=1))
         ).all()
         assert len(found) == 1
 
