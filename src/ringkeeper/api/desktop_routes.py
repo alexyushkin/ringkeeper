@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 from sqlalchemy import select
 
+from ringkeeper import voice_local
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
@@ -115,3 +116,26 @@ def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> d
         except RuleViolationError as error:
             raise HTTPException(422, detail=str(error)) from None
     return {"imported": created}
+
+
+# --- Voice on this computer ---
+
+
+@router.get("/voice")
+def voice_status() -> dict[str, Any]:
+    """Whether speech works here: the engine, the model (and how big its download
+    is), and a download's progress."""
+    return voice_local.model(get_settings()).status()
+
+
+@router.post("/voice/download", status_code=202)
+def voice_download() -> dict[str, Any]:
+    """Fetch the speech model, once. The app polls GET /desktop/voice for progress."""
+    found = voice_local.model(get_settings())
+    found.start()
+    return found.status()
+
+
+@router.delete("/voice", status_code=204)
+def voice_remove() -> None:
+    voice_local.model(get_settings()).remove()

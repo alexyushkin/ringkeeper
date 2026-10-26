@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from ringkeeper import voice_local
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import DESKTOP_OWNER, OwnerToken, require_owner
 from ringkeeper.config import get_settings
@@ -27,7 +28,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.services import owner
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.storage import events as storage_events
-from ringkeeper.voice import SttClient, VoiceError, megabytes, vocabulary
+from ringkeeper.voice import VoiceError, megabytes, vocabulary
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
@@ -69,7 +70,7 @@ async def transcribe(
     try:
         with session_scope(commit=False) as session:
             hint = vocabulary(session)
-        stt = SttClient(settings)
+        stt = voice_local.transcriber(settings)
         try:
             text = await asyncio.to_thread(stt.transcribe, audio, hint)
         finally:

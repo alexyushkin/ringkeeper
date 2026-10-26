@@ -31,6 +31,7 @@ from typing import Any, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ringkeeper import voice_local
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -55,7 +56,7 @@ from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.storage.sql import insert
 from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
-from ringkeeper.voice import SttClient, VoiceError, VoiceNote, vocabulary
+from ringkeeper.voice import VoiceError, VoiceNote, vocabulary
 from ringkeeper.voice import transcribe as transcribe_voice
 
 logger = logging.getLogger(__name__)
@@ -486,7 +487,7 @@ class Bridge:
             self._say(chat_id, refusal)
             return
         try:
-            stt = SttClient(self.settings)
+            stt = voice_local.transcriber(self.settings)
             try:
                 with session_scope() as session:
                     hint = vocabulary(session)

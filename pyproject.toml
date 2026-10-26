@@ -36,6 +36,18 @@ dependencies = [
     "webauthn>=3.0.1,<3.1",
 ]
 
+[project.optional-dependencies]
+# Voice in the desktop app: the same engine as the stt service (stt/Dockerfile),
+# run in-process. The model itself is downloaded on first use.
+# Its newest transitive releases were under two weeks old: these are held back.
+voice = [
+    "faster-whisper==1.2.1",
+    "av==18.1.0",
+    "ctranslate2==4.8.2",
+    "huggingface-hub==2.2.0",
+    "onnxruntime==1.31.0",
+]
+
 [project.scripts]
 ringkeeper = "ringkeeper.cli.main:app"
 

@@ -145,6 +145,9 @@ class Settings(BaseSettings):
     stt_max_seconds: int = 180
     stt_max_bytes: int = 5_000_000
     stt_timeout_seconds: float = 120.0
+    # The spoken language, if it's always the same (faster detection, fewer
+    # mistakes on short clips). The desktop app's local voice uses it too.
+    stt_language: str | None = None
 
     # Full session events (transcripts) older than this are deleted daily; task
     # summaries, decisions and the audit log are kept.

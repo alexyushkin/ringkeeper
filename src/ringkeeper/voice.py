@@ -8,7 +8,7 @@ by the stt service on the decoded audio.
 """
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import httpx2
 from sqlalchemy import select
@@ -72,6 +72,13 @@ def too_big(size: int | None, limit: int) -> VoiceError:
     )
 
 
+class Transcriber(Protocol):
+    """Speech to text: the stt service over HTTP, or in the desktop app's process."""
+
+    def transcribe(self, audio: bytes, hint: str | None = None) -> str: ...
+    def close(self) -> None: ...
+
+
 class SttClient:
     def __init__(self, settings: Settings) -> None:
         if not settings.stt_url:
@@ -95,20 +102,25 @@ class SttClient:
             body = cast(dict[str, Any], response.json())
         except (httpx2.HTTPError, ValueError):
             raise VoiceError(UNREACHABLE) from None
-        match response.status_code, body.get("error"):
-            case 200, _:
-                text = str(body.get("text") or "").strip()
-                if not text:
-                    raise VoiceError(SILENT)
-                return text
-            case 413, "too_long":
-                raise too_long(float(body.get("seconds") or 0), self.settings.stt_max_seconds)
-            case 413, _:
-                raise too_big(len(audio), self.settings.stt_max_bytes)
-            case 422, _:
-                raise VoiceError(UNREADABLE)
-            case _:
-                raise VoiceError(UNREACHABLE)
+        return answer(response.status_code, body, len(audio), self.settings)
+
+
+def answer(status: int, body: dict[str, Any], size: int, settings: Settings) -> str:
+    """The stt service's answer (over HTTP, or in the desktop app's own process)."""
+    match status, body.get("error"):
+        case 200, _:
+            text = str(body.get("text") or "").strip()
+            if not text:
+                raise VoiceError(SILENT)
+            return text
+        case 413, "too_long":
+            raise too_long(float(body.get("seconds") or 0), settings.stt_max_seconds)
+        case 413, _:
+            raise too_big(size, settings.stt_max_bytes)
+        case 422, _:
+            raise VoiceError(UNREADABLE)
+        case _:
+            raise VoiceError(UNREACHABLE)
 
 
 def vocabulary(session: Session) -> str:
@@ -131,7 +143,7 @@ def check_limits(note: VoiceNote, settings: Settings) -> None:
 
 
 def transcribe(
-    api: BotApi, stt: SttClient, note: VoiceNote, settings: Settings, hint: str | None = None
+    api: BotApi, stt: Transcriber, note: VoiceNote, settings: Settings, hint: str | None = None
 ) -> str:
     check_limits(note, settings)
     try:

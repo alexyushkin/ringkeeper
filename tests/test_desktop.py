@@ -19,6 +19,7 @@ import httpx2
 import keyring
 import pytest
 
+from ringkeeper import voice_local
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
@@ -574,3 +575,22 @@ def test_claude_desktop_extensions_are_imported_with_what_they_need(
     listed = win.get("/bff/desktop/claude-desktop-servers").json()
     assert {s["key"]: s["imported_as"] for s in listed["servers"]}[notes["key"]] == "acme-notes"
     assert key not in json.dumps(listed)
+
+
+def test_voice_downloads_its_model_on_first_use(
+    desktop: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_voice_local import FakeHub  # noqa: PLC0415
+
+    monkeypatch.setattr(voice_local, "transport", httpx2.MockTransport(FakeHub().handle))
+    win = window(desktop)
+    first = win.get("/bff/desktop/voice").json()
+    assert (first["state"], first["total"]) == ("absent", 50_006)
+    assert win.post("/bff/desktop/voice/download").status_code == 202
+    deadline = time.monotonic() + 10
+    while win.get("/bff/desktop/voice").json()["state"] != "ready":
+        assert time.monotonic() < deadline
+        time.sleep(0.1)
+    assert (desktop["data_dir"] / "voice" / "small" / "model.bin").is_file()
+    assert win.delete("/bff/desktop/voice").status_code == 204
+    assert win.get("/bff/desktop/voice").json()["state"] == "absent"
