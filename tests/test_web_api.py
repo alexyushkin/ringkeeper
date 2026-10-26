@@ -512,6 +512,33 @@ def test_the_claude_key_is_checked_stored_and_never_returned(
     assert owner.get("/settings").json()["claude"]["api_key"] is True
 
 
+@pytest.mark.parametrize(
+    ("value", "outcome"),
+    [
+        ("sk-ant-usr-" + "u" * 40, "checked"),  # what platform.claude.com hands out now
+        ("sk-ant-api03-" + "a" * 40, "checked"),
+        ("sk-ant-oat01-" + "o" * 40, "subscription token, not an API key"),
+        ("sk-proj-" + "p" * 40, "isn't an Anthropic API key"),
+    ],
+)
+def test_any_anthropic_key_goes_to_anthropic_and_tokens_are_refused(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch, value: str, outcome: str
+) -> None:
+    checked: list[str] = []
+    monkeypatch.setattr(secrets_in, "check_anthropic_key", checked.append)
+    response = owner.put("/secrets/claude", json={"value": f" {value}\n"})
+    if outcome == "checked":
+        assert response.status_code == 200
+        assert checked == [value]
+        assert get_vault().resolve(get_settings().claude_api_key_ref).reveal() == value
+    else:
+        assert response.status_code == 422
+        assert outcome in response.json()["detail"]
+        assert value[8:] not in response.text
+        assert checked == []
+        assert owner.get("/settings").json()["claude"]["api_key"] is False
+
+
 def test_a_rejected_claude_key_is_not_stored(
     owner: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -14,6 +14,8 @@ export class ApiError extends Error {
   }
 }
 
+export const BACKEND_DOWN = "Can't reach Ringkeeper's backend. If it doesn't come back in a few seconds, restart the app.";
+
 function csrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)rk_csrf=([^;]+)/);
   return match ? decodeURIComponent(match[1] ?? "") : "";
@@ -32,6 +34,7 @@ function detail(body: unknown, status: number): string {
         .join("; ");
     }
   }
+  if (status === 502 || status === 504) return BACKEND_DOWN;
   return status >= 500 ? "Something went wrong on the server. Try again." : `Request failed (${status})`;
 }
 
@@ -77,7 +80,20 @@ async function send(path: string, options: Options): Promise<Response> {
     if (value !== undefined && value !== null && value !== "") search.set(key, String(value));
   }
   const url = `/bff/${path.replace(/^\//, "")}${search.size ? `?${search}` : ""}`;
-  return fetch(url, { method, headers, body, credentials: "same-origin" });
+  try {
+    return await fetch(url, { method, headers, body, credentials: "same-origin" });
+  } catch {
+    // The browser's own "Failed to fetch": nothing answered at all.
+    throw new ApiError(0, BACKEND_DOWN);
+  }
+}
+
+function parse(text: string): unknown {
+  try {
+    return text ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined; // e.g. a proxy's HTML error page
+  }
 }
 
 async function read<T>(path: string, response: Response): Promise<T> {
@@ -86,8 +102,7 @@ async function read<T>(path: string, response: Response): Promise<T> {
     throw new ApiError(401, "Please sign in again.");
   }
   if (response.status === 204) return undefined as T;
-  const text = await response.text();
-  const parsed: unknown = text ? JSON.parse(text) : undefined;
+  const parsed = parse(await response.text());
   if (!response.ok) {
     throw new ApiError(response.status, detail(parsed, response.status), response.headers.get("retry-after"));
   }

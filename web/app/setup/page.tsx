@@ -415,14 +415,14 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
       {DESKTOP ? (
         <p className="mb-4 text-sm text-muted">
           Ringkeeper's assistants run on Claude. Paste an API key from{" "}
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-accent underline">
-            console.anthropic.com
+          <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer" className="text-accent underline">
+            platform.claude.com
           </a>{" "}
           (Settings › API keys). It's checked with a free call, stored encrypted, and never shown again.
         </p>
       ) : (
         <p className="mb-4 text-sm text-muted">
-          Ringkeeper's assistants run on Claude. Paste an API key from console.anthropic.com (Settings › API keys). It's checked, stored encrypted, and never shown again.
+          Ringkeeper's assistants run on Claude. Paste an API key from platform.claude.com (Settings › API keys). It's checked, stored encrypted, and never shown again.
         </p>
       )}
       {message ? (
@@ -439,7 +439,7 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
             type="password"
             value={key}
             onChange={setKey}
-            placeholder={mode === "api_key" ? "sk-ant-api03-…" : "sk-ant-oat01-…"}
+            placeholder={mode === "api_key" ? "sk-ant-…" : "sk-ant-oat01-…"}
             required
           />
           {DESKTOP ? null : (

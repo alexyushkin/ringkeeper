@@ -352,7 +352,7 @@ def test_missing_credential_fails_without_starting_a_worker() -> None:
     done = task(task_id)
     assert done.status is TaskStatus.FAILED
     assert done.error is not None
-    assert "not an Anthropic API key" in done.error
+    assert "isn't an Anthropic API key" in done.error
     assert runtime.started == []
 
 

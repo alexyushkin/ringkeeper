@@ -18,6 +18,7 @@ runner = CliRunner()
 # Fakes, shaped like the real prefixes but nowhere near a real key's length.
 API_KEY = "sk-ant-api03-fake-test-key-0001"
 OAUTH_TOKEN = "sk-ant-oat01-fake-test-token-0001"
+USER_KEY = "sk-ant-usr-fake-test-key-0001"  # newer console keys start like this
 
 
 def test_default_mode_is_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,15 +54,22 @@ def test_both_credential_vars_are_billing_vars() -> None:
 @pytest.mark.parametrize(
     ("mode", "value", "message"),
     [
-        (AuthMode.API_KEY, OAUTH_TOKEN, "looks like an OAuth token"),
+        (AuthMode.API_KEY, OAUTH_TOKEN, "subscription token, not an API key"),
         (AuthMode.SUBSCRIPTION, API_KEY, "looks like an Anthropic API key"),
-        (AuthMode.API_KEY, "hunter2", "not an Anthropic API key"),
+        (AuthMode.SUBSCRIPTION, USER_KEY, "looks like an Anthropic API key"),
+        (AuthMode.API_KEY, "hunter2", "isn't an Anthropic API key"),
+        (AuthMode.API_KEY, "sk-proj-fake-openai-key-0001", "isn't an Anthropic API key"),
     ],
 )
 def test_wrong_kind_of_credential_is_rejected(mode: AuthMode, value: str, message: str) -> None:
     with pytest.raises(ClaudeAuthError, match=message) as excinfo:
         check_format(mode, value)
     assert value not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("key", [API_KEY, USER_KEY, "sk-ant-admin01-fake-0001"])
+def test_any_anthropic_key_passes_the_shape_check(key: str) -> None:
+    check_format(AuthMode.API_KEY, key)  # Anthropic's answer decides (services.secrets_in)
 
 
 def test_missing_credential_points_at_login() -> None:
@@ -83,8 +91,15 @@ def test_login_stores_an_api_key_from_stdin_and_status_never_prints_it() -> None
 def test_login_refuses_an_oauth_token_as_api_key() -> None:
     result = runner.invoke(app, ["auth", "login"], input=OAUTH_TOKEN + "\n")
     assert result.exit_code == 1
-    assert "looks like an OAuth token" in result.stderr
+    assert "subscription token, not an API key" in result.stderr
     assert OAUTH_TOKEN not in result.output
+
+
+def test_login_stores_a_user_key() -> None:
+    result = runner.invoke(app, ["auth", "login"], input=USER_KEY + "\r\n")
+    assert result.exit_code == 0, result.output
+    settings = Settings()
+    assert resolve(get_vault(settings), settings).secret.reveal() == USER_KEY
 
 
 def test_subscription_is_never_offered_in_setup() -> None:
@@ -157,23 +172,23 @@ def test_api_key_login_from_stdin_strips_line_breaks(flags: list[str]) -> None:
 
 
 @pytest.mark.parametrize(
-    ("flags", "value", "expected", "found"),
+    ("flags", "value", "found"),
     [
-        (["--subscription"], API_KEY, "sk-ant-oat", "looks like an Anthropic API key"),
-        ([], OAUTH_TOKEN, "sk-ant-api", "looks like an OAuth token"),
-        (["--api-key"], OAUTH_TOKEN, "sk-ant-api", "looks like an OAuth token"),
-        (["--subscription"], "sk-ant-sid01-fake-0001", "sk-ant-oat", "isn't either kind"),
-        ([], "pasted-garbage-0001", "sk-ant-api", "doesn't start with sk-ant-"),
+        (["--subscription"], API_KEY, "looks like an Anthropic API key"),
+        (["--subscription"], "pasted-garbage-0001", "doesn't start with sk-ant-"),
+        ([], OAUTH_TOKEN, "subscription token, not an API key"),
+        (["--api-key"], OAUTH_TOKEN, "subscription token, not an API key"),
+        ([], "pasted-garbage-0001", "isn't an Anthropic API key: those start with sk-ant-"),
     ],
 )
-def test_shape_mismatch_is_clear_and_never_echoes(
-    flags: list[str], value: str, expected: str, found: str
-) -> None:
+def test_shape_mismatch_is_clear_and_never_echoes(flags: list[str], value: str, found: str) -> None:
     result = runner.invoke(app, ["auth", "login", *flags], input=value + "\r\n")
     assert result.exit_code == 1
-    assert f"expected a value starting with {expected}" in result.stderr
     assert found in result.stderr
-    assert f"({len(value)} characters after removing whitespace)" in result.stderr
+    if "--subscription" in flags:
+        assert "expected a value starting with sk-ant-oat" in result.stderr
+    if value != OAUTH_TOKEN:
+        assert f"({len(value)} characters after removing whitespace)" in result.stderr
     assert value not in result.output
     assert value[10:] not in result.output
 

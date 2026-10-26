@@ -52,12 +52,12 @@ Have these ready; the setup wizard asks for them.
    (Or download the ZIP from the repository page: **Code → Download ZIP**.)
 2. **An Anthropic API key** (required). Ringkeeper's assistants run on
    Claude:
-   1. Go to [console.anthropic.com](https://console.anthropic.com) and sign up.
+   1. Go to [platform.claude.com](https://platform.claude.com) and sign up.
    2. **Settings → Billing**: add credit. Keys don't work without it.
    3. **Settings → Limits**: set a monthly spend limit you're comfortable
       with.
    4. **Settings → API keys → Create key**. Copy the key (it starts with
-      `sk-ant-api03-`). It's shown only once.
+      `sk-ant-`). It's shown only once.
 3. **A Telegram bot** (optional, for approvals and questions on your phone):
    1. In Telegram, open **@BotFather** and send `/newbot`.
    2. Choose a display name, then a username ending in `bot`.
@@ -488,7 +488,7 @@ To see what a part of Ringkeeper is doing: `docker compose logs api` (or
 | The api's log warns that the database password is weak | See [Change the database password](#change-the-database-password). |
 | A project's **Folder** isn't accepted | Give the name of a folder inside your workspaces folder, like `acme-web` or `clients/acme-web`: no full paths and no `..`. |
 | **Test connection** says the address isn't allowed | Connections can't point at Ringkeeper's own services, at `localhost` or at cloud metadata addresses. For a database on this same machine during development, set `RINGKEEPER_ALLOW_LOCAL_CONNECTIONS=1` in `.env`. |
-| The Anthropic key isn't accepted | Check that it starts with `sk-ant-api03-`, that the account has credit, and that the key wasn't deleted in the console. |
+| The Anthropic key isn't accepted | Check that it's an API key from platform.claude.com (it starts with `sk-ant-`, and not `sk-ant-oat`, which is a subscription token), that the account has credit, and that the key wasn't deleted in the console. |
 | **Test connection** fails | Read the message: a wrong password, a wrong address, or (Supabase) use the **Session pooler** string, not "Direct connection". |
 | A task fails with "workspace_path ... RINGKEEPER_WORKSPACES_ROOT isn't set" | Set `RINGKEEPER_WORKSPACES_ROOT` in `.env` (without the `#`), then `docker compose --profile stt up -d`. |
 | A task fails because a folder doesn't exist | Create the project's folder inside your workspaces folder, with the same name as the project's **Folder** in the app. |

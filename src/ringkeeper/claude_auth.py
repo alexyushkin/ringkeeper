@@ -36,8 +36,15 @@ BILLING_ENV_VARS = (
     "ANTHROPIC_ORGANIZATION_ID",
 )
 
-_PREFIXES = {AuthMode.API_KEY: "sk-ant-api", AuthMode.SUBSCRIPTION: "sk-ant-oat"}
-_LABELS = {AuthMode.API_KEY: "an Anthropic API key", AuthMode.SUBSCRIPTION: "an OAuth token"}
+ANTHROPIC_PREFIX = "sk-ant-"
+# Subscription (OAuth) tokens are the one kind told apart by prefix. API keys
+# come with more than one (sk-ant-api..., sk-ant-usr...), so whether a key
+# works is Anthropic's to say (services.secrets_in checks it with a free call).
+OAUTH_PREFIX = "sk-ant-oat"
+NOT_AN_API_KEY = (
+    "This is a Claude subscription token, not an API key. Ringkeeper needs an API key "
+    "from platform.claude.com (Settings > API keys)."
+)
 
 
 class ClaudeAuthError(RingkeeperError):
@@ -62,21 +69,29 @@ def normalize(value: str) -> str:
 def check_format(mode: AuthMode, value: str) -> None:
     """Catch a pasted value of the wrong kind (it would bill the wrong way).
 
-    Error messages describe the value's shape, never the value itself.
+    Only the broad shape: any sk-ant- value may be an API key, except a
+    subscription token. Error messages describe the value's shape, never the
+    value itself.
     """
-    if value.startswith(_PREFIXES[mode]):
-        return
-    other = AuthMode.SUBSCRIPTION if mode is AuthMode.API_KEY else AuthMode.API_KEY
-    if value.startswith(_PREFIXES[other]):
-        found = f"it looks like {_LABELS[other]} ({_PREFIXES[other]}...)"
-    elif value.startswith("sk-ant-"):
-        found = "it starts with sk-ant- but isn't either kind"
-    else:
-        found = "it doesn't start with sk-ant-"
-    raise ClaudeAuthError(
-        f"this is not {_LABELS[mode]}: expected a value starting with {_PREFIXES[mode]}..., "
-        f"but {found} ({len(value)} characters after removing whitespace)"
-    )
+    oauth = value.startswith(OAUTH_PREFIX)
+    if mode is AuthMode.API_KEY:
+        if oauth:
+            raise ClaudeAuthError(NOT_AN_API_KEY)
+        if not value.startswith(ANTHROPIC_PREFIX):
+            raise ClaudeAuthError(
+                f"This isn't an Anthropic API key: those start with {ANTHROPIC_PREFIX} "
+                f"({len(value)} characters after removing whitespace)."
+            )
+    elif not oauth:
+        found = (
+            "it looks like an Anthropic API key"
+            if value.startswith(ANTHROPIC_PREFIX)
+            else f"it doesn't start with {ANTHROPIC_PREFIX}"
+        )
+        raise ClaudeAuthError(
+            f"this is not an OAuth token: expected a value starting with {OAUTH_PREFIX}..., "
+            f"but {found} ({len(value)} characters after removing whitespace)"
+        )
 
 
 @dataclass(frozen=True)
