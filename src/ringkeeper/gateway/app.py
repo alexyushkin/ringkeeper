@@ -240,13 +240,17 @@ def create_app(vault: Vault | None = None) -> Starlette:
     async def lifespan(_app: Starlette) -> AsyncGenerator[None]:
         # Each FastMCP app has its own session manager; nested lifespans don't run
         # by themselves, so start them all here.
+        # The task group goes outside: its cancel scope must close after the
+        # session managers' own, or shutting down fails ("cancel scope that
+        # isn't the current task's").
         stop = threading.Event()
-        async with AsyncExitStack() as stack, anyio.create_task_group() as group:
-            for app in apps:
-                await stack.enter_async_context(app.lifespan(app))
-            group.start_soon(approval_loop, vault, get_settings(), stop)
+        async with anyio.create_task_group() as group:
             try:
-                yield
+                async with AsyncExitStack() as stack:
+                    for app in apps:
+                        await stack.enter_async_context(app.lifespan(app))
+                    group.start_soon(approval_loop, vault, get_settings(), stop)
+                    yield
             finally:
                 stop.set()
                 group.cancel_scope.cancel()
