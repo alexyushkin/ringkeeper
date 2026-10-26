@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "@/components/link";
+import { useRouter } from "next/navigation";
 
 import { Composer } from "@/components/composer";
+import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Badge, Card, Details, Loading, timeAgo } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
@@ -23,6 +25,7 @@ interface Thread {
   id: string;
   title: string;
   messages: Message[];
+  archived?: boolean;
 }
 
 interface Decision {
@@ -33,6 +36,7 @@ interface Decision {
 }
 
 export function ThreadView({ id }: { id: string }) {
+  const router = useRouter();
   const thread = useApi<Thread>(`threads/${id}`);
   const tasks = useApi<TaskCard[]>(`threads/${id}/tasks`);
   const pending = useApi<Decision[]>("decisions", { status: "pending", limit: 200 });
@@ -52,7 +56,12 @@ export function ThreadView({ id }: { id: string }) {
       <Link href="/" className="text-sm text-accent">
         ‹ All conversations
       </Link>
-      <h1 className="mt-2 mb-4 text-xl font-semibold">{thread.data.title}</h1>
+      <div className="mt-2 mb-4 flex flex-wrap items-center gap-2">
+        <h1 className="text-xl font-semibold">{thread.data.title}</h1>
+        {thread.data.archived ? <Badge>archived</Badge> : null}
+        <span className="ml-auto" />
+        <TidyButtons kind="thread" id={id} archived={Boolean(thread.data.archived)} onArchived={thread.reload} onDeleted={() => router.push("/")} />
+      </div>
 
       <ol className="space-y-3">
         {thread.data.messages.map((message) => (

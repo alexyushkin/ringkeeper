@@ -3,6 +3,9 @@
 import Link from "@/components/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useRouter } from "next/navigation";
+
+import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { threadHref } from "@/lib/client/routes";
@@ -26,6 +29,7 @@ interface Task {
   id: string;
   project: string;
   status: string;
+  archived?: boolean;
   kind: string | null;
   outcome: string | null;
   summary: string | null;
@@ -136,6 +140,7 @@ function EventView({ event }: { event: Event }) {
 }
 
 export function TaskView({ id }: { id: string }) {
+  const router = useRouter();
   const task = useApi<Task>(`tasks/${id}`);
   const [events, setEvents] = useState<Event[]>([]);
   const [retention, setRetention] = useState(90);
@@ -208,6 +213,9 @@ export function TaskView({ id }: { id: string }) {
           <h1 className="text-lg font-semibold">{t.project}</h1>
           <StatusBadge status={t.status} />
           {t.kind ? <Badge>{t.kind}</Badge> : null}
+          {t.archived ? <Badge>archived</Badge> : null}
+          <span className="ml-auto" />
+          <TidyButtons kind="task" id={id} archived={Boolean(t.archived)} status={t.status} onArchived={task.reload} onDeleted={() => router.push("/tasks")} />
         </div>
         <p className="text-sm">{t.summary ?? t.outcome ?? t.prompt}</p>
         {t.error && t.status !== "succeeded" ? <Alert>{t.error}</Alert> : null}

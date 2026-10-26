@@ -14,7 +14,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from ringkeeper.api.auth import AdminDep
@@ -33,7 +33,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.schemas import Input, NonEmpty
-from ringkeeper.services import tasks
+from ringkeeper.services import cleanup, tasks
 from ringkeeper.services.runtime import current_settings
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
@@ -55,13 +55,33 @@ class ThreadSummary(BaseModel):
     last_message: str | None
     tasks: dict[str, int]  # status -> count
     pending_approvals: int
+    archived: bool = False
+
+
+def _like(text: str) -> str:
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 @router.get("/threads")
 def list_threads(
-    session: SessionDep, limit: Annotated[int, Query(ge=1, le=200)] = 50
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    archived: bool = False,
+    q: Annotated[str | None, Query(max_length=200)] = None,
 ) -> list[ThreadSummary]:
-    found = session.scalars(select(Thread).order_by(Thread.updated_at.desc()).limit(limit)).all()
+    """The latest conversations: archived ones only when asked, or when searching
+    (a search finds archived ones too)."""
+    query = select(Thread).order_by(Thread.updated_at.desc()).limit(limit)
+    if q and q.strip():
+        pattern = _like(q.strip())
+        said = select(Message.thread_id).where(Message.body.ilike(pattern, escape="\\"))
+        query = query.where(Thread.title.ilike(pattern, escape="\\") | Thread.id.in_(said))
+    else:
+        query = query.where(
+            Thread.archived_at.is_not(None) if archived else Thread.archived_at.is_(None)
+        )
+    found = session.scalars(query).all()
     ids = [t.id for t in found]
     counts: dict[uuid.UUID, dict[str, int]] = {}
     for thread_id, status, count in session.execute(
@@ -100,7 +120,7 @@ def list_threads(
         ThreadSummary(
             id=t.id, title=t.title, source=t.source, updated_at=t.updated_at,
             last_message=last.get(t.id), tasks=counts.get(t.id, {}),
-            pending_approvals=int(pending.get(t.id, 0)),
+            pending_approvals=int(pending.get(t.id, 0)), archived=t.archived_at is not None,
         )
         for t in found
     ]  # fmt: skip
@@ -132,6 +152,7 @@ def _task_card(task: Task) -> dict[str, Any]:
         "created_at": task.created_at, "started_at": task.started_at,
         "finished_at": task.finished_at, "turns": sum(s.turns or 0 for s in rows),
         "cost_usd": _cost(rows), "sessions": len(rows),
+        "archived": task.archived_at is not None,
     }  # fmt: skip
 
 
@@ -141,11 +162,14 @@ def list_tasks(
     project: str | None = None,
     status: TaskStatus | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    archived: bool = False,
+    q: Annotated[str | None, Query(max_length=200)] = None,
 ) -> list[dict[str, Any]]:
-    return [
-        _task_card(t)
-        for t in tasks.list_tasks(session, status=status, project=project, limit=limit)
-    ]
+    found = tasks.list_tasks(
+        session, status=status, project=project, limit=limit, archived=archived,
+        search=_like(q.strip()) if q and q.strip() else None,
+    )  # fmt: skip
+    return [_task_card(t) for t in found]
 
 
 @router.get("/tasks/{task_id}")
@@ -207,6 +231,55 @@ def task_events(
 
 class ResumeIn(Input):
     prompt: NonEmpty
+
+
+Ids = Annotated[list[str], Field(min_length=1, max_length=500)]
+
+
+class ArchiveIn(Input):
+    ids: Ids
+    archived: bool = True
+
+
+class DeleteIn(Input):
+    ids: Ids
+    delete_branches: bool = False  # branches with unmerged work are kept...
+    unmerged_too: bool = False  # ...unless this is set (one task, ticked by the user)
+
+
+@router.post("/tasks/archive")
+def archive_tasks(data: ArchiveIn, session: WriteSessionDep) -> dict[str, int]:
+    return {"changed": cleanup.archive(session, "task", data.ids, data.archived, by=OWNER)}
+
+
+@router.post("/threads/archive")
+def archive_threads(data: ArchiveIn, session: WriteSessionDep) -> dict[str, int]:
+    return {"changed": cleanup.archive(session, "thread", data.ids, data.archived, by=OWNER)}
+
+
+@router.get("/tasks/{task_id}/branch")
+def task_branch(task_id: str, session: SessionDep) -> dict[str, Any]:
+    """The task's git branch: whether it's there and how much isn't merged (null if
+    Ringkeeper can't reach the project's folder from here)."""
+    task = tasks.get_task(session, task_id)
+    return {"branch": cleanup.branch_info(session, current_settings(), task)}
+
+
+@router.post("/tasks/delete")
+def delete_tasks(data: DeleteIn, session: WriteSessionDep) -> dict[str, Any]:
+    branches = cleanup.delete_tasks(
+        session, current_settings(), data.ids, delete_branches=data.delete_branches,
+        unmerged_too=data.unmerged_too and len(data.ids) == 1, by=OWNER,
+    )  # fmt: skip
+    return {"deleted": len(branches), "branches": branches}
+
+
+@router.post("/threads/delete")
+def delete_threads(data: DeleteIn, session: WriteSessionDep) -> dict[str, int]:
+    removed = cleanup.delete_threads(
+        session, current_settings(), data.ids, delete_branches=data.delete_branches, by=OWNER
+    )
+    return {"deleted": len(data.ids), "tasks": removed}
 
 
 @router.post("/tasks/{task_id}/stop")

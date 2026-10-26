@@ -19,6 +19,7 @@ export interface TaskCard {
   finished_at: string | null;
   turns: number;
   cost_usd: number | null;
+  archived?: boolean;
 }
 
 const PHASE: Record<string, string> = {
@@ -35,6 +36,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{task.project}</span>
         <StatusBadge status={task.status} />
+        {task.archived ? <span className="text-xs text-muted">archived</span> : null}
         {task.phase && task.status !== "succeeded" ? <span className="text-xs text-muted">{PHASE[task.phase] ?? task.phase}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(task.finished_at ?? task.created_at)}</span>
       </div>

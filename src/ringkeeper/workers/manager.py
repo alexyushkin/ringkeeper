@@ -38,6 +38,7 @@ from ringkeeper.models import (
 from ringkeeper.services import (
     architect,
     architect_loop,
+    cleanup,
     holds,
     inbox,
     projects,
@@ -250,6 +251,9 @@ class Manager:
         settings = self.settings
         with session_scope() as session:
             holds.resume_decided(session, settings)
+            gone = cleanup.take_pending_state(session)
+        for name in gone:  # deleted tasks' transcripts
+            self.runtime.remove_volume(name)
         if settings.paused:  # "Stop everything": nothing new starts until resumed
             return
         cap = settings.max_concurrent_workers

@@ -171,6 +171,7 @@ class ThreadOut(_Output):
     source: str
     created_at: datetime
     messages: list[MessageOut]
+    archived: bool = False
 
 
 class AnswerIn(_Input):

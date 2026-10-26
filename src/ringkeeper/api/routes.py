@@ -98,6 +98,7 @@ def get_thread(thread_id: str, session: SessionDep) -> ThreadOut:
         source=thread.source,
         created_at=thread.created_at,
         messages=messages,
+        archived=thread.archived_at is not None,
     )
 
 

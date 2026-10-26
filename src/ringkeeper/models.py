@@ -434,6 +434,7 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime())  # hidden, searchable
     # Set when the router created the task.
     thread_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("threads.id", ondelete="SET NULL", name="fk_tasks_thread")
@@ -552,6 +553,7 @@ class Thread(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), server_default=func.now(), onupdate=func.now()
     )
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime())  # hidden, searchable
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="thread", order_by="Message.created_at", passive_deletes=True

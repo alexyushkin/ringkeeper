@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, cast, func, select, update
+from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
@@ -187,13 +187,24 @@ def list_tasks(
     status: TaskStatus | None = None,
     project: str | None = None,
     limit: int = 50,
+    archived: bool = False,
+    search: str | None = None,
 ) -> Sequence[Task]:
+    """`search`: a LIKE pattern over the request, outcome, summary and project; it
+    finds archived tasks too. Otherwise archived ones are listed only when asked."""
     query = (
         select(Task)
         .options(selectinload(Task.sessions))
         .order_by(Task.created_at.desc())
         .limit(limit)
     )
+    if search is not None:
+        fields = (Task.prompt, Task.outcome, Task.summary, Task.project)
+        query = query.where(or_(*(f.ilike(search, escape="\\") for f in fields)))
+    else:
+        query = query.where(
+            Task.archived_at.is_not(None) if archived else Task.archived_at.is_(None)
+        )
     if status is not None:
         query = query.where(Task.status == status)
     if project is not None:
