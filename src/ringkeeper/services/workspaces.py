@@ -13,10 +13,13 @@ A folder that already has files is left exactly as it is: without git,
 Ringkeeper lists the files a task changed instead.
 """
 
+import json
 import os
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from ringkeeper.config import Settings
 from ringkeeper.desktop import paths
@@ -93,3 +96,46 @@ def _start_repository(settings: Settings, path: Path) -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return True
+
+
+def claude_code_config() -> Path:
+    """Claude Code's own settings file, which lists every folder it was opened in."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(base) / ".claude.json" if base else Path.home() / ".claude.json"
+
+
+def claude_code_folders(settings: Settings, used: Iterable[str]) -> list[Path]:
+    """Folders the user opened Claude Code in, to offer as projects: each once,
+    still on disk, not a worktree copy, not Ringkeeper's own data folder, a
+    whole drive or the home folder, and not already a Ringkeeper project's."""
+    try:
+        config: object = json.loads(claude_code_config().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    listed = cast(dict[str, Any], config).get("projects") if isinstance(config, dict) else None
+    if not isinstance(listed, dict):
+        return []
+    data_dir = _key(settings.data_dir.absolute())
+    seen = {_key(Path(p)) for p in used}
+    found: list[Path] = []
+    for text in cast(dict[str, Any], listed):
+        path = Path(os.path.normpath(text))
+        key = _key(path)
+        if key in seen or not path.is_absolute():
+            continue
+        seen.add(key)
+        parts = {part.lower() for part in path.parts}
+        if ".claude" in parts and "worktrees" in parts:
+            continue
+        if path == Path(path.anchor) or path == Path.home():
+            continue
+        if key == data_dir or key.startswith(data_dir + os.sep):
+            continue
+        if path.is_dir():
+            found.append(path)
+    return sorted(found, key=lambda p: (p.name.lower(), str(p).lower()))
+
+
+def _key(path: Path) -> str:
+    """One spelling per folder: C:/a/b and c:\a\b are the same on Windows."""
+    return os.path.normcase(os.path.normpath(path))

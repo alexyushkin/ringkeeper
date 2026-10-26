@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, Toggle } from "@/components/ui";
@@ -134,11 +135,14 @@ export default function SetupPage() {
 
 function ProjectStep({ onSaved }: { onSaved: (name: string, saved?: ProjectSaved) => void }) {
   return (
-    <Card>
-      <h2 className="mb-1 text-lg font-semibold">Add your first project</h2>
-      <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
-      <ProjectForm onSaved={onSaved} />
-    </Card>
+    <div className="space-y-4">
+      <ClaudeCodeFolders onAdded={(names) => onSaved(names.join(", "))} />
+      <Card>
+        <h2 className="mb-1 text-lg font-semibold">Add your first project</h2>
+        <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
+        <ProjectForm onSaved={onSaved} />
+      </Card>
+    </div>
   );
 }
 
@@ -183,6 +187,8 @@ function DesktopDone({ project, saved }: { project: string | null; saved: Projec
               : "It isn't a git repository, so tasks change its files directly and list what they changed."}
           </p>
         </div>
+      ) : project ? (
+        <p className="text-sm">Added {project}.</p>
       ) : null}
       <p className="text-sm">
         Ask for something in plain words. Ringkeeper sends it to the right project, and anything that touches live client data waits for your approval.

@@ -304,3 +304,41 @@ def test_first_run_in_the_app(
     # Finished: the app stops showing first-run.
     assert win.post("/bff/setup/done").status_code == 204
     assert win.get("/bff/setup/status").json()["done"] is True
+
+
+def test_claude_code_folders_are_offered_as_projects(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = tmp_path / "code"
+    for name in ("acme-site", "beta-app", "already-here", "acme-site/.claude/worktrees/copy"):
+        (code / name).mkdir(parents=True)
+    listed: dict[str, dict[str, Any]] = {
+        str(code / "acme-site"): {},
+        (code / "acme-site").as_posix(): {},  # the same folder, spelled another way
+        str(code / "acme-site" / ".claude" / "worktrees" / "copy"): {},
+        str(code / "beta-app"): {},
+        str(code / "gone"): {},  # deleted since
+        str(code / "already-here"): {},
+        str(Path.home()): {},
+        str(desktop["data_dir"]): {},
+        "relative/folder": {},
+    }
+    config = tmp_path / "claude-config"
+    config.mkdir()
+    (config / ".claude.json").write_text(json.dumps({"projects": listed}), encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+
+    win = window(desktop)
+    made = win.post(
+        "/bff/projects",
+        json={"name": "already-here", "owner": "x", "workspace_path": str(code / "already-here")},
+    )
+    assert made.status_code == 201, made.text
+    offered = win.get("/bff/desktop/claude-code-folders").json()
+    assert offered == [
+        {"folder": str(code / "acme-site"), "name": "acme-site"},
+        {"folder": str(code / "beta-app"), "name": "beta-app"},
+    ]
+
+    (config / ".claude.json").write_text("not json", encoding="utf-8")
+    assert win.get("/bff/desktop/claude-code-folders").json() == []
