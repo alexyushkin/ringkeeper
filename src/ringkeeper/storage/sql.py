@@ -66,9 +66,14 @@ def _pending(connection: Any) -> list[events.Notification]:
 
 
 def _release(connection: Any) -> None:
+    """Clear the mark on the thread that set it, which needn't be this one: FastAPI
+    can finish a request's session (commit, rollback) on another worker thread
+    than the one that ran the request's first write."""
     raw = _raw(connection)
-    if getattr(raw, "writing", None) is not None:
-        _held().discard(raw.writing)
+    writing: tuple[str, set[str]] | None = getattr(raw, "writing", None)
+    if writing is not None:
+        database, holder = writing
+        holder.discard(database)
         raw.writing = None
 
 
@@ -140,7 +145,7 @@ def _prepare_sqlite(engine: Engine) -> None:
             )
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         _held().add(database)
-        _raw(connection.connection).writing = database
+        _raw(connection.connection).writing = (database, _held())
 
     # Notifications go out only after the commit has happened (Postgres's
     # NOTIFY semantics), and are dropped on rollback.

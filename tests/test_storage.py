@@ -180,3 +180,21 @@ def test_postgres_specifics_stay_in_storage() -> None:
         )
     ]
     assert offenders == []
+
+
+def test_a_write_finished_on_another_thread_frees_the_first(sqlite_engine: Engine) -> None:
+    """FastAPI may commit a request's session on another worker thread than the one
+    that began the write. That thread must be able to write again afterwards."""
+    session = Session(sqlite_engine)
+    session.add(Setting(key="first", value={}))
+    session.flush()  # BEGIN IMMEDIATE, here on this thread
+    finisher = threading.Thread(target=session.commit)
+    finisher.start()
+    finisher.join()
+    session.close()
+
+    with Session(sqlite_engine) as again:  # same thread as the first write
+        again.add(Setting(key="second", value={}))
+        again.commit()
+    with Session(sqlite_engine) as check:
+        assert {s.key for s in check.scalars(select(Setting))} >= {"first", "second"}
