@@ -120,11 +120,15 @@ def check_connection_secret(kind: InstanceType, secret: str) -> str:
     secret = secret.strip()
     if not secret:
         raise RuleViolationError("The secret is empty.")
-    if kind is InstanceType.SUPABASE:
+    if kind is InstanceType.SUPABASE:  # any Postgres: Supabase, Neon, your own
+        if secret.lower().startswith("psql"):
+            raise RuleViolationError(
+                "That's a psql command; paste the postgresql:// connection string."
+            )
         if not secret.startswith(("postgres://", "postgresql://")):
             raise RuleViolationError(
-                "For Supabase, paste the database connection string "
-                "(it starts with postgresql://). Find it under Connect > Session pooler."
+                "Paste the database's connection string (it starts with postgresql://). In "
+                "Neon it's under Connect; in Supabase, Connect > Session pooler."
             )
         netpolicy.check_dsn(secret)
     elif kind is InstanceType.AIRTABLE and not secret.startswith("pat"):

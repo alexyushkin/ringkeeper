@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # Models by role, and by task complexity for workers the router dispatched.
     # A project's `models` in the registry overrides any of these for that project.
     model_router: str = "claude-haiku-5-5"
-    model_architect: str = "claude-opus-5-5"
+    model_architect: str = "claude-sonnet-5-5"  # high-complexity plans use model_high
     model_worker: str = "claude-sonnet-5-5"  # tasks without a complexity (`task run`)
     model_low: str = "claude-haiku-5-5"
     model_medium: str = "claude-sonnet-5-5"

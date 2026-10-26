@@ -204,7 +204,7 @@ def test_plan_approval_resumes_the_architect() -> None:
         assert (task.status, task.phase) == (TaskStatus.QUEUED, ArchitectPhase.BUILDING)
         resumed = tasks.latest_session(task)
         assert (resumed.role, resumed.sdk_session_id) == (SessionRole.ARCHITECT, "sdk-1")
-        assert resumed.model == "claude-opus-5-5"
+        assert resumed.model == "claude-sonnet-5-5"
         assert "dispatch_worker" in resumed.prompt
 
 

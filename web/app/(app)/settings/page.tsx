@@ -38,7 +38,7 @@ interface Settings {
 
 const MODELS: [keyof Settings["values"], string][] = [
   ["model_router", "Sorting requests"],
-  ["model_architect", "Planning features"],
+  ["model_architect", "Planning features (big ones plan on the Big tasks model)"],
   ["model_low", "Small tasks"],
   ["model_medium", "Normal tasks"],
   ["model_high", "Big tasks"],

@@ -143,7 +143,7 @@ def test_worker_gets_the_session_config() -> None:
     assert config["resume"] is None
     assert config["disallowed_tools"] == ["WebFetch", "WebSearch"]  # standard autonomy
     # Only the services the project is connected to.
-    assert config["mcp_servers"] == {"ringkeeper-supabase": "http://gateway:8100/mcp/supabase"}
+    assert config["mcp_servers"] == {"ringkeeper-database": "http://gateway:8100/mcp/database"}
     token = runtime.started[0].env["RINGKEEPER_GATEWAY_TOKEN"]
     from ringkeeper.tokens import verify_token  # noqa: PLC0415
 

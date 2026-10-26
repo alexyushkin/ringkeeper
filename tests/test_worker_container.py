@@ -210,8 +210,8 @@ def test_worker_sees_only_its_workspace_and_one_credential(
     assert [n for n in BILLING_ENV_VARS if n in report["env_names"]] == ["ANTHROPIC_API_KEY"]
 
     gateways = {e["server"]: e for e in events["stub.gateway"]}
-    assert gateways["ringkeeper-supabase"]["ok"] is True, gateways
-    assert "query" in gateways["ringkeeper-supabase"]["tools"]
+    assert gateways["ringkeeper-database"]["ok"] is True, gateways
+    assert "query" in gateways["ringkeeper-database"]["tools"]
     assert gateways["ringkeeper-n8n"]["ok"] is True
 
     [probe] = events["stub.probe"]

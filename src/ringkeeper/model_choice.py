@@ -3,7 +3,9 @@
 Roles: the router, the architect, and workers. A worker the router dispatched
 has a complexity (low, medium, high) that picks its tier; one without (from
 `task run`) uses the worker model. After two failed check rounds in the
-architect loop the worker moves up one tier. A project's `models` overrides
+architect loop the worker moves up one tier. The architect plans on its own
+model, except for high-complexity tasks, which plan on the high tier (low
+ones skip planning: services.tasks.planned). A project's `models` overrides
 any role or tier for that project.
 """
 
@@ -43,6 +45,9 @@ def session_model(
     failed_check_rounds: int = 0,
 ) -> str:
     if role is SessionRole.ARCHITECT:
+        chosen_for_project = (project.models if project is not None else {}).get("architect")
+        if complexity is Complexity.HIGH and not chosen_for_project:
+            return _pick(settings, project, "high")
         return _pick(settings, project, "architect")
     chosen = tier(complexity, failed_check_rounds)
     return _pick(settings, project, chosen.value if chosen is not None else "worker")

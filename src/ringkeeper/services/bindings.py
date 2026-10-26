@@ -21,6 +21,21 @@ def _resolve(session: Session, project_name: str, instance_name: str) -> tuple[P
     return project, instance
 
 
+def same_client(a: str, b: str) -> bool:
+    return a.strip().casefold() == b.strip().casefold()
+
+
+def check_same_client(session: Session, project_name: str, instance_name: str) -> None:
+    """The app's rule: a connection is shared only among one client's projects. (A
+    registry file may still link across owners, where an owner is a team.)"""
+    project, instance = _resolve(session, project_name, instance_name)
+    if not same_client(project.owner, instance.owner):
+        raise RuleViolationError(
+            f"'{instance.name}' is {instance.owner}'s connection and '{project.name}' is "
+            f"{project.owner}'s project. A connection is shared only among one client's projects."
+        )
+
+
 def find_binding(project: Project, instance: Instance) -> ProjectInstance | None:
     return next((b for b in project.bindings if b.instance_id == instance.id), None)
 

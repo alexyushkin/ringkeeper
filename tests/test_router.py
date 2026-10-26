@@ -97,7 +97,7 @@ def test_a_message_is_split_into_one_task_per_project() -> None:
         "acme-web", TaskKind.FEATURE, ArchitectPhase.PLANNING,
     )  # fmt: skip
     assert feature.sessions[0].role is SessionRole.ARCHITECT
-    assert feature.sessions[0].model == "claude-opus-5-5"
+    assert feature.sessions[0].model == "claude-sonnet-5-5"
     assert (data.project, data.kind, data.outcome) == (
         "globex-portal", TaskKind.DATA, "done in globex-portal",
     )  # fmt: skip
@@ -327,3 +327,11 @@ def test_sdk_env_blanks_every_other_billing_variable() -> None:
     assert env["CLAUDE_CONFIG_DIR"] == "/state/router"
     blanked = {k for k, v in env.items() if v == ""}
     assert blanked == set(BILLING_ENV_VARS) - {"CLAUDE_CODE_OAUTH_TOKEN"}
+
+
+def test_only_big_features_plan_on_the_big_model() -> None:
+    ask("Redesign acme-web's checkout")
+    route(FakeModel([output(routed("acme-web", 0.95, kind="feature", complexity="high"))]))
+    [task] = all_tasks()
+    [first] = task.sessions
+    assert (first.role, first.model) == (SessionRole.ARCHITECT, "claude-opus-5-5")

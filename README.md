@@ -42,7 +42,7 @@ A worker running for `acme-web` can only ever reach `acme-*` instances. The
 worker (Claude Code, …)
    │  MCP over HTTP, Authorization: Bearer <worker token>
    ▼
-gateway  /mcp/supabase  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/mcp
+gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/mcp
    1. valid token?            (signed, short-lived, names project + session)
    2. instance exists?        (omitted only for reads: the project default)
    3. bound to the project?
@@ -140,7 +140,7 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 
 | Endpoint | Reads | Writes |
 |---|---|---|
-| `/mcp/supabase` | `list_tables`, `describe_table`, `query` (READ ONLY transaction) | `execute` |
+| `/mcp/database` (also `/mcp/supabase`) | `list_tables`, `describe_table`, `query` (READ ONLY transaction) | `execute` |
 | `/mcp/n8n` | `list_workflows`, `get_workflow`, `list_executions`, `get_execution` | `activate_workflow`, `deactivate_workflow`, `update_workflow`, `retry_execution`, `stop_execution` (all always held) |
 | `/mcp/airtable` | `list_bases`, `list_tables`, `list_records`, `get_record` | `create_records`, `update_records`, `delete_records` |
 | `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
@@ -419,13 +419,15 @@ The worker image includes pytest and uv.
 | Role                          | Default             | Setting                       |
 | ----------------------------- | ------------------- | ----------------------------- |
 | router                        | `claude-haiku-5-5`  | `RINGKEEPER_MODEL_ROUTER`     |
-| architect                     | `claude-opus-5-5`   | `RINGKEEPER_MODEL_ARCHITECT`  |
+| architect                     | `claude-sonnet-5-5` | `RINGKEEPER_MODEL_ARCHITECT`  |
+| architect, `high` complexity  | `claude-opus-5-5`   | `RINGKEEPER_MODEL_HIGH`       |
 | worker (no complexity)        | `claude-sonnet-5-5` | `RINGKEEPER_MODEL_WORKER`     |
 | worker, `low` complexity      | `claude-haiku-5-5`  | `RINGKEEPER_MODEL_LOW`        |
 | worker, `medium` complexity   | `claude-sonnet-5-5` | `RINGKEEPER_MODEL_MEDIUM`     |
 | worker, `high` complexity     | `claude-opus-5-5`   | `RINGKEEPER_MODEL_HIGH`       |
 
-The router sets each task's complexity. After two failed check rounds in the
+The router sets each task's complexity: `low` features skip the architect, and
+`high` ones plan on the high-tier model. After two failed check rounds in the
 architect loop, the worker moves up one tier. A project can override any of
 these in the registry (`models: {architect: ..., low: ...}`), and each session
 records the model it ran on (`ringkeeper task show`).
@@ -662,8 +664,8 @@ for db in acme_dev:acme/supabase-dev acme_prod:acme/supabase-prod globex_dev:glo
     | uv run ringkeeper secret set "file://${db#*:}"
 done
 uv run ringkeeper registry apply examples/registry.yaml
-claude mcp add --transport http --scope user ringkeeper-supabase \
-  http://localhost:8100/mcp/supabase \
+claude mcp add --transport http --scope user ringkeeper-database \
+  http://localhost:8100/mcp/database \
   --header "Authorization: Bearer $(uv run ringkeeper token issue --project acme-web --ttl 1h)"
 ```
 
@@ -671,7 +673,7 @@ MCP servers load when a Claude Code session starts, so start a new session
 after adding it. Use `--scope user` for the Claude desktop app, which doesn't
 load `--scope local` servers (the terminal CLI loads either). User scope makes
 the server visible in every project, so remove it when you're done:
-`claude mcp remove ringkeeper-supabase -s user`.
+`claude mcp remove ringkeeper-database -s user`.
 
 Then, from Claude Code:
 

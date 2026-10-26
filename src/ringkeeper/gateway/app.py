@@ -31,7 +31,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ringkeeper import __version__
-from ringkeeper.adapters import ADAPTERS
+from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.adapters.base import Adapter, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
@@ -164,11 +164,13 @@ def make_tool(service: InstanceType, spec: ToolSpec, vault: Vault) -> Callable[.
 
 
 def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
+    name = agent_name(adapter.service)
+    what = "databases (Postgres: Supabase, Neon or another)" if name == "database" else name
     server = FastMCP(
-        name=f"ringkeeper-{adapter.service}",
+        name=f"ringkeeper-{name}",
         version=__version__,
         instructions=(
-            f"Ringkeeper gateway for {adapter.service}. You can only reach instances bound to "
+            f"Ringkeeper gateway for {what}. You can only reach instances bound to "
             "your project. Refusals explain why; relay them rather than retrying."
         ),
         mask_error_details=True,  # unexpected exceptions never reach the agent
@@ -214,15 +216,20 @@ def create_app(vault: Vault | None = None) -> Starlette:
     routes: list[Route] = [Route("/health", health)]
     apps: list[StarletteWithLifespan] = []
     for service, adapter in ADAPTERS.items():
-        path = f"/mcp/{service}"
-        app = build_server(adapter, vault).http_app(
-            path=path, stateless_http=True, json_response=True
-        )
-        apps.append(app)
-        # Route (not Mount) keeps the full path, so /mcp/supabase works without a trailing slash.
-        routes.append(
-            Route(path, endpoint=WorkerTokenAuth(app, service), methods=["GET", "POST", "DELETE"])
-        )
+        # /mcp/database, and /mcp/supabase for anything that already uses it.
+        names = dict.fromkeys((agent_name(service), service.value))
+        for name in names:
+            path = f"/mcp/{name}"
+            app = build_server(adapter, vault).http_app(
+                path=path, stateless_http=True, json_response=True
+            )
+            apps.append(app)
+            # Route (not Mount) keeps the full path: no trailing slash needed.
+            routes.append(
+                Route(
+                    path, endpoint=WorkerTokenAuth(app, service), methods=["GET", "POST", "DELETE"]
+                )
+            )
 
     architect_app = build_architect_server(current_caller).http_app(
         path="/mcp/architect", stateless_http=True, json_response=True

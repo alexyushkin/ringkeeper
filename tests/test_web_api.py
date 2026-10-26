@@ -383,7 +383,7 @@ def test_loosening_connections_needs_a_recent_confirmation(
     assert owner.post("/connections", json={**connection, "name": "other"}).status_code == 403
     assert owner.patch("/connections/acme-db", json={"env": "staging"}).status_code == 403
     assert owner.put("/connections/acme-db/secret", json={"secret": target_dsn}).status_code == 403
-    assert owner.patch("/connections/acme-db", json={"owner": "acme inc"}).status_code == 200
+    assert owner.patch("/connections/acme-db", json={"owner": "Acme"}).status_code == 200
     preapproved = {"preapproved_writes": ["execute"]}
     bind = owner.put("/projects/acme-web/connections/acme-db", json=preapproved)
     assert bind.status_code == 403
@@ -851,3 +851,30 @@ def test_a_workspace_id_is_checked_with_the_key_and_saved(
     assert owner.get("/settings").json()["values"]["anthropic_workspace_id"] is None
     bad = owner.put("/secrets/claude", json={"value": API_KEY, "workspace_id": "a: b\r\nX: y"})
     assert bad.status_code == 422  # it goes into a header
+
+
+def test_a_connection_is_attached_only_to_its_own_client_s_projects(
+    owner: TestClient, target_dsn: str
+) -> None:
+    owner.post("/projects", json={"name": "alexey-site", "owner": "alexey"})
+    owner.post("/projects", json={"name": "test-site", "owner": "test"})
+    connection = {"name": "alexey-db", "type": "supabase", "env": "dev", "owner": "alexey",
+                  "secret": target_dsn}  # fmt: skip
+    assert owner.post("/connections", json=connection).status_code == 201
+    refused = owner.put("/projects/test-site/connections/alexey-db", json={})
+    assert refused.status_code == 409
+    assert "one client's projects" in refused.json()["detail"]
+    assert owner.put("/projects/alexey-site/connections/alexey-db", json={}).status_code == 200
+
+
+def test_a_pasted_psql_command_gets_a_plain_hint() -> None:
+    from ringkeeper.models import InstanceType  # noqa: PLC0415
+
+    with pytest.raises(secrets_in.RuleViolationError, match="That's a psql command"):
+        secrets_in.check_connection_secret(
+            InstanceType.SUPABASE, "psql 'postgresql://u:p@ep-x.neon.tech/db?sslmode=require'"
+        )
+    with pytest.raises(secrets_in.RuleViolationError) as refused:
+        secrets_in.check_connection_secret(InstanceType.SUPABASE, "mysql://u:p@h/db")
+    assert "Neon" in str(refused.value)
+    assert not str(refused.value).startswith("For Supabase")

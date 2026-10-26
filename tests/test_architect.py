@@ -169,7 +169,7 @@ def test_the_full_loop_with_checks_gating_escalation_and_the_review_cap() -> Non
     config = config_of(spec)
     assert config["mcp_servers"] == {"ringkeeper-architect": "http://gateway:8100/mcp/architect"}
     assert {"Write", "Edit", "Bash"} <= set(config["disallowed_tools"])
-    assert config["model"] == "claude-opus-5-5"
+    assert config["model"] == "claude-sonnet-5-5"
     assert config["checks"] == []
     assert "Add a plan formatter" in config["prompt"]
     assert verify_token(spec.env["RINGKEEPER_GATEWAY_TOKEN"]).role is TokenRole.ARCHITECT

@@ -19,7 +19,7 @@ from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
 from ringkeeper import scrub
-from ringkeeper.adapters import ADAPTERS
+from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.claude_auth import resolve as resolve_credential
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
@@ -365,7 +365,8 @@ class Manager:
             checks = list(project.checks)
             # Only the services this project is connected to: every other endpoint
             # would refuse it anyway, and each one's tools crowd the agent's context.
-            services = sorted({b.instance_type.value for b in project.bindings})
+            served = {b.instance_type for b in project.bindings if b.instance_type in ADAPTERS}
+            endpoints = sorted(agent_name(service) for service in served)
         architect_role = job.role is SessionRole.ARCHITECT
         credential = resolve_credential(self.vault, settings, job.auth_mode)
         token, claims = issue_token(
@@ -386,9 +387,7 @@ class Manager:
             "mcp_servers": (
                 {"ringkeeper-architect": f"{base}/mcp/architect"}
                 if architect_role
-                else {
-                    f"ringkeeper-{svc}": f"{base}/mcp/{svc}" for svc in services if svc in ADAPTERS
-                }
+                else {f"ringkeeper-{name}": f"{base}/mcp/{name}" for name in endpoints}
             ),
             "disallowed_tools": (
                 architect.DISALLOWED_TOOLS if architect_role else DISALLOWED_TOOLS[autonomy]

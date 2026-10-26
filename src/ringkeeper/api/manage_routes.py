@@ -342,6 +342,7 @@ def bind_connection(
 ) -> dict[str, Any]:
     if data.preapproved_writes:
         check_recent_auth(request, token)  # writes that run without an approval
+    bindings.check_same_client(session, name, instance)
     binding, created = bindings.set_binding(
         session, BindingIn(project=name, instance=instance, **data.model_dump())
     )

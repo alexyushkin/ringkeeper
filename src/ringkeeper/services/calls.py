@@ -26,7 +26,7 @@ import anyio.to_thread
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper.adapters import ADAPTERS
+from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
@@ -98,7 +98,8 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
         if spec.kind is ToolKind.WRITE:
             raise RefusalError(
                 f"'{call.tool}' writes, so it needs an explicit instance (instance=...). "
-                f"{call.service} instances for {project.name}: {_bound_names(project, call)}",
+                f"{agent_name(call.service)} instances for {project.name}: "
+                f"{_bound_names(project, call)}",
                 "write without an explicit instance",
             )
         default = next(
@@ -106,15 +107,15 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
         )
         if default is None:
             raise RefusalError(
-                f"project '{project.name}' has no default {call.service} instance; pass "
-                f"instance=... ({_bound_names(project, call)})",
+                f"project '{project.name}' has no default {agent_name(call.service)} "
+                f"instance; pass instance=... ({_bound_names(project, call)})",
                 "read without instance and no default",
             )
         name = default.instance.name
 
     unavailable = (
         f"instance '{name}' is not available to project '{project.name}'. "
-        f"{call.service} instances it can use: {_bound_names(project, call)}"
+        f"{agent_name(call.service)} instances it can use: {_bound_names(project, call)}"
     )
     instance = session.scalars(select(Instance).where(Instance.name == name)).one_or_none()
     if instance is None:
@@ -130,8 +131,8 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
         )
     if instance.type != call.service:
         raise RefusalError(
-            f"instance '{name}' is a {instance.type} instance; "
-            f"call it through /mcp/{instance.type}",
+            f"instance '{name}' is a {agent_name(instance.type)} instance; "
+            f"call it through /mcp/{agent_name(instance.type)}",
             f"instance is {instance.type}, endpoint is {call.service}",
         )
 
@@ -227,7 +228,7 @@ def bound_instances(caller: Caller) -> list[dict[str, Any]]:
         return [
             {
                 "name": b.instance.name,
-                "type": b.instance.type.value,
+                "type": agent_name(b.instance.type),
                 "env": b.instance.env.value,
                 "is_default": b.is_default,
                 "allowed_tools": list(b.allowed_tools) or "all",

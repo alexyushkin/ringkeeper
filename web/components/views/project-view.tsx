@@ -49,7 +49,9 @@ export function ProjectView({ name }: { name: string }) {
   if (project.error) return <Alert>{project.error}</Alert>;
   if (!project.data) return <Loading />;
   const bound = new Set(project.data.instances.map((i) => i.name));
-  const available = (connections.data ?? []).filter((c) => !bound.has(c.name));
+  // A connection is shared only among one client's projects.
+  const client = project.data.owner.trim().toLowerCase();
+  const available = (connections.data ?? []).filter((c) => !bound.has(c.name) && c.owner.trim().toLowerCase() === client);
 
   return (
     <>
@@ -115,7 +117,7 @@ export function ProjectView({ name }: { name: string }) {
         {available.length ? (
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Select label="Or link one you already added" value={adding} onChange={setAdding} options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, `${c.name} (${c.env === "prod" ? "production" : c.env})`])]} />
+              <Select label={`Or link one of ${project.data.owner}'s connections`} value={adding} onChange={setAdding} options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, `${c.name} (${c.env === "prod" ? "production" : c.env})`])]} />
             </div>
             <Button
               kind="primary"

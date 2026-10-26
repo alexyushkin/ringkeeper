@@ -29,7 +29,7 @@ def token(project: str = "acme-web", **kwargs: Any) -> str:
     return value
 
 
-def client(url: str, bearer: str, service: str = "supabase") -> Client[Any]:
+def client(url: str, bearer: str, service: str = "database") -> Client[Any]:
     headers = {"Authorization": f"Bearer {bearer}"}
     return Client(StreamableHttpTransport(f"{url}/mcp/{service}", headers=headers))
 
@@ -206,7 +206,7 @@ async def test_list_instances_shows_only_the_projects_own(gateway: str, service:
     }  # fmt: skip
     staging = next(i for i in instances if i["name"] == "acme-supabase-staging")
     assert staging == {
-        "name": "acme-supabase-staging", "type": "supabase", "env": "staging",
+        "name": "acme-supabase-staging", "type": "database", "env": "staging",
         "is_default": False, "allowed_tools": ["query", "list_tables"],
     }  # fmt: skip
     text = text_of(result) + json.dumps(result.structured_content)
