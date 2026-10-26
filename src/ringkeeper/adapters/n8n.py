@@ -1,5 +1,10 @@
 """n8n public API (v1): the secret is an API key, base_url is the n8n host.
 
+Reads run without asking. Every write waits for approval, even on a
+connection marked as test data: turning a workflow on or off, changing it,
+and retrying or stopping an execution (n8n's API has no "run this workflow
+now"; a retry runs a past execution again).
+
 Endpoints follow n8n's own OpenAPI spec. `activate`/`deactivate` are marked
 deprecated in current n8n in favour of `publish`/`unpublish`, but they work
 there and are the only option on older self-hosted versions, so we use them.
@@ -12,7 +17,16 @@ import httpx2
 from pydantic import Field
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, guarded_write, read, write
+from ringkeeper.adapters.base import (
+    JSON,
+    Adapter,
+    Hold,
+    Target,
+    ToolError,
+    always_held,
+    guarded_write,
+    read,
+)
 from ringkeeper.models import InstanceType
 
 API_PREFIX = "/api/v1"
@@ -162,13 +176,13 @@ async def get_execution(
     return await _call(target, "GET", f"/executions/{_id(execution_id)}", params=params)
 
 
-@write
+@always_held
 async def activate_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Activate (publish) a workflow so its triggers start running."""
     return await _call(target, "POST", f"/workflows/{_id(workflow_id)}/activate")
 
 
-@write
+@always_held
 async def deactivate_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Deactivate a workflow so its triggers stop running."""
     return await _call(target, "POST", f"/workflows/{_id(workflow_id)}/deactivate")
@@ -180,7 +194,7 @@ async def _updated_at(target: Target, workflow_id: str, **_ignored: object) -> J
     return {"updatedAt": workflow.get("updatedAt")}
 
 
-@guarded_write(_updated_at)
+@guarded_write(_updated_at, Hold.ALWAYS)
 async def update_workflow(
     target: Target,
     workflow_id: WorkflowId,
@@ -210,6 +224,37 @@ async def update_workflow(
     return await _call(target, "PUT", f"/workflows/{_id(workflow_id)}", params=params, body=body)
 
 
+NumericExecutionId = Annotated[
+    str, Field(description="The n8n execution id (a number).", pattern=r"^[0-9]{1,18}$")
+]
+
+
+def _execution(value: str) -> str:
+    if not value.isdigit():
+        raise ToolError("that isn't an n8n execution id (a number)")
+    return value
+
+
+@always_held
+async def retry_execution(
+    target: Target,
+    execution_id: NumericExecutionId,
+    latest_version: Annotated[
+        bool,
+        Field(description="Run the workflow as it's saved now, not as it was for that run."),
+    ] = False,
+) -> JSON:
+    """Run a past execution again (a new execution; the old one stays as it was)."""
+    path = f"/executions/{_execution(execution_id)}/retry"
+    return await _call(target, "POST", path, body={"loadWorkflow": latest_version})
+
+
+@always_held
+async def stop_execution(target: Target, execution_id: NumericExecutionId) -> JSON:
+    """Stop an execution that's running or waiting."""
+    return await _call(target, "POST", f"/executions/{_execution(execution_id)}/stop")
+
+
 ADAPTER = Adapter(
     service=InstanceType.N8N,
     tools=(
@@ -220,5 +265,7 @@ ADAPTER = Adapter(
         activate_workflow,
         deactivate_workflow,
         update_workflow,
+        retry_execution,
+        stop_execution,
     ),
 )

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from ringkeeper import scrub
@@ -126,4 +128,21 @@ def test_tools_are_declared_read_or_write() -> None:
         "activate_workflow": "write",
         "deactivate_workflow": "write",
         "update_workflow": "write",
+        "retry_execution": "write",
+        "stop_execution": "write",
     }
+    # Every n8n write waits for approval, even on test data; reads never do.
+    writes = [t for t in n8n.ADAPTER.tools if t.kind.value == "write"]
+    assert {t.hold.value for t in writes} == {"always"}
+
+
+async def test_retry_and_stop_an_execution(fake: FakeN8n) -> None:
+    fake.executions.append({"id": "1", "workflowId": "wf1", "status": "error"})
+    retried = await n8n.retry_execution.handler(target(), execution_id="1", latest_version=True)
+    assert retried == {"id": "1002", "mode": "retry", "retryOf": "1"}
+    assert fake.requests[-1].url.path == "/api/v1/executions/1/retry"
+    assert json.loads(fake.requests[-1].content) == {"loadWorkflow": True}
+    stopped = await n8n.stop_execution.handler(target(), execution_id="1")
+    assert stopped["status"] == "canceled"
+    with pytest.raises(ToolError, match="isn't an n8n execution id"):
+        await n8n.stop_execution.handler(target(), execution_id="../workflows")

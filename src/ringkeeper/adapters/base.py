@@ -42,9 +42,12 @@ class Target:
     env: Env
     base_url: str | None
     secret: Secret = field(repr=False)
+    config: JSON = field(default_factory=dict[str, Any])  # the connection's non-secret settings
 
 
 Handler = Callable[..., Awaitable[JSON]]
+# For a tool whose kind depends on the call (an MCP server's tools): READ or WRITE.
+Classifier = Callable[["Target", JSON], "ToolKind"]
 # Captures state at hold time; approval refuses to run if it has changed since.
 Precondition = Callable[..., Awaitable[JSON]]
 
@@ -57,6 +60,9 @@ class ToolSpec:
     handler: Handler
     precondition: Precondition | None = None
     hold: Hold = Hold.PROD  # writes only
+    # Decides per call; `kind` is then the most careful answer (WRITE: an instance
+    # must be named).
+    classify: Classifier | None = None
 
 
 def _spec(
@@ -81,16 +87,23 @@ def send(fn: Handler) -> ToolSpec:
     return _spec(ToolKind.WRITE, fn, None, Hold.ALWAYS)
 
 
+def always_held(fn: Handler) -> ToolSpec:
+    """A write that always waits for approval, even on test data."""
+    return _spec(ToolKind.WRITE, fn, None, Hold.ALWAYS)
+
+
 def draft(fn: Handler) -> ToolSpec:
     """A write only the user sees (a saved draft): never held, still audited."""
     return _spec(ToolKind.WRITE, fn, None, Hold.NEVER)
 
 
-def guarded_write(precondition: Precondition) -> Callable[[Handler], ToolSpec]:
+def guarded_write(
+    precondition: Precondition, hold: Hold = Hold.PROD
+) -> Callable[[Handler], ToolSpec]:
     """A write whose held approval is refused if `precondition` changed since the hold."""
 
     def decorate(fn: Handler) -> ToolSpec:
-        return _spec(ToolKind.WRITE, fn, precondition)
+        return _spec(ToolKind.WRITE, fn, precondition, hold)
 
     return decorate
 

@@ -77,4 +77,16 @@ class FakeN8n:
                         200, json={**execution, "data": {} if detailed else None}
                     )
             return httpx2.Response(404, json={"message": "Not Found"})
+        if parts[0] == "executions" and len(parts) == 3 and method == "POST":
+            if not any(e["id"] == parts[1] for e in self.executions):
+                return httpx2.Response(404, json={"message": "Not Found"})
+            if parts[2] == "retry":
+                retry = {
+                    "id": str(1000 + len(self.executions)),
+                    "mode": "retry",
+                    "retryOf": parts[1],
+                }
+                return httpx2.Response(200, json=retry)
+            if parts[2] == "stop":
+                return httpx2.Response(200, json={"id": parts[1], "status": "canceled"})
         return httpx2.Response(404, json={"message": f"no route {method} {path}"})
