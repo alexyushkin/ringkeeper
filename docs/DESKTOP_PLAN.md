@@ -83,8 +83,9 @@ Left for later milestones:
 - **Added before M6** (2026-10-26, on request): Claude Desktop's MCP servers can
   be imported (first run, next to the Claude Code folders, and Settings), each
   given to a project; their secrets go from the file straight into the vault.
-  Every call to an imported server waits for approval unless the user marks the
-  tool read-only. Servers whose command isn't on the computer, and SSE servers,
+  Each tool's default comes from its MCP annotations (read-only runs, destructive
+  needs the name typed, the rest wait); the user can override any tool under
+  Connections. Servers whose command isn't on the computer, and SSE servers,
   are listed but can't be imported. n8n: every write now always waits
   (activate, deactivate, update), plus retry and stop for executions. Still
   open: adding an MCP server by hand (URL or command) outside the import.

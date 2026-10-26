@@ -146,7 +146,7 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
 | `/mcp/gmail` | `search_messages`, `get_message` | `create_draft` (never held), `send_email` (always held) |
-| `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is marked read-only) |
+| `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
 A worker only gets the endpoints of the services its project is connected to.
 
@@ -173,10 +173,13 @@ A worker only gets the endpoints of the services its project is connected to.
   read from Claude Desktop's file straight into the vault; the connection keeps
   only a preview with secret-looking args masked. A command server runs on the
   gateway's machine for each call, with a small environment (no Claude
-  credential, nothing of Ringkeeper's) in its own folder. We can't know what a
-  third-party tool does, so every call waits for approval unless you mark the
-  tool read-only under Connections; a tool whose name says it deletes needs the
-  connection's name typed.
+  credential, nothing of Ringkeeper's) in its own folder. Each tool's default
+  comes from the server's MCP annotations: eadOnlyHint runs without asking,
+  destructiveHint needs the connection's name typed to approve, and anything
+  else waits for approval (with no annotations, a tool whose name says it
+  deletes needs the name typed). The annotations are remembered whenever the
+  tools are listed (Test, Connections, or the agent) and a change to them is
+  audited. Override any tool under Connections › Tools and approvals.
 - **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
   JSON with the address and the app password. Reading never marks mail as
   read. Drafts run without asking; sending always waits for approval.

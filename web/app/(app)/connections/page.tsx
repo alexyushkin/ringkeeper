@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { TestButton, type ConnectionData } from "@/components/forms";
-import { Alert, Badge, Button, Card, Details, Empty, EnvBadge, Field, LinkButton, Loading, PageHeader, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, Details, Empty, EnvBadge, Field, LinkButton, Loading, PageHeader, Select, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { SERVICE } from "@/lib/client/words";
 
@@ -68,7 +68,7 @@ function ConnectionCard({ connection, onChange }: { connection: ConnectionData; 
       {connection.type === "mcp" && connection.config.preview ? <p className="font-mono text-xs break-all text-muted">{connection.config.preview}</p> : null}
       {connection.last_test_ok === false && connection.last_test_message ? <Alert>{connection.last_test_message}</Alert> : null}
       <TestButton name={connection.name} onDone={() => onChange()} />
-      {connection.type === "mcp" ? <McpTools name={connection.name} readOnly={connection.config.read_only_tools ?? []} onChange={onChange} /> : null}
+      {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
       <Details label="Change">
         <div className="space-y-3">
           {connection.type === "mcp" ? (
@@ -97,26 +97,57 @@ function ConnectionCard({ connection, onChange }: { connection: ConnectionData; 
   );
 }
 
+type Level = "read" | "approve" | "confirm";
+
 interface McpTool {
   name: string;
   description: string;
-  read_only: boolean;
+  rule: Level;
+  rule_from: "you" | "annotations" | "name" | "default";
+  default: Level;
+  default_from: "annotations" | "name" | "default";
+  hints: { read_only: boolean | null; destructive: boolean | null };
 }
 
-/** An imported MCP server's tools: which ones run without asking (read-only). */
-function McpTools({ name, readOnly, onChange }: { name: string; readOnly: string[]; onChange: () => void }) {
+const RUNS: Record<Level, string> = {
+  read: "Runs without asking",
+  approve: "Waits for your approval",
+  confirm: "Waits; approving needs the name typed",
+};
+const FROM: Record<McpTool["default_from"], string> = {
+  annotations: "from the server's annotations",
+  name: "from its name",
+  default: "no annotations",
+};
+
+/** What the server says about a tool (its MCP annotations), if anything. */
+function hintBadge(tool: McpTool) {
+  if (tool.hints.read_only) return <Badge tone="good">Server: read-only</Badge>;
+  if (tool.hints.destructive) return <Badge tone="bad">Server: destructive</Badge>;
+  if (tool.hints.destructive === false) return <Badge>Server: not destructive</Badge>;
+  return null;
+}
+
+/** An imported MCP server's tools: what a call to each one needs. */
+function McpTools({ name, onChange }: { name: string; onChange: () => void }) {
   const [open, setOpen] = useState(false);
   const tools = useApi<{ tools: McpTool[] }>(open ? `connections/${name}/tools` : null);
-  const [marked, setMarked] = useState<string[]>(readOnly);
+  const [edited, setEdited] = useState<Record<string, Level | ""> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const listed = tools.data?.tools ?? [];
+  const chosen = edited ?? Object.fromEntries(listed.filter((t) => t.rule_from === "you").map((t) => [t.name, t.rule]));
 
   async function save() {
     setError(null);
     setSaved(false);
     try {
-      await api(`connections/${name}/read-only-tools`, { method: "PUT", json: { tools: marked } });
+      const rules = Object.fromEntries(Object.entries(chosen).filter(([, level]) => level));
+      await api(`connections/${name}/tool-rules`, { method: "PUT", json: { rules } });
       setSaved(true);
+      setEdited(null);
+      tools.reload();
       onChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -126,39 +157,41 @@ function McpTools({ name, readOnly, onChange }: { name: string; readOnly: string
   if (!open) {
     return (
       <button type="button" className="text-sm text-accent" onClick={() => setOpen(true)}>
-        Tools and approvals{readOnly.length ? ` (${readOnly.length} read-only)` : ""}
+        Tools and approvals
       </button>
     );
   }
   return (
     <div className="space-y-3 rounded-xl border border-line p-3">
       <p className="text-sm text-muted">
-        Every call to this server waits for your approval. Tick the tools that only read (look things up, list, fetch) to let them run without asking. A tool whose name says it deletes always needs the connection's name typed.
+        Each tool starts from what its server says about it (its MCP annotations): read-only tools run without asking, destructive ones need the connection's name typed to approve, and the rest wait for your approval. With no annotations, a tool whose name sounds like deleting needs the name typed. Change any of them here.
       </p>
       {tools.loading ? <Loading /> : null}
       {tools.error ? <Alert>{tools.error}</Alert> : null}
-      <ul className="space-y-2">
-        {(tools.data?.tools ?? []).map((tool) => (
-          <li key={tool.name}>
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={marked.includes(tool.name)}
-                onChange={(e) => setMarked((all) => (e.target.checked ? [...all, tool.name] : all.filter((t) => t !== tool.name)))}
-                className="mt-1 size-5 accent-[var(--color-accent)]"
-              />
-              <span className="min-w-0">
-                <span className="block font-mono text-sm">{tool.name}</span>
-                {tool.description ? <span className="block text-xs text-muted">{tool.description.slice(0, 200)}</span> : null}
-              </span>
-            </label>
+      <ul className="space-y-3">
+        {listed.map((tool) => (
+          <li key={tool.name} className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-sm">{tool.name}</span>
+              {hintBadge(tool)}
+            </div>
+            {tool.description ? <p className="text-xs text-muted">{tool.description.slice(0, 200)}</p> : null}
+            <Select
+              label="When the agent calls it"
+              value={chosen[tool.name] ?? ""}
+              onChange={(level) => setEdited({ ...chosen, [tool.name]: level as Level | "" })}
+              options={[
+                ["", `${RUNS[tool.default]} (default, ${FROM[tool.default_from]})`],
+                ...(Object.keys(RUNS) as Level[]).map((level): [string, string] => [level, RUNS[level]]),
+              ]}
+            />
           </li>
         ))}
       </ul>
       {saved ? <Alert tone="good">Saved.</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
       <div className="flex gap-2">
-        <Button kind="primary" disabled={!tools.data} onClick={save}>
+        <Button kind="primary" disabled={!tools.data || edited === null} onClick={save}>
           Save
         </Button>
         <Button kind="ghost" onClick={() => setOpen(false)}>

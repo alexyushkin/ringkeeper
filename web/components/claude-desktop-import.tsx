@@ -64,7 +64,7 @@ export function ClaudeDesktopImport({ projects, onImported, quiet = false }: { p
       ) : (
         <>
           <p className="text-sm text-muted">
-            The MCP servers you set up in Claude Desktop. Give each one to a project, or skip it. Their keys move into Ringkeeper's encrypted vault. Every call waits for your approval until you mark a tool as read-only (under Connections).
+            The MCP servers you set up in Claude Desktop. Give each one to a project, or skip it. Their keys move into Ringkeeper's encrypted vault. Tools the server marks as read-only run without asking; the rest wait for your approval. You can change that per tool under Connections.
           </p>
           {projects.length === 0 ? <p className="text-sm">Add a project first, then give servers to it.</p> : null}
           <ul className="space-y-2">
