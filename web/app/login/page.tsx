@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import { Alert, Button, Card, Field } from "@/components/ui";
 import { ApiError, api } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
 
 /** Only a path on this site: never //evil.example or /\\evil.example. */
 function safeNext(value: string): string {
@@ -103,7 +104,21 @@ function LoginForm() {
   );
 }
 
+/** The desktop app has no sign-in: the window is the key. It lands here only
+ * when its key no longer fits (Ringkeeper was restarted without the app). */
+function Reopen() {
+  return (
+    <main className="mx-auto max-w-sm px-4 py-16">
+      <Card className="space-y-3">
+        <h1 className="text-lg font-semibold">Open Ringkeeper again</h1>
+        <p className="text-sm">This window lost its connection to Ringkeeper. Close it, then open Ringkeeper from the tray icon or the Start menu.</p>
+      </Card>
+    </main>
+  );
+}
+
 export default function LoginPage() {
+  if (DESKTOP) return <Reopen />;
   return (
     <Suspense>
       <LoginForm />

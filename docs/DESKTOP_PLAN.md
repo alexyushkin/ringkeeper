@@ -45,13 +45,26 @@ Python core: routing, connectors, approvals, projects and tasks.
   finish), Quit. A red dot on the tray and taskbar icons and a Windows notification
   when something is waiting for the user. "Start Ringkeeper when I sign in" is a
   setting (`start_at_login`, on by default) the shell applies. `ringkeeper --quit`
-  quits a running app (for the installer). CI builds and tests it on Windows.
+  quits a running app (for the installer). CI builds and tests it on Windows
+  (`.github/workflows/desktop-shell.yml`: when the shell or the desktop backend
+  changes, and on every tag).
+- **M4 done** (2026-10-26): first run in the app. A fresh data folder opens on
+  three steps: the Anthropic API key (checked with the free models call; no
+  subscription option on the desktop), the first project, and "Start Ringkeeper
+  when I sign in" (checked by default). A project may use any folder on the
+  computer; left empty, it gets a new one in Documents\Ringkeeper. A new or empty
+  folder is started as a git repository with an empty first commit on `main`; a
+  folder with files is left as it is. The sign-in, password, passkey,
+  recovery-key and sign-out screens are gone from the desktop app; Telegram
+  pairing moved into Settings there. The microphone is hidden until the Voice
+  component.
 
 Left for later milestones:
 
-- **M4:** the sign-in, password, passkey and recovery-key screens mean nothing on the
-  desktop; the first-run flow replaces them, and has the "Start Ringkeeper when I
-  sign in" checkbox. Voice is off until the Voice component.
+- **M5:** the optional "import from Claude Desktop" step moves here from M4: it
+  imports MCP servers, which need the proxied connections (option B, section 4.8)
+  that M5 builds. Also a "connect one service" step in first run, for the
+  definition of done.
 - **M6:** bundle the embedded Python at `resources/python` and the web files at
   `resources/web` (the shell looks there), and MinGit at `resources/mingit`
   (`shell/scripts/fetch-mingit.ps1`, pinned and checked). The app identifier is
@@ -331,7 +344,7 @@ and a short plain-English note. I'll ask before pushing.
 - **M1. Storage and secrets interfaces.** `ringkeeper.storage` (types, upsert, claim, events), portable migrations with a Postgres schema-snapshot test, `UTCDateTime`, keychain master-key source behind the existing `Vault`, `RINGKEEPER_MODE`. Server mode byte-identical on Postgres. CI gains a `tests (sqlite)` job. *Done when:* all existing tests green on Postgres, and the non-Docker tests green on SQLite.
 - **M2. Desktop runtime.** `ringkeeper desktop` command: SQLite, keychain, in-process events, API + gateway on random 127.0.0.1 ports, `ProcessRuntime` (Job Object / process group, private `CLAUDE_CONFIG_DIR`, gitguard, bundled git lookup), launch-secret auth, sidecar-served static UI. *Done when:* a stub-agent task and one real task run from a dev command on Windows and macOS, with no Docker running.
 - **M3. Tauri shell.** Window, tray (open, pause workers, quit), starts, stops and restarts the sidecar, survives app restarts and crashes, single instance, data in the standard folder, optional "start at login". *Done when:* kill the sidecar → it comes back; quit → nothing left running.
-- **M4. First run in the app.** API key screen (checked live with a free `GET /v1/models` call, no tokens spent) → first project (name and folder) → optional Claude Desktop import. *Done when:* fresh data folder → working project with no terminal.
+- **M4. First run in the app.** API key screen (checked live with a free `GET /v1/models` call, no tokens spent) → first project (name and folder) → optional Claude Desktop import (moved to M5, see Progress). *Done when:* fresh data folder → working project with no terminal.
 - **M5. Per-project connections UI.** Connect once per project, the gateway serves that project's connections with credentials injected, never asks again. New connectors per your Q1 answer. Explicit no-cross-talk test: two Neon (or Postgres) connections in two projects, each worker sees and touches only its own. *Done when:* that test passes on both databases.
 - **M6. Packaging.** `.msi`/`.exe` (NSIS) and `.dmg` built in CI on Windows and macOS runners, Tauri updater with our own update-signing key, unsigned at first. Signing and notarization wired in but switched off until you have the accounts.
 - **M7. Docs.** `docs/INSTALL.md` becomes the short desktop page (download, open, paste key, done) with screenshots. The Docker guide moves to `docs/ADVANCED.md`. README points to both.

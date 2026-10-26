@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { ConnectionForm, ProjectForm, TestButton, type ConnectionData } from "@/components/forms";
+import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
+import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, Toggle } from "@/components/ui";
-import { ApiError, api } from "@/lib/client/api";
+import { ApiError, api, useApi } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
 import { download } from "@/lib/client/words";
 
 interface Status {
@@ -19,9 +21,12 @@ interface Status {
   telegram?: { token: boolean; enabled: boolean; chats: number[] };
   projects?: number;
   connections?: number;
+  done?: boolean;
 }
 
-const STEPS = ["Your login", "Claude", "Telegram", "First project", "First connection", "Done"];
+/* The desktop app has no login (the window is the key) and only an API key for
+ * Claude; connections and Telegram are in the app once it's set up. */
+const STEPS = DESKTOP ? ["Claude", "First project", "Done"] : ["Your login", "Claude", "Telegram", "First project", "First connection", "Done"];
 
 /** First run, no terminal: login, recovery key, Claude, Telegram (optional), a project, a connection. */
 export default function SetupPage() {
@@ -29,6 +34,7 @@ export default function SetupPage() {
   const [status, setStatus] = useState<Status | null>(null);
   const [step, setStep] = useState<number | null>(null);
   const [project, setProject] = useState<string | null>(null);
+  const [saved, setSaved] = useState<ProjectSaved | null>(null);
 
   const refresh = useCallback(async () => {
     const next = await api<Status>("setup/status");
@@ -39,6 +45,10 @@ export default function SetupPage() {
   useEffect(() => {
     refresh()
       .then(async (s) => {
+        if (DESKTOP) {
+          setStep(!s.claude?.api_key ? 0 : s.projects === 0 ? 1 : 2);
+          return;
+        }
         if (s.owner && !s.signed_in) {
           // Setup was started: only a signed-in owner may continue it.
           router.replace("/login?next=/setup");
@@ -80,23 +90,34 @@ export default function SetupPage() {
       <p className="mb-2 text-sm text-muted">
         Step {step + 1} of {STEPS.length}: {STEPS[step]}
       </p>
-      {step === 0 ? <OwnerStep status={status} onDone={() => refresh().then(next)} /> : null}
-      {step === 1 ? <ClaudeStep onDone={next} /> : null}
-      {step === 2 ? <TelegramStep onDone={next} /> : null}
-      {step === 3 ? (
-        <Card>
-          <h2 className="mb-1 text-lg font-semibold">Add your first project</h2>
-          <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
-          <ProjectForm
-            onSaved={(name) => {
-              setProject(name);
-              next();
-            }}
-          />
-        </Card>
+      {DESKTOP ? (
+        <>
+          {step === 0 ? <ClaudeStep onDone={next} /> : null}
+          {step === 1 ? (
+            <ProjectStep
+              onSaved={(name, result) => {
+                setProject(name);
+                setSaved(result ?? null);
+                next();
+              }}
+            />
+          ) : null}
+          {step === 2 ? <DesktopDone project={project} saved={saved} /> : null}
+        </>
       ) : null}
-      {step === 4 ? <ConnectionStep project={project} onDone={next} /> : null}
-      {step === 5 ? (
+      {!DESKTOP && step === 0 ? <OwnerStep status={status} onDone={() => refresh().then(next)} /> : null}
+      {!DESKTOP && step === 1 ? <ClaudeStep onDone={next} /> : null}
+      {!DESKTOP && step === 2 ? <TelegramStep onDone={next} /> : null}
+      {!DESKTOP && step === 3 ? (
+        <ProjectStep
+          onSaved={(name) => {
+            setProject(name);
+            next();
+          }}
+        />
+      ) : null}
+      {!DESKTOP && step === 4 ? <ConnectionStep project={project} onDone={next} /> : null}
+      {!DESKTOP && step === 5 ? (
         <Card className="space-y-4">
           <h2 className="text-lg font-semibold">You're set up</h2>
           <p className="text-sm">
@@ -108,6 +129,75 @@ export default function SetupPage() {
         </Card>
       ) : null}
     </main>
+  );
+}
+
+function ProjectStep({ onSaved }: { onSaved: (name: string, saved?: ProjectSaved) => void }) {
+  return (
+    <Card>
+      <h2 className="mb-1 text-lg font-semibold">Add your first project</h2>
+      <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
+      <ProjectForm onSaved={onSaved} />
+    </Card>
+  );
+}
+
+/** The desktop app's last step: where the files are, and starting with Windows. */
+function DesktopDone({ project, saved }: { project: string | null; saved: ProjectSaved | null }) {
+  const router = useRouter();
+  const settings = useApi<{ values: { start_at_login: boolean } }>("settings");
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const [signIn, setSignIn] = useState("sign in");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setSignIn(navigator.userAgent.includes("Windows") ? "sign in to Windows" : "log in"), []);
+  const startAtLogin = choice ?? settings.data?.values.start_at_login ?? true;
+
+  async function finish() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (startAtLogin !== settings.data?.values.start_at_login) {
+        await api("settings", { method: "PATCH", json: { start_at_login: startAtLogin } });
+      }
+      await api("setup/done", { method: "POST" });
+      router.replace("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-4">
+      <h2 className="text-lg font-semibold">You're set up</h2>
+      {project && saved?.folder ? (
+        <div className="space-y-1 text-sm">
+          <p>
+            {saved.created ? `Ringkeeper made a new folder for ${project}:` : `${project} uses this folder:`}{" "}
+            <span className="font-mono text-xs break-all">{saved.folder}</span>
+          </p>
+          <p className="text-muted">
+            {saved.git
+              ? "Each task's changes go on a branch of their own, for you to review."
+              : "It isn't a git repository, so tasks change its files directly and list what they changed."}
+          </p>
+        </div>
+      ) : null}
+      <p className="text-sm">
+        Ask for something in plain words. Ringkeeper sends it to the right project, and anything that touches live client data waits for your approval.
+      </p>
+      <Toggle
+        label={`Start Ringkeeper when I ${signIn}`}
+        checked={startAtLogin}
+        onChange={setChoice}
+        hint="It waits in the tray, so requests and approvals keep coming in. You can change this in Settings."
+      />
+      {error ? <Alert>{error}</Alert> : null}
+      <Button kind="primary" busy={busy} disabled={!settings.data} onClick={finish}>
+        Start using Ringkeeper
+      </Button>
+    </Card>
   );
 }
 
@@ -231,9 +321,19 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
   return (
     <Card>
       <h2 className="mb-1 text-lg font-semibold">Connect Claude</h2>
-      <p className="mb-4 text-sm text-muted">
-        Ringkeeper's assistants run on Claude. Paste an API key from console.anthropic.com (Settings › API keys). It's checked, stored encrypted, and never shown again.
-      </p>
+      {DESKTOP ? (
+        <p className="mb-4 text-sm text-muted">
+          Ringkeeper's assistants run on Claude. Paste an API key from{" "}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-accent underline">
+            console.anthropic.com
+          </a>{" "}
+          (Settings › API keys). It's checked with a free call, stored encrypted, and never shown again.
+        </p>
+      ) : (
+        <p className="mb-4 text-sm text-muted">
+          Ringkeeper's assistants run on Claude. Paste an API key from console.anthropic.com (Settings › API keys). It's checked, stored encrypted, and never shown again.
+        </p>
+      )}
       {message ? (
         <div className="space-y-4">
           <Alert tone="good">{message}</Alert>
@@ -251,14 +351,16 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
             placeholder={mode === "api_key" ? "sk-ant-api03-…" : "sk-ant-oat01-…"}
             required
           />
-          <Details label="Advanced">
-            <Toggle
-              label="Use my Claude subscription instead"
-              checked={mode === "subscription"}
-              onChange={(on) => setMode(on ? "subscription" : "api_key")}
-              hint="Personal use only, on your own account: run `claude setup-token` and paste the token it prints. For client work, use an API key."
-            />
-          </Details>
+          {DESKTOP ? null : (
+            <Details label="Advanced">
+              <Toggle
+                label="Use my Claude subscription instead"
+                checked={mode === "subscription"}
+                onChange={(on) => setMode(on ? "subscription" : "api_key")}
+                hint="Personal use only, on your own account: run `claude setup-token` and paste the token it prints. For client work, use an API key."
+              />
+            </Details>
+          )}
           {error ? <Alert>{error}</Alert> : null}
           <Button type="submit" kind="primary" busy={busy} disabled={!key}>
             {mode === "api_key" ? "Check and save" : "Save"}
@@ -269,56 +371,7 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
   );
 }
 
-interface Chat {
-  id: number;
-  type: string;
-  name: string;
-  username: string | null;
-}
-
 function TelegramStep({ onDone }: { onDone: () => void }) {
-  const [token, setToken] = useState("");
-  const [bot, setBot] = useState<string | null>(null);
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  // Anyone can message a bot: only the chat that sends this code is offered.
-  const [code] = useState(() => {
-    const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-    return Array.from(crypto.getRandomValues(new Uint8Array(6)), (n) => alphabet[n % alphabet.length]).join("");
-  });
-
-  useEffect(() => {
-    if (!bot) return;
-    const timer = setInterval(() => {
-      api<{ chats: Chat[] }>("telegram/detect", { query: { code } })
-        .then((found) => setChats(found.chats.filter((c) => c.type === "private")))
-        .catch(() => undefined);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [bot, code]);
-
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await api<{ bot: string }>("secrets/telegram", { method: "PUT", json: { token } });
-      setToken("");
-      setBot(result.bot);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function choose(chat: Chat) {
-    await api("settings", { method: "PATCH", json: { telegram: true, telegram_chat_ids: [chat.id] } });
-    onDone();
-  }
-
   function skip() {
     localStorage.setItem("rk-setup-telegram", "skipped");
     onDone();
@@ -330,37 +383,7 @@ function TelegramStep({ onDone }: { onDone: () => void }) {
       <p className="text-sm text-muted">
         Get approvals and questions on your phone. Telegram only gets short summaries; full details stay here. Create a bot with @BotFather in Telegram and paste its token.
       </p>
-      {bot ? (
-        <div className="space-y-3">
-          <Alert tone="good">Connected to {bot}.</Alert>
-          <p className="text-sm">
-            Now open Telegram and send <strong>{bot}</strong> this code: <strong className="font-mono text-base">{code}</strong>. Your chat shows up here.
-          </p>
-          {chats.length === 0 ? (
-            <p className="text-sm text-muted">Waiting for your message…</p>
-          ) : (
-            chats.map((chat) => (
-              <Button key={chat.id} kind="primary" onClick={() => choose(chat)} className="w-full">
-                Use {chat.name}
-                {chat.username ? ` (@${chat.username})` : ""}
-              </Button>
-            ))
-          )}
-        </div>
-      ) : (
-        <form onSubmit={save} className="space-y-4" autoComplete="off">
-          <Field label="Bot token" type="password" value={token} onChange={setToken} placeholder="123456:ABC…" required />
-          {error ? <Alert>{error}</Alert> : null}
-          <div className="flex gap-2">
-            <Button type="submit" kind="primary" busy={busy} disabled={!token}>
-              Connect
-            </Button>
-            <Button kind="ghost" onClick={skip}>
-              Skip for now
-            </Button>
-          </div>
-        </form>
-      )}
+      <TelegramPairing onDone={onDone} onSkip={skip} />
     </Card>
   );
 }

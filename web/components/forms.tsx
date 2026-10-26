@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 import { Alert, Button, Details, Field, Select, TextArea } from "@/components/ui";
-import { api } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
 import { AUTONOMY, ENVS, slugify } from "@/lib/client/words";
 
 export interface ProjectData {
@@ -18,10 +19,18 @@ export interface ProjectData {
   models: Record<string, string>;
 }
 
+/** What adding a project answers. On the desktop: the folder it got. */
+export interface ProjectSaved {
+  name: string;
+  folder?: string;
+  created?: boolean;
+  git?: boolean;
+}
+
 const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean);
 
 /** Create (no `existing`) or edit a project. */
-export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onSaved: (name: string) => void }) {
+export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onSaved: (name: string, saved?: ProjectSaved) => void }) {
   const [client, setClient] = useState(existing?.owner ?? "");
   const [title, setTitle] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
@@ -38,6 +47,9 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const name = existing ? existing.name : slugify(title);
+  // Desktop: any folder on this computer; left empty, a new one in the workspaces folder.
+  const root = useApi<{ workspaces_root?: string | null }>(DESKTOP && !existing ? "setup/status" : null).data?.workspaces_root;
+  const newFolder = root && name ? `${root}${root.includes("\\") ? "\\" : "/"}${name}` : "";
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -54,9 +66,12 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
       models: Object.fromEntries(lines(models).map((l) => l.split("=").map((p) => p.trim()) as [string, string])),
     };
     try {
-      if (existing) await api(`projects/${existing.name}`, { method: "PATCH", json: body });
-      else await api("projects", { json: { name, ...body } });
-      onSaved(name);
+      if (existing) {
+        await api(`projects/${existing.name}`, { method: "PATCH", json: body });
+        onSaved(name);
+      } else {
+        onSaved(name, await api<ProjectSaved>("projects", { json: { name, ...body } }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -79,7 +94,17 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
       )}
       <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />
       <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="acme site, the portal" hint="Separate with commas." />
-      <Field label="Folder" value={folder} onChange={setFolder} placeholder="acme-web" hint="Where the project's files are, inside Ringkeeper's workspaces folder." />
+      {DESKTOP ? (
+        <Field
+          label="Folder"
+          value={folder}
+          onChange={setFolder}
+          placeholder={newFolder}
+          hint={existing ? "Any folder on this computer. Ringkeeper makes it if it's missing." : "Any folder on this computer. Leave it empty for a new folder named after the project."}
+        />
+      ) : (
+        <Field label="Folder" value={folder} onChange={setFolder} placeholder="acme-web" hint="Where the project's files are, inside Ringkeeper's workspaces folder." />
+      )}
       <Select
         label="How independently it works"
         value={autonomy}

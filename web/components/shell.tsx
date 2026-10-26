@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
 
+import { Loading } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
 
 /* Phone: a bottom tab bar (Home, Approvals, Tasks, More). Desktop: a sidebar. */
 
@@ -38,7 +40,17 @@ interface Pending {
 
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
+  // The desktop app opens on first run until it's finished (server installs get
+  // there through sign-in instead).
+  const [ready, setReady] = useState(!DESKTOP);
+  useEffect(() => {
+    if (!DESKTOP) return;
+    api<{ done?: boolean }>("setup/status")
+      .then((status) => (status.done ? setReady(true) : router.replace("/setup")))
+      .catch(() => setReady(true));
+  }, [router]);
   const approvals = useApi<Pending[]>("decisions", { status: "pending", limit: 200 });
   const settings = useApi<{ values: { paused: boolean } }>("settings");
   useLive((event) => {
@@ -52,6 +64,8 @@ export function Shell({ children }: { children: ReactNode }) {
       {count}
     </span>
   ) : null;
+
+  if (!ready) return <Loading />;
 
   return (
     <div className="md:flex">

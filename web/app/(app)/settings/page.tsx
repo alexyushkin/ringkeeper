@@ -3,6 +3,7 @@
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 import { useEffect, useState } from "react";
 
+import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
@@ -101,10 +102,21 @@ export default function SettingsPage() {
 
       <Card className="mb-4 space-y-4">
         <h2 className="font-semibold">Telegram</h2>
-        {!settings.data.telegram.token ? (
-          <p className="text-sm text-muted">Not connected. Run the setup's Telegram step, or store a bot token below.</p>
-        ) : null}
-        <TelegramToken onSaved={settings.reload} />
+        {DESKTOP && !settings.data.telegram.token ? (
+          <>
+            <p className="text-sm text-muted">
+              Get approvals and questions on your phone while this computer is on. Telegram only gets short summaries; full details stay here. Create a bot with @BotFather in Telegram and paste its token.
+            </p>
+            <TelegramPairing onDone={settings.reload} />
+          </>
+        ) : (
+          <>
+            {!settings.data.telegram.token ? (
+              <p className="text-sm text-muted">Not connected. Run the setup's Telegram step, or store a bot token below.</p>
+            ) : null}
+            <TelegramToken onSaved={settings.reload} />
+          </>
+        )}
         <Toggle label="Send approvals and questions to Telegram" checked={v.telegram} onChange={(on) => change({ telegram: on })} hint={telegramState?.error ? `Not running: ${telegramState.error}` : telegramState?.running ? "Running." : undefined} />
         <Toggle
           label="Accept new requests from Telegram"
@@ -141,9 +153,13 @@ export default function SettingsPage() {
         </Details>
       </Card>
 
-      <Passkeys />
-      <RecoveryKey />
-      <SignOut />
+      {DESKTOP ? null : (
+        <>
+          <Passkeys />
+          <RecoveryKey />
+          <SignOut />
+        </>
+      )}
     </>
   );
 }
@@ -202,15 +218,17 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
   return (
     <Card className="mb-4 space-y-3">
       <h2 className="font-semibold">Claude</h2>
-      <Select
-        label="How Ringkeeper pays for Claude"
-        value={mode}
-        onChange={setMode}
-        options={[
-          ["api_key", "API key (for client work)"],
-          ["subscription", "My Claude subscription (personal use on my own account)"],
-        ]}
-      />
+      {DESKTOP ? null : (
+        <Select
+          label="How Ringkeeper pays for Claude"
+          value={mode}
+          onChange={setMode}
+          options={[
+            ["api_key", "API key (for client work)"],
+            ["subscription", "My Claude subscription (personal use on my own account)"],
+          ]}
+        />
+      )}
       <p className="text-sm text-muted">{stored ? "A key is saved (hidden)." : "No key saved for this option yet."}</p>
       <Field label={stored ? "Replace the key" : "Key"} type="password" value={key} onChange={setKey} />
       <Button kind="primary" busy={busy} disabled={!key} onClick={save}>

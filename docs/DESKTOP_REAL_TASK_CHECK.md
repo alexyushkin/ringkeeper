@@ -18,15 +18,7 @@ uv sync
 cd web; npm ci; node scripts/build-desktop.mjs; cd ..
 ```
 
-## 2. A throwaway project folder
-
-```powershell
-New-Item -ItemType Directory -Force .desktop-data\workspaces\hello-check | Out-Null
-git -C .desktop-data\workspaces\hello-check init -b main
-git -C .desktop-data\workspaces\hello-check commit --allow-empty -m "start"
-```
-
-## 3. Start the backend (terminal 1)
+## 2. Start the backend (terminal 1)
 
 ```powershell
 $env:RINGKEEPER_ENV_FILE = ""
@@ -43,7 +35,7 @@ uv run ringkeeper desktop --web-dir web\.desktop\out --data-dir .desktop-data
 
 Leave it running.
 
-## 4. Open the app (terminal 2)
+## 3. Open the app (terminal 2)
 
 ```powershell
 $rt = Get-Content .desktop-data\desktop.json | ConvertFrom-Json
@@ -54,21 +46,27 @@ Start-Process "$($rt.url)/desktop/start?code=$code"
 This is what the app shell will do. The link works once, within 60 seconds;
 run the three lines again if the browser shows "link expired".
 
-## 5. In the app
+## 4. In the app
 
-1. **Settings → Claude.** Keep "API key (for client work)", paste your key,
-   click **Check and save**. It is checked live with Anthropic; you should see
-   a green confirmation.
-2. **Clients & projects → Add.** Client: `Test`. Project name: `Hello check`.
-   Folder: `hello-check`. Leave the rest. Click **Add project**.
-3. **Home.** Type and send:
+It opens on first-run setup (three steps):
+
+1. **Claude.** Paste your key, click **Check and save**. It is checked live
+   with Anthropic (a free call); you should see "Anthropic accepted the key".
+   Click **Continue**.
+2. **First project.** Client: `Test`. Project name: `Hello check`. Leave
+   Folder empty: Ringkeeper makes `.desktop-data\workspaces\hello-check` and
+   starts it as a git repository. Click **Add project**.
+3. **Done.** It shows the new folder. "Start Ringkeeper when I sign in" only
+   matters to the installed app, so leave it as it is. Click **Start using
+   Ringkeeper**.
+4. **Home.** Type and send:
 
    > In Hello check, add a file hello.txt containing "hello from Ringkeeper" and commit it.
 
 The conversation should show the request going to Hello check, a task
 working, then done. Open the task to see what the agent did and the cost.
 
-## 6. Check the result on disk
+## 5. Check the result on disk
 
 ```powershell
 git -C .desktop-data\workspaces\hello-check log --all --oneline
@@ -76,9 +74,9 @@ git -C .desktop-data\workspaces\hello-check branch
 ```
 
 The commit is on a `ringkeeper/<task id>` branch; `main` still has only
-"start".
+"Start" (the empty first commit Ringkeeper made with the folder).
 
-## 7. Stop and clean up
+## 6. Stop and clean up
 
 Ctrl+C in terminal 1 stops everything. Then:
 

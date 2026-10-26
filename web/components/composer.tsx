@@ -4,6 +4,10 @@ import { useRef, useState } from "react";
 
 import { Alert, Button, Spinner } from "@/components/ui";
 import { api } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
+
+// The desktop app gets voice with the optional Voice download (not built yet).
+const VOICE = !DESKTOP;
 
 type Phase = "idle" | "recording" | "transcribing" | "heard";
 
@@ -139,34 +143,38 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && text.trim()) void send(text.trim(), "text");
           }}
         />
-        <button
-          type="button"
-          aria-label={phase === "recording" ? "Recording: release to stop" : "Hold to talk"}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            void startRecording();
-          }}
-          onPointerUp={stopRecording}
-          onPointerLeave={stopRecording}
-          onContextMenu={(event) => event.preventDefault()}
-          className={`grid size-11 shrink-0 touch-none place-items-center rounded-full ${phase === "recording" ? "animate-pulse bg-bad text-white" : "bg-sunken text-ink"}`}
-        >
-          {phase === "transcribing" ? (
-            <Spinner />
-          ) : (
-            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-              <rect x="9" y="3" width="6" height="11" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
-            </svg>
-          )}
-        </button>
+        {VOICE ? (
+          <button
+            type="button"
+            aria-label={phase === "recording" ? "Recording: release to stop" : "Hold to talk"}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              void startRecording();
+            }}
+            onPointerUp={stopRecording}
+            onPointerLeave={stopRecording}
+            onContextMenu={(event) => event.preventDefault()}
+            className={`grid size-11 shrink-0 touch-none place-items-center rounded-full ${phase === "recording" ? "animate-pulse bg-bad text-white" : "bg-sunken text-ink"}`}
+          >
+            {phase === "transcribing" ? (
+              <Spinner />
+            ) : (
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+        ) : null}
         <Button type="submit" kind="primary" busy={busy} disabled={!text.trim()} className="shrink-0">
           Send
         </Button>
       </div>
-      <p className="px-1 text-xs text-muted">
-        {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : "Hold the mic to speak. You'll see what I heard before anything is sent."}
-      </p>
+      {VOICE ? (
+        <p className="px-1 text-xs text-muted">
+          {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : "Hold the mic to speak. You'll see what I heard before anything is sent."}
+        </p>
+      ) : null}
       {error ? <Alert>{error}</Alert> : null}
     </form>
   );
