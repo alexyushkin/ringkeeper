@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper.adapters import ADAPTERS
-from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, ToolKind, ToolSpec
+from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -267,7 +267,9 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     if not is_write:
         return scrub_obj(await _invoke(spec.handler, target, call.args, call.tool))
 
-    if auth.env is Env.PROD and not auth.preapproved:
+    if spec.hold is Hold.ALWAYS or (
+        spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved
+    ):
         return await _hold(call, spec, target)
 
     try:
@@ -298,12 +300,17 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
         return str(decision.id), decision.expires_at.isoformat()
 
     decision_id, expires_at = await _db(hold)
+    why = (
+        f"instance '{target.name}' reaches real people, so it"
+        if spec.hold is Hold.ALWAYS
+        else f"prod instance '{target.name}'"
+    )
     return {
         "status": "held_for_approval",
         "decision_id": decision_id,
         "expires_at": expires_at,
         "message": (
-            f"Held for approval: '{call.tool}' on prod instance '{target.name}' needs a human. "
+            f"Held for approval: '{call.tool}' on {why} needs a human. "
             f"Decision {decision_id} (expires {expires_at}). Approve with "
             f"`ringkeeper decision approve {decision_id}`."
         ),

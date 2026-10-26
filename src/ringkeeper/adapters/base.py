@@ -24,6 +24,14 @@ class ToolKind(enum.StrEnum):
     WRITE = "write"
 
 
+class Hold(enum.StrEnum):
+    """When a write waits for a human."""
+
+    PROD = "prod"  # on production connections, unless the binding preapproves it
+    ALWAYS = "always"  # reaches real people or costs money: even on test data
+    NEVER = "never"  # nobody else sees it (a draft): runs, and is audited
+
+
 class ToolError(RingkeeperError):
     """A failure the agent should see verbatim (after scrubbing)."""
 
@@ -48,13 +56,16 @@ class ToolSpec:
     description: str
     handler: Handler
     precondition: Precondition | None = None
+    hold: Hold = Hold.PROD  # writes only
 
 
-def _spec(kind: ToolKind, fn: Handler, precondition: Precondition | None) -> ToolSpec:
+def _spec(
+    kind: ToolKind, fn: Handler, precondition: Precondition | None, hold: Hold = Hold.PROD
+) -> ToolSpec:
     description = (fn.__doc__ or "").strip()
     if not description:
         raise TypeError(f"tool {fn.__name__} needs a docstring: it is the agent-facing help")
-    return ToolSpec(fn.__name__, kind, description, fn, precondition)
+    return ToolSpec(fn.__name__, kind, description, fn, precondition, hold)
 
 
 def read(fn: Handler) -> ToolSpec:
@@ -63,6 +74,16 @@ def read(fn: Handler) -> ToolSpec:
 
 def write(fn: Handler) -> ToolSpec:
     return _spec(ToolKind.WRITE, fn, None)
+
+
+def send(fn: Handler) -> ToolSpec:
+    """A write that reaches people (a text, an email): always held for approval."""
+    return _spec(ToolKind.WRITE, fn, None, Hold.ALWAYS)
+
+
+def draft(fn: Handler) -> ToolSpec:
+    """A write only the user sees (a saved draft): never held, still audited."""
+    return _spec(ToolKind.WRITE, fn, None, Hold.NEVER)
 
 
 def guarded_write(precondition: Precondition) -> Callable[[Handler], ToolSpec]:
