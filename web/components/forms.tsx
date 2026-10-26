@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Alert, Button, Details, Field, Select, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
+import { canPickFolder, pickFolder } from "@/lib/client/shell";
 import { AUTONOMY, ENVS, slugify } from "@/lib/client/words";
 
 export interface ProjectData {
@@ -50,6 +51,18 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
   // Desktop: any folder on this computer; left empty, a new one in the workspaces folder.
   const root = useApi<{ workspaces_root?: string | null }>(DESKTOP && !existing ? "setup/status" : null).data?.workspaces_root;
   const newFolder = root && name ? `${root}${root.includes("\\") ? "\\" : "/"}${name}` : "";
+  const [browse, setBrowse] = useState(false);
+  useEffect(() => setBrowse(canPickFolder()), []);
+
+  async function chooseFolder() {
+    setError(null);
+    try {
+      const picked = await pickFolder("Choose the project's folder", folder.trim() || root || undefined);
+      if (picked) setFolder(picked);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -95,13 +108,17 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
       <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />
       <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="acme site, the portal" hint="Separate with commas." />
       {DESKTOP ? (
-        <Field
-          label="Folder"
-          value={folder}
-          onChange={setFolder}
-          placeholder={newFolder}
-          hint={existing ? "Any folder on this computer. Ringkeeper makes it if it's missing." : "Any folder on this computer. Leave it empty for a new folder named after the project."}
-        />
+        <div className="space-y-1">
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Field label="Folder" value={folder} onChange={setFolder} placeholder={newFolder} />
+            </div>
+            {browse ? <Button onClick={chooseFolder}>Browse…</Button> : null}
+          </div>
+          <p className="text-xs text-muted">
+            {existing ? "Any folder on this computer. Ringkeeper makes it if it's missing." : "Any folder on this computer. Leave it empty for a new folder named after the project."}
+          </p>
+        </div>
       ) : (
         <Field label="Folder" value={folder} onChange={setFolder} placeholder="acme-web" hint="Where the project's files are, inside Ringkeeper's workspaces folder." />
       )}

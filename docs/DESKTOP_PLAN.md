@@ -52,7 +52,8 @@ Python core: routing, connectors, approvals, projects and tasks.
   three steps: the Anthropic API key (checked with the free models call; no
   subscription option on the desktop), the first project, and "Start Ringkeeper
   when I sign in" (checked by default). A project may use any folder on the
-  computer; left empty, it gets a new one in Documents\Ringkeeper. A new or empty
+  computer (typed, or picked with Browse…, the shell's native folder dialog); left
+  empty, it gets a new one in Documents\Ringkeeper. A new or empty
   folder is started as a git repository with an empty first commit on `main`; a
   folder with files is left as it is. The sign-in, password, passkey,
   recovery-key and sign-out screens are gone from the desktop app; Telegram
