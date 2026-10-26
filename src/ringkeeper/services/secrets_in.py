@@ -17,6 +17,8 @@ import anthropic
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy
+from ringkeeper.adapters import gmail, twilio
+from ringkeeper.adapters.base import ToolError
 from ringkeeper.claude_auth import check_format, credential_ref, normalize
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
@@ -107,6 +109,17 @@ def check_connection_secret(kind: InstanceType, secret: str) -> str:
                 "(it starts with postgresql://). Find it under Connect > Session pooler."
             )
         netpolicy.check_dsn(secret)
+    elif kind is InstanceType.AIRTABLE and not secret.startswith("pat"):
+        raise RuleViolationError(
+            "Paste an Airtable personal access token (it starts with pat). Make one at "
+            "airtable.com/create/tokens."
+        )
+    elif kind in (InstanceType.TWILIO, InstanceType.GMAIL):
+        try:  # JSON with the parts (the app's form builds it); checked like the adapter reads it
+            (twilio.credentials if kind is InstanceType.TWILIO else gmail.credentials)(secret)
+        except ToolError as error:
+            message = str(error)
+            raise RuleViolationError(message[:1].upper() + message[1:] + ".") from None
     return secret
 
 

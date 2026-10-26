@@ -55,6 +55,8 @@ class InstanceType(enum.StrEnum):
     VERCEL = "vercel"
     AIRTABLE = "airtable"
     GOOGLE = "google"
+    TWILIO = "twilio"
+    GMAIL = "gmail"  # IMAP/SMTP with an app password (no Google OAuth in v1)
 
 
 class Env(enum.StrEnum):

@@ -46,7 +46,10 @@ def audit_rows() -> list[AuditEvent]:
 async def test_health(gateway: str) -> None:
     async with httpx2.AsyncClient() as http:
         response = await http.get(f"{gateway}/health")
-    assert response.json() == {"status": "ok", "services": ["n8n", "supabase"]}
+    assert response.json() == {
+        "status": "ok",
+        "services": ["airtable", "gmail", "n8n", "supabase", "twilio", "vercel"],
+    }
 
 
 async def test_every_tool_takes_instance_and_declares_its_kind(gateway: str) -> None:

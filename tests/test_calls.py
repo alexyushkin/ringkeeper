@@ -6,15 +6,17 @@ import psycopg
 import pytest
 from sqlalchemy import select
 
+from ringkeeper.adapters import gmail, twilio
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import AuditEvent, AuditOutcome, DecisionStatus, InstanceType
+from ringkeeper.models import AuditEvent, AuditOutcome, DecisionStatus, Env, InstanceType
 from ringkeeper.services import bindings, decisions, projects
 from ringkeeper.services.calls import RefusalError, approve, deny, run_call
 from ringkeeper.vault import Vault
 from tests.fake_n8n import FakeN8n
-from tests.helpers import age_decisions, bind
+from tests.fake_services import GMAIL_SECRET, TWILIO_SECRET, FakeHttp, FakeImap
+from tests.helpers import age_decisions, bind, make_instance
 
 pytestmark = pytest.mark.anyio
 
@@ -319,3 +321,58 @@ async def test_stale_approval_is_refused(registry: None, vault: Vault, fake_n8n:
     assert fake_n8n.workflows["wf1"]["name"] == "Edited by a human"  # not overwritten
     assert not any(r.method == "PUT" for r in fake_n8n.requests)
     assert audit_rows()[-1].outcome is AuditOutcome.REFUSED
+
+
+# --- Writes with their own hold rule: sends always wait, drafts never ---
+
+
+@pytest.fixture
+def messaging(
+    registry: None, vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> tuple[FakeHttp, FakeImap]:
+    vault.store("file://acme/twilio", TWILIO_SECRET)
+    vault.store("file://acme/gmail", GMAIL_SECRET)
+    with session_scope() as session:
+        make_instance(
+            session, "acme-twilio", type=InstanceType.TWILIO, secret_ref="file://acme/twilio"
+        )  # test data: other writes there run without asking
+        make_instance(
+            session, "acme-gmail", type=InstanceType.GMAIL, env=Env.PROD,
+            secret_ref="file://acme/gmail",
+        )  # fmt: skip
+    bind("acme-web", "acme-twilio", preapproved_writes=["send_sms"])
+    bind("acme-web", "acme-gmail")
+    http, imap = FakeHttp(), FakeImap()
+    http.routes[("POST", f"/2010-04-01/Accounts/AC{'1' * 32}/Messages.json")] = {"sid": "SMx"}
+    monkeypatch.setattr(twilio, "transport", http.transport())
+    monkeypatch.setattr(gmail, "imap_factory", lambda: imap)
+    return http, imap
+
+
+async def test_a_text_waits_even_on_test_data_and_preapproved(
+    messaging: tuple[FakeHttp, FakeImap], vault: Vault
+) -> None:
+    http, _ = messaging
+    text = {"to": "+15550002222", "from_number": "+15550001111", "body": "On my way"}
+    result = await run_call(
+        ToolCall(ACME, InstanceType.TWILIO, "send_sms", "acme-twilio", text), vault
+    )
+    assert result["status"] == "held_for_approval"
+    assert "reaches real people" in result["message"]
+    assert not http.requests  # nothing was sent
+    decision = await approve(result["decision_id"], vault=vault)  # no typed name needed
+    assert decision.status is DecisionStatus.EXECUTED
+    assert len(http.requests) == 1
+
+
+async def test_a_gmail_draft_runs_on_production(
+    messaging: tuple[FakeHttp, FakeImap], vault: Vault
+) -> None:
+    _, imap = messaging
+    draft = {"to": ["anna@acme.example"], "subject": "Re: Invoice", "body": "Thanks"}
+    result = await run_call(
+        ToolCall(ACME, InstanceType.GMAIL, "create_draft", "acme-gmail", draft), vault
+    )
+    assert result == {"saved": "draft", "to": ["anna@acme.example"], "subject": "Re: Invoice"}
+    assert len(imap.appended) == 1
+    assert audit_rows()[-1].outcome is AuditOutcome.EXECUTED

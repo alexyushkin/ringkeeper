@@ -23,6 +23,16 @@ from ringkeeper.models import InstanceType
 SAFE_TOOLS = {
     (InstanceType.N8N, "activate_workflow"),
     (InstanceType.N8N, "deactivate_workflow"),
+    (InstanceType.AIRTABLE, "create_records"),  # adds; changes nothing that was there
+    # Each puts an existing build live; another promote or rollback undoes it.
+    (InstanceType.VERCEL, "redeploy"),
+    (InstanceType.VERCEL, "promote"),
+    (InstanceType.VERCEL, "rollback"),
+    # Sends can't be undone, but they destroy nothing: the approval itself is the
+    # check, and Telegram may give it.
+    (InstanceType.TWILIO, "send_sms"),
+    (InstanceType.GMAIL, "send_email"),
+    (InstanceType.GMAIL, "create_draft"),
 }
 
 _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
