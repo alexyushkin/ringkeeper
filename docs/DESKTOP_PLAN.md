@@ -59,13 +59,30 @@ Python core: routing, connectors, approvals, projects and tasks.
   recovery-key and sign-out screens are gone from the desktop app; Telegram
   pairing moved into Settings there. The microphone is hidden until the Voice
   component.
+- **M5 done** (2026-10-26): connections per project. Built-in adapters for every
+  v1 service, no proxied vendor MCP servers: only Neon, Supabase and n8n run a
+  remote MCP server that takes a plain token (Vercel's is OAuth-only for
+  approved clients, Twilio's only searches docs, Airtable's token use is
+  undocumented), and none label tools read or write. Databases (Supabase, Neon
+  or any Postgres) go through the SQL adapter by connection string; n8n keeps
+  its adapter; new adapters for Airtable, Vercel (reads; redeploy, promote and
+  roll back; env variable names only), Twilio and Gmail (IMAP/SMTP with an app
+  password). Each tool has a hold rule: sending a text or an email always waits
+  for approval, even on test data; a Gmail draft never does. A connection is
+  added from the project's page (or first run's optional "Connect a service"
+  step), with a "where do I get this" link and Test, and linked to that
+  project. A worker only gets the endpoints of its project's services. The
+  no-cross-talk test (two clients, two databases, the real gateway and worker
+  tokens) passes with Ringkeeper's own database on SQLite and on Postgres. First
+  run also offers the folders the user opened Claude Code in as projects.
+  Found on the way: on SQLite a write could fail with "a write transaction is
+  already open" when FastAPI finished a request on another thread (fixed).
 
 Left for later milestones:
 
-- **M5:** the optional "import from Claude Desktop" step moves here from M4: it
-  imports MCP servers, which need the proxied connections (option B, section 4.8)
-  that M5 builds. Also a "connect one service" step in first run, for the
-  definition of done.
+- **After v1:** a generic "MCP server" connection (any remote URL plus a token,
+  every tool held unless marked read-only) and the Claude Desktop import that
+  depends on it.
 - **M6:** bundle the embedded Python at `resources/python` and the web files at
   `resources/web` (the shell looks there), and MinGit at `resources/mingit`
   (`shell/scripts/fetch-mingit.ps1`, pinned and checked). The app identifier is

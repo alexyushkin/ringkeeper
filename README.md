@@ -42,17 +42,19 @@ A worker running for `acme-web` can only ever reach `acme-*` instances. The
 worker (Claude Code, …)
    │  MCP over HTTP, Authorization: Bearer <worker token>
    ▼
-gateway  /mcp/supabase  /mcp/n8n
+gateway  /mcp/supabase  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail
    1. valid token?            (signed, short-lived, names project + session)
    2. instance exists?        (omitted only for reads: the project default)
    3. bound to the project?
    4. tool in allowed_tools?  (empty = all)
    ├─ read                  → run
    ├─ write, dev/staging    → run, audit
-   └─ write, prod           → hold as a decision, audit
-                               unless the tool is in preapproved_writes
+   ├─ write, prod           → hold as a decision, audit
+   │                           unless the tool is in preapproved_writes
+   ├─ send (a text, email)  → always hold, even on test data
+   └─ draft (Gmail)         → run, audit
    ▼
-adapter (supabase, n8n)  ← secret resolved from the vault, never returned
+adapter (one per service)  ← secret resolved from the vault, never returned
 ```
 
 The first failed check refuses the call with a message the agent can relay.
@@ -140,6 +142,12 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 |---|---|---|
 | `/mcp/supabase` | `list_tables`, `describe_table`, `query` (READ ONLY transaction) | `execute` |
 | `/mcp/n8n` | `list_workflows`, `get_workflow`, `list_executions`, `get_execution` | `activate_workflow`, `deactivate_workflow`, `update_workflow` |
+| `/mcp/airtable` | `list_bases`, `list_tables`, `list_records`, `get_record` | `create_records`, `update_records`, `delete_records` |
+| `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
+| `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
+| `/mcp/gmail` | `search_messages`, `get_message` | `create_draft` (never held), `send_email` (always held) |
+
+A worker only gets the endpoints of the services its project is connected to.
 
 - **supabase:** the secret is a Postgres connection string. Each call runs
   exactly one statement over the extended protocol, so `COMMIT; …` tricks
@@ -149,6 +157,17 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
   pass `republish=true`. A held update is refused at approval if the workflow
   changed after the hold (its `updatedAt` moved), so an old approval can't
   overwrite newer edits.
+- **airtable:** the secret is a personal access token; its own scopes and base
+  list limit what it can reach. Updates and deletes need the connection's name
+  typed to approve on production; creates don't.
+- **vercel:** the secret is an access token. Env variables come back as names
+  only, never values. The only writes put an existing build live: redeploy,
+  promote, roll back. No env changes, domains or purchases.
+- **twilio:** the secret is JSON with the Account SID and a Standard API key
+  (SID and secret). Sending a text always waits for approval.
+- **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
+  JSON with the address and the app password. Reading never marks mail as
+  read. Drafts run without asking; sending always waits for approval.
 
 ### Worker tokens
 
@@ -512,7 +531,7 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 | Approvals | Everything waiting for you, in full: the SQL of a held write, a plan, a question, which project. Telegram only ever gets summaries; the full text lives here. A held write that deletes or drops data needs the connection's name typed to approve. |
 | Tasks | Every task, by project and status. A task opens as a transcript: what the assistant said, each tool call (arguments and results folded away), check results, the model, steps and estimated cost, the branch, changed files and diff, and Stop and Resume. |
 | Clients & projects | Create and edit projects (description, other names, folder, repository, how independently it works, checks, model overrides) and link connections, with defaults. |
-| Connections | Supabase and n8n forms. Secrets go in once, through password fields, and are never shown again. Production has a red badge. **Test connection** runs one read-only call through the adapter. |
+| Connections | Forms for databases (Supabase, Neon, any Postgres), n8n, Airtable, Vercel, Twilio and Gmail, each with a link to where you get the key; also on each project's page, where a new connection is linked to the project. Secrets go in once, through password fields, and are never shown again. Production has a red badge. **Test connection** runs one read-only call through the adapter. |
 | Activity | The audit log with filters, and a CSV export per client. |
 | Settings | Claude (API key, or your subscription for personal use), Telegram (including the requests toggle and its privacy note), models, how many tasks at once, transcript retention, passkeys, the recovery key, and **Stop everything**. |
 
