@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { ProjectForm, type ConnectionData, type ProjectData } from "@/components/forms";
+import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectData } from "@/components/forms";
 import { Alert, Button, Card, EnvBadge, Loading, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { SERVICE } from "@/lib/client/words";
@@ -25,6 +25,8 @@ export function ProjectView({ name }: { name: string }) {
   const project = useApi<Detail>(`projects/${name}`);
   const connections = useApi<ConnectionData[]>("connections");
   const [adding, setAdding] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [added, setAdded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
@@ -80,10 +82,40 @@ export function ProjectView({ name }: { name: string }) {
             </div>
           </div>
         ))}
+        {added ? (
+          <div className="space-y-2 rounded-xl border border-line p-3">
+            <Alert tone="good">Added {added}. Its secret is stored encrypted and won't be shown again.</Alert>
+            <TestButton name={added} />
+            <Button kind="ghost" onClick={() => setAdded(null)}>
+              Done
+            </Button>
+          </div>
+        ) : connecting ? (
+          <div className="space-y-3 rounded-xl border border-line p-3">
+            <h3 className="font-medium">New connection for {name}</h3>
+            <ConnectionForm
+              client={project.data.owner}
+              project={name}
+              onSaved={(connection) => {
+                setConnecting(false);
+                setAdded(connection.name);
+                project.reload();
+                connections.reload();
+              }}
+            />
+            <Button kind="ghost" onClick={() => setConnecting(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button kind="primary" onClick={() => setConnecting(true)}>
+            Connect a service
+          </Button>
+        )}
         {available.length ? (
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Select label="Add a connection" value={adding} onChange={setAdding} options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, `${c.name} (${c.env === "prod" ? "production" : c.env})`])]} />
+              <Select label="Or link one you already added" value={adding} onChange={setAdding} options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, `${c.name} (${c.env === "prod" ? "production" : c.env})`])]} />
             </div>
             <Button
               kind="primary"
@@ -98,14 +130,7 @@ export function ProjectView({ name }: { name: string }) {
               Add
             </Button>
           </div>
-        ) : (
-          <p className="text-sm text-muted">
-            <Link href="/connections/new" className="text-accent">
-              Add a connection
-            </Link>{" "}
-            first, then link it here.
-          </p>
-        )}
+        ) : null}
         {error ? <Alert>{error}</Alert> : null}
       </Card>
 

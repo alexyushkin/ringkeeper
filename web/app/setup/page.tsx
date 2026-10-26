@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
-import { Alert, Button, Card, Details, Field, Loading, Toggle } from "@/components/ui";
+import { Alert, Button, Card, Details, Field, Loading, Select, Toggle } from "@/components/ui";
 import { ApiError, api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { download } from "@/lib/client/words";
@@ -27,7 +27,7 @@ interface Status {
 
 /* The desktop app has no login (the window is the key) and only an API key for
  * Claude; connections and Telegram are in the app once it's set up. */
-const STEPS = DESKTOP ? ["Claude", "First project", "Done"] : ["Your login", "Claude", "Telegram", "First project", "First connection", "Done"];
+const STEPS = DESKTOP ? ["Claude", "First project", "Connect a service", "Done"] : ["Your login", "Claude", "Telegram", "First project", "First connection", "Done"];
 
 /** First run, no terminal: login, recovery key, Claude, Telegram (optional), a project, a connection. */
 export default function SetupPage() {
@@ -47,7 +47,8 @@ export default function SetupPage() {
     refresh()
       .then(async (s) => {
         if (DESKTOP) {
-          setStep(!s.claude?.api_key ? 0 : s.projects === 0 ? 1 : 2);
+          const skipped = localStorage.getItem("rk-setup-connection") === "skipped";
+          setStep(!s.claude?.api_key ? 0 : s.projects === 0 ? 1 : s.connections === 0 && !skipped ? 2 : 3);
           return;
         }
         if (s.owner && !s.signed_in) {
@@ -103,7 +104,8 @@ export default function SetupPage() {
               }}
             />
           ) : null}
-          {step === 2 ? <DesktopDone project={project} saved={saved} /> : null}
+          {step === 2 ? <DesktopConnectStep onDone={next} /> : null}
+          {step === 3 ? <DesktopDone project={project} saved={saved} /> : null}
         </>
       ) : null}
       {!DESKTOP && step === 0 ? <OwnerStep status={status} onDone={() => refresh().then(next)} /> : null}
@@ -143,6 +145,50 @@ function ProjectStep({ onSaved }: { onSaved: (name: string, saved?: ProjectSaved
         <ProjectForm onSaved={onSaved} />
       </Card>
     </div>
+  );
+}
+
+/** Optional: one service for one project, so the first request can use it. */
+function DesktopConnectStep({ onDone }: { onDone: () => void }) {
+  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const [chosen, setChosen] = useState("");
+  const [added, setAdded] = useState<string | null>(null);
+  const list = projects.data ?? [];
+  const project = list.find((p) => p.name === chosen) ?? list[0];
+
+  function skip() {
+    localStorage.setItem("rk-setup-connection", "skipped");
+    onDone();
+  }
+
+  return (
+    <Card className="space-y-4">
+      <h2 className="text-lg font-semibold">Connect a service (optional)</h2>
+      <p className="text-sm text-muted">
+        Give a project access to a service it works with: its database, automations, Airtable, Vercel, Twilio or Gmail. Ringkeeper keeps the key; the assistants never see it. You can add more on each project's page.
+      </p>
+      {added ? (
+        <div className="space-y-4">
+          <Alert tone="good">Added {added}. Its secret is stored encrypted and won't be shown again.</Alert>
+          <TestButton name={added} />
+          <Button kind="primary" onClick={onDone}>
+            Continue
+          </Button>
+        </div>
+      ) : project ? (
+        <>
+          {list.length > 1 ? (
+            <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} />
+          ) : null}
+          <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
+          <Button kind="ghost" onClick={skip}>
+            Skip for now
+          </Button>
+        </>
+      ) : (
+        <Loading />
+      )}
+    </Card>
   );
 }
 

@@ -6,7 +6,7 @@ import { Alert, Button, Details, Field, Select, TextArea } from "@/components/ui
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { canPickFolder, pickFolder } from "@/lib/client/shell";
-import { AUTONOMY, ENVS, slugify } from "@/lib/client/words";
+import { AUTONOMY, slugify } from "@/lib/client/words";
 
 export interface ProjectData {
   name: string;
@@ -156,61 +156,7 @@ export interface ConnectionData {
   last_test_message: string | null;
 }
 
-const SECRET_HELP: Record<string, string> = {
-  supabase: "The database connection string, from Supabase › Project Settings › Database. It starts with postgresql://",
-  n8n: "An API key from n8n › Settings › n8n API.",
-};
-
-/** Add a connection. Its secret goes in once and is never shown again. */
-export function ConnectionForm({ client, onSaved }: { client?: string; onSaved: (connection: ConnectionData) => void }) {
-  const [type, setType] = useState("supabase");
-  const [title, setTitle] = useState("");
-  const [owner, setOwner] = useState(client ?? "");
-  const [env, setEnv] = useState("dev");
-  const [address, setAddress] = useState("");
-  const [secret, setSecret] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const name = slugify(title);
-
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const saved = await api<ConnectionData>("connections", {
-        json: { name, type, env, owner: slugify(owner) || owner, base_url: address.trim() || null, secret },
-      });
-      setSecret("");
-      onSaved(saved);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form onSubmit={save} className="space-y-4" autoComplete="off">
-      <Select label="Service" value={type} onChange={setType} options={[["supabase", "Supabase (database)"], ["n8n", "n8n (automations)"]]} />
-      <Field label="Name" value={title} onChange={setTitle} placeholder={type === "n8n" ? "Acme automations" : "Acme database"} hint={name ? `Short name: ${name}` : undefined} required />
-      <Field label="Client" value={owner} onChange={setOwner} placeholder="Acme Inc." required />
-      <Select
-        label="Kind of data"
-        value={env}
-        onChange={setEnv}
-        options={ENVS}
-        hint={env === "prod" ? "Changes to production are always held for your approval." : "Test data: changes can run without asking."}
-      />
-      {type === "n8n" ? <Field label="n8n address" value={address} onChange={setAddress} placeholder="https://n8n.acme.com" inputMode="url" required /> : null}
-      <Field label={type === "n8n" ? "API key" : "Connection string"} type="password" value={secret} onChange={setSecret} hint={SECRET_HELP[type]} required />
-      {error ? <Alert>{error}</Alert> : null}
-      <Button type="submit" kind="primary" busy={busy} disabled={!name || !secret}>
-        Add connection
-      </Button>
-    </form>
-  );
-}
+export { ConnectionForm, SERVICES } from "@/components/connection-form";
 
 export function TestButton({ name, onDone }: { name: string; onDone?: (ok: boolean) => void }) {
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
