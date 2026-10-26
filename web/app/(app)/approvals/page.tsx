@@ -148,10 +148,23 @@ function DecisionCard({ decision, onDone }: { decision: Decision; onDone: () => 
       {decision.kind === "question" ? (
         <div className="mt-3 space-y-3">
           <p className="whitespace-pre-wrap">{String(payload.question ?? decision.summary)}</p>
-          <TextArea label="Your answer" value={text} onChange={setText} />
-          <Button kind="primary" busy={busy === "answer"} disabled={!text.trim()} onClick={() => answer(null, text)}>
-            Answer
-          </Button>
+          {typeof payload.budget === "number" ? (
+            <div className="flex flex-wrap gap-2">
+              <Button kind="primary" busy={busy === "answer"} onClick={() => answer(null, "continue")}>
+                Give it another ${payload.budget.toFixed(2)}
+              </Button>
+              <Button busy={busy === "answer"} onClick={() => answer(null, "stop")}>
+                Stop it
+              </Button>
+            </div>
+          ) : (
+            <>
+              <TextArea label="Your answer" value={text} onChange={setText} />
+              <Button kind="primary" busy={busy === "answer"} disabled={!text.trim()} onClick={() => answer(null, text)}>
+                Answer
+              </Button>
+            </>
+          )}
         </div>
       ) : null}
 

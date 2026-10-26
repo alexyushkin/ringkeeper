@@ -25,6 +25,7 @@ class WorkerConfig:
     max_budget_usd: float | None = None
     resume: str | None = None  # SDK session id to continue
     model: str | None = None
+    effort: str | None = None  # the SDK's effort (low ... max)
     role: str = "worker"  # architect: read-only workspace, no git, no checks
     checks: list[str] = field(default_factory=list[str])  # run after a worker turn
     stub: dict[str, Any] | None = None  # integration tests only: no LLM
@@ -51,6 +52,7 @@ def load(env: dict[str, str] | None = None) -> WorkerConfig:
             max_budget_usd=data.get("max_budget_usd"),
             resume=data.get("resume"),
             model=data.get("model"),
+            effort=data.get("effort"),
             role=str(data.get("role", "worker")),
             checks=[str(c) for c in data.get("checks", [])],
             stub=data.get("stub"),

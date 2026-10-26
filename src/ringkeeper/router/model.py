@@ -64,6 +64,7 @@ class AgentSdkModel:
                 model=model,
                 tools=[],
                 max_turns=1,
+                effort=self._settings.effort_router,
                 setting_sources=[],
                 strict_mcp_config=True,
                 cwd=scratch,

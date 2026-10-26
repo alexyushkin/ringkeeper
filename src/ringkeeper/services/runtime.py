@@ -15,7 +15,7 @@ from pydantic import Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ringkeeper.config import Settings, get_settings
+from ringkeeper.config import Effort, Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import AuthMode, Setting
 from ringkeeper.schemas import Input, ModelId, WorkspaceId
@@ -48,6 +48,11 @@ class RuntimeIn(Input):
     model_low: ModelId | None = None
     model_medium: ModelId | None = None
     model_high: ModelId | None = None
+    effort_router: Effort | None = None
+    effort_architect: Effort | None = None
+    effort_worker: Effort | None = None
+    task_budget_usd: Annotated[float, Field(gt=0, le=1000)] | None = None
+    default_max_turns: Annotated[int, Field(ge=1, le=1000)] | None = None
     max_concurrent_workers: Annotated[int, Field(ge=1, le=64)] | None = None
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None
     paused: bool | None = None

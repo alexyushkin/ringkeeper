@@ -4,6 +4,7 @@ import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/brow
 import { useEffect, useState } from "react";
 
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
+import { ModelSettings, MoneySetting } from "@/components/model-settings";
 import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -25,6 +26,11 @@ interface Settings {
     model_low: string;
     model_medium: string;
     model_high: string;
+    effort_router: string;
+    effort_architect: string;
+    effort_worker: string;
+    default_max_turns: number;
+    task_budget_usd: number;
     max_concurrent_workers: number;
     retention_days: number;
     paused: boolean;
@@ -36,14 +42,6 @@ interface Settings {
   telegram: { token: boolean };
 }
 
-const MODELS: [keyof Settings["values"], string][] = [
-  ["model_router", "Sorting requests"],
-  ["model_architect", "Planning features (big ones plan on the Big tasks model)"],
-  ["model_low", "Small tasks"],
-  ["model_medium", "Normal tasks"],
-  ["model_high", "Big tasks"],
-  ["model_worker", "Tasks without a size"],
-];
 
 export default function SettingsPage() {
   const settings = useApi<Settings>("settings");
@@ -147,13 +145,15 @@ export default function SettingsPage() {
         <h2 className="font-semibold">Work</h2>
         <NumberSetting label="Tasks at once" value={v.max_concurrent_workers} onSave={(n) => change({ max_concurrent_workers: n })} hint="How many tasks can run at the same time." />
         <NumberSetting label="Keep full transcripts for (days)" value={v.retention_days} onSave={(n) => change({ retention_days: n })} hint="After this, transcripts are deleted. Task summaries, approvals and the activity log stay." />
-        <Details label="Models">
-          <div className="space-y-3">
-            {MODELS.map(([key, label]) => (
-              <TextSetting key={key} label={label} value={String(v[key])} onSave={(text) => change({ [key]: text })} />
-            ))}
-          </div>
-        </Details>
+        <NumberSetting label="Max steps per task" value={v.default_max_turns} onSave={(n) => change({ default_max_turns: n })} hint="A task stops after this many agent turns." />
+        {v.claude_auth_mode === "api_key" ? (
+          <MoneySetting label="Spending cap per task ($)" value={v.task_budget_usd} onSave={(n) => change({ task_budget_usd: n })} hint="At the cap a task pauses and asks whether to give it this much more." />
+        ) : null}
+      </Card>
+
+      <Card className="mb-4 space-y-3">
+        <h2 className="font-semibold">Models and effort</h2>
+        <ModelSettings values={v} onChange={(changes) => change(changes)} />
       </Card>
 
       {DESKTOP ? null : (

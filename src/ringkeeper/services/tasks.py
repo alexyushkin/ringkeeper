@@ -109,6 +109,8 @@ def create_task(
         )
     if budget_usd is not None and budget_usd <= 0:
         raise RuleViolationError("the budget must be more than 0")
+    if budget_usd is None and mode is AuthMode.API_KEY:
+        budget_usd = settings.task_budget_usd  # paused and asked at the cap
     turns = max_turns or settings.default_max_turns
     runtime = max_runtime_s or settings.default_max_runtime_seconds
     if turns < 1:

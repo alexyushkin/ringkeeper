@@ -60,6 +60,7 @@ from ringkeeper.services import (
     bindings,
     instances,
     mcp_tools,
+    model_list,
     probes,
     projects,
     runtime,
@@ -119,6 +120,14 @@ def _settings_out(request: Request, session: SessionDep) -> SettingsOut:
 @router.get("/settings")
 def get_settings_view(request: Request, session: SessionDep) -> SettingsOut:
     return _settings_out(request, session)
+
+
+@router.get("/models")
+def list_models(session: SessionDep) -> dict[str, Any]:
+    """The models to choose from: Anthropic's list, recommended ones first."""
+    settings = runtime.effective(session)
+    session.close()  # no transaction while Anthropic answers
+    return model_list.offered(settings, get_vault(settings))
 
 
 @router.patch("/settings")

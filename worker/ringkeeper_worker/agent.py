@@ -45,6 +45,7 @@ def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> Cl
         max_budget_usd=config.max_budget_usd,
         resume=config.resume,
         model=config.model,
+        effort=config.effort,  # pyright: ignore[reportArgumentType] (checked by the manager)
         hooks=hooks,  # pyright: ignore[reportArgumentType] (dict invariance)
         # The container is the sandbox; the project's autonomy decides which tools exist.
         permission_mode="bypassPermissions",

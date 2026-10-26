@@ -20,6 +20,9 @@ def _env_file() -> str | None:
     return os.environ.get("RINGKEEPER_ENV_FILE", ".env") or None
 
 
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RINGKEEPER_", env_file=_env_file(), extra="ignore"
@@ -78,6 +81,9 @@ class Settings(BaseSettings):
     worker_memory: str = "2g"
     max_concurrent_workers: int = 4
     default_max_turns: int = 30
+    # Each task may spend this much (API key mode); reaching it pauses the task and
+    # asks whether to give it this much more.
+    task_budget_usd: float = 1.0
     default_max_runtime_seconds: int = 30 * 60
     # Relative workspace_path values resolve against this, as the Docker host sees it.
     workspaces_root: str | None = None
@@ -100,6 +106,11 @@ class Settings(BaseSettings):
     model_low: str = "claude-haiku-5-5"
     model_medium: str = "claude-sonnet-5-5"
     model_high: str = "claude-opus-5-5"
+    # How hard each role thinks (the SDK's effort). A worker's follows its task's
+    # size, never above this; a task without a size gets this.
+    effort_router: Effort = "low"
+    effort_architect: Effort = "high"
+    effort_worker: Effort = "high"
 
     # Router (runs inside the api service, alongside the session manager).
     router_confidence_threshold: float = 0.8

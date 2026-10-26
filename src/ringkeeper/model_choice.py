@@ -13,6 +13,8 @@ from ringkeeper.config import Settings
 from ringkeeper.models import Complexity, Project, SessionRole
 
 TIERS = (Complexity.LOW, Complexity.MEDIUM, Complexity.HIGH)
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+SIZE_EFFORT = {Complexity.LOW: "low", Complexity.MEDIUM: "medium", Complexity.HIGH: "high"}
 ESCALATE_AFTER_FAILED_ROUNDS = 2
 
 
@@ -51,3 +53,13 @@ def session_model(
         return _pick(settings, project, "architect")
     chosen = tier(complexity, failed_check_rounds)
     return _pick(settings, project, chosen.value if chosen is not None else "worker")
+
+
+def session_effort(settings: Settings, role: SessionRole, complexity: Complexity | None) -> str:
+    """The effort a session runs at: its task's size, never above the role's setting
+    (which is also what a task without a size gets)."""
+    ceiling = settings.effort_architect if role is SessionRole.ARCHITECT else settings.effort_worker
+    wanted = SIZE_EFFORT.get(complexity) if complexity is not None else None
+    if wanted is None:
+        return ceiling
+    return min(wanted, ceiling, key=EFFORTS.index)

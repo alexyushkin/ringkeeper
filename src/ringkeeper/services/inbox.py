@@ -277,6 +277,9 @@ def _answer_question(
     _close(decision, DecisionStatus.ANSWERED, by, via, answer)
     task = _task_of(session, decision)
     payload = decision.payload or {}
+    if payload.get("budget"):
+        _answer_cap(session, settings, task, payload, reply, by)
+        return
     if payload.get("escalation"):
         # The architect loop hit its review cap: the answer goes to the architect,
         # and answering grants one more worker round.
@@ -290,6 +293,30 @@ def _answer_question(
     prompt = (
         f"The user answered your question.\n\nQuestion: {payload.get('question', '')}\n"
         f"Answer: {reply}\n\nContinue the task."
+    )
+    tasks.add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)
+
+
+CONTINUE = ("continue", "yes", "y", "ok", "go on", "more")
+
+
+def _answer_cap(
+    session: Session, settings: Settings, task: Task, payload: dict[str, Any], reply: str, by: str
+) -> None:
+    """The spending cap question: more money and go on, or stop here."""
+    if reply.strip().lower() not in CONTINUE:
+        task.status = TaskStatus.STOPPED
+        task.finished_at = datetime.now(UTC)
+        task.error = f"stopped at its spending cap by {by}"
+        return
+    task.budget_usd = (task.budget_usd or 0) + float(payload["budget"])
+    role = SessionRole(payload.get("role", SessionRole.WORKER.value))
+    sdk_session = tasks.last_sdk_session(task, role)
+    if sdk_session is None:
+        raise RuleViolationError(f"task {task.id} has no {role} session to resume")
+    prompt = (
+        f"You were paused at the spending cap; the user allowed ${payload['budget']:.2f} more. "
+        "Continue the task from where you were, and keep it lean."
     )
     tasks.add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)
 

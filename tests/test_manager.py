@@ -13,7 +13,11 @@ from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
+from ringkeeper.model_choice import session_effort
 from ringkeeper.models import (
+    Complexity,
+    Decision,
+    DecisionKind,
     SessionEvent,
     SessionRole,
     Task,
@@ -21,7 +25,7 @@ from ringkeeper.models import (
     TokenRevocation,
     WorkerSession,
 )
-from ringkeeper.services import revocations, tasks
+from ringkeeper.services import inbox, revocations, tasks
 from ringkeeper.vault import get_vault
 from ringkeeper.workers.manager import Manager, resolve_workspace
 from ringkeeper.workers.runtime import WorkerSpec, daemon_path
@@ -256,25 +260,76 @@ def test_stop_all_kills_running_and_cancels_queued(monkeypatch: pytest.MonkeyPat
     assert revoked(session_of(running).token_jti)
 
 
+def cap_question(task_id: str) -> Decision:
+    with session_scope() as session:
+        [question] = [
+            d for d in inbox.list_pending(session, kind=DecisionKind.QUESTION)
+            if str(d.task_id) == task_id
+        ]  # fmt: skip
+        session.expunge(question)
+        return question
+
+
+def answer(decision: Decision, text: str) -> None:
+    with session_scope() as session:
+        inbox.answer(
+            session, get_settings(), str(decision.id), inbox.Answer(text=text),
+            by="owner", via=inbox.Via.API,
+        )  # fmt: skip
+
+
 @pytest.mark.usefixtures("task_registry")
-def test_budget_exceeded_by_the_sdk() -> None:
-    m, _ = manager(
-        lambda _spec: Script(after=[result_line(subtype="error_max_budget_usd", cost=1.2)])
+def test_at_the_spending_cap_a_task_pauses_and_asks() -> None:
+    spends = iter([1.2, 0.4])
+    m, runtime = manager(
+        lambda _spec: Script(after=[result_line(subtype="error_max_budget_usd", cost=next(spends))])
     )
     task_id = run_task(budget_usd=1.0)
     m.tick()
     m.wait_idle()
-    assert task(task_id).status is TaskStatus.BUDGET_EXCEEDED
+    assert task(task_id).status is TaskStatus.NEEDS_INPUT
+    question = cap_question(task_id)
+    assert question.payload is not None
+    assert "spending cap ($1.00)" in question.payload["question"]
+    assert question.payload["options"] == ["continue", "stop"]
+
+    answer(question, "continue")
+    assert task(task_id).budget_usd == 2.0  # another $1, the setting's default
+    drive(m, lambda: len(runtime.started) == 2)
+    # The new session may spend what's left: $2 minus the $1.20 already spent.
+    assert task_env(runtime.started[1])["max_budget_usd"] == pytest.approx(0.8)
+    assert task_env(runtime.started[1])["resume"] == "sdk-1"
+
+    answer(cap_question(task_id), "stop")
+    stopped = task(task_id)
+    assert stopped.status is TaskStatus.STOPPED
+    assert stopped.error == "stopped at its spending cap by owner"
 
 
 @pytest.mark.usefixtures("task_registry")
-def test_budget_overrun_is_caught_after_the_fact() -> None:
+def test_a_task_gets_the_default_cap_and_an_overrun_still_pauses() -> None:
     m, runtime = manager(lambda _spec: Script(after=[result_line(cost=3.5)]))
-    task_id = run_task(budget_usd=1.0)
+    task_id = run_task()
+    assert task(task_id).budget_usd == 1.0  # the default cap
     m.tick()
     m.wait_idle()
-    assert task(task_id).status is TaskStatus.BUDGET_EXCEEDED
+    assert task(task_id).status is TaskStatus.NEEDS_INPUT
     assert task_env(runtime.started[0])["max_budget_usd"] == 1.0
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_effort_follows_the_task_size_up_to_the_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RINGKEEPER_EFFORT_WORKER", "medium")
+    settings = get_settings()
+    assert session_effort(settings, SessionRole.WORKER, Complexity.LOW) == "low"
+    assert session_effort(settings, SessionRole.WORKER, Complexity.HIGH) == "medium"  # capped
+    assert session_effort(settings, SessionRole.WORKER, None) == "medium"  # no size: the setting
+    assert session_effort(settings, SessionRole.ARCHITECT, Complexity.HIGH) == "high"
+    m, runtime = manager()
+    run_task()
+    m.tick()
+    m.wait_idle()
+    assert task_env(runtime.started[0])["effort"] == "medium"
 
 
 @pytest.mark.usefixtures("task_registry")

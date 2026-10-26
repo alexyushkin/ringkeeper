@@ -137,7 +137,7 @@ type FieldProps = {
   required?: boolean;
   autoComplete?: string;
   name?: string;
-  inputMode?: "text" | "url" | "numeric";
+  inputMode?: "text" | "url" | "numeric" | "decimal";
 };
 
 export function Field({ label, value, onChange, type = "text", placeholder, hint, required, autoComplete, name, inputMode }: FieldProps) {

@@ -18,6 +18,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
+from sqlalchemy.orm import Session
+
 from ringkeeper import scrub
 from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.claude_auth import resolve as resolve_credential
@@ -25,10 +27,12 @@ from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
+from ringkeeper.model_choice import session_effort
 from ringkeeper.models import (
     TERMINAL_STATUSES,
     AuthMode,
     Autonomy,
+    Complexity,
     DecisionKind,
     SessionRole,
     Task,
@@ -88,10 +92,14 @@ class Job:
     role: SessionRole = SessionRole.WORKER
     model: str | None = None
     feature: bool = False  # the task runs the architect loop
+    complexity: Complexity | None = None
+    task_budget_usd: float | None = None  # the whole task's cap; budget_usd is what's left
 
     @classmethod
     def of(cls, row: WorkerSession) -> "Job":
         task = row.task
+        spent = sum(s.cost_usd or 0 for s in task.sessions if s.id != row.id)
+        left = None if task.budget_usd is None else max(task.budget_usd - spent, 0.01)
         return cls(
             session_id=row.id,
             task_id=task.id,
@@ -101,13 +109,15 @@ class Job:
             auth_mode=task.auth_mode,
             max_turns=task.max_turns,
             max_runtime_s=task.max_runtime_s,
-            budget_usd=task.budget_usd,
+            budget_usd=left,
             sdk_session_id=row.sdk_session_id,
             state_volume=row.state_volume,
             started_at=row.started_at or datetime.now(UTC),
             role=row.role,
             model=row.model,
             feature=task.phase is not None,  # architect-led (tasks.planned)
+            complexity=task.complexity,
+            task_budget_usd=task.budget_usd,
         )
 
 
@@ -401,6 +411,7 @@ class Manager:
             "max_budget_usd": job.budget_usd if job.auth_mode is AuthMode.API_KEY else None,
             "resume": job.sdk_session_id,
             "model": job.model,
+            "effort": session_effort(settings, job.role, job.complexity),
         }
         if settings.worker_stub:
             task["stub"] = json.loads(settings.worker_stub)
@@ -453,6 +464,29 @@ class Manager:
             with session_scope() as session:
                 tasks.add_event(session, job.session_id, seq, event_type, _cap(event))
 
+    def _pause_at_cap(
+        self, session: Session, job: Job, row: WorkerSession, task: Task
+    ) -> TaskStatus:
+        """At the spending cap the task waits for the user: more money, or stop."""
+        step = self.settings.task_budget_usd
+        task.status = row.status = TaskStatus.NEEDS_INPUT
+        task.finished_at = None
+        task.error = None
+        cap = job.task_budget_usd or 0
+        payload = {
+            "question": (
+                f"This task reached its spending cap (${cap:.2f}). Give it another "
+                f"${step:.2f} to finish, or stop it here?"
+            ),
+            "budget": step,
+            "role": job.role.value,
+            "options": ["continue", "stop"],
+        }
+        inbox.create(
+            session, self.settings, DecisionKind.QUESTION, payload, project=task.project, task=task
+        )
+        return TaskStatus.NEEDS_INPUT
+
     def _finalize(
         self, job: Job, jti: str | None, collected: Collected, killed: TaskStatus | None
     ) -> None:
@@ -498,7 +532,9 @@ class Manager:
                         "error": error,
                     }
                     architect_loop.advance(session, self.settings, row, status, review)
-                if status is TaskStatus.NEEDS_INPUT and not waiting:
+                if status is TaskStatus.BUDGET_EXCEEDED and job.task_budget_usd is not None:
+                    status = self._pause_at_cap(session, job, row, task)
+                if status is TaskStatus.NEEDS_INPUT and not waiting and collected.question:
                     payload = {"question": collected.question, "role": job.role.value}
                     inbox.create(
                         session,
