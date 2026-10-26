@@ -27,7 +27,7 @@ from ringkeeper.workers.manager import Manager
 from ringkeeper.workers.process import ProcessRuntime, parse_memory
 from ringkeeper.workers.runtime import WorkerSpec
 from tests.conftest import CLAUDE_API_KEY, CLAUDE_OAUTH_TOKEN
-from tests.helpers import make_project
+from tests.helpers import bind, make_instance, make_project
 
 GIT = (
     "git",
@@ -89,6 +89,10 @@ def run_stub(
     get_vault(settings).store(settings.claude_oauth_token_ref, CLAUDE_OAUTH_TOKEN)
     with session_scope() as session:
         make_project(session, "acme-web", workspace_path=str(workspace))
+        # A connection, so the worker gets a gateway endpoint (only its project's
+        # services); the stub only lists instances, so no database is needed.
+        make_instance(session, "acme-db", secret_ref="file://acme/db")
+    bind("acme-web", "acme-db", is_default=True)
     runtime = ProcessRuntime(tmp_path / "workers")
     managers: list[Manager] = []
 

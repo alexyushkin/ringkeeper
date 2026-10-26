@@ -354,6 +354,9 @@ class Manager:
             workspace = resolve_workspace(project.workspace_path, settings.workspaces_root)
             autonomy = project.autonomy
             checks = list(project.checks)
+            # Only the services this project is connected to: every other endpoint
+            # would refuse it anyway, and each one's tools crowd the agent's context.
+            services = sorted({b.instance_type.value for b in project.bindings})
         architect_role = job.role is SessionRole.ARCHITECT
         credential = resolve_credential(self.vault, settings, job.auth_mode)
         token, claims = issue_token(
@@ -374,7 +377,9 @@ class Manager:
             "mcp_servers": (
                 {"ringkeeper-architect": f"{base}/mcp/architect"}
                 if architect_role
-                else {f"ringkeeper-{svc}": f"{base}/mcp/{svc}" for svc in ADAPTERS}
+                else {
+                    f"ringkeeper-{svc}": f"{base}/mcp/{svc}" for svc in services if svc in ADAPTERS
+                }
             ),
             "disallowed_tools": (
                 architect.DISALLOWED_TOOLS if architect_role else DISALLOWED_TOOLS[autonomy]

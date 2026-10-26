@@ -27,6 +27,7 @@ from ringkeeper.workers.manager import Manager, resolve_workspace
 from ringkeeper.workers.runtime import WorkerSpec, daemon_path
 from tests.conftest import CLAUDE_API_KEY as API_KEY
 from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
+from tests.helpers import bind, make_instance
 
 
 def manager(script: Callable[[WorkerSpec], Script] | None = None) -> tuple[Manager, FakeRuntime]:
@@ -129,6 +130,9 @@ def test_a_task_runs_and_everything_is_recorded() -> None:
 
 @pytest.mark.usefixtures("task_registry")
 def test_worker_gets_the_session_config() -> None:
+    with session_scope() as session:
+        make_instance(session, "acme-db", secret_ref="file://acme/db")
+    bind("acme-web", "acme-db", is_default=True)
     m, runtime = manager()
     task_id = run_task(max_turns=9)
     m.tick()
@@ -138,10 +142,8 @@ def test_worker_gets_the_session_config() -> None:
     assert config["branch"] == f"ringkeeper/{task_id}"
     assert config["resume"] is None
     assert config["disallowed_tools"] == ["WebFetch", "WebSearch"]  # standard autonomy
-    assert config["mcp_servers"] == {
-        "ringkeeper-supabase": "http://gateway:8100/mcp/supabase",
-        "ringkeeper-n8n": "http://gateway:8100/mcp/n8n",
-    }
+    # Only the services the project is connected to.
+    assert config["mcp_servers"] == {"ringkeeper-supabase": "http://gateway:8100/mcp/supabase"}
     token = runtime.started[0].env["RINGKEEPER_GATEWAY_TOKEN"]
     from ringkeeper.tokens import verify_token  # noqa: PLC0415
 
