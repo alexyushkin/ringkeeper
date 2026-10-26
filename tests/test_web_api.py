@@ -339,6 +339,7 @@ def test_the_web_token_needs_a_signed_in_owner(owner: TestClient) -> None:
         assert status == {
             "owner": True, "signed_in": False, "setup_code_hint": None, "recovery_saved": None,
             "claude": None, "telegram": None, "projects": None, "connections": None,
+            "done": None, "workspaces_root": None,
         }  # fmt: skip
         assert client.post("/auth/login", json={"password": "wrong"}).status_code == 401
         # Everything else needs the session, even what the admin token reads alone.

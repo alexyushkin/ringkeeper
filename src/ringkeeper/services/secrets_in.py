@@ -50,7 +50,7 @@ def check_anthropic_key(key: str) -> None:
         raise RuleViolationError("This key works but isn't allowed to use the API.") from None
     except (anthropic.APIConnectionError, anthropic.APITimeoutError):
         raise CheckUnavailableError(
-            "Couldn't reach Anthropic to check the key. Check the server's internet "
+            "Couldn't reach Anthropic to check the key. Check the internet "
             "connection and try again."
         ) from None
     except anthropic.APIStatusError as error:

@@ -31,7 +31,7 @@ from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import AuthMode, Instance, OwnerSession, Passkey, Project, Setting
 from ringkeeper.schemas import Input
-from ringkeeper.services import admin_audit, owner
+from ringkeeper.services import admin_audit, owner, workspaces
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.storage.sql import insert
 from ringkeeper.vault import get_vault
@@ -39,6 +39,7 @@ from ringkeeper.vault import get_vault
 router = APIRouter(dependencies=[AdminDep])
 
 RECOVERY_SAVED_KEY = "setup.recovery_saved"
+DONE_KEY = "setup.done"  # the desktop app's first run was finished
 RECOVERY_NOTE = "If you lose this file, you'll need to re-enter your connection secrets."
 
 
@@ -57,6 +58,8 @@ class SetupStatus(BaseModel):
     telegram: dict[str, Any] | None = None
     projects: int | None = None
     connections: int | None = None
+    done: bool | None = None
+    workspaces_root: str | None = None  # desktop: where new projects' folders go
 
 
 class OwnerIn(Input):
@@ -140,6 +143,8 @@ def setup_status(
         },
         projects=session.scalar(select(func.count()).select_from(Project)) or 0,
         connections=session.scalar(select(func.count()).select_from(Instance)) or 0,
+        done=session.get(Setting, DONE_KEY) is not None,
+        workspaces_root=(str(workspaces.root(settings)) if settings.mode == "desktop" else None),
     )
 
 
@@ -181,6 +186,14 @@ def recovery_key(session: WriteSessionDep, token: OwnerToken) -> dict[str, str]:
 def recovery_key_saved(session: WriteSessionDep, token: OwnerToken) -> None:
     del token
     statement = insert(session, Setting).values(key=RECOVERY_SAVED_KEY, value={"saved": True})
+    session.execute(statement.on_conflict_do_nothing(index_elements=["key"]))
+
+
+@router.post("/setup/done", status_code=204)
+def setup_done(session: WriteSessionDep, token: OwnerToken) -> None:
+    """The first run is finished: the desktop app stops showing it."""
+    del token
+    statement = insert(session, Setting).values(key=DONE_KEY, value={"done": True})
     session.execute(statement.on_conflict_do_nothing(index_elements=["key"]))
 
 

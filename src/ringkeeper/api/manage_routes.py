@@ -10,6 +10,7 @@ can't point Telegram approvals at another chat or send a key elsewhere.
 """
 
 import re
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import (
@@ -58,6 +59,7 @@ from ringkeeper.services import (
     runtime,
     secrets_in,
     tasks,
+    workspaces,
 )
 from ringkeeper.services.runtime import RuntimeIn, current_settings
 from ringkeeper.telegram.api import BotApi, TelegramError, from_vault, recent_chats
@@ -158,6 +160,9 @@ class TelegramSecretIn(Input):
 @router.put("/secrets/claude", dependencies=[RecentAuth])
 def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[str, Any]:
     settings = current_settings()
+    if settings.mode == "desktop" and data.mode is not AuthMode.API_KEY:
+        # Anthropic's terms don't let a third-party app offer claude.ai sign-in.
+        raise HTTPException(422, detail="The desktop app uses an Anthropic API key.")
     try:
         stored = secrets_in.store_claude(session, settings, data.mode, data.value)
     except ClaudeAuthError as error:
@@ -242,14 +247,26 @@ def _check_workspace(path: str | None) -> None:
 
 
 @router.post("/projects", status_code=201)
-def create_project(data: ProjectIn, session: WriteSessionDep) -> dict[str, str]:
-    _check_workspace(data.workspace_path)
+def create_project(data: ProjectIn, session: WriteSessionDep) -> dict[str, Any]:
+    settings = get_settings()
+    path: Path | None = None
+    if settings.mode == "desktop":
+        path = workspaces.choose(settings, data.workspace_path, data.name)
+        data = data.model_copy(update={"workspace_path": str(path)})
+    else:
+        _check_workspace(data.workspace_path)
     project = projects.create_project(session, data)
     admin_audit.record(
         session, "project.create", f"created project {project.name}", by=OWNER,
         project=project.name,
     )  # fmt: skip
-    return {"name": project.name}
+    if path is None:
+        return {"name": project.name}
+    folder = workspaces.prepare(settings, path)
+    return {
+        "name": project.name, "folder": folder.path, "created": folder.created,
+        "git": folder.git,
+    }  # fmt: skip
 
 
 @router.patch("/projects/{name}")
@@ -259,7 +276,13 @@ def update_project(
     project = projects.get_project(session, name)
     if data.autonomy is not None and data.autonomy != project.autonomy:
         check_recent_auth(request, token)  # autonomy decides what runs without asking
-    if data.workspace_path != project.workspace_path:
+    settings = get_settings()
+    folder: Path | None = None
+    if settings.mode == "desktop":
+        if "workspace_path" in data.model_fields_set:
+            folder = workspaces.choose(settings, data.workspace_path, name)
+            data.workspace_path = str(folder)
+    elif data.workspace_path != project.workspace_path:
         _check_workspace(data.workspace_path)
     current = ProjectIn.model_validate(
         {
@@ -276,6 +299,8 @@ def update_project(
         session, "project.update", f"changed {', '.join(sorted(changes)) or 'nothing'}",
         by=OWNER, project=name, details={"fields": sorted(changes)},
     )  # fmt: skip
+    if folder is not None:
+        workspaces.prepare(settings, folder)
     return {"name": name}
 
 

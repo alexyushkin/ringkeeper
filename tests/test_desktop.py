@@ -5,6 +5,7 @@ worker process (the stub agent, no LLM). No Docker, no Postgres.
 
 import json
 import os
+import subprocess
 import threading
 import time
 from collections.abc import Iterator
@@ -19,7 +20,7 @@ from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
 from ringkeeper.models import DecisionKind, TaskStatus
-from ringkeeper.services import inbox, tasks
+from ringkeeper.services import inbox, secrets_in, tasks
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
 from tests.test_vault import MemoryKeyring
@@ -237,3 +238,69 @@ def test_the_start_link_opens_a_page_of_this_app_only() -> None:
     ]:
         opened = client.get(f"/desktop/start?code={launch.new_code()}&next={given}")
         assert (opened.status_code, opened.headers["location"]) == (303, expected), given
+
+
+def test_first_run_in_the_app(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fresh data folder → a Claude key and a working project, all from the window."""
+    win = window(desktop)
+    status = win.get("/bff/setup/status").json()
+    assert status["done"] is False
+    assert status["claude"]["api_key"] is False
+    assert status["projects"] == 0
+    assert status["workspaces_root"] == str(desktop["workspaces"])
+
+    # Claude: an API key only (no claude.ai sign-in in a third-party app), checked live.
+    checked: list[str] = []
+    monkeypatch.setattr(secrets_in, "check_anthropic_key", checked.append)
+    token = "sk-ant-oat01-" + "x" * 40
+    subscription = win.put("/bff/secrets/claude", json={"mode": "subscription", "value": token})
+    assert subscription.status_code == 422
+    assert "API key" in subscription.json()["detail"]
+    assert win.put("/bff/secrets/claude", json={"value": CLAUDE_API_KEY}).status_code == 200
+    assert checked == [CLAUDE_API_KEY]
+
+    # A project with no folder given gets a new one, started as a git repository.
+    made = win.post("/bff/projects", json={"name": "hello-check", "owner": "test"})
+    assert made.status_code == 201, made.text
+    folder = desktop["workspaces"] / "hello-check"
+    assert made.json() == {
+        "name": "hello-check",
+        "folder": str(folder),
+        "created": True,
+        "git": True,
+    }
+    log = subprocess.run(
+        ["git", "log", "--format=%s", "main"],  # noqa: S607
+        cwd=folder, capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    assert log.stdout.strip() == "Start"
+    assert win.get("/bff/projects/hello-check").json()["workspace_path"] == str(folder)
+
+    # Any folder on this computer (a pasted "Copy as path" too); its files are left alone.
+    existing = tmp_path / "Client work" / "acme site"
+    existing.mkdir(parents=True)
+    (existing / "index.html").write_text("<h1>Acme</h1>", encoding="utf-8")
+    used = win.post(
+        "/bff/projects",
+        json={"name": "acme-site", "owner": "acme", "workspace_path": f'"{existing}"'},
+    )
+    assert used.status_code == 201, used.text
+    assert used.json() == {
+        "name": "acme-site",
+        "folder": str(existing),
+        "created": False,
+        "git": False,
+    }
+    assert sorted(p.name for p in existing.iterdir()) == ["index.html"]
+
+    for bad in (str(desktop["data_dir"] / "x"), "../outside", Path.home().anchor, str(Path.home())):
+        refused = win.post(
+            "/bff/projects", json={"name": "bad", "owner": "x", "workspace_path": bad}
+        )
+        assert refused.status_code == 409, (bad, refused.text)
+
+    # Finished: the app stops showing first-run.
+    assert win.post("/bff/setup/done").status_code == 204
+    assert win.get("/bff/setup/status").json()["done"] is True
