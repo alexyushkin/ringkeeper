@@ -42,7 +42,7 @@ from ringkeeper.models import (
     ProjectInstance,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import audit, decisions, revocations
+from ringkeeper.services import audit, decisions, mcp_tools, revocations
 from ringkeeper.vault import Vault, VaultError
 
 logger = logging.getLogger(__name__)
@@ -270,7 +270,11 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         )
 
     if not is_write:
-        return scrub_obj(await _invoke(spec.handler, target, call.args, call.tool))
+        result = await _invoke(spec.handler, target, call.args, call.tool)
+        if call.service is InstanceType.MCP and call.tool == "list_tools":
+            # The server's hints decide later calls without starting it first.
+            await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
+        return scrub_obj(result)
 
     if spec.hold is Hold.ALWAYS or (
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved

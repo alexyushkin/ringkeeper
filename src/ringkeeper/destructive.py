@@ -16,6 +16,7 @@ import re
 import unicodedata
 from typing import Any
 
+from ringkeeper.adapters import mcp
 from ringkeeper.models import InstanceType
 
 # Writes through these tools change nothing irreversibly; any other write tool
@@ -36,8 +37,11 @@ SAFE_TOOLS = {
     (InstanceType.N8N, "retry_execution"),
     (InstanceType.N8N, "stop_execution"),
 }
-# An imported MCP server's tool whose name says it deletes or resets something.
-_DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
+MCP_REASONS = {
+    mcp.BY_USER: "you set to need the connection's name",
+    mcp.BY_ANNOTATIONS: "its server marks as destructive",
+    mcp.BY_NAME: "sounds like it deletes",
+}
 
 _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
 _ESCAPE_STRING = re.compile(r"(?<![\w'])[eE]'")
@@ -126,9 +130,15 @@ def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
 
 
 def reason(
-    service: InstanceType | None, tool: str | None, args: dict[str, Any] | None
+    service: InstanceType | None,
+    tool: str | None,
+    args: dict[str, Any] | None,
+    config: dict[str, Any] | None = None,
 ) -> str | None:
-    """Why this held write needs the connection's name typed, or None if it's ordinary."""
+    """Why this held write needs the connection's name typed, or None if it's ordinary.
+
+    `config` is the connection's: an MCP server's tool rules live there.
+    """
     args = args or {}
     if service is InstanceType.SUPABASE and tool == "execute":
         sql = args.get("sql")
@@ -136,11 +146,12 @@ def reason(
     if (service, tool) in SAFE_TOOLS:
         return None
     if service is InstanceType.MCP and tool == "call_tool":
-        # Every call is held anyway; the typed name is for the ones that sound final.
+        # Held unless it reads; the typed name is for the ones marked or sounding final.
         name = str(args.get("tool", ""))
+        found = mcp.rule(config or {}, name)
         return (
-            f"runs '{name}', which sounds like it deletes"
-            if _DESTRUCTIVE_NAME.search(name)
+            f"runs '{name}', which {MCP_REASONS[found.source]}"
+            if found.level == mcp.CONFIRM
             else None
         )
     if service is InstanceType.N8N and tool == "update_workflow":

@@ -23,7 +23,7 @@ from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
 from ringkeeper.models import DecisionKind, InstanceType, TaskStatus
-from ringkeeper.services import claude_desktop, inbox, secrets_in, tasks
+from ringkeeper.services import claude_desktop, inbox, instances, secrets_in, tasks
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
@@ -413,13 +413,17 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
 
     tested = win.post("/bff/connections/notes/test").json()
     assert tested["ok"] is True, tested
-    assert "3 tools" in tested["message"]
-    tools = win.get("/bff/connections/notes/tools").json()["tools"]
-    assert {t["name"] for t in tools} == {"read_notes", "delete_note", "what_i_got"}
-    marked = win.put("/bff/connections/notes/read-only-tools", json={"tools": ["read_notes"]})
-    assert marked.json() == {"read_only_tools": ["read_notes"]}
+    assert "4 tools" in tested["message"]
+    # Testing remembered the server's hints: they decide calls without starting it.
+    [connection] = [c for c in win.get("/bff/connections").json() if c["name"] == "notes"]
+    assert connection["config"]["annotations"]["read_notes"]["read_only"] is True
+    tools = {t["name"]: t for t in win.get("/bff/connections/notes/tools").json()["tools"]}
+    assert set(tools) == {"read_notes", "delete_note", "remove_tag", "what_i_got"}
+    assert tools["read_notes"]["rule"] == "read"
+    assert tools["read_notes"]["rule_from"] == "annotations"
+    assert tools["delete_note"]["rule"] == "confirm"
 
-    # Through the call pipeline: the marked tool reads, the others wait for approval.
+    # Through the call pipeline: annotated read-only tools run, the rest wait.
     caller = Caller("acme-web", "session-1", "token-1")
     vault = get_vault(get_settings())
 
@@ -429,3 +433,30 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
 
     assert run("read_notes")["structured"] == {"result": ["first note"]}
     assert run("what_i_got")["status"] == "held_for_approval"
+    deleting = run("delete_note")
+    assert deleting["status"] == "held_for_approval"
+    held = win.get("/bff/decisions").json()
+    [pending] = [d for d in held if d["id"] == deleting["decision_id"]]
+    assert "its server marks as destructive" in str(pending)
+
+    # The user's choices win over the hints, and can go back to them.
+    chosen = win.put(
+        "/bff/connections/notes/tool-rules",
+        json={"rules": {"read_notes": "approve", "what_i_got": "read"}},
+    )
+    assert chosen.json() == {"tool_rules": {"read_notes": "approve", "what_i_got": "read"}}
+    assert run("read_notes")["status"] == "held_for_approval"
+    assert run("what_i_got")["structured"]["claude_credential"] is False
+    bad = win.put("/bff/connections/notes/tool-rules", json={"rules": {"x": "sometimes"}})
+    assert bad.status_code == 422
+    win.put("/bff/connections/notes/tool-rules", json={"rules": {}})
+    assert run("read_notes")["structured"] == {"result": ["first note"]}  # its hints again
+
+    # The agent listing the tools refreshes the hints too.
+    with session_scope() as session:
+        found = instances.get_instance(session, "notes")
+        found.config = {k: v for k, v in found.config.items() if k != "annotations"}
+    assert run("read_notes")["status"] == "held_for_approval"  # no hints: it waits
+    listing = ToolCall(caller, InstanceType.MCP, "list_tools", "notes", {})
+    assert len(asyncio.run(run_call(listing, vault))["tools"]) == 4
+    assert run("read_notes")["structured"] == {"result": ["first note"]}

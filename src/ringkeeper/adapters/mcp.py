@@ -7,20 +7,27 @@ The secret (in the vault) is how to start or reach the server, JSON:
 
 Args go in the vault too: they often hold a connection string or a token.
 The connection's `config` holds what isn't secret: a preview of the command
-with secrets masked, and the tools the user marked read-only.
+with secrets masked, the server's own hints about each tool (its MCP
+annotations, as last listed), and the user's choices per tool.
 
 A local (command) server runs on the gateway's machine, so in practice the
 desktop app: started for each call with a small environment (no Claude
 credential, nothing of Ringkeeper's), in its own folder, and stopped after.
-The agent sees two tools: list_tools and call_tool. We can't know what a
-third-party tool does, so every call waits for approval unless the user
-marked that tool read-only.
+The agent sees two tools: list_tools and call_tool. What a call to one of
+the server's tools needs (see `rule`):
+
+- the user's choice for that tool, if they made one; otherwise
+- its annotations: readOnlyHint runs it without asking, destructiveHint
+  needs the connection's name typed to approve; otherwise
+- a name that sounds like deleting needs the name typed; anything else
+  waits for approval.
 """
 
 import json
 import os
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -138,15 +145,62 @@ def _client(target: Target) -> Client[Any]:
     return Client(_transport(target), timeout=TIMEOUT_SECONDS)
 
 
-def read_only_tools(target: Target) -> set[str]:
-    return set(cast(list[str], target.config.get("read_only_tools") or []))
+# What a call to one of the server's tools needs.
+READ, APPROVE, CONFIRM = "read", "approve", "confirm"
+LEVELS = (READ, APPROVE, CONFIRM)
+# Where that came from.
+BY_USER, BY_ANNOTATIONS, BY_NAME, BY_DEFAULT = "you", "annotations", "name", "default"
+# A tool whose name says it deletes or resets something, when its server doesn't say.
+DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
+RUNS = {
+    READ: "without asking",
+    APPROVE: "after the user approves",
+    CONFIRM: "after the user approves and types the connection's name",
+}
+
+
+@dataclass(frozen=True)
+class Rule:
+    level: str  # READ, APPROVE or CONFIRM
+    source: str  # BY_USER, BY_ANNOTATIONS, BY_NAME or BY_DEFAULT
+
+
+def default_rule(hints: JSON | None, tool: str) -> Rule:
+    """From the server's annotations for this tool, else its name."""
+    hints = hints or {}
+    if hints.get("read_only") is True:
+        return Rule(READ, BY_ANNOTATIONS)
+    if hints.get("destructive") is True:
+        return Rule(CONFIRM, BY_ANNOTATIONS)
+    if hints.get("destructive") is False:
+        return Rule(APPROVE, BY_ANNOTATIONS)
+    if DESTRUCTIVE_NAME.search(tool):
+        return Rule(CONFIRM, BY_NAME)
+    return Rule(APPROVE, BY_DEFAULT)
+
+
+def rule(config: Mapping[str, Any], tool: str) -> Rule:
+    """What a call to `tool` needs: the user's choice, else the default."""
+    chosen = cast(JSON, config.get("tool_rules") or {}).get(tool)
+    if chosen in LEVELS:
+        return Rule(str(chosen), BY_USER)
+    if tool in cast(list[str], config.get("read_only_tools") or []):  # the first version's ticks
+        return Rule(READ, BY_USER)
+    return default_rule(cast(JSON, config.get("annotations") or {}).get(tool), tool)
+
+
+def _hints(tool: Any) -> JSON:
+    notes = getattr(tool, "annotations", None)
+    return {
+        "read_only": getattr(notes, "read_only_hint", None),
+        "destructive": getattr(notes, "destructive_hint", None),
+    }
 
 
 @read
 async def list_tools(target: Target) -> JSON:
-    """List this server's tools: name, what it does, its arguments, and whether it's read-only
-    (read-only tools run without asking; every other call waits for the user's approval)."""
-    marked = read_only_tools(target)
+    """List this server's tools: name, what it does, its arguments, and how a call runs
+    (without asking, after the user approves, or after approval with the name typed)."""
     try:
         async with _client(target) as client:
             tools = await client.list_tools()
@@ -154,28 +208,44 @@ async def list_tools(target: Target) -> JSON:
         raise
     except Exception as error:  # a server that won't start or answer
         raise ToolError(f"the MCP server didn't answer: {type(error).__name__}: {error}") from None
-    return {
-        "tools": [
+    hints = {t.name: _hints(t) for t in tools}
+    # The rules as they will be once these hints are remembered (services.mcp_tools).
+    config = {**target.config, "annotations": hints}
+    listed: list[JSON] = []
+    for t in tools:
+        now, default = rule(config, t.name), default_rule(hints[t.name], t.name)
+        listed.append(
             {
                 "name": t.name,
                 "description": (t.description or "")[:1000],
                 "input_schema": t.input_schema,
-                "read_only": t.name in marked,
+                "runs": RUNS[now.level],
+                "read_only": now.level == READ,
+                "rule": now.level,
+                "rule_from": now.source,
+                "hints": hints[t.name],
+                "default": default.level,
+                "default_from": default.source,
             }
-            for t in tools
-        ]
-    }
+        )
+    return {"tools": listed}
+
+
+def annotations_of(listed: JSON) -> JSON:
+    """The server's hints per tool, from list_tools' answer, to remember with the connection."""
+    return {str(t["name"]): t["hints"] for t in cast(list[JSON], listed.get("tools") or [])}
 
 
 def _classify(target: Target, args: JSON) -> ToolKind:
-    return ToolKind.READ if args.get("tool") in read_only_tools(target) else ToolKind.WRITE
+    level = rule(target.config, str(args.get("tool", ""))).level
+    return ToolKind.READ if level == READ else ToolKind.WRITE
 
 
 async def _call_tool(
     target: Target, tool: ToolName, arguments: dict[str, Any] | None = None
 ) -> JSON:
     """Call one of the server's tools (see list_tools). Waits for the user's approval unless
-    the user marked that tool read-only."""
+    list_tools says that tool runs without asking."""
     try:
         async with _client(target) as client:
             result = await client.call_tool(tool, arguments or {}, raise_on_error=False)

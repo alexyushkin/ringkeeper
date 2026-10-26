@@ -19,7 +19,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import scrub
-from ringkeeper.services import admin_audit, instances
+from ringkeeper.services import admin_audit, instances, mcp_tools
 from ringkeeper.vault import get_vault
 
 TIMEOUT_SECONDS = 20
@@ -55,7 +55,9 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911 (o
         case InstanceType.GMAIL:
             return await gmail.probe(target)
         case InstanceType.MCP:
-            tools = (await mcp.list_tools.handler(target))["tools"]
+            listed = await mcp.list_tools.handler(target)
+            mcp_tools.remember(target.name, listed)
+            tools = listed["tools"]
             names = ", ".join(t["name"] for t in tools[:8]) + (", ..." if len(tools) > 8 else "")
             return f"Connected: {len(tools)} tool{'s' if len(tools) != 1 else ''} ({names})."
         case _:

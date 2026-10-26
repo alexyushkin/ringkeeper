@@ -1,5 +1,6 @@
 """MCP servers from Claude Desktop: run behind the gateway as local processes,
-started with a clean environment, every call held unless marked read-only."""
+started with a clean environment; each tool held, run or confirmed by the user's
+choice, else the server's annotations, else its name."""
 
 import json
 import sys
@@ -27,9 +28,8 @@ def spec(**extra: object) -> str:
     )
 
 
-def target(read_only: list[str] | None = None) -> Target:
-    config = {"read_only_tools": read_only or []}
-    return Target("notes", Env.PROD, None, Secret("file://x/notes", spec()), config)
+def target(config: dict[str, object] | None = None) -> Target:
+    return Target("notes", Env.PROD, None, Secret("file://x/notes", spec()), config or {})
 
 
 def test_secrets_are_found_and_masked() -> None:
@@ -44,12 +44,56 @@ def test_secrets_are_found_and_masked() -> None:
         mcp.server_spec(json.dumps({"env": {}}))
 
 
-def test_only_the_marked_tools_read() -> None:
-    assert mcp.call_tool.classify is not None
-    assert mcp.call_tool.classify(target(["read_notes"]), {"tool": "read_notes"}) is ToolKind.READ
-    assert mcp.call_tool.classify(target(["read_notes"]), {"tool": "what_i_got"}) is ToolKind.WRITE
-    assert destructive.reason(InstanceType.MCP, "call_tool", {"tool": "delete_note"})
-    assert destructive.reason(InstanceType.MCP, "call_tool", {"tool": "read_notes"}) is None
+HINTS = {
+    "read_notes": {"read_only": True, "destructive": None},
+    "delete_note": {"read_only": False, "destructive": True},
+    "remove_tag": {"read_only": False, "destructive": False},
+}
+
+
+@pytest.mark.parametrize(
+    ("tool", "level", "source"),
+    [
+        ("read_notes", mcp.READ, mcp.BY_ANNOTATIONS),
+        ("delete_note", mcp.CONFIRM, mcp.BY_ANNOTATIONS),
+        ("remove_tag", mcp.APPROVE, mcp.BY_ANNOTATIONS),  # its hints beat its name
+        ("purge_cache", mcp.CONFIRM, mcp.BY_NAME),  # no hints: its name decides
+        ("what_i_got", mcp.APPROVE, mcp.BY_DEFAULT),
+    ],
+)
+def test_defaults_come_from_annotations_then_names(tool: str, level: str, source: str) -> None:
+    assert mcp.rule({"annotations": HINTS}, tool) == mcp.Rule(level, source)
+
+
+def test_the_users_choice_wins_and_decides_holds_and_typed_names() -> None:
+    config: dict[str, object] = {
+        "annotations": HINTS,
+        "tool_rules": {"read_notes": "approve", "delete_note": "approve", "what_i_got": "confirm"},
+    }
+    assert mcp.rule(config, "read_notes") == mcp.Rule(mcp.APPROVE, mcp.BY_USER)
+    assert mcp.rule({"read_only_tools": ["what_i_got"]}, "what_i_got").level == mcp.READ
+
+    def kind(tool: str, config: dict[str, object]) -> ToolKind:
+        assert mcp.call_tool.classify is not None
+        return mcp.call_tool.classify(target(config), {"tool": tool})
+
+    def typed(tool: str, config: dict[str, object] | None) -> str | None:
+        return destructive.reason(InstanceType.MCP, "call_tool", {"tool": tool}, config)
+
+    defaults: dict[str, object] = {"annotations": HINTS}
+    assert kind("read_notes", defaults) is ToolKind.READ
+    assert kind("remove_tag", defaults) is ToolKind.WRITE
+    assert kind("read_notes", config) is ToolKind.WRITE
+    assert typed("delete_note", defaults) == (
+        "runs 'delete_note', which its server marks as destructive"
+    )
+    assert typed("purge_cache", defaults) == "runs 'purge_cache', which sounds like it deletes"
+    assert typed("remove_tag", defaults) is None
+    assert typed("delete_note", config) is None
+    assert typed("what_i_got", config) == (
+        "runs 'what_i_got', which you set to need the connection's name"
+    )
+    assert typed("delete_note", None) == "runs 'delete_note', which sounds like it deletes"
 
 
 async def test_the_server_runs_with_its_secrets_and_nothing_else(
@@ -57,11 +101,20 @@ async def test_the_server_runs_with_its_secrets_and_nothing_else(
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-must-not-reach-it")
     monkeypatch.setenv("RINGKEEPER_SOMETHING", "nor-this")
-    listed = await mcp.list_tools.handler(target(["read_notes"]))
+    listed = await mcp.list_tools.handler(target({"tool_rules": {"what_i_got": "read"}}))
     tools = {t["name"]: t for t in listed["tools"]}
-    assert set(tools) == {"read_notes", "delete_note", "what_i_got"}
-    assert tools["read_notes"]["read_only"] is True
-    assert tools["delete_note"]["read_only"] is False
+    assert set(tools) == {"read_notes", "delete_note", "remove_tag", "what_i_got"}
+    assert mcp.annotations_of(listed)["read_notes"] == HINTS["read_notes"]
+    assert mcp.annotations_of(listed)["what_i_got"] == {"read_only": None, "destructive": None}
+    read_notes = tools["read_notes"]
+    assert (read_notes["rule"], read_notes["rule_from"]) == ("read", "annotations")
+    assert tools["read_notes"]["runs"] == "without asking"
+    assert (tools["delete_note"]["rule"], tools["delete_note"]["read_only"]) == ("confirm", False)
+    assert (tools["what_i_got"]["rule"], tools["what_i_got"]["rule_from"]) == ("read", "you")
+    assert (tools["what_i_got"]["default"], tools["what_i_got"]["default_from"]) == (
+        "approve",
+        "default",
+    )
 
     got = await mcp.call_tool.handler(target(), tool="what_i_got")
     report = got["structured"]

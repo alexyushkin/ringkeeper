@@ -16,13 +16,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import String, cast, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import destructive
 from ringkeeper.calls import Caller, ToolCall, args_hash
 from ringkeeper.config import get_settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Decision, DecisionKind, DecisionStatus
+from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Instance, InstanceType
 from ringkeeper.services.audit import safe_text
 from ringkeeper.storage import events
 
@@ -34,6 +34,13 @@ DECISIONS_CHANNEL = "ringkeeper_decisions"
 def notify_new(session: Session, decision: Decision) -> None:
     """Delivered when the transaction commits."""
     events.notify(session, DECISIONS_CHANNEL, str(decision.id))
+
+
+def _config(session: Session | None, service: InstanceType | None, instance: str | None) -> Any:
+    """The connection's settings where they decide confirmation (an MCP server's tool rules)."""
+    if session is None or service is not InstanceType.MCP or instance is None:
+        return None
+    return session.scalar(select(Instance.config).where(Instance.name == instance))
 
 
 def current_user() -> str:
@@ -68,7 +75,11 @@ def hold(
         precondition=precondition,
         # Deleting or dropping data needs the connection's name typed to approve.
         payload={"destructive": why}
-        if (why := destructive.reason(call.service, call.tool, call.args))
+        if (
+            why := destructive.reason(
+                call.service, call.tool, call.args, _config(session, call.service, instance)
+            )
+        )
         else None,
         created_at=now,
         expires_at=now + timedelta(seconds=get_settings().decision_ttl_seconds),
@@ -174,7 +185,8 @@ def confirmation_needed(decision: Decision) -> str | None:
     """
     if decision.kind is not DecisionKind.APPROVE:
         return None
-    return destructive.reason(decision.service, decision.tool, decision.args)
+    config = _config(object_session(decision), decision.service, decision.instance)
+    return destructive.reason(decision.service, decision.tool, decision.args, config)
 
 
 def check_confirmation(decision: Decision, confirm: str | None, via: str) -> None:

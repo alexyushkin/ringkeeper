@@ -1,7 +1,8 @@
 """A tiny MCP server over stdio, standing in for one from Claude Desktop's settings.
 
-It says which secrets it was given without ever printing them: the length of
-FAKE_API_KEY and its first argument, and whether a Claude credential leaked in.
+Its tools carry MCP annotations, except what_i_got. It says which secrets it was
+given without ever printing them: the length of FAKE_API_KEY and its first
+argument, and whether a Claude credential leaked in.
 """
 
 import os
@@ -13,16 +14,22 @@ server = FastMCP("fake-notes")
 NOTES = ["first note"]
 
 
-@server.tool
+@server.tool(annotations={"readOnlyHint": True})
 def read_notes() -> list[str]:
     """List the notes."""
     return NOTES
 
 
-@server.tool
+@server.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
 def delete_note(index: int) -> str:
     """Delete a note by its position."""
     return f"deleted note {index}"
+
+
+@server.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def remove_tag(tag: str) -> str:
+    """Take a tag off the notes (its name sounds final; its hints say it isn't)."""
+    return f"removed {tag}"
 
 
 @server.tool

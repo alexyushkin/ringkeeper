@@ -12,7 +12,7 @@ can't point Telegram approvals at another chat or send a key elsewhere.
 import asyncio
 import re
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -58,6 +58,7 @@ from ringkeeper.services import (
     admin_audit,
     bindings,
     instances,
+    mcp_tools,
     probes,
     projects,
     runtime,
@@ -524,31 +525,27 @@ def connection_tools(name: str, session: SessionDep) -> dict[str, Any]:
         return await mcp.list_tools.handler(target)
 
     try:
-        return asyncio.run(ask())
+        listed = asyncio.run(ask())
     except ToolError as error:
         raise HTTPException(502, detail=scrub(str(error))) from None
+    mcp_tools.remember(name, listed)
+    return listed
 
 
-class ReadOnlyToolsIn(Input):
-    tools: CleanList
+class ToolRulesIn(Input):
+    # Tool name -> "read", "approve" or "confirm"; leave a tool out for its default.
+    rules: dict[
+        Annotated[str, Field(min_length=1, max_length=128)], Literal["read", "approve", "confirm"]
+    ]
 
 
-@router.put("/connections/{name}/read-only-tools", dependencies=[RecentAuth])
-def set_read_only_tools(
-    name: str, data: ReadOnlyToolsIn, session: WriteSessionDep
-) -> dict[str, Any]:
-    """Which of an MCP server's tools run without asking. Loosening approvals, so it
-    needs a recent confirmation like other such changes."""
-    instance = instances.get_instance(session, name)
-    if instance.type is not InstanceType.MCP:
-        raise HTTPException(409, detail="Only MCP server connections have read-only tools.")
-    instance.config = {**(instance.config or {}), "read_only_tools": sorted(set(data.tools))}
-    admin_audit.record(
-        session, "connection.read_only_tools",
-        f"{name}: read-only tools now {', '.join(sorted(set(data.tools))) or 'none'}",
-        by=OWNER, instance=name,
-    )  # fmt: skip
-    return {"read_only_tools": instance.config["read_only_tools"]}
+@router.put("/connections/{name}/tool-rules", dependencies=[RecentAuth])
+def set_tool_rules(name: str, data: ToolRulesIn, session: WriteSessionDep) -> dict[str, Any]:
+    """What a call to each of an MCP server's tools needs. It can loosen approvals, so
+    it needs a recent confirmation like other such changes."""
+    if instances.get_instance(session, name).type is not InstanceType.MCP:
+        raise HTTPException(409, detail="Only MCP server connections have tool rules.")
+    return {"tool_rules": mcp_tools.set_rules(session, name, dict(data.rules), by=OWNER)}
 
 
 @router.get("/projects/{name}/connections")
