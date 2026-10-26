@@ -99,6 +99,7 @@ def test_local_speech_answers_like_the_stt_service(
 ) -> None:
     settings = Settings(mode="desktop", data_dir=tmp_path)
     service = FakeService(status, body)
+
     def loaded(_self: voice_local.LocalModel, _settings: Settings) -> FakeService:
         return service
 
