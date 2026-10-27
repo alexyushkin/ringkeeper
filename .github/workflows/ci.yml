@@ -40,6 +40,7 @@ jobs:
   tests:
     # Ringkeeper's own database: Postgres (server mode) and SQLite (desktop
     # mode). Client databases for the Supabase connector are Postgres either way.
+    # One Python version while the repository is private (Actions minutes).
     name: tests (${{ matrix.python }}, ${{ matrix.db }})
     runs-on: ubuntu-latest
     strategy:
@@ -47,7 +48,6 @@ jobs:
       matrix:
         include:
           - { python: "3.12", db: postgres }
-          - { python: "3.13", db: postgres }
           - { python: "3.12", db: sqlite }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

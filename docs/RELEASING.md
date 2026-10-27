@@ -16,7 +16,8 @@ code, only:
   - `Ringkeeper_<version>_x64-setup.exe`: the Windows installer
   - `Ringkeeper_<version>_x64-setup.exe.sig`: its updater signature
   - `latest.json`: what installed apps read to find updates
-  - on macOS builds: `Ringkeeper_<version>_aarch64.dmg`,
+  - on macOS builds (off while the code repository is private, to save
+    Actions minutes): `Ringkeeper_<version>_aarch64.dmg`,
     `Ringkeeper.app.tar.gz` and its `.sig` (unsigned, not advertised)
 
 Installed apps check
