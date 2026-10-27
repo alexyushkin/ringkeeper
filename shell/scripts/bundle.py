@@ -99,8 +99,10 @@ and https://github.com/msys2/MINGW-packages. Write to the Ringkeeper project
 """
 
 
-def run(*args: str | Path, cwd: Path = REPO, env: dict[str, str] | None = None) -> str:
+def run(*args: str | Path, cwd: Path = REPO, env: dict[str, str | None] | None = None) -> str:
+    """Runs a tool; `env` adds variables, or removes those set to None."""
     print("+", " ".join(str(a) for a in args), flush=True)
+    merged = {**os.environ, **(env or {})}
     done = subprocess.run(  # noqa: S603 (fixed tools, our own arguments)
         [str(a) for a in args],
         cwd=cwd,
@@ -109,7 +111,7 @@ def run(*args: str | Path, cwd: Path = REPO, env: dict[str, str] | None = None) 
         text=True,
         encoding="utf-8",
         errors="replace",
-        env={**os.environ, **(env or {})},
+        env={k: v for k, v in merged.items() if v is not None},
     )
     if done.returncode:
         # What it said, so a failed build shows why.
@@ -295,7 +297,13 @@ def _mingit_version() -> str | None:
 def fetch_mingit() -> str | None:
     if not WINDOWS:
         return None
-    run("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", MINGIT_SCRIPT)
+    # Started from PowerShell 7 (as in CI), PSModulePath names its modules, and
+    # Windows PowerShell then can't load its own (Get-FileHash). Without it, it
+    # uses its defaults. (os.environ's keys are upper case on Windows.)
+    run(
+        "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", MINGIT_SCRIPT,
+        env={"PSMODULEPATH": None},
+    )  # fmt: skip
     return _mingit_version()
 
 
