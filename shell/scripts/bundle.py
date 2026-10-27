@@ -524,10 +524,13 @@ def write_notices(python_root: Path, mingit_version: str | None) -> None:
 
 # Windows paths stop at 260 characters: the installer allows install folders
 # of up to 90 (shell/windows/hooks.nsh), which leaves this much below them.
+# (macOS allows 1024, and its python3.12/ folder makes every path longer.)
 MAX_RELATIVE_PATH = 165
 
 
 def check_path_lengths() -> None:
+    if not WINDOWS:
+        return
     longest = max((p for p in OUT.rglob("*") if p.is_file()), key=lambda p: len(str(p)))
     relative = str(longest.relative_to(OUT))
     if len(relative) > MAX_RELATIVE_PATH:

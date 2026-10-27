@@ -7,7 +7,8 @@ name: Release
 # CHANGELOG.md must have an entry for it.
 #
 # Run by hand (workflow_dispatch) it builds the same files as a test and keeps
-# them as workflow artifacts; nothing is published.
+# them as workflow artifacts; nothing is published. macOS is built by hand only
+# when asked (its runner minutes cost more).
 #
 # Secrets (Settings > Secrets and variables > Actions):
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -23,6 +24,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      macos:
+        description: Build macOS too
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -142,8 +148,8 @@ jobs:
           if-no-files-found: error
 
   macos:
-    # Unsigned and not advertised; built on tags only.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Unsigned and not advertised; built on tags, or by hand when asked.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.macos
     runs-on: macos-14
     timeout-minutes: 120
     env:
@@ -161,7 +167,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Rust (stable)
         run: rustup toolchain install stable --profile minimal
-      - run: python3 shell/scripts/release.py version "$GITHUB_REF_NAME"
+      - name: Version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 shell/scripts/release.py version "$GITHUB_REF_NAME"
       - run: npm ci --no-fund
         working-directory: web
       - run: python3 shell/scripts/bundle.py
