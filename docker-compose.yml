@@ -30,6 +30,7 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
   api:
     build: .
@@ -207,6 +208,7 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
 networks:
   internal: {}
