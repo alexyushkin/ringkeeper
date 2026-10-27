@@ -207,7 +207,7 @@ def voice_wheels(work: Path, root: Path, base: list[str]) -> Path:
     )
     # Their licenses go in the notices too: kept beside the bundle (not in it).
     remove(VOICE_LICENSES)
-    VOICE_LICENSES.mkdir()
+    VOICE_LICENSES.mkdir(parents=True)
     for info in scratch.glob("*.dist-info"):
         shutil.copytree(info, VOICE_LICENSES / info.name)
     total = sum(w["size"] for w in wheels)
