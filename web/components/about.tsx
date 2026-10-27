@@ -40,6 +40,7 @@ export function AboutCard() {
         Ringkeeper {data.version}
         <span className="text-muted"> · {data.mode === "desktop" ? "desktop app" : "server"} · MIT License</span>
       </p>
+      <p className="text-xs text-muted">Copyright (c) 2026 General Informatics LLC and contributors</p>
       {data.notices ? (
         <>
           <p className="text-sm text-muted">
