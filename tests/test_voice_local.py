@@ -20,6 +20,8 @@ from ringkeeper.config import Settings
 from ringkeeper.voice import SttClient, VoiceError
 
 FILES = {"config.json": b"{}", "model.bin": b"\x00" * 50_000, "vocabulary.txt": b"a\nb\n"}
+# Fast (the default) and Accuracy, told apart by size.
+MODELS = {"tiny": FILES, "small": {**FILES, "model.bin": b"\x00" * 120_000}}
 
 PYPI = "https://files.pythonhosted.org/packages/ab/cd"
 
@@ -84,16 +86,17 @@ class FakeHub:
         url = str(request.url)
         if url == f"{PYPI}/fakevoice-1.0-py3-none-any.whl":
             return httpx2.Response(200, content=self.wheel)
-        if url.endswith("/api/models/Systran/faster-whisper-small/tree/main"):
-            listing = [{"type": "file", "path": p, "size": len(b)} for p, b in FILES.items()]
-            listing += [
-                {"type": "file", "path": "README.md", "size": 10},
-                {"type": "directory", "path": "x"},
-            ]
-            return httpx2.Response(200, json=listing)
-        for path, body in FILES.items():
-            if url.endswith(f"/Systran/faster-whisper-small/resolve/main/{path}"):
-                return httpx2.Response(200, content=body[:-1] if path == self.cut else body)
+        for model, files in MODELS.items():
+            if url.endswith(f"/api/models/Systran/faster-whisper-{model}/tree/main"):
+                listing = [{"type": "file", "path": p, "size": len(b)} for p, b in files.items()]
+                listing += [
+                    {"type": "file", "path": "README.md", "size": 10},
+                    {"type": "directory", "path": "x"},
+                ]
+                return httpx2.Response(200, json=listing)
+            for path, body in files.items():
+                if url.endswith(f"/Systran/faster-whisper-{model}/resolve/main/{path}"):
+                    return httpx2.Response(200, content=body[:-1] if path == self.cut else body)
         return httpx2.Response(404)
 
 
@@ -116,9 +119,9 @@ def test_the_model_is_sized_first_then_downloaded_once(
     model.start()
     done = wait_for(model, "ready")
     assert (done["done"], done["total"]) == (50_006, 50_006)
-    folder = tmp_path / "voice" / "small"
+    folder = tmp_path / "voice" / "tiny"
     assert sorted(p.name for p in folder.iterdir()) == [".complete", *sorted(FILES)]
-    assert not (tmp_path / "voice" / "small.partial").exists()
+    assert not (tmp_path / "voice" / "tiny.partial").exists()
     assert voice_local.LocalModel(tmp_path).ready()  # remembered across restarts
     model.remove()
     assert not folder.exists()
@@ -135,8 +138,44 @@ def test_an_incomplete_download_leaves_nothing_behind(
     model.start()
     failed = wait_for(model, "failed")
     assert "didn't finish" in str(failed["error"])
-    assert not (tmp_path / "voice" / "small").exists()
-    assert not (tmp_path / "voice" / "small.partial").exists()
+    assert not (tmp_path / "voice" / "tiny").exists()
+    assert not (tmp_path / "voice" / "tiny.partial").exists()
+
+
+def test_accuracy_is_a_choice_with_its_size_shown_and_only_one_model_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(voice_local, "engine_installed", lambda: True)
+    monkeypatch.setattr(voice_local, "transport", httpx2.MockTransport(FakeHub().handle))
+    model = voice_local.LocalModel(tmp_path)
+    before = model.status()
+    assert before["choice"] == "fast"
+    sizes = {c["key"]: (c["model"], c["download"], c["ready"]) for c in before["choices"]}
+    assert sizes == {"fast": ("tiny", 50_006, False), "accuracy": ("small", 120_006, False)}
+    model.start()
+    wait_for(model, "ready")
+
+    model.choose("accuracy")
+    switched = model.status()
+    assert (switched["state"], switched["total"]) == ("absent", 120_006)
+    assert (tmp_path / "voice" / "tiny").is_dir()  # still there until Accuracy is in
+    with pytest.raises(VoiceError, match="Download voice first"):
+        model.service(Settings(mode="desktop", data_dir=tmp_path))
+    model.start()
+    done = wait_for(model, "ready")
+    assert done["done"] == 120_006
+    assert not (tmp_path / "voice" / "tiny").exists()
+    assert {c["key"]: c["download"] for c in done["choices"]} == {"fast": 50_006, "accuracy": 0}
+    assert voice_local.LocalModel(tmp_path).choice == "accuracy"  # remembered
+    with pytest.raises(ValueError, match="No voice model"):
+        model.choose("huge")
+
+
+def test_a_model_downloaded_before_the_choice_keeps_being_used(tmp_path: Path) -> None:
+    folder = tmp_path / "voice" / "small"
+    folder.mkdir(parents=True)
+    (folder / voice_local.DONE_MARK).write_text("ok\n")
+    assert voice_local.LocalModel(tmp_path).choice == "accuracy"
 
 
 class FakeService:

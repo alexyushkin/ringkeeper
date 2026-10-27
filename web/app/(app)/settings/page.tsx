@@ -10,6 +10,7 @@ import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggl
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { AboutCard } from "@/components/about";
+import { VoiceSettings } from "@/components/voice";
 import { WORKSPACE_HINT, download } from "@/lib/client/words";
 
 interface Settings {
@@ -99,6 +100,7 @@ export default function SettingsPage() {
       </Card>
 
       {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
+      {DESKTOP ? <VoiceSettings /> : null}
       {DESKTOP ? <ImportFromClaudeDesktop /> : null}
 
       <ClaudeCard settings={settings.data} onSaved={settings.reload} />

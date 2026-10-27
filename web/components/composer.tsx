@@ -1,89 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { Alert, Button, Spinner } from "@/components/ui";
+import { VoiceSetup, useLocalVoice } from "@/components/voice";
 import { api } from "@/lib/client/api";
-import { DESKTOP } from "@/lib/client/routes";
-
-interface LocalVoice {
-  engine: boolean;
-  state: "absent" | "downloading" | "ready" | "failed";
-  total: number | null;
-  done: number;
-  error: string | null;
-}
-
-function megabytes(bytes: number | null): string {
-  return bytes ? `${Math.round(bytes / 1_000_000)} MB` : "a few hundred MB";
-}
-
-/**
- * The desktop app's voice: speech is turned into text on this computer, so its
- * model is downloaded once, when the mic is first used. The audio never leaves.
- */
-function useLocalVoice() {
-  const [status, setStatus] = useState<LocalVoice | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const refresh = () =>
-    api<LocalVoice>("desktop/voice")
-      .then(setStatus)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  useEffect(() => {
-    if (DESKTOP) void refresh();
-  }, []);
-  useEffect(() => {
-    if (status?.state !== "downloading") return;
-    const timer = setInterval(() => void refresh(), 1000);
-    return () => clearInterval(timer);
-  }, [status?.state]);
-  async function download() {
-    setError(null);
-    try {
-      setStatus(await api<LocalVoice>("desktop/voice/download", { method: "POST" }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-  return { status, error, download, ready: !DESKTOP || status?.state === "ready" };
-}
-
-function VoiceSetup({ status, error, onDownload, onClose }: { status: LocalVoice | null; error: string | null; onDownload: () => void; onClose: () => void }) {
-  if (status && !status.engine) {
-    return <Alert tone="warn">Voice isn&apos;t part of this build of Ringkeeper. Type your request instead.</Alert>;
-  }
-  const downloading = status?.state === "downloading";
-  const share = status?.total ? Math.min(100, Math.round((status.done / status.total) * 100)) : 0;
-  return (
-    <div className="space-y-2 rounded-2xl border border-line bg-surface p-3 text-sm">
-      <p className="font-medium">Voice on this computer</p>
-      <p className="text-muted">
-        Ringkeeper turns speech into text right here, so your recordings never leave this computer. That needs the speech engine and model, downloaded once ({megabytes(status?.total ?? null)}).
-      </p>
-      {downloading ? (
-        <div className="space-y-1">
-          <div className="h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-valuenow={share} aria-valuemin={0} aria-valuemax={100}>
-            <div className="h-full bg-accent transition-all" style={{ width: `${share}%` }} />
-          </div>
-          <p className="text-xs text-muted">
-            {megabytes(status?.done ?? 0)} of {megabytes(status?.total ?? null)} ({share}%)
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          <Button kind="primary" onClick={onDownload}>
-            Download ({megabytes(status?.total ?? null)})
-          </Button>
-          <Button kind="ghost" onClick={onClose}>
-            Not now
-          </Button>
-        </div>
-      )}
-      {status?.error ? <Alert>{status.error}</Alert> : null}
-      {error ? <Alert>{error}</Alert> : null}
-    </div>
-  );
-}
 
 type Phase = "idle" | "recording" | "transcribing" | "heard";
 

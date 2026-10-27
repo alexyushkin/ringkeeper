@@ -84,8 +84,10 @@ What takes the space now (installed):
 
 Voice is now one download the first time it's used, with its size shown
 first and then its progress: the engine's 13 wheels from PyPI (84 MB, each
-checked against the SHA-256 the installer lists) and the speech model
-(486 MB), about 570 MB in all. The build runs that same engine download and
+checked against the SHA-256 the installer lists) and the speech model. The
+default, Fast (faster-whisper's `tiny`), is 78 MB, so about 162 MB in all;
+Accuracy (its `small`, chosen in Settings › Voice) is 486 MB, about 570 MB in
+all. Only the chosen model is kept. The build runs that same engine download and
 imports it, so a broken wheel list fails the build, not a user's first try.
 
 Further trims, not done:

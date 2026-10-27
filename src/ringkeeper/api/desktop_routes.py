@@ -23,6 +23,7 @@ from ringkeeper.models import Project, Task, TaskStatus
 from ringkeeper.schemas import Input, Slug
 from ringkeeper.services import claude_desktop, inbox, runtime, workspaces
 from ringkeeper.telegram.text import summary
+from ringkeeper.voice import VoiceError
 
 # Same length rule as Telegram: a notification is a pointer to the app.
 NOTICE_CHARS = 160
@@ -172,6 +173,23 @@ def voice_download() -> dict[str, Any]:
     """Fetch the speech model, once. The app polls GET /desktop/voice for progress."""
     found = voice_local.model(get_settings())
     found.start()
+    return found.status()
+
+
+class VoiceChoiceIn(Input):
+    choice: str
+
+
+@router.put("/voice/choice")
+def voice_choose(body: VoiceChoiceIn) -> dict[str, Any]:
+    """Fast or Accuracy (Settings > Voice); the new model downloads when asked."""
+    found = voice_local.model(get_settings())
+    try:
+        found.choose(body.choice)
+    except ValueError as error:
+        raise HTTPException(422, detail=str(error)) from None
+    except VoiceError as error:
+        raise HTTPException(409, detail=str(error)) from None
     return found.status()
 
 

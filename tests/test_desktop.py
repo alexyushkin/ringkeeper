@@ -656,7 +656,10 @@ def test_voice_downloads_its_engine_and_model_on_first_use(
     while win.get("/bff/desktop/voice").json()["state"] != "ready":
         assert time.monotonic() < deadline
         time.sleep(0.1)
-    assert (desktop["data_dir"] / "voice" / "small" / "model.bin").is_file()
+    assert (desktop["data_dir"] / "voice" / "tiny" / "model.bin").is_file()
+    chosen = win.put("/bff/desktop/voice/choice", json={"choice": "accuracy"})
+    assert (chosen.status_code, chosen.json()["state"]) == (200, "absent")
+    assert win.put("/bff/desktop/voice/choice", json={"choice": "huge"}).status_code == 422
     assert win.delete("/bff/desktop/voice").status_code == 204
     assert win.get("/bff/desktop/voice").json()["state"] == "absent"
     sys.modules.pop("fakevoice", None)
