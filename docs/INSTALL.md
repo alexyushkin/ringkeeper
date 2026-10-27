@@ -51,9 +51,9 @@ people and under $10 million a year); larger companies need a paid plan.
 
 Have these ready; the setup wizard asks for them.
 
-1. **Access to Ringkeeper's code.** The repository is private: you need an
-   invite on GitHub. When `git clone` asks, sign in with your GitHub account.
-   (Or download the ZIP from the repository page: **Code → Download ZIP**.)
+1. **Ringkeeper's code.** It's public on GitHub, so `git clone` needs no
+   account. (Or download the ZIP from the repository page: **Code → Download
+   ZIP**.)
 2. **An Anthropic API key** (required). Ringkeeper's assistants run on
    Claude:
    1. Go to [platform.claude.com](https://platform.claude.com) and sign up.
@@ -317,9 +317,6 @@ cd ringkeeper
 cp .env.example .env
 nano .env
 ```
-
-The repository is private: when git asks, use your GitHub username and a
-[personal access token](https://github.com/settings/tokens) as the password.
 
 In `.env`, set (Ctrl+O, Enter to save; Ctrl+X to quit):
 

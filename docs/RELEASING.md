@@ -2,9 +2,8 @@
 
 ## Where releases go
 
-The code repository stays private. Installers and update files go to a separate
-**public** repository, **`alexyushkin/ringkeeper-releases`**, which holds no
-code, only:
+Installers and update files go to a separate public repository,
+**`alexyushkin/ringkeeper-releases`**, which holds no code, only:
 
 - `README.md`: what Ringkeeper is, a download link to the latest release, the
   SmartScreen note (the same text as the main README's Install section), and
@@ -16,8 +15,7 @@ code, only:
   - `Ringkeeper_<version>_x64-setup.exe`: the Windows installer
   - `Ringkeeper_<version>_x64-setup.exe.sig`: its updater signature
   - `latest.json`: what installed apps read to find updates
-  - on macOS builds (off while the code repository is private, to save
-    Actions minutes): `Ringkeeper_<version>_aarch64.dmg`,
+  - on macOS builds: `Ringkeeper_<version>_aarch64.dmg`,
     `Ringkeeper.app.tar.gz` and its `.sig` (unsigned, not advertised)
 
 Installed apps check
@@ -30,7 +28,7 @@ workflow publishes betas as normal releases; "beta" is in the version.
 1. Create the public repository `alexyushkin/ringkeeper-releases` with the
    README and LICENSE above.
 2. Create a fine-grained personal access token: only that repository,
-   **Contents: Read and write**. In the private repository, add it as the
+   **Contents: Read and write**. In the code repository, add it as the
    Actions secret `RELEASES_TOKEN`.
 3. Add the updater key as secrets `TAURI_SIGNING_PRIVATE_KEY` and
    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (see [SIGNING.md](SIGNING.md#the-updater-key)).

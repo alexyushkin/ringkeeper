@@ -7,10 +7,8 @@ name: Release
 # CHANGELOG.md must have an entry for it.
 #
 # Run by hand (workflow_dispatch) it builds the same files as a test and keeps
-# them as workflow artifacts; nothing is published.
-#
-# macOS isn't built while the repository is private (its runner minutes count
-# ten times); the job stays for when it's public, then on tags or by hand.
+# them as workflow artifacts; nothing is published. macOS is built by hand only
+# when asked ("Build macOS too").
 #
 # Secrets (Settings > Secrets and variables > Actions):
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -150,9 +148,8 @@ jobs:
           if-no-files-found: error
 
   macos:
-    # Unsigned and not advertised. Off while the repository is private: drop the
-    # "false &&" to build it on tags, or by hand when asked.
-    if: false && (startsWith(github.ref, 'refs/tags/v') || inputs.macos)
+    # Unsigned and not advertised; built on tags, or by hand when asked.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.macos
     runs-on: macos-14
     timeout-minutes: 120
     env:
