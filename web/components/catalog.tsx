@@ -117,7 +117,7 @@ export function Catalog(target: Target) {
     <div className="space-y-4">
       <div className="space-y-2">
         <h3 className="font-medium">Recommended</h3>
-        <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed to one of the client&apos;s projects or bases, and SQL is checked before it runs.</p>
+        <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed (to one Neon project, one Airtable base and so on), and SQL is checked before it runs.</p>
         <RemoteServices client={target.client} project={target.project} onAdded={target.onAdded} />
       </div>
       <CatalogSearch {...target} />
