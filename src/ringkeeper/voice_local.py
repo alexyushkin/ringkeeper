@@ -78,7 +78,8 @@ class Progress:
     total: int | None = None  # bytes, once the file list is known
     done: int = 0
     error: str | None = None
-    sizes: dict[str, int] = field(default_factory=dict[str, int])  # each choice's download, once listed
+    # Each choice's download, once listed.
+    sizes: dict[str, int] = field(default_factory=dict[str, int])
 
 
 class LocalModel:
