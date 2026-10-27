@@ -10,6 +10,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ringkeeper import __version__
 from ringkeeper.api import (
+    about_routes,
     desktop_routes,
     live_routes,
     manage_routes,
@@ -161,6 +162,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_routes.router)
     app.include_router(work_routes.router)
     app.include_router(live_routes.router)
+    app.include_router(about_routes.router)
     app.include_router(remote_routes.router)
     app.include_router(remote_routes.callback)
     if get_settings().mode == "desktop":

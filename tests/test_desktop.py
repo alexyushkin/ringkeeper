@@ -24,6 +24,7 @@ from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
+from ringkeeper.desktop.update import updates
 from ringkeeper.models import AuthMode, DecisionKind, InstanceType, TaskStatus
 from ringkeeper.services import claude_desktop, inbox, instances, subscription, tasks
 from ringkeeper.services.calls import run_call
@@ -168,7 +169,8 @@ def test_the_front_door_serves_the_exported_app(tmp_path: Path) -> None:
 def test_the_shell_reads_the_tray_state_and_pauses(desktop: dict[str, Any]) -> None:
     tray = shell(desktop)
     assert tray.get("/desktop/api/desktop/status").json() == {
-        "paused": False, "start_at_login": True, "waiting": [],
+        "paused": False, "start_at_login": True, "waiting": [], "running": 0,
+        "install_update": False,
     }  # fmt: skip
     with session_scope() as session:
         inbox.create(
@@ -190,6 +192,60 @@ def test_the_shell_reads_the_tray_state_and_pauses(desktop: dict[str, Any]) -> N
     guess = anyone.get("/desktop/api/settings", headers={"Authorization": "Bearer guess"})
     assert guess.status_code == 401
     assert window(desktop).get("/desktop/api/desktop/status").status_code == 401  # cookie isn't it
+
+
+def test_an_update_waits_for_the_user_and_for_running_work(desktop: dict[str, Any]) -> None:
+    updates.__init__()  # the backend keeps it in memory; start clean
+    tray, win = shell(desktop), window(desktop)
+    assert win.get("/bff/desktop/update").json()["ready"] is None
+    assert win.post("/bff/desktop/update/restart").status_code == 404  # nothing to restart into
+
+    assert (
+        tray.post(
+            "/desktop/api/desktop/update", json={"version": "0.1.1", "notes": "Fixes."}
+        ).status_code
+        == 204
+    )
+    shown = win.get("/bff/desktop/update").json()
+    assert shown["ready"] == {"version": "0.1.1", "notes": "Fixes."}
+    assert shown["restart_requested"] is False
+    assert tray.get("/desktop/api/desktop/status").json()["install_update"] is False
+
+    # A task waiting to run (paused, so it stays queued): the shell holds off.
+    assert tray.patch("/desktop/api/settings", json={"paused": True}).status_code == 200
+    created = win.post(
+        "/bff/projects", json={"name": "acme-web", "owner": "acme", "workspace_path": "acme-web"}
+    )
+    assert created.status_code == 201, created.text
+    with session_scope() as session:
+        tasks.create_task(session, get_settings(), project="acme-web", prompt="write notes")
+    asked = win.post("/bff/desktop/update/restart").json()
+    assert asked["restart_requested"] is True
+    assert asked["running"] == 1
+    status = tray.get("/desktop/api/desktop/status").json()
+    assert (status["install_update"], status["running"]) == (True, 1)
+    updates.__init__()
+
+
+def test_about_shows_the_version_and_the_notices(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    win = window(desktop)
+    assert win.get("/bff/about").json()["notices"] is False
+    notices = tmp_path / "notices"
+    notices.mkdir()
+    (notices / "THIRD-PARTY-NOTICES.txt").write_text("MinGit 2.56: GPL-2.0", encoding="utf-8")
+    listing = [{"name": "MinGit", "version": "2.56", "license": "GPL-2.0", "kind": "git"}]
+    (notices / "components.json").write_text(json.dumps(listing), encoding="utf-8")
+    monkeypatch.setenv("RINGKEEPER_NOTICES_DIR", str(notices))  # the shell sets these
+    monkeypatch.setenv("RINGKEEPER_APP_VERSION", "0.1.0-beta.1")
+    about = win.get("/bff/about").json()
+    assert (about["version"], about["notices"], about["components"]) == (
+        "0.1.0-beta.1",
+        True,
+        listing,
+    )
+    assert "GPL-2.0" in win.get("/bff/about/notices").json()["text"]
 
 
 def test_the_shell_stops_everything(desktop: dict[str, Any]) -> None:

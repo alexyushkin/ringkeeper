@@ -11,14 +11,15 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ringkeeper import voice_local
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
+from ringkeeper.desktop.update import updates
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import Project
+from ringkeeper.models import Project, Task, TaskStatus
 from ringkeeper.schemas import Input, Slug
 from ringkeeper.services import claude_desktop, inbox, runtime, workspaces
 from ringkeeper.telegram.text import summary
@@ -46,7 +47,45 @@ def status(session: SessionDep) -> dict[str, Any]:
         "paused": settings.paused,
         "start_at_login": settings.start_at_login,
         "waiting": waiting,
+        "running": _running(session),
+        "install_update": updates.restart_requested,
     }
+
+
+def _running(session: SessionDep) -> int:
+    """Tasks working or about to: an update waits for these."""
+    busy = (TaskStatus.RUNNING, TaskStatus.QUEUED)
+    return session.scalar(select(func.count()).where(Task.status.in_(busy))) or 0
+
+
+class UpdateIn(Input):
+    version: str = Field(min_length=1, max_length=64)
+    notes: str = Field(default="", max_length=10_000)
+
+
+@router.post("/update", status_code=204)
+def update_ready(data: UpdateIn) -> None:
+    """The shell downloaded an update (signature checked); it waits for the user.
+    Only the shell can install it: it holds the download, not the backend."""
+    updates.offer(data.version, data.notes)
+
+
+@router.get("/update")
+def update_status(session: SessionDep) -> dict[str, Any]:
+    ready = updates.ready
+    return {
+        "ready": None if ready is None else {"version": ready.version, "notes": ready.notes},
+        "restart_requested": updates.restart_requested,
+        "running": _running(session),
+    }
+
+
+@router.post("/update/restart", status_code=202)
+def update_restart(session: SessionDep) -> dict[str, Any]:
+    """The user is done: restart into the new version once nothing is running."""
+    if not updates.request_restart():
+        raise HTTPException(404, "There's no update ready.")
+    return update_status(session)
 
 
 @router.get("/claude-code-folders")

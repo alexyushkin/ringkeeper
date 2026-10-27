@@ -156,6 +156,10 @@ class Settings(BaseSettings):
     paused: bool = False
     # Desktop mode: the app shell starts Ringkeeper when the user signs in.
     start_at_login: bool = True
+    # Set by the desktop app's shell: its version (from the release tag) and
+    # where the installed third-party notices are. Shown in Settings > About.
+    app_version: str | None = None
+    notices_dir: Path | None = None
 
     # The web app (M5). The api writes the admin token here for the web service
     # (a volume only the two of them mount), and the setup code into data_dir.

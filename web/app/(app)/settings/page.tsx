@@ -9,6 +9,7 @@ import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
+import { AboutCard } from "@/components/about";
 import { WORKSPACE_HINT, download } from "@/lib/client/words";
 
 interface Settings {
@@ -165,6 +166,7 @@ export default function SettingsPage() {
           <SignOut />
         </>
       )}
+      <AboutCard />
     </>
   );
 }

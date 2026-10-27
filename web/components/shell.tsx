@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { ScopeSwitcher } from "@/components/scope-switcher";
+import { UpdateBanner } from "@/components/update-banner";
 import { Loading } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
@@ -102,6 +103,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
         ) : null}
+        {DESKTOP ? <UpdateBanner /> : null}
         <ScopeSwitcher />
         <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28 md:pb-10">{children}</main>
       </div>
