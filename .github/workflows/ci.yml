@@ -165,6 +165,11 @@ jobs:
           node-version: "24.22.1"
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: A throwaway database password for the stack
+        run: |
+          password=$(openssl rand -hex 24)
+          echo "::add-mask::$password"
+          echo "POSTGRES_PASSWORD=$password" >> "$GITHUB_ENV"
       - run: npm ci --no-fund
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test

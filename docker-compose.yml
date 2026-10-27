@@ -18,7 +18,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ringkeeper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ringkeeper}
+      # Required, no default: scripts/setup-env puts a random one in .env.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (scripts/setup-env makes one; see docs/INSTALL.md)}
       POSTGRES_DB: ${POSTGRES_DB:-ringkeeper}
     # No published port: only the api and gateway reach it. For the host CLI
     # and database tools, add docker-compose.dev.yml.
@@ -40,7 +41,7 @@ services:
     user: "0:0"
     environment:
       RINGKEEPER_DATABASE_URL: >-
-        postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:-ringkeeper}@postgres:5432/${POSTGRES_DB:-ringkeeper}
+        postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (scripts/setup-env makes one; see docs/INSTALL.md)}@postgres:5432/${POSTGRES_DB:-ringkeeper}
       RINGKEEPER_SESSION_MANAGER: "1"
       RINGKEEPER_DATA_DIR: /var/lib/ringkeeper
       RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
@@ -104,7 +105,7 @@ services:
        "--host", "0.0.0.0", "--port", "8100"]
     environment:
       RINGKEEPER_DATABASE_URL: >-
-        postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:-ringkeeper}@postgres:5432/${POSTGRES_DB:-ringkeeper}
+        postgresql+psycopg://${POSTGRES_USER:-ringkeeper}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (scripts/setup-env makes one; see docs/INSTALL.md)}@postgres:5432/${POSTGRES_DB:-ringkeeper}
       RINGKEEPER_DATA_DIR: /var/lib/ringkeeper
       RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
       RINGKEEPER_ALLOW_LOCAL_CONNECTIONS: ${RINGKEEPER_ALLOW_LOCAL_CONNECTIONS:-0}

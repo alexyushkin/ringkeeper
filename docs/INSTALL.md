@@ -97,30 +97,26 @@ progress lines later.)
 
 ### Step 2: settings
 
-Create your settings file from the example:
+Create your settings file. This copies `.env.example` to `.env` and puts a
+strong random database password in it:
 
-```bash
-cp .env.example .env
-```
+- Windows: `powershell -ExecutionPolicy Bypass -File scripts\setup-env.ps1`
+- Mac/Linux: `sh scripts/setup-env.sh`
 
-Open it in a text editor:
+Open `.env` in a text editor:
 
 - Windows: `notepad .env`
 - Mac: `open -e .env` (or `nano .env`; in TextEdit, turn off smart quotes)
 - Linux: `nano .env`
 
-Change two things at the top, under **MUST SET**:
+Under **MUST SET** at the top, `POSTGRES_PASSWORD` is already filled in:
+leave it, and keep it (the database keeps the password it was first started
+with). Set one thing:
 
-1. **`POSTGRES_PASSWORD`**: replace the placeholder with a random password of
-   letters and digits only. To make one:
-   - Windows: `-join ((48..57)+(97..122) | Get-Random -Count 32 | % {[char]$_})`
-   - Mac/Linux: `openssl rand -hex 24`
-
-   Set it now: the database keeps the password it was first started with.
-2. **`RINGKEEPER_WORKSPACES_ROOT`**: the folder where your client projects
-   live, one subfolder per project. Use forward slashes and no quotes, for
-   example `C:/Users/Jane/Clients` (Windows) or `/Users/jane/Clients` (Mac).
-   On Windows, don't use a folder that OneDrive syncs.
+- **`RINGKEEPER_WORKSPACES_ROOT`**: the folder where your client projects
+  live, one subfolder per project. Use forward slashes and no quotes, for
+  example `C:/Users/Jane/Clients` (Windows) or `/Users/jane/Clients` (Mac).
+  On Windows, don't use a folder that OneDrive syncs.
 
 Also check **`RINGKEEPER_STT_LANGUAGE`** (`en` by default): the language you'll
 speak to Ringkeeper in, for voice requests. Leave everything else as it is
@@ -314,14 +310,14 @@ sudo mkdir -p /srv/ringkeeper/workspaces
 sudo chown -R 1000:1000 /srv/ringkeeper/workspaces
 git clone https://github.com/alexyushkin/ringkeeper.git
 cd ringkeeper
-cp .env.example .env
+sh scripts/setup-env.sh
 nano .env
 ```
 
-In `.env`, set (Ctrl+O, Enter to save; Ctrl+X to quit):
+`scripts/setup-env.sh` made `.env` with a random `POSTGRES_PASSWORD`; leave
+that line. In `.env`, set (Ctrl+O, Enter to save; Ctrl+X to quit):
 
 ```
-POSTGRES_PASSWORD=<openssl rand -hex 24 makes one>
 RINGKEEPER_WORKSPACES_ROOT=/srv/ringkeeper/workspaces
 RINGKEEPER_WEB_ORIGIN=https://ringkeeper-1.tail1234.ts.net
 RINGKEEPER_WEB_TRUST_PROXY=1
@@ -383,6 +379,10 @@ docker compose --profile stt up -d --build
 docker image prune -f        # removes old versions' images to free disk
 ```
 
+If Docker says `required variable POSTGRES_PASSWORD is missing a value`, your
+install never set a database password: see
+[Change the database password](#change-the-database-password).
+
 Ringkeeper is down for about a minute. Database changes apply on start.
 
 ### Back up
@@ -442,15 +442,24 @@ login again; your projects, connections and history stay.
 ### Change the database password
 
 If the api's log says the database password is weak or the default, set a
-new one. Pick 32 random letters and digits, then (put yours in place of
-`NEW-PASSWORD`):
+new one. An install that never set `POSTGRES_PASSWORD` uses the old default,
+`ringkeeper`; Docker now refuses to start one without it, so first add
+`POSTGRES_PASSWORD=ringkeeper` to `.env`.
+
+Make a random one:
+
+- Mac/Linux: `openssl rand -hex 24`
+- Windows: `$b = New-Object byte[] 24; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | % { $_.ToString('x2') })`
+
+Then, with yours in place of `NEW-PASSWORD`:
 
 ```bash
 docker compose exec postgres psql -U ringkeeper -d ringkeeper -c "ALTER USER ringkeeper PASSWORD 'NEW-PASSWORD'"
 ```
 
 Put the same password in `.env` as `POSTGRES_PASSWORD=NEW-PASSWORD` and
-start again: `docker compose --profile stt up -d`.
+start again: `docker compose --profile stt up -d`. The api's log no longer
+warns about it.
 
 ### Lost the recovery key
 
@@ -479,6 +488,7 @@ To see what a part of Ringkeeper is doing: `docker compose logs api` (or
 | `error during connect` / `Cannot connect to the Docker daemon` | Docker Desktop isn't running: open it and wait until it says it's running. |
 | `port is already allocated` | Another program uses that port (often 3000 or 8000). In `.env`, delete the `#` in front of the matching `RINGKEEPER_..._PORT` line and pick another number (for example `RINGKEEPER_WEB_PORT=3010`), then start again. If you change `RINGKEEPER_WEB_PORT`, open that port instead of 3000, and use it in `tailscale serve`. |
 | You want a second Ringkeeper on the same machine (a test install, say) | In the second one's `.env`, set its own `COMPOSE_PROJECT_NAME` (for example `ringkeeper2`), its own `RINGKEEPER_WORKER_NETWORK` (`ringkeeper2_workers`) and different ports (see `.env.example`). Without its own project name, its commands control the first install. Keep both on the same version: they share the `ringkeeper-web`, `ringkeeper-stt` and `ringkeeper-worker` images. |
+| `required variable POSTGRES_PASSWORD is missing a value` | A new install: run `scripts/setup-env` (step 2). An install that ran before without one: see [Change the database password](#change-the-database-password). |
 | `dependency failed to start: container ... api ... is unhealthy` | Run `docker compose logs api`. `password authentication failed` means the database was first started with a different `POSTGRES_PASSWORD`: put the old one back, or, on a fresh install with nothing to keep, run `docker compose down -v` and start again. |
 | `localhost:3000` doesn't load | Run `docker compose ps`: `web` should be `Up`. If it was just started, wait a minute. |
 | The app says "can't find Ringkeeper's API token yet" | The api is still starting: wait a minute and reload. |

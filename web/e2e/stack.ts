@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 /** The e2e stack: the repo's compose file plus e2e/compose.e2e.yml, as project ringkeeper-e2e. */
@@ -6,9 +7,14 @@ import path from "node:path";
 export const ROOT = path.resolve(__dirname, "..", "..");
 const COMPOSE = ["compose", "-p", "ringkeeper-e2e", "-f", "docker-compose.yml", "-f", "web/e2e/compose.e2e.yml", "--profile", "stt", "--profile", "demo"];
 
+// A throwaway database password (CI sets one for the whole job), never the one in
+// a real install's .env.
+const DB_PASSWORD = process.env.POSTGRES_PASSWORD || randomBytes(24).toString("hex");
+
 export function compose(args: string[], input?: string): string {
   return execFileSync("docker", [...COMPOSE, ...args], {
     cwd: ROOT,
+    env: { ...process.env, POSTGRES_PASSWORD: DB_PASSWORD },
     input,
     encoding: "utf8",
     stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],

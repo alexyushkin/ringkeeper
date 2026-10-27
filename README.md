@@ -642,7 +642,7 @@ To run Ringkeeper on a server or share it from your phone, see
 
 ```bash
 git clone https://github.com/alexyushkin/ringkeeper.git && cd ringkeeper
-cp .env.example .env          # set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
+sh scripts/setup-env.sh       # .env with a random POSTGRES_PASSWORD; set RINGKEEPER_WORKSPACES_ROOT
 docker compose --profile worker build worker
 docker compose --profile stt up -d --build
 docker compose exec api ringkeeper web setup-code
@@ -750,7 +750,7 @@ Every `uv run ringkeeper ...` command also works as
 `docker compose exec api ringkeeper ...`, with no uv and no published port.
 
 ```bash
-cp .env.example .env                # then set POSTGRES_PASSWORD and RINGKEEPER_WORKSPACES_ROOT
+sh scripts/setup-env.sh             # .env with a random POSTGRES_PASSWORD; then set RINGKEEPER_WORKSPACES_ROOT
 uv run ringkeeper secret init        # creates .ringkeeper/master.key: back it up
 uv run ringkeeper auth login         # the Anthropic API key workers and the router use
 docker compose --profile worker build worker
