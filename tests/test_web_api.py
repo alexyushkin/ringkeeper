@@ -3,6 +3,7 @@ tasks, activity, voice and live events. Every endpoint needs the admin token
 and (except setup and sign-in) a signed-in owner; secrets never come back."""
 
 import json
+import secrets
 import threading
 import time
 from collections.abc import Iterator
@@ -436,8 +437,10 @@ def test_a_weak_database_password_is_warned_about(caplog: pytest.LogCaptureFixtu
     bootstrap.warn_weak_database_password(settings)
     assert "database password is weak" in caplog.text
     caplog.clear()
+    # Made here, so no password-looking value sits in the code for scanners to flag.
+    password = secrets.token_hex(12)
     strong = settings.model_copy(
-        update={"database_url": "postgresql+psycopg://ringkeeper:Qm7x2Lp9Zr4Tn8Wv@postgres/rk"}
+        update={"database_url": f"postgresql+psycopg://ringkeeper:{password}@postgres/rk"}
     )
     bootstrap.warn_weak_database_password(strong)
     assert caplog.text == ""
