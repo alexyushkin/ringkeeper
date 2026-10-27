@@ -83,14 +83,26 @@ class Vault:
         self._backend(ref).put(ref, value)
 
 
+def _aws_backend() -> Backend:
+    """AWS Secrets Manager, for servers: boto3 is the `aws` extra (the server
+    image has it; the desktop app doesn't)."""
+    try:
+        from ringkeeper.vault.aws import AwsSecretsManagerBackend  # noqa: PLC0415 (boto3 is slow)
+    except ImportError:
+        raise VaultError(
+            "aws-sm:// secrets need the AWS extra: install ringkeeper[aws] "
+            "(the server image includes it)."
+        ) from None
+    return AwsSecretsManagerBackend()
+
+
 def get_vault(settings: Settings | None = None) -> Vault:
-    from ringkeeper.vault.aws import AwsSecretsManagerBackend  # noqa: PLC0415 (boto3 is slow)
     from ringkeeper.vault.file import FileBackend  # noqa: PLC0415
 
     settings = settings or get_settings()
     return Vault(
         {
             "file": lambda: FileBackend.from_settings(settings),
-            "aws-sm": AwsSecretsManagerBackend,
+            "aws-sm": _aws_backend,
         }
     )

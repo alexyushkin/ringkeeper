@@ -160,6 +160,11 @@ class Settings(BaseSettings):
     # where the installed third-party notices are. Shown in Settings > About.
     app_version: str | None = None
     notices_dir: Path | None = None
+    # The voice engine's wheel list (voice_engine); by default, beside the
+    # installed app's Python.
+    voice_packages: Path | None = None
+    # The MCP Registry the catalog searches (services.catalog); None: the official one.
+    mcp_registry_url: str | None = None
 
     # The web app (M5). The api writes the admin token here for the web service
     # (a volume only the two of them mount), and the setup code into data_dir.

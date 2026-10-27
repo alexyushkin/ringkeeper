@@ -633,15 +633,24 @@ def test_claude_desktop_extensions_are_imported_with_what_they_need(
     assert key not in json.dumps(listed)
 
 
-def test_voice_downloads_its_model_on_first_use(
-    desktop: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+def test_voice_downloads_its_engine_and_model_on_first_use(
+    desktop: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from tests.test_voice_local import FakeHub  # noqa: PLC0415
+    from tests.test_voice_local import FakeHub, fake_wheel, wheel_list  # noqa: PLC0415
 
-    monkeypatch.setattr(voice_local, "transport", httpx2.MockTransport(FakeHub().handle))
+    wheel = fake_wheel()
+    monkeypatch.setenv("RINGKEEPER_VOICE_PACKAGES", str(wheel_list(tmp_path, wheel)))
+    monkeypatch.setattr(voice_local, "ENGINE", "fakevoice")
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    hub = FakeHub(wheel=wheel)
+    monkeypatch.setattr(voice_local, "transport", httpx2.MockTransport(hub.handle))
     win = window(desktop)
     first = win.get("/bff/desktop/voice").json()
-    assert (first["state"], first["total"]) == ("absent", 50_006)
+    assert (first["engine"], first["state"], first["total"]) == (
+        True,
+        "absent",
+        50_006 + len(wheel),
+    )
     assert win.post("/bff/desktop/voice/download").status_code == 202
     deadline = time.monotonic() + 10
     while win.get("/bff/desktop/voice").json()["state"] != "ready":
@@ -650,3 +659,4 @@ def test_voice_downloads_its_model_on_first_use(
     assert (desktop["data_dir"] / "voice" / "small" / "model.bin").is_file()
     assert win.delete("/bff/desktop/voice").status_code == 204
     assert win.get("/bff/desktop/voice").json()["state"] == "absent"
+    sys.modules.pop("fakevoice", None)

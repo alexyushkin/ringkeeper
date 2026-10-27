@@ -8,7 +8,9 @@ temporary folder until every file is complete. The audio never leaves this
 computer: it's decoded and transcribed in memory, with the same limits as
 the server's stt service, and dropped.
 
-The engine (faster-whisper) is part of the app; only the model is downloaded.
+The engine (faster-whisper and the libraries under it) isn't in the installer
+either: it's downloaded with the model, as one download (voice_engine). A
+source checkout uses the voice extra instead (`uv sync --extra voice`).
 """
 
 import contextlib
@@ -24,6 +26,7 @@ from typing import Any, cast
 
 import httpx2
 
+from ringkeeper import voice_engine
 from ringkeeper.config import Settings
 from ringkeeper.voice import UNREACHABLE, SttClient, Transcriber, VoiceError, answer
 
@@ -39,11 +42,15 @@ transport: httpx2.BaseTransport | None = None
 
 
 class NotInstalledError(VoiceError):
-    """The engine isn't part of this build (a source checkout without the voice extra)."""
+    """No engine here, and none to download (a source checkout without the voice extra)."""
+
+
+# What local voice imports (tests put a stand-in package here).
+ENGINE = "faster_whisper"
 
 
 def engine_installed() -> bool:
-    return find_spec("faster_whisper") is not None
+    return find_spec(ENGINE) is not None
 
 
 @dataclass
@@ -55,16 +62,34 @@ class Progress:
 
 
 class LocalModel:
-    """The speech model in the data folder: is it there, how big, fetch it, drop it."""
+    """Voice in the data folder (the speech model, and the engine when the app
+    doesn't carry it): is it there, how big, fetch it, drop it."""
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, wheels: list[voice_engine.Wheel] | None = None) -> None:
         self.folder = data_dir / "voice" / MODEL
+        self.engine = voice_engine.Engine(data_dir, wheels) if wheels else None
+        if self.engine:
+            self.engine.clean()
+            self.engine.activate()
         self._lock = threading.Lock()
-        self.progress = Progress(state="ready" if self.ready() else "absent")
+        self.progress = Progress()
         self._service: Any = None
 
     def ready(self) -> bool:
+        """The model is here."""
         return (self.folder / DONE_MARK).is_file()
+
+    def all_ready(self) -> bool:
+        return self.ready() and engine_installed()
+
+    def available(self) -> bool:
+        """The engine is here, or can be downloaded."""
+        return engine_installed() or self.engine is not None
+
+    def _missing(self) -> tuple[list[tuple[str, int]], voice_engine.Engine | None]:
+        """What a download fetches: the model's files, and the engine if needed."""
+        files = [] if self.ready() else self.files()
+        return files, None if engine_installed() else self.engine
 
     def _http(self) -> httpx2.Client:
         return httpx2.Client(timeout=60.0, transport=transport, follow_redirects=True)
@@ -84,13 +109,14 @@ class LocalModel:
     def status(self) -> dict[str, Any]:
         """What the app shows: ready or not, the download's size, and its progress."""
         progress = self.progress
-        if progress.total is None and progress.state == "absent":
+        if progress.total is None and progress.state == "absent" and self.available():
             # Offline: the size shows once the download starts.
             with contextlib.suppress(httpx2.HTTPError, ValueError, KeyError):
-                progress.total = sum(size for _, size in self.files())
+                files, engine = self._missing()
+                progress.total = sum(size for _, size in files) + (engine.size if engine else 0)
         return {
-            "engine": engine_installed(),
-            "state": "ready" if self.ready() else progress.state,
+            "engine": self.available(),
+            "state": "ready" if self.all_ready() else progress.state,
             "total": progress.total,
             "done": progress.done,
             "error": progress.error,
@@ -98,16 +124,35 @@ class LocalModel:
 
     def start(self) -> None:
         with self._lock:
-            if self.ready() or self.progress.state == "downloading":
+            if self.all_ready() or not self.available() or self.progress.state == "downloading":
                 return
             self.progress = Progress(state="downloading", total=self.progress.total)
         threading.Thread(target=self._download, daemon=True, name="rk-voice-model").start()
 
+    def _count(self, size: int) -> None:
+        self.progress.done += size
+
     def _download(self) -> None:
+        try:
+            files, engine = self._missing()
+            self.progress.total = sum(size for _, size in files) + (engine.size if engine else 0)
+            if engine:
+                with self._http() as http:
+                    engine.install(http, self._count)
+                engine.activate()
+            if files:
+                self._download_model(files)
+            self.progress.state = "ready"
+        except (httpx2.HTTPError, OSError, ValueError) as error:
+            logger.warning("voice download failed: %s", error)
+            self.progress.state = "failed"
+            self.progress.error = (
+                "The download didn't finish. Check the internet connection and try again."
+            )
+
+    def _download_model(self, files: list[tuple[str, int]]) -> None:
         partial = self.folder.with_name(f"{MODEL}.partial")
         try:
-            files = self.files()
-            self.progress.total = sum(size for _, size in files)
             shutil.rmtree(partial, ignore_errors=True)
             partial.mkdir(parents=True)
             with self._http() as http:
@@ -123,33 +168,29 @@ class LocalModel:
                         for chunk in response.iter_bytes():
                             out.write(chunk)
                             written += len(chunk)
-                            self.progress.done += len(chunk)
+                            self._count(len(chunk))
                     if size and written != size:
                         raise ValueError(f"{path} arrived incomplete ({written} of {size} bytes)")
             (partial / DONE_MARK).write_text("ok\n", encoding="utf-8")
             shutil.rmtree(self.folder, ignore_errors=True)
             partial.rename(self.folder)
-            self.progress.state = "ready"
-        except (httpx2.HTTPError, OSError, ValueError) as error:
-            logger.warning("voice model download failed: %s", error)
+        finally:
             shutil.rmtree(partial, ignore_errors=True)
-            self.progress.state = "failed"
-            self.progress.error = (
-                "The download didn't finish. Check the internet connection and try again."
-            )
 
     def remove(self) -> None:
         with self._lock:
             self._service = None
             shutil.rmtree(self.folder, ignore_errors=True)
+            if self.engine:
+                self.engine.remove()
             self.progress = Progress()
 
     def service(self, settings: Settings) -> Any:
         """The stt service around the model, loaded once (it takes a few seconds)."""
-        if not engine_installed():
+        if not self.available():
             raise NotInstalledError("Voice isn't part of this build. Type it instead.")
-        if not self.ready():
-            raise VoiceError("Download the speech model first (Voice, in the request box).")
+        if not self.all_ready():
+            raise VoiceError("Download voice first (Voice, in the request box).")
         with self._lock:
             if self._service is None:
                 stt = _stt()
@@ -183,7 +224,8 @@ def model(settings: Settings) -> LocalModel:
     with _models_lock:
         key = settings.data_dir.resolve()
         if key not in _models:
-            _models[key] = LocalModel(key)
+            wheels = voice_engine.load(settings.voice_packages or voice_engine.default_list())
+            _models[key] = LocalModel(key, wheels)
         return _models[key]
 
 

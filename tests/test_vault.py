@@ -1,5 +1,6 @@
 import json
 import logging
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -97,6 +98,15 @@ def test_vault_rejects_non_pointer_refs() -> None:
 
 
 # --- aws-sm:// backend ---
+
+
+def test_aws_secrets_without_the_aws_extra_say_what_to_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The desktop app ships without boto3: an aws-sm:// ref explains, it doesn't crash.
+    monkeypatch.setitem(sys.modules, "ringkeeper.vault.aws", None)
+    with pytest.raises(VaultError, match=r"ringkeeper\[aws\]"):
+        get_vault().resolve("aws-sm://ringkeeper/anything")
 
 
 @pytest.fixture

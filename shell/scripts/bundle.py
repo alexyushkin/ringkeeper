@@ -2,9 +2,11 @@
 
     uv run python shell/scripts/bundle.py [--skip-web]
 
-- python/   a standalone CPython with Ringkeeper, its dependencies (the voice
-            extra's code, not its model), the worker and the stt modules, and
-            the Claude Code CLI that comes inside the Agent SDK, unmodified
+- python/   a standalone CPython with Ringkeeper, its dependencies, the worker
+            and the stt modules, and the Claude Code CLI that comes inside the
+            Agent SDK, unmodified; plus voice-packages.json, the voice extra's
+            wheels (address, size, hash), which the app downloads only when
+            voice is first used (ringkeeper.voice_engine)
 - web/      the static web app (web/scripts/build-desktop.mjs)
 - mingit/   git for the workers, on Windows (fetch-mingit.ps1)
 - notices/  third-party license notices, shown in Settings > About
@@ -21,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from email.parser import Parser
 from pathlib import Path
 
@@ -28,6 +31,8 @@ PYTHON_VERSION = "3.12.12"
 REPO = Path(__file__).resolve().parents[2]
 SHELL = REPO / "shell"
 OUT = SHELL / "resources"
+# The voice wheels' license files, for the notices (beside the bundle, not in it).
+VOICE_LICENSES = SHELL / "target" / "voice-licenses"
 WINDOWS = sys.platform == "win32"
 
 # Parts of the standard install the app never uses.
@@ -56,7 +61,6 @@ PYTHON_TRIM = [
 IMPORT_CHECK = "; ".join(
     [
         "import ringkeeper.desktop.server, ringkeeper_worker, ringkeeper_stt, claude_agent_sdk",
-        "import faster_whisper, ctranslate2, av, onnxruntime, numpy",
         "import keyring",
         "print('keychain:', keyring.get_keyring())",
     ]
@@ -126,6 +130,91 @@ def remove(path: Path) -> None:
         path.unlink()
 
 
+def export(work: Path, name: str, *extra: str) -> list[str]:
+    """uv.lock's pinned requirements (with hashes), one block per package."""
+    out = work / name
+    run(
+        "uv", "export", "--frozen", "--no-dev", *extra, "--no-emit-project",
+        "--format", "requirements-txt", "--output-file", out,
+    )  # fmt: skip
+    blocks: list[str] = []
+    for line in out.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith((" ", "#")):
+            blocks.append(line)
+        elif line.strip().startswith("--hash") and blocks:
+            blocks[-1] += "\n" + line
+    return blocks
+
+
+def normalized(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def wheel_tags(filename: str) -> set[str]:
+    """A wheel file name's tags, expanded (py3.py2-none-any: two tags)."""
+    python, abi, platform = filename.removesuffix(".whl").split("-")[-3:]
+    return {
+        f"{p}-{a}-{t}"
+        for p in python.split(".")
+        for a in abi.split(".")
+        for t in platform.split(".")
+    }
+
+
+def voice_wheels(work: Path, root: Path, base: list[str]) -> Path:
+    """The voice extra's own packages (beyond the app's): installed into a
+    scratch folder here, the way uv picks them for this Python, to learn which
+    wheel each one is, then listed with uv.lock's address, size and hash."""
+    voice = [b for b in export(work, "voice.txt", "--extra", "voice") if b not in base]
+    requirements = work / "voice-only.txt"
+    requirements.write_text("\n".join(voice) + "\n", encoding="utf-8")
+    scratch = work / "voice-site"
+    python = python_exe(root)
+    run(
+        "uv", "pip", "install", "--python", python, "--target", scratch,
+        "--no-deps", "--require-hashes", "--no-compile", "-r", requirements,
+    )  # fmt: skip
+    lock = {
+        (normalized(p["name"]), p["version"]): p
+        for p in tomllib.loads((REPO / "uv.lock").read_text(encoding="utf-8"))["package"]
+    }
+    wheels = []
+    for info in sorted(scratch.glob("*.dist-info")):
+        meta = Parser().parsestr((info / "METADATA").read_text(encoding="utf-8"))
+        tags = {
+            line.split(":", 1)[1].strip()
+            for line in (info / "WHEEL").read_text(encoding="utf-8").splitlines()
+            if line.startswith("Tag:")
+        }
+        entry = lock[(normalized(meta["Name"]), meta["Version"])]
+        [chosen] = [w for w in entry["wheels"] if wheel_tags(w["url"].rsplit("/", 1)[-1]) == tags]
+        algorithm, digest = chosen["hash"].split(":", 1)
+        if algorithm != "sha256":
+            sys.exit(f"{entry['name']}: uv.lock has a {algorithm} hash, not sha256")
+        wheels.append(
+            {
+                "name": entry["name"],
+                "version": entry["version"],
+                "url": chosen["url"],
+                "sha256": digest,
+                "size": chosen["size"],
+            }
+        )
+    listed = root / "voice-packages.json"
+    listed.write_text(
+        json.dumps({"python": PYTHON_VERSION.rsplit(".", 1)[0], "wheels": wheels}, indent=1),
+        encoding="utf-8",
+    )
+    # Their licenses go in the notices too: kept beside the bundle (not in it).
+    remove(VOICE_LICENSES)
+    VOICE_LICENSES.mkdir()
+    for info in scratch.glob("*.dist-info"):
+        shutil.copytree(info, VOICE_LICENSES / info.name)
+    total = sum(w["size"] for w in wheels)
+    print(f"voice: {len(wheels)} wheels, {total / 1e6:.1f} MB to download when first used")
+    return listed
+
+
 def build_python(work: Path) -> Path:
     """A standalone CPython (from uv) with everything installed into it."""
     installs = work / "pythons"
@@ -140,20 +229,9 @@ def build_python(work: Path) -> Path:
     for leftover in site.glob("pip*"):
         remove(leftover)
 
+    base = export(work, "base.txt")
     requirements = work / "requirements.txt"
-    run(
-        "uv",
-        "export",
-        "--frozen",
-        "--no-dev",
-        "--extra",
-        "voice",
-        "--no-emit-project",
-        "--format",
-        "requirements-txt",
-        "--output-file",
-        requirements,
-    )
+    requirements.write_text("\n".join(base) + "\n", encoding="utf-8")
     install = ["uv", "pip", "install", "--python", python_exe(target), "--target", site]
     run(*install, "--no-deps", "--require-hashes", "--no-compile", "-r", requirements)
     run("uv", "build", "--wheel", "--out-dir", work / "wheel")
@@ -184,8 +262,12 @@ def build_python(work: Path) -> Path:
         ],
         check=False,
     )
-    # What the app, its workers and local voice import, from the trimmed install.
+    # What the app and its workers import, from the trimmed install.
     run(python_exe(target), "-I", "-c", IMPORT_CHECK)
+    # Voice: the list of its wheels, then the app's own download of them (from
+    # PyPI, as a user's would be), checked by importing the engine.
+    listed = voice_wheels(work, target, base)
+    run(python_exe(target), "-I", "-m", "ringkeeper.voice_engine", listed, work / "voice-check")
     return target
 
 
@@ -226,10 +308,12 @@ def license_texts(folder: Path, patterns: tuple[str, ...]) -> list[tuple[str, st
 LICENSE_NAMES = ("LICENSE", "LICENCE", "COPYING", "NOTICE", "AUTHORS", "COPYRIGHT")
 
 
-def python_components(site: Path) -> list[dict]:
+def python_components(site: Path, kind: str = "Python package") -> list[dict]:
     components = []
     for info in sorted(site.glob("*.dist-info")):
         meta = Parser().parsestr((info / "METADATA").read_text(encoding="utf-8", errors="replace"))
+        if meta["Name"] == "ringkeeper":
+            continue  # listed first, as this app
         license_name = meta.get("License-Expression") or ""
         if not license_name:
             classifiers = [
@@ -256,7 +340,7 @@ def python_components(site: Path) -> list[dict]:
                 "name": meta["Name"],
                 "version": meta["Version"],
                 "license": license_name[:120],
-                "kind": "Python package",
+                "kind": kind,
                 "texts": texts,
             }
         )
@@ -337,7 +421,7 @@ def write_notices(python_root: Path, mingit_version: str | None) -> None:
     components: list[dict] = [
         {
             "name": "Ringkeeper",
-            "version": "",
+            "version": json.loads((SHELL / "tauri.conf.json").read_text())["version"],
             "license": "MIT",
             "kind": "this app",
             "texts": [("LICENSE", (REPO / "LICENSE").read_text())],
@@ -395,7 +479,9 @@ def write_notices(python_root: Path, mingit_version: str | None) -> None:
                 "texts": texts,
             }
         )
-    components += python_components(site) + rust_components() + web_components()
+    components += python_components(site)
+    components += python_components(VOICE_LICENSES, "Python package, downloaded for voice")
+    components += rust_components() + web_components()
 
     lines = [
         "Ringkeeper: third-party notices",

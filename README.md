@@ -511,11 +511,13 @@ summaries stay in the CLI and API.
 ### Voice input
 
 In the desktop app, hold the mic in the request box. The first time, it offers
-to download the speech model (faster-whisper's `small`; the size is shown
-before anything downloads, then its progress). Speech becomes text on your
-computer: the recording never leaves it, and is dropped once it's transcribed,
-with the same limits as the server's `stt` service. From source, install the
-engine with `uv sync --extra voice`.
+to download voice: the speech engine (faster-whisper and its libraries, from
+PyPI, each checked against the hash the installer lists) and the speech model
+(faster-whisper's `small`). The size is shown before anything downloads, then
+its progress; the installer stays smaller for everyone who never uses voice.
+Speech becomes text on your computer: the recording never leaves it, and is
+dropped once it's transcribed, with the same limits as the server's `stt`
+service. From source, install the engine with `uv sync --extra voice`.
 
 With the optional `stt` service running, you can reply to a question with a
 voice note, and, if requests are on, send a request as one. The bot

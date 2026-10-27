@@ -17,7 +17,6 @@ dependencies = [
     "alembic>=1.13",
     "anthropic>=1.12.1,<1.13",
     "argon2-cffi>=25.1.0",
-    "boto3>=1.43.118",
     "claude-agent-sdk==0.2.174",
     "cryptography>=50.0.2",
     "docker>=7.2.0",
@@ -37,6 +36,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# AWS Secrets Manager (aws-sm:// secrets), for servers: the Docker image installs
+# it; the desktop app doesn't need it.
+aws = ["boto3>=1.43.118"]
 # Voice in the desktop app: the same engine as the stt service (stt/Dockerfile),
 # run in-process. The model itself is downloaded on first use.
 # Its newest transitive releases were under two weeks old: these are held back.

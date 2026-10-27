@@ -58,7 +58,7 @@ function VoiceSetup({ status, error, onDownload, onClose }: { status: LocalVoice
     <div className="space-y-2 rounded-2xl border border-line bg-surface p-3 text-sm">
       <p className="font-medium">Voice on this computer</p>
       <p className="text-muted">
-        Ringkeeper turns speech into text right here, so your recordings never leave this computer. That needs a speech model, downloaded once ({megabytes(status?.total ?? null)}).
+        Ringkeeper turns speech into text right here, so your recordings never leave this computer. That needs the speech engine and model, downloaded once ({megabytes(status?.total ?? null)}).
       </p>
       {downloading ? (
         <div className="space-y-1">

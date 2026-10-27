@@ -18,8 +18,9 @@ The first beta of the desktop app for Windows.
   you, in the app or in Telegram.
 - **Plans first for features**, models and effort per role, and a spending cap
   per task that asks before going further.
-- **Voice requests**, transcribed on your computer; the speech model downloads
-  the first time you use it.
+- **Voice requests**, transcribed on your computer. The speech engine and model
+  download the first time you use voice (the size is shown first), so the
+  installer stays small for everyone who doesn't.
 - **Updates** are downloaded in the background and offered with "Update ready,
   restart when you're done". Nothing restarts on its own, and updates never
   touch your data.

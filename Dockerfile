@@ -13,12 +13,12 @@ WORKDIR /app
 # Dependencies first, so code changes don't invalidate this layer.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-install-project
+    uv sync --locked --no-dev --extra aws --no-install-project
 
 COPY README.md LICENSE ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --no-dev --extra aws --no-editable
 
 RUN useradd --system --uid 10001 --no-create-home ringkeeper
 USER ringkeeper
