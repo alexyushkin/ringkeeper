@@ -7,7 +7,11 @@
 //! backend the same way Ctrl+C does.
 //!
 //! Arguments: `--hidden` starts in the tray only (used when starting at
-//! sign-in); `--quit` asks the running app to quit.
+//! sign-in); `--quit` asks the running app to quit (the installer uses it).
+//!
+//! Updates: checked at start and every 6 hours, but never while work runs;
+//! downloaded and checked against the release signing key, then offered in the
+//! window. The shell installs one only when the user asks and nothing runs.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -34,15 +38,18 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_notification::NotificationExt as _;
 use tauri_plugin_opener::OpenerExt as _;
+use tauri_plugin_updater::{Update, UpdaterExt as _};
 
 use backend::{Backend, Launcher};
-use logic::{Crashes, Runtime, Status};
+use logic::{Crashes, Runtime, Status, UPDATE_EVERY, UPDATE_RETRY};
 
 const WINDOW: &str = "main";
 const TRAY: &str = "tray";
 const HIDDEN_ARG: &str = "--hidden";
 const QUIT_ARG: &str = "--quit";
 const STATUS_EVERY: Duration = Duration::from_secs(3);
+/// How often the updater looks at the backend (to tell a restarted one about a download).
+const UPDATER_TICK: Duration = Duration::from_secs(30);
 /// How long Quit waits for running work to stop before killing the backend.
 const QUIT_GRACE: Duration = Duration::from_secs(60);
 const TRAY_NOTICE: &str = "Ringkeeper is still running in the tray. Right-click the icon to quit.";
@@ -54,6 +61,12 @@ const OVERLAY_WAITING_ICON: &[u8] = include_bytes!("../icons/overlay-waiting.png
 enum Command {
     Retry,
     Quit,
+}
+
+/// An update, downloaded and its signature checked, waiting to be installed.
+struct Downloaded {
+    update: Update,
+    bytes: Vec<u8>,
 }
 
 /// The shell's state, shared between the main thread and the supervisor.
@@ -71,6 +84,7 @@ struct Shell {
     quitting: AtomicBool,
     commands: Mutex<Sender<Command>>,
     pause_item: Mutex<Option<CheckMenuItem<tauri::Wry>>>,
+    downloaded: Mutex<Option<Downloaded>>,
 }
 
 /// Small things the shell remembers between launches (data_dir/shell.json).
@@ -129,6 +143,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![retry])
         .setup(move |app| {
             if args.iter().any(|a| a == QUIT_ARG) {
@@ -147,8 +162,10 @@ fn main() {
                 quitting: AtomicBool::new(false),
                 commands: Mutex::new(sender),
                 pause_item: Mutex::new(None),
+                downloaded: Mutex::new(None),
             };
             app.manage(shell);
+            remove_previous_version(app.handle());
             build_window(app.handle(), !hidden)?;
             build_tray(app.handle())?;
             let handle = app.handle().clone();
@@ -158,6 +175,12 @@ fn main() {
             thread::Builder::new()
                 .name("supervisor".into())
                 .spawn(move || supervise(&handle, &receiver, !hidden))?;
+            if updates_enabled() {
+                let handle = app.handle().clone();
+                thread::Builder::new()
+                    .name("updater".into())
+                    .spawn(move || watch_for_updates(&handle))?;
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -500,7 +523,13 @@ fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: boo
     let shell = app.state::<Shell>();
     let launcher = match Launcher::find(app.path().resource_dir().ok().as_deref(), &shell.data_dir)
     {
-        Ok(launcher) => launcher,
+        Ok(mut launcher) => {
+            let version = app.package_info().version.to_string();
+            launcher
+                .env
+                .push(("RINGKEEPER_APP_VERSION".into(), version));
+            launcher
+        }
         Err(error) => {
             backend::log(&shell.data_dir, &error);
             show_splash(app, "failed");
@@ -510,7 +539,7 @@ fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: boo
     };
     let mut crashes = Crashes::default();
     let mut first = true;
-    loop {
+    'running: loop {
         set_starting(app, true);
         let quitting = || shell.quitting.load(Ordering::SeqCst);
         let started = Backend::start(&launcher, &shell.agent, &quitting);
@@ -561,6 +590,15 @@ fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: boo
                     current.stop(&shell.agent, &shell.data_dir, QUIT_GRACE);
                     app.exit(0);
                     return;
+                }
+                Ok(Command::Retry) | Err(RecvTimeoutError::Timeout) if ready_to_install(app) => {
+                    current.stop(&shell.agent, &shell.data_dir, QUIT_GRACE);
+                    install_update(app);
+                    // Still here: it didn't install. Start the backend again, as it was.
+                    if let Ok(mut runtime) = shell.runtime.lock() {
+                        *runtime = None;
+                    }
+                    continue 'running;
                 }
                 Ok(Command::Retry) | Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
@@ -642,4 +680,146 @@ fn wait_for_quit(app: &AppHandle, commands: &Receiver<Command>) {
         }
     }
     app.exit(0);
+}
+
+// --- Updates ---
+
+/// After an update the installer leaves the old version's files in
+/// `previous-version` (so a failed install could have put them back). Removing
+/// them takes a while, so the new version does it in the background.
+fn remove_previous_version(app: &AppHandle) {
+    let Ok(previous) = app
+        .path()
+        .resource_dir()
+        .map(|d| d.join("previous-version"))
+    else {
+        return;
+    };
+    if previous.is_dir() {
+        let data_dir = app.state::<Shell>().data_dir.clone();
+        thread::spawn(move || {
+            if let Err(error) = fs::remove_dir_all(&previous) {
+                backend::log(
+                    &data_dir,
+                    &format!("couldn't remove the previous version: {error}"),
+                );
+            }
+        });
+    }
+}
+
+/// The installed app updates itself; a development build only when asked.
+fn updates_enabled() -> bool {
+    !cfg!(debug_assertions) || std::env::var_os("RINGKEEPER_SHELL_UPDATES").is_some()
+}
+
+/// Checks at start and every 6 hours while nothing runs, downloads what it
+/// finds, and tells the backend (again, after a restart) so the window offers it.
+fn watch_for_updates(app: &AppHandle) {
+    let shell = app.state::<Shell>();
+    let mut next_check = Instant::now();
+    let mut told: Option<String> = None; // the backend (by its secret) that knows
+    while !shell.quitting.load(Ordering::SeqCst) {
+        if let Some(runtime) = shell.runtime() {
+            let status = shell.status.lock().ok().and_then(|s| s.clone());
+            if logic::check_for_update_now(status.as_ref(), Instant::now(), next_check) {
+                next_check = match check_and_download(app) {
+                    Ok(true) => {
+                        told = None;
+                        Instant::now() + UPDATE_EVERY
+                    }
+                    Ok(false) => Instant::now() + UPDATE_EVERY,
+                    Err(error) => {
+                        backend::log(&shell.data_dir, &format!("update check failed: {error}"));
+                        Instant::now() + UPDATE_RETRY
+                    }
+                };
+            }
+            let offer = shell.downloaded.lock().ok().and_then(|d| {
+                d.as_ref()
+                    .map(|d| (d.update.version.clone(), d.update.body.clone()))
+            });
+            if let Some((version, notes)) = offer {
+                if told.as_deref() != Some(runtime.secret.as_str()) {
+                    let notes = notes.unwrap_or_default();
+                    if backend::offer_update(&shell.agent, &runtime, &version, &notes).is_ok() {
+                        told = Some(runtime.secret.clone());
+                    }
+                }
+            }
+        }
+        thread::sleep(UPDATER_TICK);
+    }
+}
+
+/// True when a new version was downloaded (its signature checked by the updater).
+fn check_and_download(app: &AppHandle) -> Result<bool, String> {
+    let shell = app.state::<Shell>();
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let found = tauri::async_runtime::block_on(updater.check()).map_err(|e| e.to_string())?;
+    let Some(update) = found else {
+        return Ok(false);
+    };
+    let have = shell
+        .downloaded
+        .lock()
+        .ok()
+        .and_then(|d| d.as_ref().map(|d| d.update.version.clone()));
+    if have.as_deref() == Some(update.version.as_str()) {
+        return Ok(false);
+    }
+    backend::log(
+        &shell.data_dir,
+        &format!("downloading the update to {}", update.version),
+    );
+    let bytes = tauri::async_runtime::block_on(update.download(|_, _| {}, || {}))
+        .map_err(|e| e.to_string())?;
+    backend::log(&shell.data_dir, "update downloaded");
+    if let Ok(mut downloaded) = shell.downloaded.lock() {
+        *downloaded = Some(Downloaded { update, bytes });
+    }
+    Ok(true)
+}
+
+fn ready_to_install(app: &AppHandle) -> bool {
+    let shell = app.state::<Shell>();
+    let downloaded = shell.downloaded.lock().is_ok_and(|d| d.is_some());
+    let status = shell.status.lock().ok().and_then(|s| s.clone());
+    status.is_some_and(|s| logic::install_update_now(&s, downloaded))
+}
+
+/// Runs the downloaded installer (the backend is already stopped). On Windows
+/// it closes the app and starts the new version when done; returns only if it
+/// couldn't start, leaving this version as it was.
+fn install_update(app: &AppHandle) {
+    let shell = app.state::<Shell>();
+    if let Some(window) = app.get_webview_window(WINDOW) {
+        if window.is_visible().unwrap_or(false) {
+            let _ = window.navigate(splash_url("updating"));
+        }
+    }
+    let result = match shell.downloaded.lock() {
+        Ok(downloaded) => match downloaded.as_ref() {
+            Some(d) => {
+                backend::log(&shell.data_dir, &format!("installing {}", d.update.version));
+                d.update.install(&d.bytes).map_err(|e| e.to_string())
+            }
+            None => Err("nothing downloaded".into()),
+        },
+        Err(_) => Err("busy".into()),
+    };
+    match result {
+        Ok(()) => app.restart(), // macOS; Windows has already exited
+        Err(error) => {
+            backend::log(
+                &shell.data_dir,
+                &format!("couldn't install the update: {error}"),
+            );
+            notify(
+                app,
+                "Ringkeeper couldn't update",
+                "It keeps running this version. It will offer the update again.",
+            );
+        }
+    }
 }

@@ -29,6 +29,12 @@ pub struct Status {
     pub paused: bool,
     pub start_at_login: bool,
     pub waiting: Vec<Waiting>,
+    /// Tasks running or about to: an update waits for these.
+    #[serde(default)]
+    pub running: u32,
+    /// The user asked to restart into the downloaded update.
+    #[serde(default)]
+    pub install_update: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -39,6 +45,20 @@ pub struct Notice {
 
 /// More new decisions than this at once get one notification, not one each.
 const NOTICES_AT_ONCE: usize = 3;
+
+/// Updates: checked at start and then every 6 hours, sooner again after a failed check.
+pub const UPDATE_EVERY: Duration = Duration::from_secs(6 * 3600);
+pub const UPDATE_RETRY: Duration = Duration::from_secs(3600);
+
+/// Check (and download) now? When it's time and no work is running: never mid-task.
+pub fn check_for_update_now(status: Option<&Status>, now: Instant, next: Instant) -> bool {
+    now >= next && status.is_some_and(|s| s.running == 0)
+}
+
+/// Install now? Only when the user asked, the download is here, and nothing runs.
+pub fn install_update_now(status: &Status, downloaded: bool) -> bool {
+    status.install_update && downloaded && status.running == 0
+}
 
 /// Where the backend keeps its data. Must match `ringkeeper.desktop.paths.data_dir`.
 pub fn data_dir() -> PathBuf {
@@ -212,6 +232,8 @@ mod tests {
             paused: false,
             start_at_login: true,
             waiting: vec![],
+            running: 0,
+            install_update: false,
         };
         assert_eq!(tooltip(Some(&status), false), "Ringkeeper");
         assert_eq!(tooltip(Some(&status), true), "Ringkeeper: starting…");
@@ -221,6 +243,31 @@ mod tests {
             tooltip(Some(&status), false),
             "Ringkeeper: 2 things waiting for you, paused"
         );
+    }
+
+    #[test]
+    fn updates_never_happen_mid_task() {
+        let start = Instant::now();
+        let mut status: Status = serde_json::from_str(
+            r#"{"paused": false, "start_at_login": true, "waiting": [], "running": 1}"#,
+        )
+        .unwrap();
+        assert!(!check_for_update_now(Some(&status), start, start));
+        assert!(!check_for_update_now(None, start, start)); // backend not up yet
+        status.running = 0;
+        assert!(check_for_update_now(Some(&status), start, start));
+        assert!(!check_for_update_now(
+            Some(&status),
+            start,
+            start + UPDATE_EVERY
+        ));
+
+        assert!(!install_update_now(&status, true)); // the user didn't ask
+        status.install_update = true;
+        assert!(install_update_now(&status, true));
+        assert!(!install_update_now(&status, false));
+        status.running = 2;
+        assert!(!install_update_now(&status, true)); // waits for the work to finish
     }
 
     #[test]

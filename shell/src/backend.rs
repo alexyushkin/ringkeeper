@@ -66,6 +66,13 @@ impl Launcher {
                 env.push(("RINGKEEPER_WORKER_TOOLS_PATH".into(), paths));
             }
         }
+        // Settings > About shows the installed third-party notices.
+        if let Some(notices) = resources.map(|r| r.join("notices")).filter(|n| n.is_dir()) {
+            env.push((
+                "RINGKEEPER_NOTICES_DIR".into(),
+                notices.to_string_lossy().into(),
+            ));
+        }
         let mut args: Vec<OsString> = vec!["-m".into(), "ringkeeper".into(), "desktop".into()];
         args.push("--data-dir".into());
         args.push(data_dir.into());
@@ -198,6 +205,24 @@ pub fn set_paused(agent: &ureq::Agent, runtime: &Runtime, paused: bool) -> Resul
     match response.status().as_u16() {
         200 => Ok(()),
         code => Err(format!("pause refused ({code})")),
+    }
+}
+
+/// Tells the backend an update is downloaded, so the window can say so.
+pub fn offer_update(
+    agent: &ureq::Agent,
+    runtime: &Runtime,
+    version: &str,
+    notes: &str,
+) -> Result<(), String> {
+    let response = agent
+        .post(format!("{}/desktop/api/desktop/update", runtime.url))
+        .header("Authorization", bearer(runtime))
+        .send_json(json!({ "version": version, "notes": notes }))
+        .map_err(|e| e.to_string())?;
+    match response.status().as_u16() {
+        204 => Ok(()),
+        code => Err(format!("update offer refused ({code})")),
     }
 }
 
@@ -351,7 +376,12 @@ mod tests {
         let resources = std::env::temp_dir().join(format!("rk-shell-test-{}", std::process::id()));
         let python = resources.join("python").join(python_exe());
         let git = resources.join("mingit").join("cmd");
-        for dir in [python.parent().unwrap(), &git, &resources.join("web")] {
+        for dir in [
+            python.parent().unwrap(),
+            &git,
+            &resources.join("web"),
+            &resources.join("notices"),
+        ] {
             fs::create_dir_all(dir).unwrap();
         }
         fs::write(&python, "").unwrap();
@@ -371,6 +401,10 @@ mod tests {
         assert!(args.contains(&"--web-dir".to_string()));
         let env: std::collections::HashMap<_, _> = launcher.env.into_iter().collect();
         assert_eq!(env["RINGKEEPER_ENV_FILE"], "");
+        assert_eq!(
+            env["RINGKEEPER_NOTICES_DIR"],
+            resources.join("notices").to_string_lossy()
+        );
         if std::env::var_os("RINGKEEPER_WORKER_TOOLS_PATH").is_none() {
             let tools: Vec<String> =
                 serde_json::from_str(&env["RINGKEEPER_WORKER_TOOLS_PATH"]).unwrap();

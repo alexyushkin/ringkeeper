@@ -9,6 +9,7 @@ const STATES = {
     true,
   ],
   stopping: ["Stopping Ringkeeper…", "Finishing up. This window closes when it's done.", false],
+  updating: ["Updating Ringkeeper…", "It opens again when the new version is installed. Your data stays as it is.", false],
 };
 
 function show() {
