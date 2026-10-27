@@ -56,6 +56,7 @@ const TRAY_NOTICE: &str = "Ringkeeper is still running in the tray. Right-click 
 
 const TRAY_ICON: &[u8] = include_bytes!("../icons/tray.png");
 const TRAY_WAITING_ICON: &[u8] = include_bytes!("../icons/tray-waiting.png");
+#[cfg(windows)]
 const OVERLAY_WAITING_ICON: &[u8] = include_bytes!("../icons/overlay-waiting.png");
 
 enum Command {
@@ -459,11 +460,18 @@ fn apply_status(app: &AppHandle, status: &Status) {
         }
         let _ = tray.set_tooltip(Some(logic::tooltip(Some(status), false)));
     }
+    // Something waiting for you: a mark on the taskbar button (Windows), or the
+    // count on the Dock icon (macOS).
+    #[cfg(windows)]
     if let Some(window) = app.get_webview_window(WINDOW) {
         let overlay = waiting
             .then(|| Image::from_bytes(OVERLAY_WAITING_ICON).ok())
             .flatten();
         let _ = window.set_overlay_icon(overlay);
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(window) = app.get_webview_window(WINDOW) {
+        let _ = window.set_badge_label(waiting.then(|| status.waiting.len().to_string()));
     }
     if let Ok(item) = shell.pause_item.lock() {
         if let Some(item) = item.as_ref() {
