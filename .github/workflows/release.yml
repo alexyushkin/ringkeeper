@@ -1,0 +1,218 @@
+name: Release
+
+# A v* tag builds the desktop app and publishes it to the public releases repo:
+# the Windows installer (signed when the signing secrets are set, see
+# docs/SIGNING.md), an unsigned macOS build (not advertised), and latest.json,
+# which installed apps read to find updates. The version comes from the tag;
+# CHANGELOG.md must have an entry for it.
+#
+# Run by hand (workflow_dispatch) it builds the same files as a test and keeps
+# them as workflow artifacts; nothing is published.
+#
+# Secrets (Settings > Secrets and variables > Actions):
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#       the updater key; without it there are no update files, only installers
+#   RELEASES_TOKEN
+#       a fine-grained token with Contents: read and write on the releases repo
+#   AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET (and variables
+#   AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE)
+#       Azure Artifact Signing; or RK_SIGN_ARGS (and variable RK_SIGN_TIMESTAMP)
+#       for another certificate. With neither, the installer is unsigned.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASES_REPO: alexyushkin/ringkeeper-releases
+  TAURI_CLI: "@tauri-apps/cli@2.12.2"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      RK_SIGN_ARGS: ${{ secrets.RK_SIGN_ARGS }}
+      RK_SIGN_TIMESTAMP: ${{ vars.RK_SIGN_TIMESTAMP }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shell/target
+          key: release-${{ runner.os }}-${{ hashFiles('shell/Cargo.lock') }}
+
+      - name: Version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: python shell/scripts/release.py version "$GITHUB_REF_NAME"
+      - run: npm ci --no-fund
+        working-directory: web
+      - name: Lay out Python, the web app, MinGit and the notices
+        run: python shell/scripts/bundle.py
+
+      - name: Build settings for this run
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import json, os
+          conf = {"bundle": {"createUpdaterArtifacts": bool(os.environ["TAURI_SIGNING_PRIVATE_KEY"])}}
+          if os.environ["AZURE_CLIENT_ID"] or os.environ["RK_SIGN_ARGS"]:
+              script = os.path.join(os.environ["GITHUB_WORKSPACE"], "shell", "scripts", "sign.ps1")
+              conf["bundle"]["windows"] = {
+                  "signCommand": f'powershell -NoProfile -ExecutionPolicy Bypass -File "{script}" %1'
+              }
+          path = os.path.join(os.environ["RUNNER_TEMP"], "release.json")
+          with open(path, "w") as f:
+              json.dump(conf, f)
+          print(json.dumps(conf))
+          EOF
+      - name: Azure Artifact Signing client
+        if: env.AZURE_CLIENT_ID != ''
+        shell: pwsh
+        env:
+          ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "artifact-signing"
+          nuget install Microsoft.ArtifactSigning.Client -Version 1.0.146 -OutputDirectory $dir -NonInteractive
+          $dlib = Get-ChildItem $dir -Recurse -Filter "*.Dlib.dll" | Where-Object { $_.FullName -match "x64" } | Select-Object -First 1
+          if (-not $dlib) { throw "the signing client's dlib wasn't found" }
+          $metadata = Join-Path $env:RUNNER_TEMP "signing.json"
+          @{ Endpoint = $env:ENDPOINT; CodeSigningAccountName = $env:ACCOUNT; CertificateProfileName = $env:PROFILE } |
+            ConvertTo-Json | Set-Content -Encoding utf8 $metadata
+          "RK_SIGN_MODE=azure" >> $env:GITHUB_ENV
+          "RK_SIGN_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          "RK_SIGN_METADATA=$metadata" >> $env:GITHUB_ENV
+      - name: Another certificate
+        if: env.AZURE_CLIENT_ID == '' && env.RK_SIGN_ARGS != ''
+        shell: bash
+        run: echo "RK_SIGN_MODE=signtool" >> "$GITHUB_ENV"
+      - name: Sign the bundled programs that aren't signed yet
+        if: env.RK_SIGN_MODE != ''
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem shell/resources -Recurse -Include *.exe, *.dll, *.pyd -File |
+            Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" }
+          "Signing $($files.Count) files"
+          for ($i = 0; $i -lt $files.Count; $i += 50) {
+            $batch = $files[$i..([Math]::Min($i + 49, $files.Count - 1))].FullName
+            & shell/scripts/sign.ps1 @batch
+          }
+      - name: Build the installer
+        working-directory: shell
+        shell: bash
+        run: npx --yes "$TAURI_CLI" build --ci --config bundle/windows.json --config "$RUNNER_TEMP/release.json"
+      - name: Signed?
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem shell/target/release/bundle/nsis/*-setup.exe
+          Get-AuthenticodeSignature $installer | Format-List Status, SignerCertificate
+          "{0}: {1:N1} MB" -f $installer.Name, ($installer.Length / 1MB)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows
+          path: shell/target/release/bundle/nsis/*-setup.exe*
+          if-no-files-found: error
+
+  macos:
+    # Unsigned and not advertised; built on tags only.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+    timeout-minutes: 120
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal
+      - run: python3 shell/scripts/release.py version "$GITHUB_REF_NAME"
+      - run: npm ci --no-fund
+        working-directory: web
+      - run: python3 shell/scripts/bundle.py
+      - name: Build the app
+        working-directory: shell
+        run: |
+          updater=false
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && updater=true
+          echo "{\"bundle\": {\"createUpdaterArtifacts\": $updater}}" > "$RUNNER_TEMP/release.json"
+          npx --yes "$TAURI_CLI" build --ci --config bundle/macos.json --config "$RUNNER_TEMP/release.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos
+          path: |
+            shell/target/release/bundle/dmg/*.dmg
+            shell/target/release/bundle/macos/*.app.tar.gz*
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, macos]
+    # The Windows build is what matters; a failed macOS build doesn't hold it back.
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+      - name: Release notes and latest.json
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 shell/scripts/release.py notes "$version" > notes.md
+          python3 shell/scripts/release.py manifest --version "$version" --artifacts dist \
+            --base-url "https://github.com/$RELEASES_REPO/releases/download/$GITHUB_REF_NAME" \
+            > dist/latest.json || echo "No updater files (TAURI_SIGNING_PRIVATE_KEY isn't set)."
+          [ -s dist/latest.json ] || rm -f dist/latest.json
+          find dist -type f | sort
+      - name: Publish to the releases repo
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::RELEASES_TOKEN isn't set: nothing published; the files are in this run's artifacts."
+            exit 0
+          fi
+          # A normal release, not a pre-release: "latest" (which installed apps
+          # check) only ever points at normal releases.
+          gh release create "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" \
+            --title "Ringkeeper ${GITHUB_REF_NAME#v}" --notes-file notes.md \
+            $(find dist -type f | sort)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release
+          path: dist

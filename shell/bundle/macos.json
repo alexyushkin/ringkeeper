@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "resources": {
+      "resources/python/": "python/",
+      "resources/web/": "web/",
+      "resources/notices/": "notices/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}

@@ -337,3 +337,13 @@ def test_desktop_database_defaults_to_the_data_dir(
     settings = Settings(mode="desktop")
     assert settings.database_url == f"sqlite:///{(data_dir / 'ringkeeper.db').as_posix()}"
     assert Settings(mode="desktop", database_url="sqlite:///x.db").database_url == "sqlite:///x.db"
+
+
+def test_uninstalling_with_the_data_removes_the_keychain_key(keychain: MemoryKeyring) -> None:
+    from ringkeeper.desktop import uninstall  # noqa: PLC0415
+
+    load_master_key(Settings(mode="desktop"))
+    assert list(keychain.items) == [("Ringkeeper", "master-key")]
+    assert uninstall.main() == 0
+    assert keychain.items == {}
+    assert uninstall.main() == 0  # nothing left to remove is fine too

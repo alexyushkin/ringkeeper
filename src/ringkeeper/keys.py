@@ -113,3 +113,18 @@ def derive_key(master_key: bytes, purpose: str) -> bytes:
         salt=None,
         info=f"ringkeeper/{purpose}/v1".encode(),
     ).derive(master_key)
+
+
+def forget_keychain_key(settings: Settings) -> bool:
+    """Removes the desktop master key from the system keychain (when the user
+    uninstalls and deletes their data). True if there was one."""
+    import keyring  # noqa: PLC0415 (desktop mode only)
+    from keyring.errors import KeyringError  # noqa: PLC0415
+
+    try:
+        if keyring.get_password(settings.keychain_service, KEYCHAIN_ACCOUNT) is None:
+            return False
+        keyring.delete_password(settings.keychain_service, KEYCHAIN_ACCOUNT)
+    except KeyringError as error:
+        raise MasterKeyError(f"the system keychain isn't available: {error}") from None
+    return True
