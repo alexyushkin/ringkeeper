@@ -45,6 +45,11 @@ def _allow_local() -> bool:
     return os.environ.get("RINGKEEPER_ALLOW_LOCAL_CONNECTIONS") == "1"
 
 
+def local_allowed() -> bool:
+    """Loopback addresses are allowed (tests, development)."""
+    return _allow_local()
+
+
 def _addresses(host: str) -> set[str]:
     try:
         return {str(info[4][0]) for info in socket.getaddrinfo(host, None)}

@@ -79,7 +79,7 @@ def auth(monkeypatch: pytest.MonkeyPatch) -> FakeAuthServer:
 
 
 def sign_in(auth: FakeAuthServer) -> tuple[str, dict[str, str]]:
-    page = mcp_oauth.start("neon", REDIRECT, {"name": "acme-neon"})
+    page = mcp_oauth.start(MCP_URL, REDIRECT, {"name": "acme-neon"})
     query = {k: v[0] for k, v in parse_qs(urlsplit(page).query).items()}
     auth.challenge = query["code_challenge"]
     return page, query
@@ -146,6 +146,6 @@ def test_an_expiring_token_is_refreshed_once_and_stored(auth: FakeAuthServer) ->
     assert auth.refreshes == 1
 
 
-def test_services_without_sign_in_say_so(auth: FakeAuthServer) -> None:
-    with pytest.raises(mcp_oauth.RuleViolationError, match="Paste a token"):
-        mcp_oauth.start("github", REDIRECT, {})
+def test_servers_without_sign_in_say_so(auth: FakeAuthServer) -> None:
+    with pytest.raises(mcp_oauth.SignInError, match="Paste a token"):
+        mcp_oauth.start("https://mcp.example.org/mcp", REDIRECT, {})

@@ -1,4 +1,7 @@
-"""Remote MCP services: the catalog, signing in, pasting a token, and the sign-in callback.
+"""The catalog and connecting what's in it: the Recommended shelf (services with
+built-in rules), the MCP Registry search, a remote server signed in to or given
+a token or header, a server added by its address, a local server installed
+after one confirmation, and the sign-in callback.
 
 The callback has no session to check: the browser arrives there from the
 service's own page. It is protected by the one-time `state` instead, which
@@ -6,6 +9,7 @@ only the sign-in this process started knows (services.mcp_oauth).
 """
 
 import contextlib
+import json
 from html import escape
 from typing import Annotated, Any
 
@@ -13,14 +17,23 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import Field
 
+from ringkeeper.adapters import mcp
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import Env
-from ringkeeper.schemas import Input, NonEmpty, ScopeValue, Slug
-from ringkeeper.services import mcp_oauth, remote_connections
+from ringkeeper.models import Env, InstanceType
+from ringkeeper.schemas import Input, InstanceIn, NonEmpty, ScopeValue, Slug
+from ringkeeper.services import (
+    admin_audit,
+    catalog,
+    instances,
+    local_servers,
+    mcp_oauth,
+    remote_connections,
+    secrets_in,
+)
 from ringkeeper.services.remote_connections import NewConnection
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
@@ -29,8 +42,15 @@ callback = APIRouter()
 CALLBACK_PATH = "/oauth/callback"
 
 
+Url = Annotated[str, Field(min_length=8, max_length=2000)]
+ServerName = Annotated[str, Field(min_length=3, max_length=200)]
+Values = dict[Annotated[str, Field(max_length=100)], Annotated[str, Field(max_length=4000)]]
+
+
 class RemoteConnectionIn(Input):
-    remote: Annotated[str, Field(min_length=1, max_length=40)]
+    remote: Annotated[str, Field(min_length=1, max_length=40)] | None = None
+    url: Url | None = None
+    server: ServerName | None = None
     name: Slug
     owner: NonEmpty
     env: Env = Env.DEV
@@ -39,13 +59,33 @@ class RemoteConnectionIn(Input):
 
     def new(self) -> NewConnection:
         return NewConnection(
-            remote=self.remote, name=self.name, owner=self.owner, env=self.env,
-            project=self.project, scope=dict(self.scope) or None,
+            remote=self.remote, url=self.url, server=self.server, name=self.name,
+            owner=self.owner, env=self.env, project=self.project, scope=dict(self.scope) or None,
         )  # fmt: skip
 
 
 class TokenConnectionIn(RemoteConnectionIn):
-    token: str = Field(repr=False, max_length=4000)
+    token: str | None = Field(default=None, repr=False, max_length=4000)
+    headers: Values = Field(default_factory=dict[str, str], repr=False)
+
+
+class ProbeIn(Input):
+    url: Url
+
+
+class PlanIn(Input):
+    server: ServerName
+    package: Annotated[int, Field(ge=0, le=50)] = 0
+
+
+class LocalConnectionIn(PlanIn):
+    fingerprint: Annotated[str, Field(min_length=8, max_length=64)]
+    name: Slug
+    owner: NonEmpty
+    env: Env = Env.DEV
+    project: Slug | None = None
+    values: Values = Field(default_factory=dict[str, str], repr=False)
+    replace: Slug | None = None  # update this connection to the planned version instead
 
 
 def redirect_uri(request: Request, settings: Settings) -> str:
@@ -61,17 +101,43 @@ def redirect_uri(request: Request, settings: Settings) -> str:
 
 @router.get("/remote-services")
 def list_remote_services() -> list[dict[str, Any]]:
-    return remote_connections.catalog()
+    """The Recommended shelf: services with built-in rules."""
+    return remote_connections.catalog_shelf()
+
+
+@router.get("/catalog")
+def search_catalog(q: str = "", cursor: str | None = None) -> dict[str, Any]:
+    """MCP servers from the registry (or, offline, from what was seen before)."""
+    return catalog.search(get_settings(), q[:200], cursor)
+
+
+@router.get("/catalog/servers/{name:path}")
+def catalog_server(name: str) -> dict[str, Any]:
+    try:
+        return catalog.get(get_settings(), name)
+    except KeyError:
+        raise HTTPException(404, detail="That server isn't in the catalog.") from None
+
+
+@router.post("/catalog/probe")
+def probe_url(data: ProbeIn) -> dict[str, Any]:
+    """For adding a server by its address: is it a known service, does sign-in work?"""
+    new = remote_connections.resolve(
+        NewConnection(name="probe", owner="probe", env=Env.DEV, url=data.url)
+    )
+    known = remote_connections.service(new.remote) if new.remote else None
+    signin = catalog.probe(new.url or "") if known is None or known.signin else False
+    return {"url": new.url, "recommended": new.remote, "signin": signin}
 
 
 @router.post("/connections/signin", dependencies=[RecentAuth])
 def start_signin(data: RemoteConnectionIn, request: Request, session: SessionDep) -> dict[str, str]:
-    """The service's sign-in page to open; the connection is added once it sends you back."""
-    new = data.new()
-    remote_connections.check(session, new)
+    """The server's sign-in page to open; the connection is added once it sends you back."""
+    new = remote_connections.check(session, data.new())
+    remote_connections.can_sign_in(new)
     settings = get_settings()
     try:
-        url = mcp_oauth.start(new.remote, redirect_uri(request, settings), new.as_dict())
+        url = mcp_oauth.start(new.url or "", redirect_uri(request, settings), new.as_dict())
     except mcp_oauth.SignInError as error:
         raise HTTPException(502, detail=str(error)) from None
     return {"url": url}
@@ -79,9 +145,129 @@ def start_signin(data: RemoteConnectionIn, request: Request, session: SessionDep
 
 @router.post("/connections/remote", status_code=201, dependencies=[RecentAuth])
 def add_with_token(data: TokenConnectionIn, session: WriteSessionDep) -> dict[str, Any]:
-    secret = remote_connections.token_secret(data.remote, data.token)
-    instance = remote_connections.create(session, get_settings(), data.new(), secret, how="token")
+    """A remote server with a pasted token (Authorization: Bearer) or the headers it needs."""
+    new = data.new()
+    if data.headers:
+        secret, how = remote_connections.headers_secret(new, dict(data.headers)), "headers"
+    else:
+        secret, how = remote_connections.token_secret(new, data.token or ""), "token"
+    instance = remote_connections.create(session, get_settings(), new, secret, how=how)
     return {"name": instance.name}
+
+
+# --- Local servers: one confirmation, then an install in the background ---
+
+
+def _plan(server: str, package: int) -> local_servers.Plan:
+    try:
+        summary = catalog.get(get_settings(), server)
+    except KeyError:
+        raise HTTPException(404, detail="That server isn't in the catalog.") from None
+    return local_servers.plan(summary, package)
+
+
+@router.post("/catalog/plan")
+def plan_local(data: PlanIn) -> dict[str, Any]:
+    """What installing it means: publisher, package and version, commands, what's needed."""
+    return _plan(data.server, data.package).as_dict()
+
+
+@router.post("/connections/local", status_code=202, dependencies=[RecentAuth])
+def install_local(data: LocalConnectionIn, session: SessionDep) -> dict[str, Any]:
+    plan = _plan(data.server, data.package)
+    if data.fingerprint != plan.fingerprint:
+        raise HTTPException(409, detail="The package changed since you confirmed. Look again.")
+    new = NewConnection(
+        name=data.replace or data.name, owner=data.owner, env=data.env, server=data.server,
+        project=data.project,
+    )  # fmt: skip
+    if data.replace:
+        current = instances.get_instance(session, data.replace)
+        if current.type is not InstanceType.MCP or current.config.get("registry") != data.server:
+            raise RuleViolationError(f"'{data.replace}' isn't a connection to {data.server}.")
+    else:
+        remote_connections.check_new(session, new)
+    settings = get_settings()
+    values = dict(data.values)
+    local_servers.environment(plan, values)  # anything required that's missing, before starting
+
+    def work() -> None:
+        spec = local_servers.install(settings, plan, values)
+        _store_local(new, plan, spec, replace=bool(data.replace))
+
+    local_servers.start(new.name, work)
+    return {"name": new.name, "state": "installing"}
+
+
+def _store_local(
+    new: NewConnection, plan: local_servers.Plan, spec: dict[str, Any], *, replace: bool
+) -> None:
+    settings = get_settings()
+    secret = json.dumps({k: spec[k] for k in ("command", "args", "env")})
+    package = {
+        "registry": plan.registry, "identifier": plan.identifier, "version": plan.version,
+        "pinned": spec["pinned"],
+    }  # fmt: skip
+    config = {
+        "registry": plan.server, "package": package, "source": "catalog",
+        "publisher": plan.publisher, "preview": mcp.preview(spec),
+    }  # fmt: skip
+    with session_scope() as session:
+        if not replace:
+            ref = secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
+            instances.create_instance(
+                session,
+                InstanceIn(
+                    name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref,
+                    owner=new.owner, config=config,
+                ),
+            )  # fmt: skip
+            admin_audit.record(
+                session, "connection.create",
+                f"installed {plan.identifier} {plan.version} ({plan.registry}) as {new.name}"
+                f" ({new.env})",
+                by="owner", instance=new.name,
+            )  # fmt: skip
+            remote_connections.link(session, new)
+            return
+        instance = instances.get_instance(session, new.name)
+        old = dict(instance.config.get("package") or {})
+        secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
+        instance.config = {**instance.config, **config}
+        admin_audit.record(
+            session, "connection.update",
+            f"{new.name}: {plan.identifier} {old.get('version')} -> {plan.version}",
+            by="owner", instance=new.name,
+        )  # fmt: skip
+    if old.get("pinned") and old.get("pinned") != package["pinned"]:
+        local_servers.remove_folder(settings, str(old["pinned"]), str(old.get("registry")))
+
+
+@router.get("/connections/local/{name}")
+def install_status(name: Slug) -> dict[str, Any]:
+    found = local_servers.job(name)
+    if found is None:
+        raise HTTPException(404, detail="No install of that name.")
+    return {"name": name, "state": found.state, "error": found.error}
+
+
+@router.get("/catalog/updates")
+def catalog_updates(session: SessionDep) -> list[dict[str, Any]]:
+    """Installed local servers with a newer version in the catalog (never installed by itself)."""
+    latest = catalog.latest_versions(get_settings())
+    found: list[dict[str, Any]] = []
+    for instance in instances.list_instances(session):
+        config = instance.config or {}
+        package = dict(config.get("package") or {})
+        newer = latest.get(str(config.get("registry") or ""))
+        if package and newer and newer != package.get("version"):
+            found.append(
+                {
+                    "connection": instance.name, "server": config["registry"],
+                    "installed": package.get("version"), "latest": newer,
+                }
+            )  # fmt: skip
+    return found
 
 
 def _page(title: str, text: str, ok: bool) -> HTMLResponse:

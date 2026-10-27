@@ -3,6 +3,16 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **An open catalog of MCP servers.** Search every server in the official MCP
+  Registry (it works offline from what you've seen), connect remote ones with
+  one-click sign-in or a key, install local ones (npm, PyPI, containers)
+  pinned to the version shown after one confirmation, or add any server by its
+  address. Services with built-in rules stay on a Recommended shelf on top.
+  Servers without them get generic rules: read-only tools run, the rest wait
+  for you.
+
 ## 0.1.0-beta.1 (2026-10-26)
 
 The first beta of the desktop app for Windows.

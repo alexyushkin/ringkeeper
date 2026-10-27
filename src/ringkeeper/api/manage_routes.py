@@ -60,6 +60,7 @@ from ringkeeper.services import (
     admin_audit,
     bindings,
     instances,
+    local_servers,
     mcp_oauth,
     mcp_tools,
     model_list,
@@ -557,9 +558,14 @@ def replace_connection_secret(
 def delete_connection(
     name: str, session: WriteSessionDep, force: Annotated[bool, Field()] = False
 ) -> None:
-    secret_ref = instances.get_instance(session, name).secret_ref
+    found = instances.get_instance(session, name)
+    secret_ref, package = found.secret_ref, dict((found.config or {}).get("package") or {})
     unbound = instances.remove_instance(session, name, force=force)
     secrets_in.forget(get_settings(), secret_ref)  # the client's secret leaves the vault too
+    if package.get("pinned"):  # a local server from the catalog: its installed copy goes too
+        local_servers.remove_folder(
+            get_settings(), str(package["pinned"]), str(package["registry"])
+        )
     admin_audit.record(
         session, "connection.delete",
         f"removed {name}" + (f" (unbound from {', '.join(unbound)})" if unbound else ""),

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { RemoteServices } from "@/components/connection-library";
+import { Catalog } from "@/components/catalog";
 import { ConnectionForm } from "@/components/forms";
 import { Button, Card, Details, Field, PageHeader, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
@@ -43,8 +43,8 @@ export default function NewConnectionPage() {
     <>
       <PageHeader title={`Add a connection for ${client}`} />
       <Card className="space-y-4">
-        <h2 className="font-semibold">Sign in to a service</h2>
-        <RemoteServices client={client} onAdded={done} />
+        <h2 className="font-semibold">Connect a service</h2>
+        <Catalog client={client} onAdded={done} />
         <Details label="Other services (a database, n8n, Twilio, Gmail…)">
           <ConnectionForm client={client} onSaved={done} />
         </Details>

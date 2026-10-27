@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
-import { RemoteServices } from "@/components/connection-library";
+import { Catalog } from "@/components/catalog";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, Select, Toggle } from "@/components/ui";
@@ -220,8 +220,8 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
           {list.length > 1 ? (
             <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} />
           ) : null}
-          <h3 className="font-medium">Sign in to a service</h3>
-          <RemoteServices key={`remote-${project.name}`} client={project.owner} project={project.name} onAdded={setAdded} />
+          <h3 className="font-medium">Connect a service</h3>
+          <Catalog key={`remote-${project.name}`} client={project.owner} project={project.name} onAdded={setAdded} />
           <h3 className="font-medium">Or paste a key</h3>
           <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
           <Button kind="ghost" onClick={skip}>
@@ -545,8 +545,8 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
         <>
           {owner ? (
             <>
-              <h3 className="font-medium">Sign in to a service</h3>
-              <RemoteServices client={owner} project={project ?? undefined} onAdded={setSignedIn} />
+              <h3 className="font-medium">Connect a service</h3>
+              <Catalog client={owner} project={project ?? undefined} onAdded={setSignedIn} />
             </>
           ) : null}
           {owner ? <h3 className="font-medium">Or paste a key</h3> : null}

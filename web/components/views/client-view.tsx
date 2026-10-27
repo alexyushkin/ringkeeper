@@ -3,7 +3,8 @@
 import Link from "@/components/link";
 import { useState } from "react";
 
-import { LibraryCard, RemoteServices, useLibrary } from "@/components/connection-library";
+import { LibraryCard, useLibrary } from "@/components/connection-library";
+import { Catalog } from "@/components/catalog";
 import { ConnectionForm } from "@/components/forms";
 import { Alert, Button, Card, Details, Empty, Loading } from "@/components/ui";
 import { projectHref } from "@/lib/client/routes";
@@ -57,8 +58,8 @@ export function ClientView({ name }: { name: string }) {
         {added ? <Alert tone="good">Added {added}. Link it to a project below, and test it.</Alert> : null}
         {adding ? (
           <div className="space-y-4 rounded-xl border border-line p-3">
-            <h3 className="font-medium">Sign in to a service</h3>
-            <RemoteServices client={name} onAdded={done} />
+            <h3 className="font-medium">Connect a service</h3>
+            <Catalog client={name} onAdded={done} />
             <Details label="Other services (a database, n8n, Twilio, Gmail…)">
               <ConnectionForm client={name} onSaved={(c) => done(c.name)} />
             </Details>

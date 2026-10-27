@@ -4,7 +4,8 @@ import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { RemoteServices, ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
+import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
+import { Catalog } from "@/components/catalog";
 import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { Alert, Button, Card, Details, EnvBadge, Loading, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -136,7 +137,7 @@ export function ProjectView({ name }: { name: string }) {
         ) : connecting ? (
           <div className="space-y-3 rounded-xl border border-line p-3">
             <h3 className="font-medium">New connection for {name}</h3>
-            <RemoteServices
+            <Catalog
               client={project.data.owner}
               project={name}
               onAdded={(connection) => {

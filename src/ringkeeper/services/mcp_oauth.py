@@ -25,8 +25,7 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx2
 
-from ringkeeper import remote as remotes
-from ringkeeper.errors import RingkeeperError, RuleViolationError
+from ringkeeper.errors import RingkeeperError
 from ringkeeper.vault import Secret, Vault
 
 PENDING_SECONDS = 600
@@ -42,7 +41,6 @@ class SignInError(RingkeeperError):
 
 @dataclass
 class Pending:
-    remote: str
     url: str
     redirect_uri: str
     token_endpoint: str
@@ -148,12 +146,10 @@ def _pkce() -> tuple[str, str]:
     return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def start(remote_key: str, redirect_uri: str, connection: dict[str, Any]) -> str:
-    """Begin signing in; returns the service's page to open in the browser."""
-    remote = remotes.BY_KEY.get(remote_key)
-    if remote is None or not remote.signin:
-        raise RuleViolationError("This service doesn't offer sign-in. Paste a token instead.")
-    resource, server = discover(remote.url)
+def start(url: str, redirect_uri: str, connection: dict[str, Any]) -> str:
+    """Begin signing in to the MCP server at `url` (a service from ringkeeper.remote,
+    one from the catalog, or one added by its address); returns the page to open."""
+    resource, server = discover(url)
     supported = cast(list[str], resource.get("scopes_supported") or [])
     scope = " ".join(supported) or None
     client = _register(server, redirect_uri, scope)
@@ -166,15 +162,14 @@ def start(remote_key: str, redirect_uri: str, connection: dict[str, Any]) -> str
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-        "resource": str(resource.get("resource") or remote.url),
+        "resource": str(resource.get("resource") or url),
     }
     if scope:
         params["scope"] = scope
     with _pending_lock:
         _forget_old()
         _pending[state] = Pending(
-            remote=remote.key,
-            url=remote.url,
+            url=url,
             redirect_uri=redirect_uri,
             token_endpoint=str(server["token_endpoint"]),
             client=client,

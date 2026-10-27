@@ -1,14 +1,26 @@
-"""Connections to remote MCP services (ringkeeper.remote): signed in, or with a pasted token.
+"""Connections to remote MCP servers: signed in, or with a pasted token or header.
+
+A server is one of three things:
+
+- a service with built-in rules (ringkeeper.remote: Neon, Supabase, ...),
+  named by its key; its link to a project can be narrowed, and its SQL tools
+  are checked like a database's;
+- a server from the catalog (services.catalog), named by its registry name;
+- any server added by its address.
+
+A catalog server or an address that is one of the services with built-in
+rules connects as that service. Everything else gets the generic rules: the
+server's own tool annotations decide what runs without asking, and a tool
+without them waits for approval (adapters.mcp).
 
 Either way the result is an `mcp` connection: its secret (in the vault) names
-the server's URL with the OAuth tokens or the token's header, and its config
-says which service it is, so the gateway knows how a project's link to it can
-be narrowed. A connection belongs to one client; with `project`, it's linked
-to that project too.
+the server's URL with the OAuth tokens or the headers, and its config says
+which server it is. A connection belongs to one client; with `project`, it's
+linked to that project too.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -18,29 +30,35 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType
 from ringkeeper.schemas import BindingIn, InstanceIn
-from ringkeeper.services import admin_audit, bindings, instances, projects, secrets_in
+from ringkeeper.services import admin_audit, bindings, catalog, instances, projects, secrets_in
+
+HEADER_NAME_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
 
 @dataclass(frozen=True)
 class NewConnection:
-    remote: str
     name: str
     owner: str
     env: Env
+    remote: str | None = None  # a service with built-in rules
+    url: str | None = None  # any other server's address
+    server: str | None = None  # its name in the MCP Registry, if it came from there
     project: str | None = None
     scope: dict[str, str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "remote": self.remote, "name": self.name, "owner": self.owner,
-            "env": self.env.value, "project": self.project, "scope": self.scope or {},
+            "remote": self.remote, "url": self.url, "server": self.server, "name": self.name,
+            "owner": self.owner, "env": self.env.value, "project": self.project,
+            "scope": self.scope or {},
         }  # fmt: skip
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "NewConnection":
         return cls(
-            remote=str(data["remote"]), name=str(data["name"]), owner=str(data["owner"]),
-            env=Env(data["env"]), project=data.get("project"), scope=data.get("scope") or None,
+            remote=data.get("remote"), url=data.get("url"), server=data.get("server"),
+            name=str(data["name"]), owner=str(data["owner"]), env=Env(data["env"]),
+            project=data.get("project"), scope=data.get("scope") or None,
         )  # fmt: skip
 
 
@@ -51,9 +69,34 @@ def service(key: str) -> remote.Remote:
     return found
 
 
-def check(session: Session, new: NewConnection) -> None:
+def resolve(new: NewConnection) -> NewConnection:
+    """The connection with its address checked, and a known service recognized by it."""
+    if new.remote:
+        return replace(new, url=service(new.remote).url)
+    if not new.url:
+        raise RuleViolationError("Give the MCP server's address (https://...).")
+    url = catalog.check_remote_url(new.url)
+    known = next((r for r in remote.CATALOG if catalog.same_url(url, r.url)), None)
+    if known is not None:
+        return replace(new, remote=known.key, url=known.url)
+    if new.scope:
+        raise RuleViolationError("Only services with built-in rules can be narrowed.")
+    return replace(new, url=url)
+
+
+def url_of(new: NewConnection) -> str:
+    return resolve(new).url or ""
+
+
+def check(session: Session, new: NewConnection) -> NewConnection:
     """Before anything is stored or anyone is sent to sign in."""
-    service(new.remote)
+    new = resolve(new)
+    check_new(session, new)
+    return new
+
+
+def check_new(session: Session, new: NewConnection) -> None:
+    """The name is free, and the project (if any) is the same client's."""
     if instances.find_instance(session, new.name) is not None:
         raise RuleViolationError(f"A connection named '{new.name}' already exists.")
     if new.project is not None:
@@ -64,25 +107,54 @@ def check(session: Session, new: NewConnection) -> None:
             )
 
 
-def token_secret(key: str, token: str) -> str:
-    found = service(key)
-    if found.paste is None:
-        raise RuleViolationError(f"{found.name} connects by signing in only.")
+def can_sign_in(new: NewConnection) -> None:
+    """Services known not to let apps register themselves say so before trying."""
+    if new.remote and not service(new.remote).signin:
+        raise RuleViolationError(
+            f"{service(new.remote).name} doesn't offer sign-in. Paste a token instead."
+        )
+
+
+def token_secret(new: NewConnection, token: str) -> str:
+    """A pasted token, sent the way the service expects (Authorization: Bearer ...)."""
+    new = resolve(new)
+    scheme = "Bearer"
+    if new.remote:
+        found = service(new.remote)
+        if found.paste is None:
+            raise RuleViolationError(f"{found.name} connects by signing in only.")
+        scheme = found.auth_scheme
     token = "".join(token.split())
     if not token:
         raise RuleViolationError("The token is empty.")
-    header = f"{found.auth_scheme} {token}"
-    return json.dumps({"url": found.url, "headers": {"Authorization": header}})
+    return json.dumps({"url": new.url, "headers": {"Authorization": f"{scheme} {token}"}})
+
+
+def headers_secret(new: NewConnection, headers: dict[str, str]) -> str:
+    """Headers the server needs (an API key header, say), as the catalog or the user names them."""
+    new = resolve(new)
+    cleaned = {k.strip(): v.strip() for k, v in headers.items() if k.strip() and v.strip()}
+    if not cleaned:
+        raise RuleViolationError("Fill in the header the server needs.")
+    if bad := sorted(k for k in cleaned if not set(k) <= HEADER_NAME_CHARS):
+        raise RuleViolationError(f"'{bad[0]}' isn't a header name.")
+    return json.dumps({"url": new.url, "headers": cleaned})
 
 
 def create(
     session: Session, settings: Settings, new: NewConnection, secret: str, *, how: str
 ) -> Instance:
-    """Store the secret, add the connection (and its link). `how`: signin or token."""
-    check(session, new)
-    found = service(new.remote)
+    """Store the secret, add the connection (and its link). `how`: signin, token or headers."""
+    new = check(session, new)
     ref = secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
-    config = {"remote": found.key, "source": how, "preview": found.url}
+    config: dict[str, Any] = {"source": how, "preview": new.url}
+    if new.remote:
+        config["remote"] = new.remote
+        label = service(new.remote).name
+    else:
+        label = new.server or new.url or "MCP server"
+    if new.server:
+        config["registry"] = new.server
     instance = instances.create_instance(
         session,
         InstanceIn(
@@ -90,32 +162,37 @@ def create(
             config=config,
         ),
     )  # fmt: skip
-    via = "signed in" if how == "signin" else "token"
+    via = {"signin": "signed in", "token": "token", "headers": "headers"}.get(how, how)
     admin_audit.record(
         session, "connection.create",
-        f"added {found.name} connection {new.name} ({new.env}, {via})",
+        f"added {label} connection {new.name} ({new.env}, {via})",
         by="owner", instance=new.name,
     )  # fmt: skip
-    if new.project is not None:
-        bindings.check_same_client(session, new.project, new.name)
-        bindings.set_binding(
-            session,
-            BindingIn(project=new.project, instance=new.name, scope=new.scope or {}),
-        )
-        admin_audit.record(
-            session, "binding.set", f"connected {new.name}", by="owner", project=new.project,
-            instance=new.name,
-        )  # fmt: skip
+    link(session, new)
     return instances.get_instance(session, instance.name)
 
 
-def catalog() -> list[dict[str, Any]]:
-    """What the web app shows: each service, whether it signs in, and how it narrows."""
+def link(session: Session, new: NewConnection) -> None:
+    if new.project is None:
+        return
+    bindings.check_same_client(session, new.project, new.name)
+    bindings.set_binding(
+        session, BindingIn(project=new.project, instance=new.name, scope=new.scope or {})
+    )
+    admin_audit.record(
+        session, "binding.set", f"connected {new.name}", by="owner", project=new.project,
+        instance=new.name,
+    )  # fmt: skip
+
+
+def catalog_shelf() -> list[dict[str, Any]]:
+    """The Recommended shelf: services with built-in rules, how they sign in and narrow."""
     return [
         {
-            "key": r.key, "name": r.name, "signin": r.signin, "paste": r.paste,
+            "key": r.key, "name": r.name, "url": r.url, "signin": r.signin, "paste": r.paste,
             "paste_url": r.paste_url, "paste_steps": r.paste_steps, "note": r.note,
             "scope": [{"key": f.key, "label": f.label, "hint": f.hint} for f in r.scope],
+            "sql": bool(r.sql_tools),
         }
         for r in remote.CATALOG
     ]  # fmt: skip

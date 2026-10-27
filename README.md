@@ -54,6 +54,33 @@ sign-in needs `RINGKEEPER_WEB_ORIGIN` (the address the service sends you back
 to). SQL run through a remote service's SQL tool is checked like a database
 connection's: deleting or changing tables needs the connection's name typed.
 
+These services are the **Recommended** shelf of the catalog, because they have
+built-in rules (narrowing, SQL checks). Below it, the catalog searches every
+server in the official [MCP Registry](https://registry.modelcontextprotocol.io)
+and keeps what it has seen in the data folder, so search still works offline.
+Each result shows its publisher, as the registry verified it (a domain, or a
+GitHub account), whether it's remote or runs on your computer, and whether
+one-click sign-in works (Ringkeeper asks the server, and remembers for a week).
+
+- **Remote servers** connect with MCP's OAuth and dynamic client registration,
+  as above, or with the token or header the server asks for.
+- **Local servers** (npm, PyPI or container packages) install when you ask,
+  into the data folder (`mcp-packages`), pinned to the version shown. One
+  confirmation screen names the publisher, the package and version, and the
+  commands that install and run it; installing needs exactly what was shown.
+  npm install scripts are off. Nothing updates by itself: when the catalog has
+  a newer version, the connection offers it, with the same confirmation. They
+  need Node.js, uv or Docker on the computer, and say so if it's missing.
+- **Add by address:** any remote MCP server that isn't in the registry.
+- **Claude Desktop import** stays: its config file and installed extensions.
+
+A server that is one of the recommended services (matched by its address)
+connects as that service, with its rules. Every other server gets the generic
+rules: its MCP annotations decide what runs without asking (read-only tools),
+and a tool without annotations waits for approval, like any write. Test or
+Production is chosen when connecting, and every connection still belongs to a
+client and is linked to that client's projects.
+
 ## How a call flows
 
 ```
@@ -186,8 +213,8 @@ A worker only gets the endpoints of the services its project is connected to.
   promote, roll back. No env changes, domains or purchases.
 - **twilio:** the secret is JSON with the Account SID and a Standard API key
   (SID and secret). Sending a text always waits for approval.
-- **mcp:** an MCP server imported from Claude Desktop (desktop app, Settings
-  or first run). How to start it (command, args, env; or URL and headers) is
+- **mcp:** an MCP server from the catalog, added by its address, or imported
+  from Claude Desktop (desktop app, Settings or first run). How to start it (command, args, env; or URL and headers) is
   read from Claude Desktop's file straight into the vault; the connection keeps
   only a preview with secret-looking args masked. A command server runs on the
   gateway's machine for each call, with a small environment (no Claude

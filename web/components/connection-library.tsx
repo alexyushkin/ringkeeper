@@ -3,6 +3,7 @@
 import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
+import { LocalUpdate } from "@/components/catalog";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { McpTools } from "@/components/mcp-tools";
 import { Alert, Badge, Button, Details, EnvBadge, Field, Select, timeAgo } from "@/components/ui";
@@ -41,6 +42,7 @@ export type LibraryConnection = ConnectionData & { links?: LinkInfo[]; scope_fie
 export function serviceName(connection: LibraryConnection, services: RemoteService[] = []): string {
   const remote = typeof connection.config.remote === "string" ? connection.config.remote : null;
   if (remote) return services.find((s) => s.key === remote)?.name ?? remote;
+  if (typeof connection.config.registry === "string") return connection.config.registry;
   return SERVICE[connection.type] ?? connection.type;
 }
 
@@ -156,7 +158,8 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const remote = typeof connection.config.remote === "string";
-  const imported = connection.type === "mcp" && !remote;
+  const fromCatalog = typeof connection.config.registry === "string";
+  const imported = connection.type === "mcp" && !remote && !fromCatalog;
 
   async function replace() {
     setError(null);
@@ -200,12 +203,13 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         {!(connection.links ?? []).length ? <li className="text-sm text-muted">Not linked to a project yet.</li> : null}
       </ul>
       <LinkToProject connection={connection} projects={projects} onChange={onChange} />
+      {connection.config.package ? <LocalUpdate connection={connection.name} client={connection.owner} onDone={onChange} /> : null}
       <TestButton name={connection.name} onDone={() => onChange()} />
       {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
       <Details label="Change">
         <div className="space-y-3">
           {imported ? <p className="text-sm text-muted">Its settings came from Claude Desktop. To change them, change them there, remove this connection, and import it again.</p> : null}
-          {remote ? <p className="text-sm text-muted">To sign in again or use another token, remove it and connect again.</p> : null}
+          {remote || fromCatalog ? <p className="text-sm text-muted">To sign in again or use another key, remove it and connect again.</p> : null}
           {connection.type !== "mcp" ? (
             <>
               <p className="text-sm">Secret: {connection.secret_stored ? "saved ✓ (hidden)" : "missing"}</p>
