@@ -558,7 +558,39 @@ docker compose --profile stt up -d --build   # faster-whisper on CPU, int8
 
 ## Install
 
-See **[docs/INSTALL.md](docs/INSTALL.md)**. In short, with Docker and git:
+### The desktop app (Windows 10 and 11)
+
+Download `Ringkeeper_<version>_x64-setup.exe` from the
+[latest release](https://github.com/alexyushkin/ringkeeper-releases/releases/latest)
+and run it. It installs for your user only: no administrator rights, nothing
+else to install, no terminal. Ringkeeper opens when it's done and walks you
+through first run; you need an Anthropic API key
+([platform.claude.com](https://platform.claude.com) → API keys).
+
+**Windows may warn you first.** Until the installer is signed and well known,
+Microsoft Defender SmartScreen shows **"Windows protected your PC"**. Click
+**More info**, check that the app is `Ringkeeper_..._x64-setup.exe`, then
+click **Run anyway**. (If your browser flags the download, choose **Keep**.)
+If instead **Smart App Control** blocks it (some new Windows 11 PCs have it
+on), there's no "Run anyway": use a signed release once there is one.
+Turning Smart App Control off is possible in Windows Security, but it can't be
+turned back on without reinstalling Windows.
+
+- **Where things go:** the app in `%LOCALAPPDATA%\Programs\Ringkeeper`, your
+  data in `%LOCALAPPDATA%\Ringkeeper` (the master key that protects your saved
+  keys is in Windows Credential Manager), new projects in
+  `Documents\Ringkeeper`.
+- **Updates:** Ringkeeper checks when it starts and every 6 hours, downloads
+  updates in the background and shows **Update ready, restart when you're
+  done**. It never restarts by itself, waits for running tasks, and never
+  touches your data. If an update fails, the old version keeps working.
+- **Uninstall:** Settings → Apps → Ringkeeper → Uninstall. Your data stays
+  unless you tick **Also delete my data**; your project folders always stay.
+
+### The server (Docker), for advanced setups
+
+To run Ringkeeper on a server or share it from your phone, see
+**[docs/INSTALL.md](docs/INSTALL.md)**. In short, with Docker and git:
 
 ```bash
 git clone https://github.com/alexyushkin/ringkeeper.git && cd ringkeeper
@@ -848,6 +880,18 @@ cargo run -- --quit              # asks the running app to quit
 It keeps its data in the per-user app folder (`%LOCALAPPDATA%\Ringkeeper` on
 Windows); set `RINGKEEPER_SHELL_DATA_DIR` to use another one. Its own log is
 `logs/shell.log` there, next to the backend's `logs/backend.log`.
+
+To build the Windows installer locally (what the release workflow does on a
+tag, minus signing and publishing):
+
+```bash
+uv run python shell/scripts/bundle.py   # Python + packages, web app, MinGit, notices -> shell/resources
+cd shell && npx @tauri-apps/cli@2.12.2 build --config bundle/windows.json
+# -> shell/target/release/bundle/nsis/Ringkeeper_<version>_x64-setup.exe
+```
+
+Releases, signing and the release checklist: [docs/RELEASING.md](docs/RELEASING.md),
+[docs/SIGNING.md](docs/SIGNING.md), [docs/RELEASE_CHECK.md](docs/RELEASE_CHECK.md).
 
 Adding a service means one module in `src/ringkeeper/adapters/` (tools declared
 `@read` or `@write`), one entry in `adapters/__init__.py`, and tests. See
