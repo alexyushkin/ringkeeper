@@ -77,10 +77,11 @@ export default function SetupPage() {
 
   return (
     <main className="mx-auto max-w-lg px-4 py-6">
-      <div className="mb-2 flex items-center gap-2 text-lg font-semibold">
+      <div className="mb-1 flex items-center gap-2 text-lg font-semibold">
         <span aria-hidden className="inline-block size-5 rounded-full border-4 border-accent" />
         Set up Ringkeeper
       </div>
+      <p className="mb-4 text-sm text-muted">Ringkeeper lets one person run AI agents across many clients without ever switching connections.</p>
       <ol className="mb-6 flex gap-1" aria-label="Progress">
         {STEPS.map((name, index) => (
           <li key={name} className={`h-1.5 flex-1 rounded-full ${index <= step ? "bg-accent" : "bg-line"}`} title={name}>
