@@ -95,7 +95,7 @@ is published by the Git for Windows project:
 https://github.com/git-for-windows/git/releases/tag/v{version}
 and, for its other components, https://github.com/git-for-windows/MINGW-packages
 and https://github.com/msys2/MINGW-packages. Write to the Ringkeeper project
-(https://github.com/alexyushkin/ringkeeper/issues) if you'd like a copy.
+(https://github.com/alexyushkin/ringkeeper-releases/issues) if you'd like a copy.
 """
 
 
@@ -104,12 +104,17 @@ def run(*args: str | Path, cwd: Path = REPO, env: dict[str, str] | None = None) 
     done = subprocess.run(  # noqa: S603 (fixed tools, our own arguments)
         [str(a) for a in args],
         cwd=cwd,
-        check=True,
+        check=False,  # checked below, after showing what it said
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         env={**os.environ, **(env or {})},
     )
+    if done.returncode:
+        # What it said, so a failed build shows why.
+        print(done.stdout, done.stderr, sep="\n", flush=True)
+        done.check_returncode()
     return done.stdout
 
 

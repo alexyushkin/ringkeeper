@@ -24,7 +24,7 @@
     ],
     "publisher": "General Informatics LLC",
     "copyright": "Copyright (c) 2026 General Informatics LLC and contributors. MIT License.",
-    "homepage": "https://github.com/alexyushkin/ringkeeper",
+    "homepage": "https://github.com/alexyushkin/ringkeeper-releases",
     "shortDescription": "Ringkeeper",
     "longDescription": "Runs Claude agents on your projects, each bound to its own services, with every risky step waiting for your approval.",
     "category": "DeveloperTool"
