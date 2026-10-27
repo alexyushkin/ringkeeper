@@ -53,8 +53,12 @@ def manifest(version: str, artifacts: Path, base_url: str) -> dict:
     platforms = {}
     for platform, suffix in PLATFORMS.items():
         built = [p for p in artifacts.rglob(f"*{suffix}") if p.is_file()]
+        if len(built) > 1:  # a leftover from an earlier build: this version's only
+            built = [p for p in built if f"_{version}_" in p.name]
         if not built:
             continue
+        if len(built) > 1:
+            sys.exit(f"more than one {suffix} for {version}: {', '.join(p.name for p in built)}")
         [file] = built
         signature = file.with_name(file.name + ".sig")
         if not signature.is_file():

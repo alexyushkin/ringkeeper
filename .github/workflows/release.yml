@@ -134,7 +134,10 @@ jobs:
       - name: Build the installer
         working-directory: shell
         shell: bash
-        run: npx --yes "$TAURI_CLI" build --ci --config bundle/windows.json --config "$RUNNER_TEMP/release.json"
+        # target/ comes from the cache: an earlier release's installer must not ship again.
+        run: |
+          rm -rf target/release/bundle
+          npx --yes "$TAURI_CLI" build --ci --config bundle/windows.json --config "$RUNNER_TEMP/release.json"
       - name: Signed?
         shell: pwsh
         run: |
@@ -179,6 +182,7 @@ jobs:
           updater=false
           [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && updater=true
           echo "{\"bundle\": {\"createUpdaterArtifacts\": $updater}}" > "$RUNNER_TEMP/release.json"
+          rm -rf target/release/bundle
           npx --yes "$TAURI_CLI" build --ci --config bundle/macos.json --config "$RUNNER_TEMP/release.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -204,10 +208,15 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           python3 shell/scripts/release.py notes "$version" > notes.md
-          python3 shell/scripts/release.py manifest --version "$version" --artifacts dist \
-            --base-url "https://github.com/$RELEASES_REPO/releases/download/$GITHUB_REF_NAME" \
-            > dist/latest.json || echo "No updater files (TAURI_SIGNING_PRIVATE_KEY isn't set)."
-          [ -s dist/latest.json ] || rm -f dist/latest.json
+          # Signed update files mean installed apps expect latest.json: no release without it.
+          if find dist -name '*.sig' | grep -q .; then
+            python3 shell/scripts/release.py manifest --version "$version" --artifacts dist \
+              --base-url "https://github.com/$RELEASES_REPO/releases/download/$GITHUB_REF_NAME" \
+              > latest.json
+            mv latest.json dist/latest.json
+          else
+            echo "No updater files (TAURI_SIGNING_PRIVATE_KEY isn't set)."
+          fi
           find dist -type f | sort
       - name: Publish to the releases repo
         run: |

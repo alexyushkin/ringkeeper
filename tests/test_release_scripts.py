@@ -70,6 +70,22 @@ def test_latest_json_points_at_the_signed_files(release: ModuleType, tmp_path: P
     assert made["platforms"]["darwin-aarch64"]["url"] == f"{base}/Ringkeeper.app.tar.gz"
 
 
+def test_an_earlier_version_s_installer_left_over_is_ignored(
+    release: ModuleType, tmp_path: Path
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    for version, signature in (("0.1.0", "b2xk"), ("0.1.1", "bmV3")):
+        setup = dist / f"Ringkeeper_{version}_x64-setup.exe"
+        setup.write_bytes(b"installer")
+        (dist / f"{setup.name}.sig").write_text(signature)
+    made = release.manifest("0.1.1", dist, "https://example.invalid")
+    assert made["platforms"]["windows-x86_64"] == {
+        "signature": "bmV3",
+        "url": "https://example.invalid/Ringkeeper_0.1.1_x64-setup.exe",
+    }
+
+
 def test_no_manifest_without_an_updater_signature(release: ModuleType, tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()
