@@ -1,9 +1,10 @@
 """The open catalog (M7): MCP Registry search (a fake registry), signing in to a
 catalog server (a fake OAuth server), adding a server by its address,
-installing a pinned local package (a fake npm), and the generic rules for
+installing a pinned local package (fake npm, uv and docker), and the generic rules for
 servers without built-in ones: unannotated tools are held."""
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ REGISTRY = "https://registry.modelcontextprotocol.io/v0.1/servers"
 NOTES = "https://mcp.notes.example/mcp"
 NOTES_AUTH = "https://auth.notes.example"
 WEATHER = "https://weather.example/mcp"
+DIGEST = "ghcr.io/dan/search-mcp@sha256:" + "ab" * 32
 
 
 def entry(name: str, version: str = "1.0.0", **server: Any) -> dict[str, Any]:
@@ -71,6 +73,19 @@ class FakeWorld:
                   packages=[files_package(self.files_version)]),
             entry("io.github.eve/loose",
                   packages=[{**files_package("latest"), "identifier": "loose"}]),
+            entry("io.github.carol/sheets", "0.4.1", packages=[{
+                "registryType": "pypi", "identifier": "sheets-mcp", "version": "0.4.1",
+                "transport": {"type": "stdio"},
+                "environmentVariables": [{"name": "SHEETS_TOKEN", "isRequired": True,
+                                          "isSecret": True}],
+                "packageArguments": [{"type": "named", "name": "--mode", "value": "read-only"}],
+            }]),
+            entry("io.github.dan/search", "2.0.0", packages=[{
+                "registryType": "oci", "identifier": "ghcr.io/dan/search-mcp", "version": "2.0.0",
+                "transport": {"type": "stdio"},
+                "environmentVariables": [{"name": "SEARCH_KEY", "isRequired": True,
+                                          "isSecret": True}],
+            }]),
         ]  # fmt: skip
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
@@ -346,3 +361,141 @@ def test_a_package_without_an_exact_version_isnt_installed(
     refused = owner.post("/catalog/plan", json={"server": "io.github.eve/loose"})
     assert refused.status_code == 409
     assert "exact version" in refused.text
+
+
+def found_tools(program: str) -> str:
+    return f"C:/tools/{program}"
+
+
+def no_tools(_program: str) -> str | None:
+    return None
+
+
+def spec_of(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A connection's saved package, and its server settings (from the vault)."""
+    with session_scope() as session:
+        connection = instances.get_instance(session, name)
+        spec = json.loads(get_vault().resolve(connection.secret_ref).reveal())
+        return dict(connection.config["package"]), spec
+
+
+class FakeUv:
+    """Lays out what `uv venv` and `uv pip install` would, and remembers what was asked."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args: list[str], cwd: Path) -> str:
+        self.calls.append(args)
+        windows = sys.platform == "win32"
+        suffix = ".exe" if windows else ""
+        if args[1] == "venv":
+            scripts = Path(args[-1]) / ("Scripts" if windows else "bin")
+            scripts.mkdir(parents=True)
+            for name in ("python", "pip", "activate"):
+                (scripts / f"{name}{suffix}").write_text("")
+        else:
+            python = Path(args[args.index("--python") + 1])
+            name, version = args[-1].split("==")
+            (python.parent / f"{name}{suffix}").write_text(f"{name} {version}")
+        return ""
+
+
+def test_a_python_package_installs_pinned_in_its_own_environment(
+    owner: TestClient, world: FakeWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uv = FakeUv()
+    monkeypatch.setattr(local_servers, "runner", uv)
+    monkeypatch.setattr(local_servers, "finder", found_tools)
+    owner.post("/projects", json={"name": "acme-web", "owner": "acme"})
+
+    plan = owner.post("/catalog/plan", json={"server": "io.github.carol/sheets"}).json()
+    assert (plan["registry"], plan["identifier"], plan["version"]) == (
+        "pypi",
+        "sheets-mcp",
+        "0.4.1",
+    )
+    assert plan["install"] == "uv pip install sheets-mcp==0.4.1"
+    assert (plan["needs"], plan["missing"]) == ("uv (docs.astral.sh/uv)", False)
+    body = {
+        "server": "io.github.carol/sheets", "fingerprint": plan["fingerprint"],
+        "name": "acme-sheets", "owner": "acme", "project": "acme-web",
+        "values": {"SHEETS_TOKEN": "sheets-token"},
+    }  # fmt: skip
+    assert owner.post("/connections/local", json={**body, "values": {}}).status_code == 409
+    assert uv.calls == []
+
+    assert owner.post("/connections/local", json=body).status_code == 202
+    assert wait_installed(owner, "acme-sheets")["state"] == "done"
+    folder = get_settings().data_dir / "mcp-packages" / "pypi" / "sheets-mcp@0.4.1"
+    venv, pip = uv.calls
+    assert venv == ["C:/tools/uv", "venv", "--quiet", str(folder / "venv")]
+    assert pip[:3] == ["C:/tools/uv", "pip", "install"]
+    assert pip[-1] == "sheets-mcp==0.4.1"  # exactly the confirmed version
+    assert Path(pip[pip.index("--python") + 1]).is_relative_to(folder)
+    package, spec = spec_of("acme-sheets")
+    assert package == {
+        "registry": "pypi", "identifier": "sheets-mcp", "version": "0.4.1",
+        "pinned": "sheets-mcp@0.4.1",
+    }  # fmt: skip
+    program = Path(spec["command"])
+    assert program.stem == "sheets-mcp"
+    assert program.is_relative_to(folder / "venv")
+    assert spec["args"] == ["--mode", "read-only"]
+    assert spec["env"] == {"SHEETS_TOKEN": "sheets-token"}
+
+    assert owner.delete("/connections/acme-sheets", params={"force": True}).status_code == 204
+    assert not folder.exists()
+
+
+class FakeDocker:
+    """`docker pull` and `docker image inspect`, remembering what was asked."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args: list[str], cwd: Path) -> str:
+        self.calls.append(args)
+        return f"{DIGEST}\n" if args[1:3] == ["image", "inspect"] else ""
+
+
+def test_a_container_runs_pinned_to_its_digest(
+    owner: TestClient, world: FakeWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker = FakeDocker()
+    monkeypatch.setattr(local_servers, "runner", docker)
+    monkeypatch.setattr(local_servers, "finder", no_tools)
+    owner.post("/projects", json={"name": "acme-web", "owner": "acme"})
+
+    plan = owner.post("/catalog/plan", json={"server": "io.github.dan/search"}).json()
+    assert plan["install"] == "docker pull ghcr.io/dan/search-mcp:2.0.0"
+    assert (plan["needs"], plan["missing"]) == ("Docker Desktop (docker.com)", True)
+    body = {
+        "server": "io.github.dan/search", "fingerprint": plan["fingerprint"],
+        "name": "acme-search", "owner": "acme", "project": "acme-web",
+        "values": {"SEARCH_KEY": "search-key"},
+    }  # fmt: skip
+    # Without Docker it says what's needed, and nothing runs.
+    assert owner.post("/connections/local", json=body).status_code == 202
+    failed = wait_installed(owner, "acme-search")
+    assert failed["state"] == "failed"
+    assert "Docker Desktop" in str(failed["error"])
+    assert docker.calls == []
+
+    monkeypatch.setattr(local_servers, "finder", found_tools)
+    assert (
+        owner.post("/catalog/plan", json={"server": "io.github.dan/search"}).json()["fingerprint"]
+        == plan["fingerprint"]
+    )  # the same confirmation still holds
+    assert owner.post("/connections/local", json=body).status_code == 202
+    assert wait_installed(owner, "acme-search")["state"] == "done"
+    pull, inspect = docker.calls
+    assert pull == ["C:/tools/docker", "pull", "ghcr.io/dan/search-mcp:2.0.0"]
+    assert inspect[-1] == "ghcr.io/dan/search-mcp:2.0.0"
+    package, spec = spec_of("acme-search")
+    assert package["pinned"] == DIGEST
+    assert spec["command"] == "C:/tools/docker"
+    # Runs the digest it pulled, not the tag; the key goes by name, never on the command line.
+    assert spec["args"] == ["run", "-i", "--rm", "-e", "SEARCH_KEY", DIGEST]
+    assert spec["env"] == {"SEARCH_KEY": "search-key"}
+    assert "search-key" not in json.dumps(spec["args"])
