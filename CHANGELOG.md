@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Install extension.** Claude Desktop extension files (`.mcpb`) install from
+  the catalog: open the file, check what it says it is (its publisher, tools,
+  the command it runs, the settings it needs), confirm once, and it's unpacked
+  into Ringkeeper's data folder and connected. It follows the same approval
+  rules as an extension imported from Claude Desktop.
+
 ## 0.1.0-beta.1 (2026-10-26)
 
 The first beta of the desktop app for Windows.

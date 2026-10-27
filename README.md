@@ -80,6 +80,15 @@ one-click sign-in works (Ringkeeper asks the server, and remembers for a week).
   a newer version, the connection offers it, with the same confirmation. They
   need Node.js, uv or Docker on the computer, and say so if it's missing.
 - **Add by address:** any remote MCP server that isn't in the registry.
+- **Install extension:** a Claude Desktop extension file (`.mcpb`, or the older
+  `.dxt`). One confirmation screen shows what its manifest says: the name and
+  version, the publisher (as the extension states it; nobody has checked it),
+  its tools, the command it runs and anything this computer is missing for it
+  (Node.js or Python, say), and the settings it asks for. Installing unpacks
+  that same file (named by its SHA-256) into the data folder
+  (`mcp-packages/mcpb`); a file with paths that would land outside its folder,
+  links, or a platform other than this one isn't installed. Like an imported
+  extension, it's added as Test data.
 - **Claude Desktop import** stays: its config file and installed extensions.
 
 A server that is one of the recommended services (matched by its address)

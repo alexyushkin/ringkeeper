@@ -311,9 +311,10 @@ def job(name: str) -> Job | None:
 
 
 def remove_folder(settings: Settings, pinned: str, registry: str) -> None:
-    """Drop an installed package's folder (a removed connection's), if it's ours."""
+    """Drop an installed package's (or extension's) folder, a removed connection's,
+    if it's ours."""
     identifier, _, version = pinned.rpartition("@")
-    if registry in ("npm", "pypi") and identifier and version:
+    if registry in ("npm", "pypi", "mcpb") and identifier and version:
         folder = folder_for(settings, registry, identifier, version)
         root = (settings.data_dir / "mcp-packages").resolve()
         if folder.resolve().is_relative_to(root):

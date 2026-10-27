@@ -28,7 +28,7 @@ from ringkeeper.workers.runtime import ContainerRuntime
 
 MAX_BODY_BYTES = 1_000_000
 # Endpoints with their own (bigger) limit, checked as they stream.
-OWN_LIMIT_PATHS = frozenset({"/voice/transcribe"})
+OWN_LIMIT_PATHS = frozenset({"/voice/transcribe", "/catalog/extensions"})
 
 
 class BodyLimit:

@@ -3,15 +3,16 @@
 import { useEffect, useState } from "react";
 
 import { RemoteServices } from "@/components/connection-library";
-import { Alert, Badge, Button, Details, Field, Select, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Details, Field, Select, Spinner, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { ENVS, slugify } from "@/lib/client/words";
 
 /**
  * The open catalog: the Recommended shelf (services with built-in rules: scope
  * narrowing, SQL checks), then any MCP server from the MCP Registry (searchable,
- * and from a cache when offline), then any remote server by its address. Every
- * connection belongs to `client`; with `project`, it's linked to that project.
+ * and from a cache when offline), then any remote server by its address, then a
+ * desktop extension from its file. Every connection belongs to `client`; with
+ * `project`, it's linked to that project.
  */
 
 interface Header {
@@ -88,6 +89,34 @@ interface Plan {
   fingerprint: string;
 }
 
+interface ExtensionSetting {
+  key: string;
+  title: string;
+  description: string;
+  type: string;
+  required: boolean;
+  secret: boolean;
+  default: string;
+  multiple: boolean;
+}
+
+interface Extension {
+  fingerprint: string;
+  name: string;
+  title: string;
+  version: string;
+  description: string;
+  publisher: string;
+  kind: string;
+  tools: { name: string; description: string }[];
+  tools_generated: boolean;
+  settings: ExtensionSetting[];
+  runs: string;
+  problem: string | null;
+  size: number;
+  files: number;
+}
+
 interface Target {
   client: string;
   project?: string;
@@ -96,6 +125,18 @@ interface Target {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Wait for a background install (a package or an extension) to finish. */
+async function installed(name: string): Promise<void> {
+  const deadline = Date.now() + 15 * 60_000;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const job = await api<{ state: string; error: string | null }>(`connections/local/${name}`);
+    if (job.state === "done") return;
+    if (job.state === "failed") throw new Error(job.error ?? "The install failed.");
+    if (Date.now() > deadline) throw new Error("The install is taking too long. Check back later.");
+  }
 }
 
 export function Verified({ server }: { server: { publisher: string; verified: string } }) {
@@ -123,6 +164,9 @@ export function Catalog(target: Target) {
       <CatalogSearch {...target} />
       <Details label="Add a server by its address">
         <AddByUrl {...target} />
+      </Details>
+      <Details label="Install extension (.mcpb file)">
+        <InstallExtension {...target} />
       </Details>
     </div>
   );
@@ -364,14 +408,8 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
     setError(null);
     try {
       await api("connections/local", { json: { server: server.name, package: index, fingerprint: plan.fingerprint, name, owner: client, env, project: replace ? null : (project ?? null), values, replace: replace ?? null } });
-      const deadline = Date.now() + 15 * 60_000;
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 1500));
-        const job = await api<{ state: string; error: string | null }>(`connections/local/${name}`);
-        if (job.state === "done") return onAdded(name);
-        if (job.state === "failed") throw new Error(job.error ?? "The install failed.");
-        if (Date.now() > deadline) throw new Error("The install is taking too long. Check back later.");
-      }
+      await installed(name);
+      onAdded(name);
     } catch (err) {
       setError(errorText(err));
       setState("idle");
@@ -411,6 +449,109 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
         {replace ? `Update to ${plan.version}` : `Install ${plan.identifier} ${plan.version} and connect`}
       </Button>
       {state === "installing" ? <p className="text-xs text-muted">Installing… this can take a minute.</p> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+/**
+ * A desktop extension (.mcpb) from its file: what its manifest says, one
+ * confirmation, then it's unpacked into the data folder like a local server.
+ * Same rules as an extension imported from Claude Desktop: Test data, and
+ * anything not marked read-only waits for approval.
+ */
+function InstallExtension({ client, project, onAdded }: Target) {
+  const [shown, setShown] = useState<Extension | null>(null);
+  const [name, setName] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [state, setState] = useState<"idle" | "reading" | "installing">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function open(file: File | undefined) {
+    if (!file) return;
+    setShown(null);
+    setValues({});
+    setError(null);
+    setState("reading");
+    try {
+      const found = await api<Extension>("catalog/extensions", { body: file, contentType: "application/octet-stream" });
+      setShown(found);
+      setName(slugify(`${client} ${found.title}`).slice(0, 60));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setState("idle");
+    }
+  }
+
+  async function install() {
+    if (!shown) return;
+    setState("installing");
+    setError(null);
+    try {
+      await api("connections/extension", { json: { fingerprint: shown.fingerprint, name, owner: client, project: project ?? null, values } });
+      await installed(name);
+      onAdded(name);
+    } catch (err) {
+      setError(errorText(err));
+      setState("idle");
+    }
+  }
+
+  const missing = shown?.settings.some((s) => s.required && !s.default && !values[s.key]?.trim()) ?? true;
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-xs text-muted">An extension file for Claude Desktop (.mcpb), from its publisher. Ringkeeper shows what&apos;s in it before anything is installed.</p>
+      <input type="file" accept=".mcpb,.dxt" aria-label="Extension file" disabled={state !== "idle"} onChange={(event) => void open(event.target.files?.[0])} className="block w-full text-sm" />
+      {state === "reading" ? <Spinner /> : null}
+      {shown ? (
+        <>
+          <p className="font-medium">
+            {shown.title} {shown.version}
+          </p>
+          {shown.description ? <p className="text-muted">{shown.description}</p> : null}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className="text-muted">Publisher</dt>
+            <dd>
+              {shown.publisher} <span className="text-xs text-muted">(as the extension says; not verified)</span>
+            </dd>
+            <dt className="text-muted">Tools</dt>
+            <dd>
+              {shown.tools.length
+                ? shown.tools.map((t, i) => (
+                    <span key={t.name} title={t.description || undefined}>
+                      {i ? ", " : ""}
+                      <code>{t.name}</code>
+                    </span>
+                  ))
+                : "None listed"}
+              {shown.tools_generated ? (shown.tools.length ? ", and others it lists when it starts" : ": it lists them when it starts") : null}
+            </dd>
+            <dt className="text-muted">Runs</dt>
+            <dd>
+              <code>{shown.runs}</code>, unpacked into Ringkeeper&apos;s data folder and started for each call with only the settings below
+            </dd>
+            <dt className="text-muted">File</dt>
+            <dd>
+              {(shown.size / 1_000_000).toFixed(1)} MB, {shown.files} files
+            </dd>
+          </dl>
+          {shown.problem ? <Alert tone="warn">This can&apos;t run here: {shown.problem}.</Alert> : null}
+          <Field label="Name" value={name} onChange={(v) => setName(slugify(v))} hint="A short name the agent uses for it." />
+          <p className="text-xs text-muted">Added as Test data, like an extension imported from Claude Desktop: tools marked read-only run without asking; everything else waits for you.</p>
+          {shown.settings.map((s) =>
+            s.multiple ? (
+              <TextArea key={s.key} label={`${s.title}${s.required ? "" : " (optional)"}`} value={values[s.key] ?? ""} onChange={(v) => setValues({ ...values, [s.key]: v })} hint={[s.description, "One per line.", s.default ? `Default: ${s.default}` : ""].filter(Boolean).join(" ")} />
+            ) : (
+              <Field key={s.key} label={`${s.title}${s.required ? "" : " (optional)"}`} type={s.secret ? "password" : "text"} value={values[s.key] ?? ""} onChange={(v) => setValues({ ...values, [s.key]: v })} placeholder={s.default || undefined} hint={s.description || undefined} />
+            ),
+          )}
+          <Button kind="primary" busy={state === "installing"} disabled={Boolean(shown.problem) || missing || !name} onClick={install}>
+            Install {shown.title} {shown.version} and connect
+          </Button>
+          {state === "installing" ? <p className="text-xs text-muted">Installing…</p> : null}
+        </>
+      ) : null}
       {error ? <Alert>{error}</Alert> : null}
     </div>
   );

@@ -35,7 +35,8 @@ const PUBLIC = new Set([
 const SIGNS_IN = new Set(["setup/owner", "auth/login", "auth/passkeys/login"]);
 // Each path segment as the app's own calls make them; never "." or "..".
 const SAFE_SEGMENT = /^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$/;
-const MAX_BODY_BYTES = 1_000_000; // voice uploads stream through with their own limit
+const MAX_BODY_BYTES = 1_000_000; // voice and extension uploads stream through with their own limits
+const STREAMED = new Set(["voice/transcribe", "catalog/extensions"]);
 
 function problem(status: number, detail: string): NextResponse {
   return NextResponse.json({ detail }, { status });
@@ -76,7 +77,7 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
     return response;
   }
 
-  const streamingUpload = joined === "voice/transcribe";
+  const streamingUpload = STREAMED.has(joined);
   let body: BodyInit | null = null;
   if (method !== "GET" && method !== "HEAD") {
     if (streamingUpload) {

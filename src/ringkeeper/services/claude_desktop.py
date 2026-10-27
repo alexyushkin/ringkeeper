@@ -132,7 +132,7 @@ def read_servers(path: Path) -> list[Server]:
     return [_server(str(name), entry) for name, entry in cast(JSON, listed).items()]
 
 
-def _missing_command(command: str) -> str | None:
+def missing_command(command: str) -> str | None:
     if shutil.which(command) is not None:
         return None
     needs = NEEDS.get(Path(command).stem.lower())
@@ -153,7 +153,7 @@ def _server(name: str, entry: Any) -> Server:
     if "url" in spec:
         return Server(name, spec, "url", mcp.preview(spec), None)
     command = str(spec["command"])
-    return Server(name, spec, "command", mcp.preview(spec), _missing_command(command))
+    return Server(name, spec, "command", mcp.preview(spec), missing_command(command))
 
 
 # --- Desktop extensions ---
@@ -214,7 +214,7 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-def _fill(text: str, directory: str, values: JSON) -> list[str]:
+def fill(text: str, directory: str, values: JSON) -> list[str]:
     """One manifest string with its placeholders filled. A string that is just one
     list setting (several folders, say) becomes one argument per item."""
     whole = PLACEHOLDER.fullmatch(text)
@@ -254,17 +254,17 @@ def complete(server: Server, given: dict[str, str] | None = None) -> Server:
     args = [
         a
         for arg in cast(list[Any], template.get("args") or [])
-        for a in _fill(str(arg), directory, values)
+        for a in fill(str(arg), directory, values)
     ]
     env = {
-        str(k): _fill(str(v), directory, values)[0]
+        str(k): fill(str(v), directory, values)[0]
         for k, v in cast(JSON, template.get("env") or {}).items()
     }
-    command = _fill(str(template["command"]), directory, values)[0]
+    command = fill(str(template["command"]), directory, values)[0]
     spec: JSON = {"command": command, "args": args, "env": env}
     if given and (missing := [n.title for n in server.needed if n.key not in given]):
         raise RuleViolationError(f"{server.name} needs {', '.join(missing)} to start.")
-    return replace(server, spec=spec, preview=mcp.preview(spec), problem=_missing_command(command))
+    return replace(server, spec=spec, preview=mcp.preview(spec), problem=missing_command(command))
 
 
 # --- Importing ---

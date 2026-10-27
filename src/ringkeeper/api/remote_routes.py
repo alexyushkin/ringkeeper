@@ -1,7 +1,8 @@
 """The catalog and connecting what's in it: the Recommended shelf (services with
 built-in rules), the MCP Registry search, a remote server signed in to or given
 a token or header, a server added by its address, a local server installed
-after one confirmation, and the sign-in callback.
+after one confirmation, an extension installed from its file (.mcpb) after one
+confirmation, and the sign-in callback.
 
 The callback has no session to check: the browser arrives there from the
 service's own page. It is protected by the one-time `state` instead, which
@@ -9,11 +10,14 @@ only the sign-in this process started knows (services.mcp_oauth).
 """
 
 import contextlib
+import hashlib
 import json
+import tempfile
 from html import escape
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import Field
 
@@ -27,6 +31,7 @@ from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import Input, InstanceIn, NonEmpty, ScopeValue, Slug
 from ringkeeper.services import (
     admin_audit,
+    bundles,
     catalog,
     instances,
     local_servers,
@@ -241,6 +246,106 @@ def _store_local(
         )  # fmt: skip
     if old.get("pinned") and old.get("pinned") != package["pinned"]:
         local_servers.remove_folder(settings, str(old["pinned"]), str(old.get("registry")))
+
+
+# --- Extensions from a file (.mcpb): the manifest to confirm, then the same kind of install ---
+
+
+@router.post("/catalog/extensions")
+async def read_extension(
+    request: Request, content_length: Annotated[int | None, Header()] = None
+) -> dict[str, Any]:
+    """Keep the uploaded file (under its SHA-256) and show what's in its manifest."""
+    too_big = f"That file is too big; the limit is {bundles.MAX_BYTES // 1_000_000} MB."
+    if content_length is not None and content_length > bundles.MAX_BYTES:
+        raise HTTPException(413, detail=too_big)
+    settings = get_settings()
+    folder = bundles.uploads(settings)
+    folder.mkdir(parents=True, exist_ok=True)
+    digest, size = hashlib.sha256(), 0
+    with tempfile.NamedTemporaryFile(dir=folder, suffix=".part", delete=False) as out:
+        received = Path(out.name)
+        try:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > bundles.MAX_BYTES:
+                    raise HTTPException(413, detail=too_big)
+                digest.update(chunk)
+                out.write(chunk)
+        except BaseException:
+            out.close()
+            received.unlink(missing_ok=True)
+            raise
+    if not size:
+        received.unlink(missing_ok=True)
+        raise HTTPException(422, detail="The file is empty.")
+    path = bundles.keep(settings, received, digest.hexdigest())
+    try:
+        return bundles.read(path, digest.hexdigest()).as_dict()
+    except bundles.BundleError:
+        path.unlink(missing_ok=True)
+        raise
+
+
+class ExtensionIn(Input):
+    fingerprint: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    name: Slug
+    owner: NonEmpty
+    project: Slug | None = None
+    values: Values = Field(default_factory=dict[str, str], repr=False)
+
+
+@router.post("/connections/extension", status_code=202, dependencies=[RecentAuth])
+def install_extension(data: ExtensionIn, session: SessionDep) -> dict[str, Any]:
+    """Install the extension that was shown (named by its SHA-256) and connect it."""
+    settings = get_settings()
+    path = bundles.staged(settings, data.fingerprint)
+    if not path.is_file():
+        raise HTTPException(409, detail="Open the extension file again: it isn't here anymore.")
+    bundle = bundles.read(path, data.fingerprint)
+    if bundle.problem:
+        raise RuleViolationError(f"{bundle.title} can't run here: {bundle.problem}.")
+    # As an extension imported from Claude Desktop: Test data, and its calls wait for
+    # approval by the generic tool rules (adapters.mcp). It can be set to Production.
+    new = NewConnection(name=data.name, owner=data.owner, env=Env.DEV, project=data.project)
+    remote_connections.check_new(session, new)
+    values = dict(data.values)
+    bundles.values_for(bundle, values)  # anything required that's missing, before starting
+
+    def work() -> None:
+        spec = bundles.install(settings, bundle, path, values)
+        _store_extension(new, bundle, spec)
+
+    local_servers.start(new.name, work)
+    return {"name": new.name, "state": "installing"}
+
+
+def _store_extension(new: NewConnection, bundle: bundles.Bundle, spec: dict[str, Any]) -> None:
+    settings = get_settings()
+    secret = json.dumps({k: spec[k] for k in ("command", "args", "env")})
+    package = {
+        "registry": bundles.REGISTRY, "identifier": bundle.name, "version": bundle.version,
+        "pinned": spec["pinned"],
+    }  # fmt: skip
+    config = {
+        "source": bundles.REGISTRY, "extension": bundle.title, "package": package,
+        "publisher": bundle.publisher, "preview": spec["preview"],
+    }  # fmt: skip
+    with session_scope() as session:
+        ref = secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
+        instances.create_instance(
+            session,
+            InstanceIn(
+                name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref,
+                owner=new.owner, config=config,
+            ),
+        )  # fmt: skip
+        admin_audit.record(
+            session, "connection.create",
+            f"installed the extension {bundle.title} {bundle.version} as {new.name} ({new.env})",
+            by="owner", instance=new.name,
+        )  # fmt: skip
+        remote_connections.link(session, new)
 
 
 @router.get("/connections/local/{name}")
