@@ -223,7 +223,7 @@ def test_the_engine_downloads_with_the_model_checked_and_unpacked(
     extra = importlib.import_module("fakevoice_extra").EXTRA
     assert (heard, extra) == ("hello", True)
     [folder] = (tmp_path / "voice").glob("engine-*")
-    assert sorted(p.name for p in folder.iterdir()) == [
+    assert sorted(p.name for p in folder.iterdir() if p.name != "__pycache__") == [
         ".complete", "fakevoice", "fakevoice-1.0.dist-info", "fakevoice_extra.py",
     ]  # fmt: skip
     assert not list((tmp_path / "voice").glob("*.partial"))
