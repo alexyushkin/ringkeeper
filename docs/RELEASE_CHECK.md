@@ -63,39 +63,40 @@ uninstaller's `/DELETEDATA` switch ticks "Also delete my data" for silent runs.
 
 ### Sizes
 
-| | |
-| --- | --- |
-| Installer (download) | **246.9 MB** (`Ringkeeper_0.1.0-beta.1_x64-setup.exe`, SHA-256 `D24641230A72D997ADB8410B9ABAAD2873FE2D8DD01155CD8BF5947F20F11B5C`) |
-| Installed | **846 MB**, 21,222 files |
+After moving voice to a download and dropping Git Credential Manager and the
+AWS SDK (installed sizes in MiB, as Explorer shows them):
 
-What takes the space (installed):
+| | Before | Now |
+| --- | ---: | ---: |
+| Installer (download) | 246.9 MB | **165.0 MB** |
+| Installed | 846 MB, 21,222 files | **555 MB, 16,687 files** |
+| Silent install | 41–61 s | 53 s |
+| Uninstall | 22 s | 69 s (on a busy machine: the test suites were running) |
+
+What takes the space now (installed):
 
 | Part | MB | Notes |
 | --- | ---: | --- |
-| Claude Code CLI (`claude.exe`, inside the Agent SDK) | 285 | what agents run on; required |
-| Local voice (faster-whisper's engine: av, ctranslate2, onnxruntime, numpy, tokenizers, huggingface) | ~238 | code only; the speech model downloads on first use |
-| MinGit (git for workers) | 96 | ~25 MB of it is Git Credential Manager, which workers don't use |
-| Ringkeeper's other Python packages | ~110 | anthropic, AWS SDK (server mode only, ~29 MB), SQLAlchemy, cryptography, ... |
-| Precompiled Python (`.pyc`) | 74 | makes the first start faster |
-| Python itself (runtime and standard library) | ~40 | |
+| Claude Code CLI (`claude.exe`, inside the Agent SDK) | 283 | what agents run on; required |
+| Ringkeeper's other Python packages, Python itself, `.pyc` | ~192 | |
+| MinGit (git for workers) | 64 | without Git Credential Manager (was 96) |
 | App, web app, notices | ~16 | |
 
-What could be trimmed, biggest first:
+Voice is now one download the first time it's used, with its size shown
+first and then its progress: the engine's 13 wheels from PyPI (84 MB, each
+checked against the SHA-256 the installer lists) and the speech model
+(486 MB), about 570 MB in all. The build runs that same engine download and
+imports it, so a broken wheel list fails the build, not a user's first try.
 
-1. **Voice as an optional download** (its code, like its model): −238 MB
-   installed, roughly −70 MB download. Voice would then ask to download ~300
-   MB the first time instead of ~240 MB.
-2. **Drop Git Credential Manager from MinGit**: −25 MB; workers authenticate
-   with tokens, not GCM.
-3. **Move the AWS SDK to a server-only extra**: −29 MB and ~2,300 fewer files
-   (it's only for the AWS Secrets Manager vault in server mode).
-4. **Ship compiled Python only** (no `.py`): −70 MB and ~8,000 fewer files,
-   which shortens install and uninstall too; error reports lose source lines.
-5. **Don't precompile**: −74 MB and ~8,000 fewer files; the first start gets
-   slower (Python compiles on first use).
+Further trims, not done:
 
-Not trimmable: the Claude Code CLI is one 285 MB program, and it's what runs
-the agents.
+1. **Ship compiled Python only** (no `.py`): about −70 MB and ~8,000 fewer
+   files, which shortens install and uninstall; error reports lose source lines.
+2. **Don't precompile**: about −74 MB and ~8,000 fewer files; the first start
+   gets slower.
+
+Not trimmable: the Claude Code CLI is one program, and it's what runs the
+agents.
 
 ### Scripted checks (developer machine, Windows 11 Pro 26300)
 
@@ -104,8 +105,8 @@ the agents.
 | Defender | installer scan: no threats; real-time protection on through about ten installs, updates and uninstalls: no detections |
 | Silent install (`/S`) | 41–61 s (Defender scans each new file); per user, no administrator prompt |
 | First start (database, master key) | backend ready in 6–21 s |
-| Settings › About | version 0.1.0-beta.1, 463 third-party components with their notices |
-| Start at sign-in | registered as `<install folder>ingkeeper.exe --hidden` |
+| Settings › About | version 0.1.0-beta.1, 463 third-party components with their notices (456 after the trims, including the 13 voice packages, listed as downloaded for voice) |
+| Start at sign-in | registered as `<install folder>\ringkeeper.exe --hidden` |
 | Install folder longer than 90 characters | refused (Windows' 260-character path limit; the bundle's deepest file is 158 characters below the folder) |
 | Update 0.1.0-beta.1 → 0.1.0-beta.2 via the updater | found 15–30 s after start, downloaded and its signature checked; "Restart now" stops the backend and runs the installer; the new version reports 0.1.0-beta.2, reopens by itself with the same arguments, and has the same projects and database. About 2.5 minutes from Restart now to reopened (test installers were uncompressed, on a busy machine); the old copy is then removed in the background |
 | Update that fails halfway (a file the installer can't write) | installer stops (exit code 2), the previous version is put back unchanged (same files, same program), and it starts with its data |
