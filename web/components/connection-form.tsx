@@ -35,7 +35,7 @@ export const SERVICES: Record<string, ServiceInfo> = {
     example: "Acme automations",
     get: [["n8n's API settings", "https://docs.n8n.io/api/authentication/"]],
     steps: "In n8n, open Settings › n8n API and create an API key. (n8n Cloud's free trial has no API.)",
-    address: { label: "n8n address", placeholder: "https://n8n.acme.com" },
+    address: { label: "n8n address", placeholder: "https://n8n.acme.example" },
     secret: [{ key: "", label: "API key", hidden: true }],
   },
   airtable: {

@@ -19,7 +19,7 @@ def test_an_empty_folder_gets_one_named_after_the_project(tmp_path: Path) -> Non
 
 
 def test_the_workspaces_folder_may_be_inside_the_data_folder(tmp_path: Path) -> None:
-    """As DESKTOP_REAL_TASK_CHECK.md sets it up: a project folder there is fine."""
+    """As a run from the repo sets it up (.desktop-data/workspaces): a folder there is fine."""
     data = tmp_path / "data"
     configured = settings(data, data / "workspaces")
     assert choose(configured, "", "acme-web") == data / "workspaces" / "acme-web"

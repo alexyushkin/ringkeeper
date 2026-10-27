@@ -171,7 +171,10 @@ async def search_messages(
     target: Target,
     query: Annotated[
         str,
-        Field(description="Gmail search, e.g. from:anna@acme.com newer_than:7d.", max_length=500),
+        Field(
+            description="Gmail search, e.g. from:anna@acme.example newer_than:7d.",
+            max_length=500,
+        ),
     ] = "",
     mailbox: Mailbox = "inbox",
     limit: Annotated[int, Field(ge=1, le=50)] = 20,

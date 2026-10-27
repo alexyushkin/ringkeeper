@@ -895,8 +895,6 @@ uv run ringkeeper desktop --web-dir web/.desktop/out --data-dir ./.desktop-data
 Then open the window the way the shell does: POST `/desktop/codes` with
 `Authorization: Bearer <secret>` and open `/desktop/start?code=<code>`. There
 is no sign-in; that link is the lock (see `src/ringkeeper/desktop/server.py`).
-[docs/DESKTOP_REAL_TASK_CHECK.md](docs/DESKTOP_REAL_TASK_CHECK.md) walks through
-one real task this way.
 
 The app itself is the shell in `shell/` (Tauri 2, Rust): the window, the tray,
 and the backend it starts, restarts and stops. A debug build runs the backend

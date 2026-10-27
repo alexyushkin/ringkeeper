@@ -19,7 +19,7 @@ back. A local runner can't kill what it can't see, so here Ringkeeper itself
 takes those files before the worker starts and, once the worker's whole tree
 is dead, puts them back (ringkeeper_worker.gitguard, the same code).
 
-What a container gave and this doesn't (docs/DESKTOP_PLAN.md, section 3): the
+What a container gave and this doesn't: the
 worker can read whatever the user can, reach the local network, and the
 architect's "read-only" workspace is only enforced by its tool list. Its
 connection secrets still never reach it: the gateway holds them.

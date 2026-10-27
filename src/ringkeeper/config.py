@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # server: the Docker install (Postgres, worker containers, owner sign-in).
     # desktop: the desktop app (SQLite in data_dir, the master key in the OS
-    # keychain). Same core either way; see docs/DESKTOP_PLAN.md.
+    # keychain). Same core either way.
     mode: Literal["server", "desktop"] = "server"
 
     # Desktop mode defaults to data_dir/ringkeeper.db when this isn't set.
