@@ -4,8 +4,10 @@ installing a pinned local package (fake npm, uv and docker), and the generic rul
 servers without built-in ones: unannotated tools are held."""
 
 import json
+import logging
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -275,12 +277,52 @@ class FakeNpm:
         return ""
 
 
+class InstallLog(logging.Handler):
+    """What the install threads logged, for a failure message."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.DEBUG)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        line = f"{record.levelname} {record.name}: {record.getMessage()}"
+        if record.exc_info:
+            line += "\n" + logging.Formatter().formatException(record.exc_info)
+        self.lines.append(line)
+
+
+INSTALL_LOG = InstallLog()
+
+
+@pytest.fixture(autouse=True)
+def install_log() -> Iterator[InstallLog]:
+    logger = logging.getLogger("ringkeeper")
+    level = logger.level
+    INSTALL_LOG.lines.clear()
+    logger.addHandler(INSTALL_LOG)
+    logger.setLevel(logging.DEBUG)
+    yield INSTALL_LOG
+    logger.removeHandler(INSTALL_LOG)
+    logger.setLevel(level)
+
+
 def wait_installed(owner: TestClient, name: str) -> dict[str, Any]:
+    """The install's final status. A failure shows the status response, the job as
+    the registry has it, and what the install logged."""
     deadline = time.monotonic() + 10
-    while (status := owner.get(f"/connections/local/{name}").json())["state"] == "installing":
-        assert time.monotonic() < deadline
+    while True:
+        response = owner.get(f"/connections/local/{name}")
+        status: dict[str, Any] = response.json() if response.status_code == 200 else {}
+        state = status.get("state")
+        if state is None or time.monotonic() > deadline:
+            log = "\n".join(INSTALL_LOG.lines) or "(empty)"
+            pytest.fail(
+                f"install status of {name!r}: HTTP {response.status_code} {response.text}\n"
+                f"job: {local_servers.job(name)!r}\ninstall log:\n{log}"
+            )
+        if state != "installing":
+            return status
         time.sleep(0.05)
-    return status
 
 
 def test_a_local_server_installs_pinned_after_one_confirmation(
