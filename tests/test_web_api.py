@@ -560,6 +560,16 @@ def test_subscription_mode_switches_the_mode(owner: TestClient) -> None:
     assert owner.get("/settings").json()["values"]["claude_auth_mode"] == "subscription"
 
 
+def test_setup_offers_the_subscription_only_with_the_toggle(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert owner.get("/setup/status").json()["claude"]["subscription_offered"] is False
+    monkeypatch.setenv("RINGKEEPER_ALLOW_SUBSCRIPTION", "1")
+    claude = owner.get("/setup/status").json()["claude"]
+    assert claude["subscription_offered"] is True
+    assert "Personal use only" in claude["subscription_note"]
+
+
 def test_telegram_token_and_chat_detection(
     owner: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

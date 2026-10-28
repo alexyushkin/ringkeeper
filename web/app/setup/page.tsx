@@ -9,7 +9,7 @@ import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { Catalog } from "@/components/catalog";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
-import { Alert, Button, Card, Details, Field, Loading, Select, Toggle } from "@/components/ui";
+import { Alert, Button, Card, Field, Loading, Select, Toggle } from "@/components/ui";
 import { ApiError, api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { WORKSPACE_HINT, download } from "@/lib/client/words";
@@ -20,7 +20,7 @@ interface Status {
   setup_code_hint: string | null;
   // Only when signed in:
   recovery_saved?: boolean;
-  claude?: { mode: string; api_key: boolean; subscription: boolean };
+  claude?: { mode: string; api_key: boolean; subscription: boolean; subscription_offered: boolean; subscription_note: string };
   telegram?: { token: boolean; enabled: boolean; chats: number[] };
   projects?: number;
   connections?: number;
@@ -48,9 +48,11 @@ export default function SetupPage() {
   useEffect(() => {
     refresh()
       .then(async (s) => {
+        // Claude is set up once the way it's paid for has its key or token.
+        const claude = s.claude?.mode === "subscription" ? s.claude.subscription : s.claude?.api_key;
         if (DESKTOP) {
           const skipped = localStorage.getItem("rk-setup-connection") === "skipped";
-          setStep(!s.claude?.api_key ? 0 : s.projects === 0 ? 1 : s.connections === 0 && !skipped ? 2 : 3);
+          setStep(!claude ? 0 : s.projects === 0 ? 1 : s.connections === 0 && !skipped ? 2 : 3);
           return;
         }
         if (s.owner && !s.signed_in) {
@@ -61,7 +63,7 @@ export default function SetupPage() {
         const skipped = localStorage.getItem("rk-setup-telegram") === "skipped";
         setStep(
           !s.owner || !s.recovery_saved ? 0
-          : !s.claude?.api_key && !s.claude?.subscription ? 1
+          : !claude ? 1
           : !s.telegram?.enabled && !skipped ? 2
           : s.projects === 0 ? 3
           : s.connections === 0 ? 4
@@ -97,7 +99,7 @@ export default function SetupPage() {
       </p>
       {DESKTOP ? (
         <>
-          {step === 0 ? <ClaudeStep onDone={next} /> : null}
+          {step === 0 ? <ClaudeStep status={status} onDone={next} /> : null}
           {step === 1 ? (
             <DesktopProjectsStep
               onDone={(name, result) => {
@@ -112,7 +114,7 @@ export default function SetupPage() {
         </>
       ) : null}
       {!DESKTOP && step === 0 ? <OwnerStep status={status} onDone={() => refresh().then(next)} /> : null}
-      {!DESKTOP && step === 1 ? <ClaudeStep onDone={next} /> : null}
+      {!DESKTOP && step === 1 ? <ClaudeStep status={status} onDone={next} /> : null}
       {!DESKTOP && step === 2 ? <TelegramStep onDone={next} /> : null}
       {!DESKTOP && step === 3 ? (
         <ProjectStep
@@ -392,13 +394,15 @@ function OwnerStep({ status, onDone }: { status: Status; onDone: () => void }) {
   );
 }
 
-function ClaudeStep({ onDone }: { onDone: () => void }) {
+function ClaudeStep({ status, onDone }: { status: Status; onDone: () => void }) {
   const [key, setKey] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [mode, setMode] = useState<"api_key" | "subscription">("api_key");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Personal subscription mode only (RINGKEEPER_ALLOW_SUBSCRIPTION or Settings#personal).
+  const offered = status.claude?.subscription_offered ?? false;
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -416,10 +420,25 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
     }
   }
 
+  async function useLogin() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api<{ message: string }>("secrets/claude/from-claude-code", { method: "POST" });
+      setMessage(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
       <h2 className="mb-1 text-lg font-semibold">Connect Claude</h2>
-      {DESKTOP ? (
+      {mode === "subscription" ? (
+        <p className="mb-4 text-sm text-muted">{status.claude?.subscription_note}</p>
+      ) : DESKTOP ? (
         <p className="mb-4 text-sm text-muted">
           Ringkeeper's assistants run on Claude. Paste an API key from{" "}
           <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer" className="text-accent underline">
@@ -441,27 +460,38 @@ function ClaudeStep({ onDone }: { onDone: () => void }) {
         </div>
       ) : (
         <form onSubmit={save} className="space-y-4" autoComplete="off">
+          {offered ? (
+            <Select
+              label="How Ringkeeper pays for Claude"
+              value={mode}
+              onChange={(value) => {
+                setMode(value === "subscription" ? "subscription" : "api_key");
+                setKey("");
+                setError(null);
+              }}
+              options={[
+                ["api_key", "API key (for client work)"],
+                ["subscription", "Use my Claude subscription (personal use only)"],
+              ]}
+            />
+          ) : null}
+          {mode === "subscription" && DESKTOP ? (
+            <Button onClick={useLogin} busy={busy}>
+              Use my Claude Code login
+            </Button>
+          ) : null}
           <Field
-            label={mode === "api_key" ? "Anthropic API key" : "Claude subscription token"}
+            label={mode === "api_key" ? "Anthropic API key" : "Token from `claude setup-token`"}
             type="password"
             value={key}
             onChange={setKey}
             placeholder={mode === "api_key" ? "sk-ant-…" : "sk-ant-oat01-…"}
+            hint={mode === "subscription" ? "Run `claude setup-token` in a terminal and paste the token it prints." : undefined}
             required
           />
           {mode === "api_key" ? (
             <Field label="Workspace ID (if your key needs one)" value={workspace} onChange={setWorkspace} placeholder="wrkspc_…" hint={WORKSPACE_HINT} />
           ) : null}
-          {DESKTOP ? null : (
-            <Details label="Advanced">
-              <Toggle
-                label="Use my Claude subscription instead"
-                checked={mode === "subscription"}
-                onChange={(on) => setMode(on ? "subscription" : "api_key")}
-                hint="Personal use only, on your own account: run `claude setup-token` and paste the token it prints. For client work, use an API key."
-              />
-            </Details>
-          )}
           {error ? <Alert>{error}</Alert> : null}
           <Button type="submit" kind="primary" busy={busy} disabled={!key}>
             {mode === "api_key" ? "Check and save" : "Save"}

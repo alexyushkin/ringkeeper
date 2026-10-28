@@ -377,7 +377,8 @@ the api like root. Build the worker image once with
 ### Subscription mode: personal use only
 
 `api_key` is the default. The setup wizard offers subscription mode only
-under **Advanced**, labeled personal use on your own account. Anthropic's Agent
+when `RINGKEEPER_ALLOW_SUBSCRIPTION=1` is set (or the hidden toggle at
+Settings#personal is on), labeled personal use only. Anthropic's Agent
 SDK terms don't allow offering claude.ai (subscription) login in products
 built on the SDK without Anthropic's approval. Subscription mode therefore exists only for running
 Ringkeeper yourself on **your own** Claude account. Never use it to run work
@@ -680,8 +681,9 @@ claim it without it), then walks through:
    key**, a file to keep somewhere safe. If you lose it, you'll need to
    re-enter your connection secrets.
 2. Claude: an Anthropic API key, checked with one free call before it's
-   stored. Under **Advanced**, your Claude subscription instead (personal
-   use on your own account).
+   stored. With `RINGKEEPER_ALLOW_SUBSCRIPTION=1`, your Claude subscription
+   instead (personal use only): a token from `claude setup-token`, or, in the
+   desktop app, your Claude Code login.
 3. Telegram, optional: paste the bot token, message the bot, and the wizard
    picks up your chat.
 4. your first project, and 5. its first connection, with **Test connection**.

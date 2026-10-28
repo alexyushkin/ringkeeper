@@ -538,9 +538,11 @@ def test_personal_subscription_mode_is_off_until_turned_on(
     assert win.post("/bff/secrets/claude/from-claude-code").status_code == 422
     claude = win.get("/bff/settings").json()["claude"]
     assert claude["subscription_allowed"] is False
+    assert win.get("/bff/setup/status").json()["claude"]["subscription_offered"] is False
 
     win.patch("/bff/settings", json={"allow_subscription": True})  # Settings#personal
     assert win.get("/bff/settings").json()["claude"]["subscription_allowed"] is True
+    assert win.get("/bff/setup/status").json()["claude"]["subscription_offered"] is True
     signed_in(first, expires_in=-60)
     expired = win.post("/bff/secrets/claude/from-claude-code")
     assert expired.status_code == 409

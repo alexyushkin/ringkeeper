@@ -1,8 +1,8 @@
 """Personal subscription mode: your own Claude subscription, on your own install only.
 
 Off unless RINGKEEPER_ALLOW_SUBSCRIPTION=1 or the hidden toggle in Settings
-(#personal) turns it on; the public docs and the setup wizard offer API keys
-only. The token comes from `claude setup-token` (pasted, long-lived) or from
+(#personal) turns it on; until then the setup wizard offers an API key only.
+The token comes from `claude setup-token` (pasted, long-lived) or from
 the Claude Code login on this computer. A login's token is short-lived: it is
 copied into the vault, and copied again before a task or a request is routed
 whenever Claude Code has since refreshed it (Claude Code refreshes it when it

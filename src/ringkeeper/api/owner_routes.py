@@ -31,7 +31,7 @@ from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import AuthMode, Instance, OwnerSession, Passkey, Project, Setting
 from ringkeeper.schemas import Input
-from ringkeeper.services import admin_audit, owner, workspaces
+from ringkeeper.services import admin_audit, owner, subscription, workspaces
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.storage.sql import insert
 from ringkeeper.vault import get_vault
@@ -135,6 +135,10 @@ def setup_status(
             "mode": settings.claude_auth_mode.value,
             "api_key": _stored(credential_ref(settings, AuthMode.API_KEY)),
             "subscription": _stored(credential_ref(settings, AuthMode.SUBSCRIPTION)),
+            # Only with personal subscription mode on (RINGKEEPER_ALLOW_SUBSCRIPTION or
+            # Settings#personal); otherwise setup offers an API key alone.
+            "subscription_offered": settings.allow_subscription,
+            "subscription_note": subscription.NOTE,
         },
         telegram={
             "token": _stored(settings.telegram_bot_token_ref),

@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **First run can use your Claude subscription** when personal subscription
+  mode is on (`RINGKEEPER_ALLOW_SUBSCRIPTION=1`): step 1 offers it next to the
+  API key, with a token from `claude setup-token` or, in the desktop app, your
+  Claude Code login. Without it, step 1 asks for an API key only.
+
 ## 0.1.0-beta.2 (2026-10-27)
 
 - **Install extension.** Claude Desktop extension files (`.mcpb`) install from
