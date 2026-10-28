@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.3 (2026-10-28)
 
 - **First run can use your Claude subscription** when personal subscription
   mode is on (`RINGKEEPER_ALLOW_SUBSCRIPTION=1`): step 1 offers it next to the
