@@ -3,6 +3,13 @@
 Ringkeeper lets one person run AI agents across many clients without ever
 switching connections.
 
+**[Download for Windows](https://github.com/alexyushkin/ringkeeper-releases/releases/latest)**
+
+Windows 10/11. Beta, unsigned: SmartScreen will warn, click **More info ›
+Run anyway**.
+
+Prefer a server? See [docs/INSTALL.md](docs/INSTALL.md) (Docker).
+
 If you work for 100 clients, each has its own database, Airtable, Vercel, n8n
 and email. With Claude Desktop or Claude Code you reconnect your tools every
 time you switch clients. In Ringkeeper you connect each client's tools once,
@@ -19,9 +26,6 @@ picks the right model for the job.
 - Runs on your own computer, with your own Claude API key
 
 Free and open source (MIT). Windows. Beta.
-
-**To install it, follow [docs/INSTALL.md](docs/INSTALL.md)**: your computer, your
-phone or a cloud server, in about 30 minutes, no programming needed.
 
 ## The idea: instances bound to projects
 

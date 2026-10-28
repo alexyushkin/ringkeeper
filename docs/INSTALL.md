@@ -1,8 +1,10 @@
 # Installing Ringkeeper
 
 > **On Windows, most people want the desktop app instead:** one installer, no
-> Docker, no terminal. See [Install](../README.md#install) in the README. This
-> guide is for the server install (Docker), for advanced setups.
+> Docker, no terminal. **[Download it here](https://github.com/alexyushkin/ringkeeper-releases/releases/latest)**
+> (Windows 10/11; SmartScreen will warn because it's unsigned: click **More
+> info › Run anyway**). This guide is for the server install (Docker), for
+> advanced setups.
 
 This guide takes you from nothing to a working Ringkeeper in about 30 minutes,
 most of it waiting for downloads. You copy and paste commands; no programming
