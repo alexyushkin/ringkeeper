@@ -553,11 +553,28 @@ def test_a_rejected_claude_key_is_not_stored(
     assert owner.get("/settings").json()["claude"]["api_key"] is False
 
 
-def test_subscription_mode_switches_the_mode(owner: TestClient) -> None:
+def test_subscription_mode_switches_the_mode(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     token = "sk-ant-oat01-" + "s" * 40
+    off = owner.put("/secrets/claude", json={"mode": "subscription", "value": token})
+    assert off.status_code == 422
+    assert "RINGKEEPER_ALLOW_SUBSCRIPTION=1" in off.json()["detail"]
+    assert owner.get("/settings").json()["claude"]["subscription_allowed"] is False
+
+    monkeypatch.setenv("RINGKEEPER_ALLOW_SUBSCRIPTION", "1")
+    assert owner.get("/settings").json()["claude"]["subscription_allowed"] is True
     response = owner.put("/secrets/claude", json={"mode": "subscription", "value": token})
     assert response.json()["verified"] is None
     assert owner.get("/settings").json()["values"]["claude_auth_mode"] == "subscription"
+
+    # Turned off again: the install keeps its subscription; it just can't change it.
+    monkeypatch.delenv("RINGKEEPER_ALLOW_SUBSCRIPTION")
+    claude = owner.get("/settings").json()["claude"]
+    assert (claude["subscription_allowed"], claude["mode"], claude["subscription"]) == (
+        False, "subscription", True,
+    )  # fmt: skip
+    assert owner.get("/setup/status").json()["claude"]["subscription"] is True
 
 
 def test_setup_offers_the_subscription_only_with_the_toggle(

@@ -137,7 +137,7 @@ def setup_status(
             "subscription": _stored(credential_ref(settings, AuthMode.SUBSCRIPTION)),
             # Only with personal subscription mode on (RINGKEEPER_ALLOW_SUBSCRIPTION or
             # Settings#personal); otherwise setup offers an API key alone.
-            "subscription_offered": settings.allow_subscription,
+            "subscription_offered": subscription.allowed(settings),
             "subscription_note": subscription.NOTE,
         },
         telegram={

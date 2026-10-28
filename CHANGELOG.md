@@ -9,6 +9,9 @@ publishes it as the release notes and the app shows it with the update.
   mode is on (`RINGKEEPER_ALLOW_SUBSCRIPTION=1`): step 1 offers it next to the
   API key, with a token from `claude setup-token` or, in the desktop app, your
   Claude Code login. Without it, step 1 asks for an API key only.
+- **Server installs follow the same rule in Settings:** the subscription is
+  offered only with `RINGKEEPER_ALLOW_SUBSCRIPTION=1`. An install already on
+  its subscription keeps running and shows a one-line notice to set it.
 
 ## 0.1.0-beta.2 (2026-10-27)
 

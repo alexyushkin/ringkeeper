@@ -384,9 +384,13 @@ built on the SDK without Anthropic's approval. Subscription mode therefore exist
 Ringkeeper yourself on **your own** Claude account. Never use it to run work
 for anyone else.
 
-If that's your case, set `RINGKEEPER_CLAUDE_AUTH_MODE=subscription` in `.env`
-and store a token from `claude setup-token` with
-`ringkeeper auth login --subscription`. Workers then get
+If that's your case, set `RINGKEEPER_ALLOW_SUBSCRIPTION=1` in `.env`; setup
+and Settings then offer your subscription next to the API key, with a token
+from `claude setup-token`. (From the terminal instead: set
+`RINGKEEPER_CLAUDE_AUTH_MODE=subscription` and run
+`ringkeeper auth login --subscription`.) An install that already uses its
+subscription keeps working without the setting; Settings just asks for it
+before you can change it. Workers then get
 `CLAUDE_CODE_OAUTH_TOKEN` and never `ANTHROPIC_API_KEY`, so billing can't
 switch silently. Budgets don't apply in this mode.
 
@@ -667,7 +671,7 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 | Clients & projects | Create and edit projects (description, other names, folder, repository, how independently it works, checks, model overrides) and link connections, with defaults. |
 | Connections | Forms for databases (Supabase, Neon, any Postgres), n8n, Airtable, Vercel, Twilio and Gmail, each with a link to where you get the key; also on each project's page, where a new connection is linked to the project. Secrets go in once, through password fields, and are never shown again. Production has a red badge. **Test connection** runs one read-only call through the adapter. |
 | Activity | The audit log with filters, and a CSV export per client. |
-| Settings | Claude (API key, or your subscription for personal use), Telegram (including the requests toggle and its privacy note), models, how many tasks at once, transcript retention, passkeys, the recovery key, and **Stop everything**. |
+| Settings | Claude (API key, or your subscription for personal use when `RINGKEEPER_ALLOW_SUBSCRIPTION=1`), Telegram (including the requests toggle and its privacy note), models, how many tasks at once, transcript retention, passkeys, the recovery key, and **Stop everything**. |
 
 ### First start, without a terminal
 

@@ -204,7 +204,9 @@ function TextSetting({ label, value, onSave }: { label: string; value: string; o
 }
 
 function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => void }) {
-  const [mode, setMode] = useState(settings.claude.mode);
+  const allowed = settings.claude.subscription_allowed;
+  // Without personal subscription mode, only an API key can be set here.
+  const [mode, setMode] = useState(allowed ? settings.claude.mode : "api_key");
   const [key, setKey] = useState("");
   const savedWorkspace = settings.values.anthropic_workspace_id ?? "";
   const [workspace, setWorkspace] = useState(savedWorkspace);
@@ -249,7 +251,14 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
   return (
     <Card className="mb-4 space-y-3">
       <h2 className="font-semibold">Claude</h2>
-      {!settings.claude.subscription_allowed ? null : (
+      {!allowed && settings.claude.mode === "subscription" ? (
+        <Alert tone="warn">
+          {DESKTOP
+            ? "This install runs on your Claude subscription. To change that here, turn on personal subscription mode (open Settings#personal)."
+            : "This install runs on your Claude subscription. To change that here, set RINGKEEPER_ALLOW_SUBSCRIPTION=1 in .env and restart."}
+        </Alert>
+      ) : null}
+      {!allowed ? null : (
         <Select
           label="How Ringkeeper pays for Claude"
           value={mode}

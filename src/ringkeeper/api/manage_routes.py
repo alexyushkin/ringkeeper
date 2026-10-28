@@ -186,7 +186,11 @@ def put_claude_secret(data: ClaudeSecretIn, session: WriteSessionDep) -> dict[st
     if data.mode is AuthMode.SUBSCRIPTION and not subscription.allowed(settings):
         # Anthropic's terms don't let an app offer claude.ai sign-in to others; your
         # own install may turn personal subscription mode on.
-        raise HTTPException(422, detail="The desktop app uses an Anthropic API key.")
+        raise HTTPException(
+            422,
+            detail="Personal subscription mode is off: set RINGKEEPER_ALLOW_SUBSCRIPTION=1 "
+            "to use your own Claude subscription. Otherwise use an API key.",
+        )
     workspace = settings.anthropic_workspace_id if data.workspace_id is None else data.workspace_id
     try:
         stored = secrets_in.store_claude(

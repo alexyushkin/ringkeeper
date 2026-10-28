@@ -46,6 +46,8 @@ services:
       RINGKEEPER_DATA_DIR: /var/lib/ringkeeper
       RINGKEEPER_MASTER_KEY: ${RINGKEEPER_MASTER_KEY:-}
       RINGKEEPER_CLAUDE_AUTH_MODE: ${RINGKEEPER_CLAUDE_AUTH_MODE:-api_key}
+      # Personal use of your own Claude subscription (see the README): off unless 1.
+      RINGKEEPER_ALLOW_SUBSCRIPTION: ${RINGKEEPER_ALLOW_SUBSCRIPTION:-0}
       RINGKEEPER_WORKSPACES_ROOT: ${RINGKEEPER_WORKSPACES_ROOT:-}
       # Connections to this machine (localhost): development only.
       RINGKEEPER_ALLOW_LOCAL_CONNECTIONS: ${RINGKEEPER_ALLOW_LOCAL_CONNECTIONS:-0}

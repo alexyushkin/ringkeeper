@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     # mode offered in setup; subscription is for your own install on your own
     # account (Agent SDK terms) and must be switched on explicitly.
     claude_auth_mode: AuthMode = AuthMode.API_KEY
-    # The desktop app offers subscription mode only when this is on (your own
-    # install: RINGKEEPER_ALLOW_SUBSCRIPTION=1, or Settings#personal).
+    # Subscription mode is offered only when this is on (your own install:
+    # RINGKEEPER_ALLOW_SUBSCRIPTION=1, or Settings#personal).
     allow_subscription: bool = False
     # Where the subscription token comes from: setup-token (pasted) or claude-code
     # (the local Claude Code login, copied again when it changes).

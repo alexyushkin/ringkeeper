@@ -30,7 +30,9 @@ FROM_SETUP_TOKEN = "setup-token"  # noqa: S105 (a name, not a token)
 
 
 def allowed(settings: Settings) -> bool:
-    return settings.allow_subscription or settings.mode != "desktop"
+    """Whether the subscription may be chosen or changed, in both modes. An install
+    already in subscription mode keeps running without it."""
+    return settings.allow_subscription
 
 
 def credentials_file() -> Path:
