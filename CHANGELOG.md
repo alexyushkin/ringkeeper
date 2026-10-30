@@ -23,6 +23,9 @@ publishes it as the release notes and the app shows it with the update.
   connection), a card offers **Also use in…** for the other projects that may
   use it (narrowed per project where the service allows) and **Add another
   connection**.
+- **First run:** step 2 has **Browse the catalog** next to the Claude Desktop
+  import, and the connection step takes as many connections as you like before
+  Continue, listing the ones added.
 - Changing a connection's kind of data no longer drops an MCP server's saved
   settings (its tool rules and package).
 

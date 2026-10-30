@@ -8,7 +8,8 @@ import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { Catalog } from "@/components/catalog";
-import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
+import { ConnectionAdded } from "@/components/connection-added";
+import { ConnectionForm, ProjectForm, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Field, Loading, Select, Toggle } from "@/components/ui";
 import { ApiError, api, useApi } from "@/lib/client/api";
@@ -153,7 +154,7 @@ function ProjectStep({ onSaved }: { onSaved: (name: string, saved?: ProjectSaved
 
 /** Desktop: projects from Claude Code's folders or by hand, and Claude Desktop's servers for them. */
 function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: ProjectSaved) => void }) {
-  const projects = useApi<{ name: string }[]>("projects");
+  const projects = useApi<{ name: string; owner: string }[]>("projects");
   const [last, setLast] = useState<{ name: string; saved?: ProjectSaved } | null>(null);
   const [form, setForm] = useState(0); // a fresh form after each project added by hand
   const names = (projects.data ?? []).map((p) => p.name);
@@ -166,6 +167,7 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
         }}
       />
       <ClaudeDesktopImport quiet onImported={projects.reload} />
+      <BrowseCatalog projects={projects.data ?? []} />
       <Card>
         <h2 className="mb-1 text-lg font-semibold">{names.length ? "Add another project" : "Add your first project"}</h2>
         <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>
@@ -192,13 +194,48 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
   );
 }
 
-/** Optional: one service for one project, so the first request can use it. */
+/** Step 2, next to Claude Desktop's servers: the catalog, for a project already added. */
+function BrowseCatalog({ projects: list }: { projects: { name: string; owner: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState("");
+  const [added, setAdded] = useState<string | null>(null);
+  const project = list.find((p) => p.name === chosen) ?? list[0];
+  return (
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold">From the catalog</h2>
+        <span className="ml-auto" />
+        <Button kind={open ? "ghost" : "secondary"} onClick={() => setOpen(!open)} disabled={!project}>
+          {open ? "Close the catalog" : "Browse the catalog"}
+        </Button>
+      </div>
+      <p className="text-sm text-muted">{project ? "Services and MCP servers that aren't in Claude Desktop: sign in, paste a key, or install one on this computer." : "Add a project below first, then browse the catalog for it."}</p>
+      {open && project ? (
+        added ? (
+          <ConnectionAdded name={added} onAnother={() => setAdded(null)} onDone={() => { setAdded(null); setOpen(false); }} />
+        ) : (
+          <>
+            {list.length > 1 ? <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} /> : null}
+            <Catalog key={project.name} client={project.owner} project={project.name} onAdded={setAdded} />
+          </>
+        )
+      ) : null}
+    </Card>
+  );
+}
+
+/** Optional: services for the projects, as many as wanted, so the first request can use them. */
 function DesktopConnectStep({ onDone }: { onDone: () => void }) {
   const projects = useApi<{ name: string; owner: string }[]>("projects");
   const [chosen, setChosen] = useState("");
-  const [added, setAdded] = useState<string | null>(null);
+  const [added, setAdded] = useState<string[]>([]);
+  const [showing, setShowing] = useState<string | null>(null); // the card for the one just added
   const list = projects.data ?? [];
   const project = list.find((p) => p.name === chosen) ?? list[0];
+  const add = (name: string) => {
+    setAdded((all) => [...all, name]);
+    setShowing(name);
+  };
 
   function skip() {
     localStorage.setItem("rk-setup-connection", "skipped");
@@ -207,33 +244,38 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
 
   return (
     <Card className="space-y-4">
-      <h2 className="text-lg font-semibold">Connect a service (optional)</h2>
+      <h2 className="text-lg font-semibold">Connect services (optional)</h2>
       <p className="text-sm text-muted">
-        Give a project access to a service it works with. Sign in with one click where the service allows it, or paste a key. Ringkeeper keeps it; the assistants never see it. You can add more on each client's page.
+        Give your projects access to the services they work with, as many as you like. Sign in with one click where the service allows it, or paste a key. Ringkeeper keeps it; the assistants never see it. You can add more on each client&apos;s page later.
       </p>
-      {added ? (
-        <div className="space-y-4">
-          <Alert tone="good">Added {added}. Its secret is stored encrypted and won't be shown again.</Alert>
-          <TestButton name={added} />
-          <Button kind="primary" onClick={onDone}>
-            Continue
-          </Button>
-        </div>
+      {added.length ? (
+        <p className="text-sm">
+          Added: <strong>{added.join(", ")}</strong>
+        </p>
+      ) : null}
+      {showing ? (
+        <ConnectionAdded name={showing} onAnother={() => setShowing(null)} />
       ) : project ? (
         <>
           {list.length > 1 ? (
             <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} />
           ) : null}
           <h3 className="font-medium">Connect a service</h3>
-          <Catalog key={`remote-${project.name}`} client={project.owner} project={project.name} onAdded={setAdded} />
+          <Catalog key={`remote-${project.name}-${added.length}`} client={project.owner} project={project.name} onAdded={add} />
           <h3 className="font-medium">Or paste a key</h3>
-          <ConnectionForm key={project.name} client={project.owner} project={project.name} onSaved={(c) => setAdded(c.name)} />
-          <Button kind="ghost" onClick={skip}>
-            Skip for now
-          </Button>
+          <ConnectionForm key={`${project.name}-${added.length}`} client={project.owner} project={project.name} onSaved={(c) => add(c.name)} />
         </>
       ) : (
         <Loading />
+      )}
+      {added.length ? (
+        <Button kind="primary" onClick={onDone}>
+          Continue
+        </Button>
+      ) : (
+        <Button kind="ghost" onClick={skip}>
+          Skip for now
+        </Button>
       )}
     </Card>
   );
@@ -517,11 +559,10 @@ function TelegramStep({ onDone }: { onDone: () => void }) {
 }
 
 function ConnectionStep({ project: added, onDone }: { project: string | null; onDone: () => void }) {
-  const [connection, setConnection] = useState<ConnectionData | null>(null);
-  const [ok, setOk] = useState(false);
+  const [connections, setConnections] = useState<string[]>([]);
+  const [showing, setShowing] = useState<string | null>(null); // the card for the one just added
   const [error, setError] = useState<string | null>(null);
   const [project, setProject] = useState<string | null>(added);
-  const [signedIn, setSignedIn] = useState<string | null>(null);
   const projects = useApi<{ name: string; owner: string }[]>("projects");
   const owner = projects.data?.find((p) => p.name === project)?.owner ?? null;
 
@@ -534,53 +575,54 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
     }
   }, [project]);
 
-  async function finish() {
-    if (project && connection) {
+  function add(name: string) {
+    setConnections((all) => [...all, name]);
+    setShowing(name);
+  }
+
+  // A key pasted here isn't linked yet: link it to the project (the default, unless it's production).
+  async function pasted(connection: ConnectionData) {
+    setError(null);
+    if (project) {
       try {
-        await api(`projects/${project}/connections/${connection.name}`, {
-          method: "PUT",
-          json: { is_default: connection.env !== "prod" },
-        });
+        await api(`projects/${project}/connections/${connection.name}`, { method: "PUT", json: { is_default: connection.env !== "prod" } });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         return;
       }
     }
-    onDone();
+    add(connection.name);
   }
 
   return (
     <Card className="space-y-4">
-      <h2 className="text-lg font-semibold">Add your first connection</h2>
-      <p className="text-sm text-muted">A connection is a service the project uses, like its database or its automations.</p>
-      {connection ? (
-        <div className="space-y-4">
-          <Alert tone="good">Added {connection.name}. Its secret is stored encrypted and won't be shown again.</Alert>
-          <TestButton name={connection.name} onDone={setOk} />
-          {error ? <Alert>{error}</Alert> : null}
-          <Button kind="primary" onClick={finish} disabled={!ok}>
-            {project ? `Connect it to ${project} and finish` : "Finish"}
-          </Button>
-        </div>
-      ) : signedIn ? (
-        <div className="space-y-4">
-          <Alert tone="good">Connected {signedIn}{project ? ` and linked it to ${project}` : ""}.</Alert>
-          <Button kind="primary" onClick={onDone}>
-            Finish
-          </Button>
-        </div>
+      <h2 className="text-lg font-semibold">Add your first connections</h2>
+      <p className="text-sm text-muted">A connection is a service the project uses, like its database or its automations. Add as many as you like.</p>
+      {connections.length ? (
+        <p className="text-sm">
+          Added: <strong>{connections.join(", ")}</strong>
+        </p>
+      ) : null}
+      {showing ? (
+        <ConnectionAdded name={showing} onAnother={() => setShowing(null)} />
       ) : (
         <>
           {owner ? (
             <>
               <h3 className="font-medium">Connect a service</h3>
-              <Catalog client={owner} project={project ?? undefined} onAdded={setSignedIn} />
+              <Catalog key={connections.length} client={owner} project={project ?? undefined} onAdded={add} />
             </>
           ) : null}
           {owner ? <h3 className="font-medium">Or paste a key</h3> : null}
-          <ConnectionForm onSaved={setConnection} />
+          <ConnectionForm key={`form-${connections.length}`} onSaved={pasted} />
         </>
       )}
+      {error ? <Alert>{error}</Alert> : null}
+      {connections.length ? (
+        <Button kind="primary" onClick={onDone}>
+          Finish
+        </Button>
+      ) : null}
     </Card>
   );
 }
