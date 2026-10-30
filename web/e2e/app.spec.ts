@@ -81,7 +81,7 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await expect(page.getByText("Added acme-database.")).toBeVisible();
     await page.getByRole("button", { name: "Test connection" }).click();
     await expect(page.getByText("Connected: read 1 table.")).toBeVisible();
-    await page.getByRole("button", { name: "Connect it to acme-web and finish" }).click();
+    await page.getByRole("button", { name: "Finish", exact: true }).click();
     await page.getByRole("link", { name: "Ask for something" }).click();
     await expect(page.getByRole("heading", { name: "What do you need?" })).toBeVisible();
     expect(await page.content()).not.toContain("demo-local-only");
@@ -173,6 +173,7 @@ with session_scope() as session:
     session.execute(text("UPDATE owner_sessions SET confirmed_at = now() - interval '11 minutes'"))
 `);
     await page.goto("/settings");
+    await page.getByRole("tab", { name: "Advanced" }).click();
     await page.getByText("Download it again").click();
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download", exact: true }).click();
