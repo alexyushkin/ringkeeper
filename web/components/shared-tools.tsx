@@ -123,7 +123,7 @@ export function SharedTools() {
       {connections.loading && !connections.data ? <Loading /> : null}
       {connections.data && !tools.length ? <Empty>No shared tools yet. Import one from Claude Desktop or the catalog and choose &quot;Your own tool&quot;.</Empty> : null}
       {tools.map((tool) => (
-        <LibraryCard key={tool.name} connection={tool} projects={projects.list.map((p) => p.name)} services={services.data ?? []} onChange={reload} />
+        <LibraryCard key={tool.name} connection={tool} projects={projects.list.map((p) => p.name)} services={services.data ?? []} onChange={reload} compact />
       ))}
     </div>
   );

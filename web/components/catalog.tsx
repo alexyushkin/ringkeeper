@@ -224,18 +224,24 @@ function CatalogSearch(target: Target) {
       <ul className="space-y-2">
         {servers.map((server) => (
           <li key={server.name}>
-            <button type="button" onClick={() => setChosen(chosen?.name === server.name ? null : server)} className={`w-full rounded-xl border p-3 text-left text-sm hover:border-accent ${chosen?.name === server.name ? "border-accent bg-accent-soft" : "border-line bg-surface"}`}>
+            <button type="button" aria-expanded={chosen?.name === server.name} onClick={() => setChosen(chosen?.name === server.name ? null : server)} className={`w-full rounded-xl border px-3 py-2 text-left text-sm hover:border-accent ${chosen?.name === server.name ? "border-accent bg-accent-soft" : "border-line bg-surface"}`}>
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{server.title}</span>
-                <span className="text-xs text-muted">{server.name}</span>
                 {server.kind.includes("remote") ? <Badge>remote</Badge> : null}
                 {server.kind.includes("local") ? <Badge>runs on this computer</Badge> : null}
                 <SignInBadge signin={server.signin} />
                 {server.recommended ? <Badge tone="good">built-in rules</Badge> : null}
                 {server.status === "deprecated" ? <Badge tone="warn">deprecated</Badge> : null}
               </span>
-              <span className="mt-1 block text-muted">{server.description}</span>
-              <Verified server={server} />
+              {chosen?.name === server.name ? (
+                <>
+                  <span className="mt-1 block text-xs text-muted">{server.name}</span>
+                  <span className="mt-1 block text-muted">{server.description}</span>
+                  <Verified server={server} />
+                </>
+              ) : (
+                <span className="mt-0.5 block truncate text-muted">{server.description}</span>
+              )}
             </button>
             {chosen?.name === server.name ? <ServerConnect key={server.name} server={server} {...target} /> : null}
           </li>

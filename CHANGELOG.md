@@ -26,6 +26,12 @@ publishes it as the release notes and the app shows it with the update.
 - **First run:** step 2 has **Browse the catalog** next to the Claude Desktop
   import, and the connection step takes as many connections as you like before
   Continue, listing the ones added.
+- **Shorter pages.** Project and client pages have tabs (Overview, Connections,
+  Tasks, Settings), and Settings has tabs too (Claude, Models, Voice,
+  Notifications, Advanced, About). Sections fold away and show a one-line
+  summary while folded; what's open is remembered per page. Connections, catalog
+  results and the Claude Desktop import list are compact rows that open for
+  details.
 - Changing a connection's kind of data no longer drops an MCP server's saved
   settings (its tool rules and package).
 

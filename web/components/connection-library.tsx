@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { LocalUpdate } from "@/components/catalog";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { McpTools } from "@/components/mcp-tools";
-import { Alert, Badge, Button, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, CompactRow, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
 import { ENVS, SERVICE, slugify } from "@/lib/client/words";
@@ -178,7 +178,7 @@ function AllProjects({ connection, onChange }: { connection: LibraryConnection; 
 }
 
 /** A connection in its client's library (or a shared tool, in the shared tools). */
-export function LibraryCard({ connection, projects, services, onChange }: { connection: LibraryConnection; projects: string[]; services: RemoteService[]; onChange: () => void }) {
+export function LibraryCard({ connection, projects, services, onChange, compact = false }: { connection: LibraryConnection; projects: string[]; services: RemoteService[]; onChange: () => void; compact?: boolean }) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -209,18 +209,25 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
     }
   }
 
-  return (
-    <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{connection.name}</span>
-        <EnvBadge env={connection.env} />
-        <span className="text-xs text-muted">{serviceName(connection, services)}</span>
-        {connection.shared ? <Badge tone="accent">shared tool</Badge> : null}
-        {connection.config.source === "signin" ? <Badge tone="good">signed in</Badge> : null}
-        {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
-        {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
-        {connection.last_test_at ? <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span> : null}
-      </div>
+  const links = connection.links ?? [];
+  const head = (
+    <>
+      <span className="font-medium">{connection.name}</span>
+      <EnvBadge env={connection.env} />
+      <span className="text-xs text-muted">{serviceName(connection, services)}</span>
+      {connection.shared ? <Badge tone="accent">shared tool</Badge> : null}
+      {connection.config.source === "signin" ? <Badge tone="good">signed in</Badge> : null}
+      {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
+      {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
+      {compact ? (
+        <span className="ml-auto text-xs text-muted">{connection.all_projects ? "all projects" : links.length === 1 ? "1 project" : `${links.length} projects`}</span>
+      ) : connection.last_test_at ? (
+        <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span>
+      ) : null}
+    </>
+  );
+  const body = (
+    <>
       {connection.last_test_ok === false && connection.last_test_message ? <Alert>{connection.last_test_message}</Alert> : null}
       {connection.shared ? <AllProjects connection={connection} onChange={onChange} /> : null}
       <ul className="space-y-1">
@@ -253,6 +260,13 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         </div>
       </Details>
       {error ? <Alert>{error}</Alert> : null}
+    </>
+  );
+  if (compact) return <CompactRow head={head}>{body}</CompactRow>;
+  return (
+    <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-2">{head}</div>
+      {body}
     </div>
   );
 }

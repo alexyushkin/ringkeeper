@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ModelSettings, MoneySetting } from "@/components/model-settings";
 import { TelegramPairing } from "@/components/telegram";
-import { Alert, Button, Card, Details, Field, Loading, PageHeader, Select, Toggle } from "@/components/ui";
+import { Alert, Button, Card, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { AboutCard } from "@/components/about";
@@ -80,96 +80,119 @@ export default function SettingsPage() {
   const v = settings.data.values;
   const telegramState = settings.data.services.telegram;
 
+  const telegramSummary = !settings.data.telegram.token ? "not connected" : v.telegram ? (telegramState?.running ? "on" : "on, not running") : "off";
+  const tabs: Tab[] = [
+    {
+      key: "claude",
+      label: "Claude",
+      content: () => (
+        <>
+          <ClaudeCard settings={settings.data!} onSaved={settings.reload} />
+          <PersonalMode on={v.allow_subscription} onChange={(on) => change({ allow_subscription: on })} />
+        </>
+      ),
+    },
+    {
+      key: "models",
+      label: "Models",
+      content: () => (
+        <Section id="models" title="Models and effort" summary={`${v.model_worker} for normal tasks`}>
+          <ModelSettings values={v} onChange={(changes) => change(changes)} />
+        </Section>
+      ),
+    },
+    ...(DESKTOP ? [{ key: "voice", label: "Voice", content: () => <VoiceSettings /> }] : []),
+    {
+      key: "notifications",
+      label: "Notifications",
+      content: () => (
+        <Section id="telegram" title="Telegram" summary={telegramSummary}>
+          {DESKTOP && !settings.data!.telegram.token ? (
+            <>
+              <p className="text-sm text-muted">
+                Get approvals and questions on your phone while this computer is on. Telegram only gets short summaries; full details stay here. Create a bot with @BotFather in Telegram and paste its token.
+              </p>
+              <TelegramPairing onDone={settings.reload} />
+            </>
+          ) : (
+            <>
+              {!settings.data!.telegram.token ? <p className="text-sm text-muted">Not connected. Run the setup&apos;s Telegram step, or store a bot token below.</p> : null}
+              <TelegramToken onSaved={settings.reload} />
+            </>
+          )}
+          <Toggle label="Send approvals and questions to Telegram" checked={v.telegram} onChange={(on) => change({ telegram: on })} hint={telegramState?.error ? `Not running: ${telegramState.error}` : telegramState?.running ? "Running." : undefined} />
+          <Toggle
+            label="Accept new requests from Telegram"
+            checked={v.telegram_requests}
+            onChange={(on) => change({ telegram_requests: on })}
+            hint="Off by default. When on, your client requests, typed or spoken, pass through Telegram's servers, which aren't end-to-end encrypted. Leave it off for anything you wouldn't put in a normal Telegram chat."
+          />
+          <Details>
+            <div className="space-y-3">
+              <TextSetting
+                label="Allowed chat IDs (comma-separated)"
+                value={v.telegram_chat_ids.join(", ")}
+                onSave={(text) => change({ telegram_chat_ids: text.split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n !== 0) })}
+              />
+              <p className="text-xs text-muted">Only these chats get messages; everyone else gets nothing.</p>
+              <NumberSetting label="Summary length (approvals, plans)" value={v.telegram_summary_chars} onSave={(n) => change({ telegram_summary_chars: n })} />
+              <NumberSetting label="Question length" value={v.telegram_question_chars} onSave={(n) => change({ telegram_question_chars: n })} />
+            </div>
+          </Details>
+        </Section>
+      ),
+    },
+    {
+      key: "advanced",
+      label: "Advanced",
+      content: () => (
+        <>
+          <Section id="work" defaultOpen={false} title="Work" summary={`${v.max_concurrent_workers} at once · transcripts kept ${v.retention_days} days`}>
+            <NumberSetting label="Tasks at once" value={v.max_concurrent_workers} onSave={(n) => change({ max_concurrent_workers: n })} hint="How many tasks can run at the same time." />
+            <NumberSetting label="Keep full transcripts for (days)" value={v.retention_days} onSave={(n) => change({ retention_days: n })} hint="After this, transcripts are deleted. Task summaries, approvals and the activity log stay." />
+            <NumberSetting label="Max steps per task" value={v.default_max_turns} onSave={(n) => change({ default_max_turns: n })} hint="A task stops after this many agent turns." />
+            {v.claude_auth_mode === "api_key" ? (
+              <MoneySetting label="Spending cap per task ($)" value={v.task_budget_usd} onSave={(n) => change({ task_budget_usd: n })} hint="At the cap a task pauses and asks whether to give it this much more." />
+            ) : null}
+          </Section>
+          {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
+          {DESKTOP ? <ImportFromClaudeDesktop /> : null}
+          {DESKTOP ? null : (
+            <>
+              <Passkeys />
+              <RecoveryKey />
+              <SignOut />
+            </>
+          )}
+        </>
+      ),
+    },
+    { key: "about", label: "About", content: () => <AboutCard /> },
+  ];
+
   return (
     <>
       <PageHeader title="Settings" />
       {notice ? <div className="mb-3"><Alert tone="good">{notice}</Alert></div> : null}
       {error ? <div className="mb-3"><Alert>{error}</Alert></div> : null}
 
-      <Card className="mb-4 space-y-3 border-bad">
-        <h2 className="font-semibold">Stop everything</h2>
-        <p className="text-sm text-muted">Stops every running task and pauses new work until you resume. Approvals wait where they are.</p>
+      <div className={`mb-4 flex flex-wrap items-center gap-3 rounded-2xl border p-3 ${v.paused ? "border-warn bg-warn-soft" : "border-bad"}`}>
+        <p className="min-w-0 flex-1 text-sm">
+          <strong>{v.paused ? "Everything is stopped." : "Stop everything"}</strong>{" "}
+          <span className="text-muted">{v.paused ? "Nothing new starts until you resume." : "Stops every running task and pauses new work. Approvals wait where they are."}</span>
+        </p>
         {v.paused ? (
           <Button kind="primary" onClick={() => change({ paused: false }, "Resumed.")}>
             Resume
           </Button>
         ) : (
-          <Button kind="danger" onClick={stopEverything} className="w-full sm:w-auto">
+          <Button kind="danger" onClick={stopEverything}>
             Stop everything
           </Button>
         )}
-      </Card>
+      </div>
 
-      {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
-      {DESKTOP ? <VoiceSettings /> : null}
-      {DESKTOP ? <ImportFromClaudeDesktop /> : null}
-
-      <ClaudeCard settings={settings.data} onSaved={settings.reload} />
-      <PersonalMode on={v.allow_subscription} onChange={(on) => change({ allow_subscription: on })} />
-
-      <Card className="mb-4 space-y-4">
-        <h2 className="font-semibold">Telegram</h2>
-        {DESKTOP && !settings.data.telegram.token ? (
-          <>
-            <p className="text-sm text-muted">
-              Get approvals and questions on your phone while this computer is on. Telegram only gets short summaries; full details stay here. Create a bot with @BotFather in Telegram and paste its token.
-            </p>
-            <TelegramPairing onDone={settings.reload} />
-          </>
-        ) : (
-          <>
-            {!settings.data.telegram.token ? (
-              <p className="text-sm text-muted">Not connected. Run the setup's Telegram step, or store a bot token below.</p>
-            ) : null}
-            <TelegramToken onSaved={settings.reload} />
-          </>
-        )}
-        <Toggle label="Send approvals and questions to Telegram" checked={v.telegram} onChange={(on) => change({ telegram: on })} hint={telegramState?.error ? `Not running: ${telegramState.error}` : telegramState?.running ? "Running." : undefined} />
-        <Toggle
-          label="Accept new requests from Telegram"
-          checked={v.telegram_requests}
-          onChange={(on) => change({ telegram_requests: on })}
-          hint="Off by default. When on, your client requests, typed or spoken, pass through Telegram's servers, which aren't end-to-end encrypted. Leave it off for anything you wouldn't put in a normal Telegram chat."
-        />
-        <Details>
-          <div className="space-y-3">
-            <TextSetting
-              label="Allowed chat IDs (comma-separated)"
-              value={v.telegram_chat_ids.join(", ")}
-              onSave={(text) =>
-                change({ telegram_chat_ids: text.split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n !== 0) })
-              }
-            />
-            <p className="text-xs text-muted">Only these chats get messages; everyone else gets nothing.</p>
-            <NumberSetting label="Summary length (approvals, plans)" value={v.telegram_summary_chars} onSave={(n) => change({ telegram_summary_chars: n })} />
-            <NumberSetting label="Question length" value={v.telegram_question_chars} onSave={(n) => change({ telegram_question_chars: n })} />
-          </div>
-        </Details>
-      </Card>
-
-      <Card className="mb-4 space-y-4">
-        <h2 className="font-semibold">Work</h2>
-        <NumberSetting label="Tasks at once" value={v.max_concurrent_workers} onSave={(n) => change({ max_concurrent_workers: n })} hint="How many tasks can run at the same time." />
-        <NumberSetting label="Keep full transcripts for (days)" value={v.retention_days} onSave={(n) => change({ retention_days: n })} hint="After this, transcripts are deleted. Task summaries, approvals and the activity log stay." />
-        <NumberSetting label="Max steps per task" value={v.default_max_turns} onSave={(n) => change({ default_max_turns: n })} hint="A task stops after this many agent turns." />
-        {v.claude_auth_mode === "api_key" ? (
-          <MoneySetting label="Spending cap per task ($)" value={v.task_budget_usd} onSave={(n) => change({ task_budget_usd: n })} hint="At the cap a task pauses and asks whether to give it this much more." />
-        ) : null}
-      </Card>
-
-      <Card className="mb-4 space-y-3">
-        <h2 className="font-semibold">Models and effort</h2>
-        <ModelSettings values={v} onChange={(changes) => change(changes)} />
-      </Card>
-
-      {DESKTOP ? null : (
-        <>
-          <Passkeys />
-          <RecoveryKey />
-          <SignOut />
-        </>
-      )}
-      <AboutCard />
+      <Tabs id="settings" tabs={tabs} />
     </>
   );
 }
@@ -296,23 +319,22 @@ function ThisComputer({ startAtLogin, onChange }: { startAtLogin: boolean; onCha
   const [signIn, setSignIn] = useState("sign in");
   useEffect(() => setSignIn(navigator.userAgent.includes("Windows") ? "sign in to Windows" : "log in"), []);
   return (
-    <Card className="mb-4 space-y-3">
-      <h2 className="font-semibold">This computer</h2>
+    <Section id="this-computer" title="This computer" summary={startAtLogin ? `starts when you ${signIn}` : "starts when you open it"}>
       <Toggle
         label={`Start Ringkeeper when I ${signIn}`}
         checked={startAtLogin}
         onChange={onChange}
         hint="It waits in the tray, so requests and approvals keep coming in. Closing the window keeps it running; to stop it, right-click the tray icon and choose Quit."
       />
-    </Card>
+    </Section>
   );
 }
 
 function ImportFromClaudeDesktop() {
   return (
-    <div className="mb-4">
-      <ClaudeDesktopImport />
-    </div>
+    <Section id="claude-desktop" title="From Claude Desktop" summary="import its MCP servers" defaultOpen={false}>
+      <ClaudeDesktopImport bare />
+    </Section>
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { KindChoice, ProjectPicker, useProjects, type Kind } from "@/components/shared-tools";
-import { Alert, Button, Card } from "@/components/ui";
+import { Alert, Button, Card, CompactRow } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 
@@ -35,7 +35,7 @@ interface Choice {
  * projects, or all of them), or skipped. Ringkeeper reads their secrets from the
  * file itself and puts them in its vault; they never come through this page.
  */
-export function ClaudeDesktopImport({ onImported, quiet = false }: { onImported?: () => void; quiet?: boolean }) {
+export function ClaudeDesktopImport({ onImported, quiet = false, bare = false }: { onImported?: () => void; quiet?: boolean; bare?: boolean }) {
   const found = useApi<Found>(DESKTOP ? "desktop/claude-desktop-servers" : null);
   const projects = useProjects();
   const [chosen, setChosen] = useState<Record<string, Choice>>({});
@@ -73,8 +73,7 @@ export function ClaudeDesktopImport({ onImported, quiet = false }: { onImported?
   }
 
   return (
-    <Card className="space-y-3">
-      <h2 className="text-lg font-semibold">From Claude Desktop</h2>
+    <Wrapper bare={bare}>
       {found.data && !found.data.config ? (
         <p className="text-sm text-muted">Claude Desktop&apos;s settings aren&apos;t on this computer.</p>
       ) : servers.length === 0 ? (
@@ -84,16 +83,28 @@ export function ClaudeDesktopImport({ onImported, quiet = false }: { onImported?
           <p className="text-sm text-muted">
             The MCP servers you set up in Claude Desktop. A client&apos;s account goes to that client&apos;s projects; your own tool (a browser, files, a fetcher) can go to any client&apos;s projects, or all of them. Their keys move into Ringkeeper&apos;s encrypted vault. Tools the server marks as read-only run without asking; the rest wait for your approval.
           </p>
-          <ul className="space-y-2">
+          <div className="space-y-2">
             {servers.map((s) => {
               const c = choiceFor(s);
+              const status = s.imported_as
+                ? `imported as ${s.imported_as}`
+                : s.problem
+                  ? "can't import"
+                  : c.kind === "skip"
+                    ? "skip"
+                    : `${c.kind === "shared" ? "your own tool" : "a client's account"} · ${c.kind === "shared" && c.all ? "all projects" : c.projects.length ? `${c.projects.length} project${c.projects.length === 1 ? "" : "s"}` : "choose projects"}`;
               return (
-                <li key={s.key} className="space-y-2 rounded-xl border border-line p-3">
-                  <div>
-                    <span className="font-medium">{s.name}</span>
-                    {s.secrets ? <span className="ml-2 text-xs text-muted">{s.secrets === 1 ? "1 secret" : `${s.secrets} secrets`}</span> : null}
-                    <span className="block font-mono text-xs break-all text-muted">{s.preview}</span>
-                  </div>
+                <CompactRow
+                  key={s.key}
+                  head={
+                    <>
+                      <span className="font-medium">{s.name}</span>
+                      {s.secrets ? <span className="text-xs text-muted">{s.secrets === 1 ? "1 secret" : `${s.secrets} secrets`}</span> : null}
+                      <span className={`ml-auto text-xs ${s.problem ? "text-bad" : "text-muted"}`}>{status}</span>
+                    </>
+                  }
+                >
+                  <span className="block font-mono text-xs break-all text-muted">{s.preview}</span>
                   {s.imported_as ? (
                     <p className="text-sm text-muted">Imported as {s.imported_as}.</p>
                   ) : s.problem ? (
@@ -104,10 +115,10 @@ export function ClaudeDesktopImport({ onImported, quiet = false }: { onImported?
                       {c.kind !== "skip" ? <ProjectPicker projects={projects.list} kind={c.kind} value={c.projects} onChange={(next) => set(s, { projects: next })} all={c.all} onAll={(all) => set(s, { all })} /> : null}
                     </>
                   )}
-                </li>
+                </CompactRow>
               );
             })}
-          </ul>
+          </div>
           {done ? <Alert tone="good">{done}</Alert> : null}
           {error ? <Alert>{error}</Alert> : null}
           {picks.length ? (
@@ -117,6 +128,17 @@ export function ClaudeDesktopImport({ onImported, quiet = false }: { onImported?
           ) : null}
         </>
       )}
+    </Wrapper>
+  );
+}
+
+/** Its own card, or (bare) inside someone else's section. */
+function Wrapper({ bare, children }: { bare: boolean; children: React.ReactNode }) {
+  if (bare) return <div className="space-y-3">{children}</div>;
+  return (
+    <Card className="space-y-3">
+      <h2 className="text-lg font-semibold">From Claude Desktop</h2>
+      {children}
     </Card>
   );
 }

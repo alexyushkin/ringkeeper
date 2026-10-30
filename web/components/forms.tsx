@@ -31,8 +31,8 @@ export interface ProjectSaved {
 const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean);
 
 /** Create (no `existing`) or edit a project. */
-export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onSaved: (name: string, saved?: ProjectSaved) => void }) {
-  const [client, setClient] = useState(existing?.owner ?? "");
+export function ProjectForm({ existing, client: forClient, onSaved }: { existing?: ProjectData; client?: string; onSaved: (name: string, saved?: ProjectSaved) => void }) {
+  const [client, setClient] = useState(existing?.owner ?? forClient ?? "");
   const [title, setTitle] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [aliases, setAliases] = useState((existing?.aliases ?? []).join(", "));
@@ -94,6 +94,7 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
 
   return (
     <form onSubmit={save} className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
       <Field label="Client" value={client} onChange={setClient} placeholder="Acme Inc." hint="Who this work is for. Projects of different clients never share a task." required />
       {existing ? null : (
         <Field
@@ -105,8 +106,10 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
           required
         />
       )}
-      <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />
       <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="acme site, the portal" hint="Separate with commas." />
+      </div>
+      <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />
+      <div className="grid gap-4 md:grid-cols-2">
       {DESKTOP ? (
         <div className="space-y-1">
           <div className="flex items-end gap-2">
@@ -128,6 +131,7 @@ export function ProjectForm({ existing, onSaved }: { existing?: ProjectData; onS
         onChange={setAutonomy}
         options={Object.entries(AUTONOMY).map(([k, [label, help]]) => [k, `${label}: ${help}`])}
       />
+      </div>
       <Details>
         <div className="space-y-4">
           <Field label="Repository (optional)" value={repo} onChange={setRepo} placeholder="https://github.com/acme/web" />

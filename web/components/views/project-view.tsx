@@ -8,10 +8,11 @@ import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from 
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
-import { Alert, Button, Card, Details, EnvBadge, Loading, Select, Toggle } from "@/components/ui";
+import { Alert, Button, Details, EnvBadge, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
+import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
-import { SERVICE } from "@/lib/client/words";
+import { AUTONOMY, SERVICE } from "@/lib/client/words";
 
 interface Bound {
   name: string;
@@ -76,6 +77,7 @@ interface Detail extends ProjectData {
 export function ProjectView({ name }: { name: string }) {
   const router = useRouter();
   const project = useApi<Detail>(`projects/${name}`);
+  const tasksSummary = useTaskSummary({ project: name });
   const connections = useApi<LibraryConnection[]>("connections");
   const [adding, setAdding] = useState("");
   const [scope, setScope] = useState<Record<string, string>>({});
@@ -108,110 +110,167 @@ export function ProjectView({ name }: { name: string }) {
   const byName = new Map((connections.data ?? []).map((c) => [c.name, c]));
   const available = (connections.data ?? []).filter((c) => !bound.has(c.name) && (c.shared || c.owner.trim().toLowerCase() === client));
 
+  const instances = project.data.instances;
+  const production = instances.filter((i) => i.env === "prod").length;
+  const connectionSummary = `${instances.length}${production ? ` · ${production} production` : ""}`;
+  const about = project.data;
+  const autonomy = AUTONOMY[about.autonomy]?.join(": ") ?? about.autonomy;
+
+  const connectionsTab = (
+    <Section id="connections" title="Connections" summary={connectionSummary}>
+      <p className="text-sm text-muted">
+        The services this project may use: from{" "}
+        <Link href={clientHref(about.owner)} className="text-accent">
+          {about.owner}&apos;s connections
+        </Link>
+        , and your shared tools. A link can be narrowed to one database, base or project. A default is used when a request doesn&apos;t name one; production can never be the default, so live data is always named on purpose.
+      </p>
+      {instances.map((instance) => (
+        <BoundRow key={instance.name} project={name} instance={instance} fields={byName.get(instance.name)?.scope_fields ?? []} onChange={() => run(async () => undefined)} />
+      ))}
+      {added ? (
+        <ConnectionAdded
+          name={added}
+          onAnother={() => {
+            setAdded(null);
+            setConnecting(true);
+          }}
+          onDone={() => {
+            setAdded(null);
+            project.reload();
+            connections.reload();
+          }}
+        />
+      ) : connecting ? (
+        <div className="space-y-3 rounded-xl border border-line p-3">
+          <h3 className="font-medium">New connection for {name}</h3>
+          <Catalog
+            client={about.owner}
+            project={name}
+            onAdded={(connection) => {
+              setConnecting(false);
+              setAdded(connection);
+              project.reload();
+              connections.reload();
+            }}
+          />
+          <Details label="Other services (a database, n8n, Twilio, Gmail…)">
+            <ConnectionForm
+              client={about.owner}
+              project={name}
+              onSaved={(connection) => {
+                setConnecting(false);
+                setAdded(connection.name);
+                project.reload();
+                connections.reload();
+              }}
+            />
+          </Details>
+          <Button kind="ghost" onClick={() => setConnecting(false)}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button kind="primary" onClick={() => setConnecting(true)}>
+          Connect a service
+        </Button>
+      )}
+      {available.length ? (
+        <div className="space-y-2 rounded-xl border border-line p-3">
+          <Select
+            label={`Or link one of ${about.owner}'s connections, or a shared tool`}
+            value={adding}
+            onChange={(next) => {
+              setAdding(next);
+              setScope({});
+            }}
+            options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, c.shared ? `${c.name} (shared tool)` : `${c.name} (${c.env === "prod" ? "production" : c.env})`])]}
+          />
+          {adding ? <ScopeInputs fields={byName.get(adding)?.scope_fields ?? []} value={scope} onChange={setScope} /> : null}
+          <Button
+            kind="primary"
+            disabled={!adding}
+            onClick={() =>
+              run(async () => {
+                const narrowed = Object.fromEntries(Object.entries(scope).filter(([, v]) => v));
+                await api(`projects/${name}/connections/${adding}`, { method: "PUT", json: { is_default: false, scope: narrowed } });
+                setAdding("");
+                setScope({});
+              })
+            }
+          >
+            Link
+          </Button>
+        </div>
+      ) : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </Section>
+  );
+
+  const tabs: Tab[] = [
+    {
+      key: "overview",
+      label: "Overview",
+      content: () => (
+        <Section id="about" title="About" summary={autonomy}>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt className="text-muted">Client</dt>
+            <dd>
+              <Link href={clientHref(about.owner)} className="text-accent">
+                {about.owner}
+              </Link>
+            </dd>
+            <dt className="text-muted">What it is</dt>
+            <dd>{about.description || <span className="text-muted">Not described yet (Settings tab)</span>}</dd>
+            {about.aliases.length ? (
+              <>
+                <dt className="text-muted">Also called</dt>
+                <dd>{about.aliases.join(", ")}</dd>
+              </>
+            ) : null}
+            {about.workspace_path ? (
+              <>
+                <dt className="text-muted">Folder</dt>
+                <dd className="font-mono text-xs break-all">{about.workspace_path}</dd>
+              </>
+            ) : null}
+            <dt className="text-muted">Connections</dt>
+            <dd>{instances.length ? instances.map((i) => i.name).join(", ") : "None yet"}{production ? ` (${production} production)` : ""}</dd>
+            <dt className="text-muted">Works</dt>
+            <dd>{autonomy}</dd>
+          </dl>
+        </Section>
+      ),
+    },
+    { key: "connections", label: "Connections", count: instances.length, content: () => connectionsTab },
+    { key: "tasks", label: "Tasks", count: tasksSummary.count, content: () => <ScopedTasks project={name} /> },
+    {
+      key: "settings",
+      label: "Settings",
+      content: () => (
+        <>
+          <Section id="project-settings" title="About this project" summary={about.description || undefined}>
+            <ProjectForm existing={about} onSaved={() => project.reload()} />
+          </Section>
+          <Button kind="danger" onClick={remove}>
+            Remove project
+          </Button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <>
       <Link href="/projects" className="text-sm text-accent">
         ‹ Clients & projects
       </Link>
-      <h1 className="mt-2 mb-4 text-xl font-semibold">{name}</h1>
-
-      <Card className="mb-4 space-y-3">
-        <h2 className="font-semibold">Connections</h2>
-        <p className="text-sm text-muted">
-          The services this project may use, from{" "}
-          <Link href={clientHref(project.data.owner)} className="text-accent">
-            {project.data.owner}&apos;s connections
-          </Link>
-          . A link can be narrowed to one database, base or project. A default is used when a request doesn&apos;t name one; production can never be the default, so live data is always named on purpose.
-        </p>
-        {project.data.instances.map((instance) => (
-          <BoundRow key={instance.name} project={name} instance={instance} fields={byName.get(instance.name)?.scope_fields ?? []} onChange={() => run(async () => undefined)} />
-        ))}
-        {added ? (
-          <ConnectionAdded
-            name={added}
-            onAnother={() => {
-              setAdded(null);
-              setConnecting(true);
-            }}
-            onDone={() => {
-              setAdded(null);
-              project.reload();
-              connections.reload();
-            }}
-          />
-        ) : connecting ? (
-          <div className="space-y-3 rounded-xl border border-line p-3">
-            <h3 className="font-medium">New connection for {name}</h3>
-            <Catalog
-              client={project.data.owner}
-              project={name}
-              onAdded={(connection) => {
-                setConnecting(false);
-                setAdded(connection);
-                project.reload();
-                connections.reload();
-              }}
-            />
-            <Details label="Other services (a database, n8n, Twilio, Gmail…)">
-              <ConnectionForm
-                client={project.data.owner}
-                project={name}
-                onSaved={(connection) => {
-                  setConnecting(false);
-                  setAdded(connection.name);
-                  project.reload();
-                  connections.reload();
-                }}
-              />
-            </Details>
-            <Button kind="ghost" onClick={() => setConnecting(false)}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button kind="primary" onClick={() => setConnecting(true)}>
-            Connect a service
-          </Button>
-        )}
-        {available.length ? (
-          <div className="space-y-2 rounded-xl border border-line p-3">
-            <Select
-              label={`Or link one of ${project.data.owner}'s connections, or a shared tool`}
-              value={adding}
-              onChange={(next) => {
-                setAdding(next);
-                setScope({});
-              }}
-              options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, c.shared ? `${c.name} (shared tool)` : `${c.name} (${c.env === "prod" ? "production" : c.env})`])]}
-            />
-            {adding ? <ScopeInputs fields={byName.get(adding)?.scope_fields ?? []} value={scope} onChange={setScope} /> : null}
-            <Button
-              kind="primary"
-              disabled={!adding}
-              onClick={() =>
-                run(async () => {
-                  const narrowed = Object.fromEntries(Object.entries(scope).filter(([, v]) => v));
-                  await api(`projects/${name}/connections/${adding}`, { method: "PUT", json: { is_default: false, scope: narrowed } });
-                  setAdding("");
-                  setScope({});
-                })
-              }
-            >
-              Link
-            </Button>
-          </div>
-        ) : null}
-        {error ? <Alert>{error}</Alert> : null}
-      </Card>
-
-      <Card className="mb-4">
-        <h2 className="mb-3 font-semibold">About this project</h2>
-        <ProjectForm existing={project.data} onSaved={() => project.reload()} />
-      </Card>
-      <Button kind="danger" onClick={remove}>
-        Remove project
-      </Button>
+      <h1 className="mt-2 mb-1 text-xl font-semibold">{name}</h1>
+      <p className="mb-4 text-sm text-muted">
+        {about.owner}&apos;s project · {connectionSummary} connection{instances.length === 1 ? "" : "s"}
+        {tasksSummary.running ? ` · ${tasksSummary.running} running` : ""}
+      </p>
+      <Tabs id={`project-${name}`} tabs={tabs} />
     </>
   );
 }

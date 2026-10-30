@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { SharedTools } from "@/components/shared-tools";
-import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Select } from "@/components/ui";
+import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
 import { sameClient, useScope } from "@/lib/client/scope";
@@ -31,6 +31,14 @@ export default function ConnectionsPage() {
       (!attention || (attention === "failing" ? c.last_test_ok === false : c.projects.length === 0)),
   );
   const clients = [...new Set(shown.map((c) => c.owner))].sort((a, b) => a.localeCompare(b));
+  const shared = all.filter((c) => c.shared);
+  const sharedSummary = `${shared.length}${shared.some((c) => c.all_projects) ? ` · ${shared.filter((c) => c.all_projects).length} for all projects` : ""}`;
+  const clientSummary = (client: string) => {
+    const mine = shown.filter((c) => c.owner === client);
+    const production = mine.filter((c) => c.env === "prod").length;
+    const failing = mine.filter((c) => c.last_test_ok === false).length;
+    return [String(mine.length), production ? `${production} production` : "", failing ? `${failing} failing` : ""].filter(Boolean).join(" · ");
+  };
   const kinds = [...new Set(all.map(label))].sort();
 
   return (
@@ -43,19 +51,22 @@ export default function ConnectionsPage() {
       </div>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      <section className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-muted">Your shared tools</h2>
+      <Section id="shared" title="Your shared tools" summary={sharedSummary}>
         <SharedTools />
-      </section>
+      </Section>
       {connections.data && !shown.length ? <Empty>{all.some((c) => !c.shared) ? "Nothing matches." : "No client connections yet."}</Empty> : null}
       {clients.map((client) => (
-        <section key={client} className="mb-6">
-          <div className="mb-2 flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-muted">{client}</h2>
-            <Link href={clientHref(client)} className="ml-auto text-sm text-accent">
-              Open {client}&apos;s connections ›
+        <Section
+          key={client}
+          id={`client-${client}`}
+          title={client}
+          summary={clientSummary(client)}
+          action={
+            <Link href={clientHref(client)} className="text-sm text-accent">
+              Open ›
             </Link>
-          </div>
+          }
+        >
           <ul className="space-y-2">
             {shown
               .filter((c) => c.owner === client)
@@ -78,7 +89,7 @@ export default function ConnectionsPage() {
                 </li>
               ))}
           </ul>
-        </section>
+        </Section>
       ))}
     </>
   );

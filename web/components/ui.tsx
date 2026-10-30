@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "@/components/link";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 /* Small building blocks. Plain language on the surface; technical detail behind "Show details". */
 
@@ -251,4 +251,130 @@ export function timeAgo(value: string | null | undefined): string {
 
 export function money(value: number | null | undefined): string {
   return value === null || value === undefined ? "–" : `~$${value.toFixed(value < 1 ? 3 : 2)}`;
+}
+
+/* Long pages: tabs, collapsible sections and compact rows. What's open is
+ * remembered in this browser (per page), and the open tab is in the address. */
+
+function readStored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // private window or blocked storage: it just isn't remembered
+  }
+}
+
+/** A choice remembered in this browser under `key` (falls back to `initial`). */
+export function useRemembered(key: string, initial: string): [string, (next: string) => void] {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    const stored = readStored(key);
+    if (stored !== null) setValue(stored);
+  }, [key]);
+  return [
+    value,
+    (next: string) => {
+      setValue(next);
+      writeStored(key, next);
+    },
+  ];
+}
+
+export interface Tab {
+  key: string;
+  label: string;
+  count?: number | string;
+  content: () => ReactNode;
+}
+
+/** Tabs for a long page. `id` names the page; the open tab is also in the URL (#key). */
+export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
+  const [stored, setStored] = useRemembered(`rk-tab:${id}`, tabs[0]?.key ?? "");
+  const [hash, setHash] = useState<string | null>(null);
+  useEffect(() => {
+    const fromUrl = window.location.hash.slice(1);
+    if (tabs.some((t) => t.key === fromUrl)) setHash(fromUrl);
+    // Only on arrival: the URL names a tab to open.
+  }, []);
+  const active = tabs.find((t) => t.key === (hash ?? stored)) ?? tabs[0];
+  function open(key: string) {
+    setHash(null);
+    setStored(key);
+    try {
+      window.history.replaceState(null, "", `#${key}`);
+    } catch {
+      // nothing to do
+    }
+  }
+  if (!active) return null;
+  return (
+    <div>
+      <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={t.key === active.key}
+            onClick={() => open(t.key)}
+            className={`-mb-px min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium ${t.key === active.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"}`}
+          >
+            {t.label}
+            {t.count !== undefined ? <span className="ml-1.5 rounded-full bg-sunken px-1.5 text-xs text-muted">{t.count}</span> : null}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel">{active.content()}</div>
+    </div>
+  );
+}
+
+/**
+ * A section that folds away, showing `summary` (one line, e.g. "4 · 1 production")
+ * while folded. `id` is unique on the page; open or folded is remembered per page.
+ */
+export function Section({ id, title, summary, action, defaultOpen = true, children }: { id: string; title: string; summary?: ReactNode; action?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
+  const [page, setPage] = useState("");
+  useEffect(() => setPage(window.location.pathname + window.location.search), []);
+  const [state, setState] = useRemembered(`rk-section:${page}:${id}`, defaultOpen ? "open" : "closed");
+  const open = state === "open";
+  return (
+    <section className="mb-4 rounded-2xl border border-line bg-surface">
+      <div className="flex items-center gap-2 p-3 sm:px-4">
+        <button type="button" onClick={() => setState(open ? "closed" : "open")} aria-expanded={open} className="flex min-h-9 min-w-0 flex-1 items-center gap-2 text-left">
+          <span aria-hidden className={`inline-block text-muted transition-transform ${open ? "rotate-90" : ""}`}>
+            ›
+          </span>
+          <h2 className="font-semibold">{title}</h2>
+          {summary ? <span className="truncate text-sm text-muted">· {summary}</span> : null}
+        </button>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      {open ? <div className="space-y-3 border-t border-line p-3 sm:p-4">{children}</div> : null}
+    </section>
+  );
+}
+
+/** One line of a long list; its details open below it. */
+export function CompactRow({ head, children, defaultOpen = false }: { head: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-line bg-surface">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm">
+        <span aria-hidden className={`inline-block text-muted transition-transform ${open ? "rotate-90" : ""}`}>
+          ›
+        </span>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">{head}</div>
+      </button>
+      {open ? <div className="space-y-3 border-t border-line p-3">{children}</div> : null}
+    </div>
+  );
 }
