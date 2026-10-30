@@ -32,6 +32,10 @@ publishes it as the release notes and the app shows it with the update.
   summary while folded; what's open is remembered per page. Connections, catalog
   results and the Claude Desktop import list are compact rows that open for
   details.
+- **Installing a newer version over an older one** no longer asks "uninstall
+  before installing / do not uninstall": it upgrades in place, keeps your data,
+  and goes from progress straight to Finish. Reinstalling the same version, or
+  installing an older one, still asks.
 - Changing a connection's kind of data no longer drops an MCP server's saved
   settings (its tool rules and package).
 

@@ -80,6 +80,8 @@ Var UpdateMode
 Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
+; Ringkeeper: 1 when this installer is newer than the installed version (set in .onInit).
+Var RkUpgrade
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -174,12 +176,13 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 ; Installer pages, must be ordered as they appear
 ; 1. Welcome Page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+; Ringkeeper: not for an upgrade, which installs in place without asking.
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassiveOrUpgrade
 !insertmacro MUI_PAGE_WELCOME
 
 ; 2. License Page (if defined)
 !if "${LICENSE}" != ""
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassiveOrUpgrade
   !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
 !endif
 
@@ -248,6 +251,12 @@ Function PageReinstall
     !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(chooseMaintenanceOption)"
   ; Upgrading
   ${ElseIf} $R0 = 1
+    ; Ringkeeper: no choice to make. The install sets the old version's files
+    ; aside (RK_SET_ASIDE) and the data folder stays, so it never uninstalls first.
+    ${If} $RkUpgrade = 1
+    ${AndIf} $WixMode <> 1
+      Abort
+    ${EndIf}
     StrCpy $R1 "$(olderOrUnknownVersionInstalled)"
     StrCpy $R2 "$(uninstallBeforeInstalling)"
     StrCpy $R3 "$(dontUninstall)"
@@ -393,7 +402,8 @@ Function PageLeaveReinstall
 FunctionEnd
 
 ; 5. Choose install directory page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+; Ringkeeper: an upgrade goes where the installed version is.
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassiveOrUpgrade
 ; Ringkeeper: refuse folders whose paths are too long for the files inside.
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE RkCheckInstDir
 !insertmacro MUI_PAGE_DIRECTORY
@@ -529,6 +539,17 @@ Function .onInit
     !endif
 
     Call RestorePreviousInstallLocation
+  ${EndIf}
+
+  ; Ringkeeper: newer than the installed version? Then it upgrades in place
+  ; without asking (SkipIfPassiveOrUpgrade, PageReinstall). The same version or
+  ; an older one still gets the choices.
+  StrCpy $RkUpgrade 0
+  ReadRegStr $R0 SHCTX "${UNINSTKEY}" "DisplayVersion"
+  ${If} $R0 != ""
+    nsis_tauri_utils::SemverCompare "${VERSION}" $R0
+    Pop $R0
+    ${IfThen} $R0 = 1 ${|} StrCpy $RkUpgrade 1 ${|}
   ${EndIf}
 
 
@@ -757,7 +778,9 @@ Section Install
   !endif
 
   ; Auto close this page for passive mode
+  ; Ringkeeper: and for an upgrade, straight to Finish (Run Ringkeeper is ticked there).
   ${If} $PassiveMode = 1
+  ${OrIf} $RkUpgrade = 1
     SetAutoClose true
   ${EndIf}
 SectionEnd
@@ -939,6 +962,10 @@ FunctionEnd
 
 Function SkipIfPassive
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
+FunctionEnd
+Function SkipIfPassiveOrUpgrade
+  ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
+  ${IfThen} $RkUpgrade = 1  ${|} Abort ${|}
 FunctionEnd
 Function un.SkipIfPassive
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
