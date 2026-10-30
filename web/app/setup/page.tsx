@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
+import { ClaudeCodeLogin } from "@/components/claude-code-login";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { Catalog } from "@/components/catalog";
 import { ConnectionForm, ProjectForm, TestButton, type ConnectionData, type ProjectSaved } from "@/components/forms";
@@ -12,7 +13,7 @@ import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Field, Loading, Select, Toggle } from "@/components/ui";
 import { ApiError, api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
-import { WORKSPACE_HINT, download } from "@/lib/client/words";
+import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
 
 interface Status {
   owner: boolean;
@@ -475,18 +476,13 @@ function ClaudeStep({ status, onDone }: { status: Status; onDone: () => void }) 
               ]}
             />
           ) : null}
-          {mode === "subscription" && DESKTOP ? (
-            <Button onClick={useLogin} busy={busy}>
-              Use my Claude Code login
-            </Button>
-          ) : null}
           <Field
             label={mode === "api_key" ? "Anthropic API key" : "Token from `claude setup-token`"}
             type="password"
             value={key}
             onChange={setKey}
             placeholder={mode === "api_key" ? "sk-ant-…" : "sk-ant-oat01-…"}
-            hint={mode === "subscription" ? "Run `claude setup-token` in a terminal and paste the token it prints." : undefined}
+            hint={mode === "subscription" ? SETUP_TOKEN_HINT : undefined}
             required
           />
           {mode === "api_key" ? (
@@ -496,6 +492,7 @@ function ClaudeStep({ status, onDone }: { status: Status; onDone: () => void }) 
           <Button type="submit" kind="primary" busy={busy} disabled={!key}>
             {mode === "api_key" ? "Check and save" : "Save"}
           </Button>
+          {mode === "subscription" && DESKTOP ? <ClaudeCodeLogin busy={busy} onClick={useLogin} /> : null}
         </form>
       )}
     </Card>

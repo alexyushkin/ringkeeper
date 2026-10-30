@@ -108,6 +108,8 @@ def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     data_dir = tmp_path / "ringkeeper-data"
     monkeypatch.setenv("RINGKEEPER_DATA_DIR", str(data_dir))
     monkeypatch.delenv("RINGKEEPER_MASTER_KEY", raising=False)
+    # A developer's own personal-mode setting mustn't change what the tests expect.
+    monkeypatch.delenv("RINGKEEPER_ALLOW_SUBSCRIPTION", raising=False)
     return data_dir
 
 

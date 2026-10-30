@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -543,10 +544,20 @@ def test_personal_subscription_mode_is_off_until_turned_on(
     win.patch("/bff/settings", json={"allow_subscription": True})  # Settings#personal
     assert win.get("/bff/settings").json()["claude"]["subscription_allowed"] is True
     assert win.get("/bff/setup/status").json()["claude"]["subscription_offered"] is True
+    none = win.post("/bff/secrets/claude/from-claude-code").json()["detail"]
+    assert "No Claude Code login found" in none
+    assert "claude setup-token" in none
+
+    # A stale login (Claude Code not run for months): says when it's from, and what to do.
     signed_in(first, expires_in=-60)
+    june = datetime(2026, 6, 10, 6, 17).timestamp()
+    os.utime(login / ".credentials.json", (june, june))
     expired = win.post("/bff/secrets/claude/from-claude-code")
     assert expired.status_code == 409
-    assert "expired" in expired.json()["detail"]
+    detail = expired.json()["detail"]
+    assert "Found an old Claude Code login from June 10, 2026 that has expired" in detail
+    assert "claude setup-token" in detail
+    assert first not in detail
     signed_in(first)
     assert win.post("/bff/secrets/claude/from-claude-code").status_code == 200
     settings = win.get("/bff/settings").json()

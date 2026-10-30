@@ -11,7 +11,8 @@ import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { AboutCard } from "@/components/about";
 import { VoiceSettings } from "@/components/voice";
-import { WORKSPACE_HINT, download } from "@/lib/client/words";
+import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
+import { ClaudeCodeLogin } from "@/components/claude-code-login";
 
 interface Settings {
   values: {
@@ -271,18 +272,20 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
       )}
       {mode === "subscription" ? <p className="text-sm text-muted">{settings.claude.subscription_note}</p> : null}
       <p className="text-sm text-muted">{stored ? "A key is saved (hidden)." : "No key saved for this option yet."}</p>
-      {mode === "subscription" && DESKTOP ? (
-        <Button onClick={useLogin} busy={busy}>
-          Use my Claude Code login
-        </Button>
-      ) : null}
-      <Field label={mode === "subscription" ? "Token from `claude setup-token`" : stored ? "Replace the key" : "Key"} type="password" value={key} onChange={setKey} />
+      <Field
+        label={mode === "subscription" ? "Token from `claude setup-token`" : stored ? "Replace the key" : "Key"}
+        type="password"
+        value={key}
+        onChange={setKey}
+        hint={mode === "subscription" ? SETUP_TOKEN_HINT : undefined}
+      />
       {mode === "api_key" ? (
         <Field label="Workspace ID (if your key needs one)" value={workspace} onChange={setWorkspace} placeholder="wrkspc_…" hint={WORKSPACE_HINT} />
       ) : null}
       <Button kind="primary" busy={busy} disabled={!key && workspace.trim() === savedWorkspace} onClick={save}>
         {key ? "Check and save" : "Save"}
       </Button>
+      {mode === "subscription" && DESKTOP ? <ClaudeCodeLogin busy={busy} onClick={useLogin} /> : null}
       {message ? <Alert tone="good">{message}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
     </Card>

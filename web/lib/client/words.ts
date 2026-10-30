@@ -53,3 +53,6 @@ export function download(filename: string, text: string): void {
 /** Next to the Anthropic key, wherever it's entered. */
 export const WORKSPACE_HINT =
   "Some keys only work inside one Anthropic workspace. If Anthropic says the key isn't scoped to a workspace, copy the ID from platform.claude.com (Settings › Workspaces).";
+
+/** Under the subscription token field: the first way to use a subscription. */
+export const SETUP_TOKEN_HINT = "Run `claude setup-token` in a terminal and paste the token it prints. It lasts a year.";
