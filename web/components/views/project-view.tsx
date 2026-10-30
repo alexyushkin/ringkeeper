@@ -102,10 +102,10 @@ export function ProjectView({ name }: { name: string }) {
   if (project.error) return <Alert>{project.error}</Alert>;
   if (!project.data) return <Loading />;
   const bound = new Set(project.data.instances.map((i) => i.name));
-  // A connection is shared only among one client's projects.
+  // A client's connection is shared only among that client's projects; a shared tool goes anywhere.
   const client = project.data.owner.trim().toLowerCase();
   const byName = new Map((connections.data ?? []).map((c) => [c.name, c]));
-  const available = (connections.data ?? []).filter((c) => !bound.has(c.name) && c.owner.trim().toLowerCase() === client);
+  const available = (connections.data ?? []).filter((c) => !bound.has(c.name) && (c.shared || c.owner.trim().toLowerCase() === client));
 
   return (
     <>
@@ -171,13 +171,13 @@ export function ProjectView({ name }: { name: string }) {
         {available.length ? (
           <div className="space-y-2 rounded-xl border border-line p-3">
             <Select
-              label={`Or link one of ${project.data.owner}'s connections`}
+              label={`Or link one of ${project.data.owner}'s connections, or a shared tool`}
               value={adding}
               onChange={(next) => {
                 setAdding(next);
                 setScope({});
               }}
-              options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, `${c.name} (${c.env === "prod" ? "production" : c.env})`])]}
+              options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, c.shared ? `${c.name} (shared tool)` : `${c.name} (${c.env === "prod" ? "production" : c.env})`])]}
             />
             {adding ? <ScopeInputs fields={byName.get(adding)?.scope_fields ?? []} value={scope} onChange={setScope} /> : null}
             <Button

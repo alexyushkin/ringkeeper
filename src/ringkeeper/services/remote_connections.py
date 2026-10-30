@@ -45,6 +45,8 @@ class NewConnection:
     server: str | None = None  # its name in the MCP Registry, if it came from there
     project: str | None = None
     scope: dict[str, str] | None = None
+    shared: bool = False  # a shared tool (a local MCP server with no client's data)
+    all_projects: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -101,7 +103,7 @@ def check_new(session: Session, new: NewConnection) -> None:
         raise RuleViolationError(f"A connection named '{new.name}' already exists.")
     if new.project is not None:
         owner = projects.get_project(session, new.project).owner
-        if not bindings.same_client(owner, new.owner):
+        if not new.shared and not bindings.same_client(owner, new.owner):
             raise RuleViolationError(
                 f"'{new.project}' is {owner}'s project; this connection is for {new.owner}."
             )

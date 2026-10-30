@@ -99,9 +99,19 @@ class Server:
         if not self.key:
             object.__setattr__(self, "key", self.name)
 
+    def secrets(self) -> int:
+        found = len(self.spec.get("env", {})) + len(self.spec.get("headers", {}))
+        return found + sum(1 for a in self.spec.get("args", []) if mcp.looks_secret(a))
+
+    def suggested(self) -> str:
+        """What it most likely is: a client's account when it needs a key, a token, a
+        login or a server's address; otherwise your own tool, shared by every client."""
+        if self.transport == "url" or self.secrets() or any(n.sensitive for n in self.needed):
+            return "client"
+        return "shared"
+
     def summary(self) -> JSON:
-        secrets = len(self.spec.get("env", {})) + len(self.spec.get("headers", {}))
-        secrets += sum(1 for a in self.spec.get("args", []) if mcp.looks_secret(a))
+        secrets = self.secrets()
         return {
             "name": self.name,
             "key": self.key,
@@ -111,6 +121,7 @@ class Server:
             "secrets": secrets,
             "needs": [{"key": n.key, "title": n.title, "secret": n.sensitive} for n in self.needed],
             "problem": self.problem,
+            "suggested": self.suggested(),
         }
 
 
@@ -289,11 +300,16 @@ def import_server(
     session: Session,
     settings: Settings,
     server: Server,
-    project: str,
+    linked: list[str],
     values: dict[str, str] | None = None,
+    *,
+    shared: bool = False,
+    all_projects: bool = False,
 ) -> str:
-    """One server -> an `mcp` connection linked to `project`. Returns the connection's
-    name. `values`: what an extension needs that Claude Desktop's files don't show."""
+    """One server -> an `mcp` connection linked to the `linked` projects. Returns the
+    connection's name. A client's connection: projects of one client. A shared tool:
+    any client's projects, or `all_projects`. `values`: what an extension needs that
+    Claude Desktop's files don't show."""
     if server.needed:
         given = {k: v.strip() for k, v in (values or {}).items() if v.strip()}
         if missing := [n.title for n in server.needed if n.key not in given]:
@@ -301,7 +317,19 @@ def import_server(
         server = complete(server, given)
     if server.problem:
         raise RuleViolationError(f"{server.name} can't be imported: {server.problem}.")
-    owner = projects.get_project(session, project).owner
+    if not linked and not (shared and all_projects):
+        raise RuleViolationError(f"Choose a project for {server.name}.")
+    owners = {projects.get_project(session, p).owner for p in linked}
+    if shared:
+        owner = instances.SHARED_OWNER
+    elif len({o.strip().casefold() for o in owners}) == 1:
+        owner = owners.pop()
+    else:
+        raise RuleViolationError(
+            f"{server.name} is a client's connection, so its projects must all be one "
+            f"client's (these are {', '.join(sorted(owners))}'s). Make it a shared tool to "
+            "use it for several clients."
+        )
     name = _free_name(session, server.name)
     ref = secrets_in.store_connection(
         session, settings, name, InstanceType.MCP, json.dumps(server.spec)
@@ -318,12 +346,16 @@ def import_server(
         session,
         InstanceIn(
             name=name, type=InstanceType.MCP, env=Env.DEV, secret_ref=ref, owner=owner,
-            config=config,
+            config=config, shared=shared, all_projects=shared and all_projects,
         ),
     )  # fmt: skip
-    bindings.set_binding(session, BindingIn(project=project, instance=name))
+    for project in linked:
+        bindings.set_binding(session, BindingIn(project=project, instance=name))
+    kind = "shared tool" if shared else f"{owner}'s connection"
+    where = "all projects" if shared and all_projects else ", ".join(linked)
     admin_audit.record(
-        session, "connection.import", f"imported MCP server {server.name} from Claude Desktop",
-        by="owner", instance=name, project=project,
+        session, "connection.import",
+        f"imported MCP server {server.name} from Claude Desktop as a {kind} for {where}",
+        by="owner", instance=name, project=linked[0] if len(linked) == 1 else None,
     )  # fmt: skip
     return name

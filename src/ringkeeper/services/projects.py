@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.errors import AlreadyExistsError, NotFoundError
-from ringkeeper.models import Project, ProjectInstance
+from ringkeeper.models import Instance, Project, ProjectInstance
 from ringkeeper.schemas import ProjectIn
 
 
@@ -32,6 +32,9 @@ def create_project(session: Session, data: ProjectIn) -> Project:
         raise AlreadyExistsError(f"project '{data.name}' already exists")
     project = Project(**data.model_dump(), bindings=[])
     session.add(project)
+    # Shared tools for all projects come with every new one.
+    for tool in session.scalars(select(Instance).where(Instance.all_projects)):
+        session.add(ProjectInstance(project=project, instance=tool))
     session.flush()
     return project
 

@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useState } from "react";
 
 import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
+import { SharedTools } from "@/components/shared-tools";
 import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
@@ -22,6 +23,7 @@ export default function ConnectionsPage() {
   const label = (c: LibraryConnection) => serviceName(c, services.data ?? []);
   const shown = all.filter(
     (c) =>
+      !c.shared &&
       (!scope.client || sameClient(c.owner, scope.client)) &&
       (!scope.project || c.projects.includes(scope.project)) &&
       (!service || label(c) === service) &&
@@ -41,7 +43,11 @@ export default function ConnectionsPage() {
       </div>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      {connections.data && !shown.length ? <Empty>{all.length ? "Nothing matches." : "No connections yet."}</Empty> : null}
+      <section className="mb-6">
+        <h2 className="mb-2 text-sm font-semibold text-muted">Your shared tools</h2>
+        <SharedTools />
+      </section>
+      {connections.data && !shown.length ? <Empty>{all.some((c) => !c.shared) ? "Nothing matches." : "No client connections yet."}</Empty> : null}
       {clients.map((client) => (
         <section key={client} className="mb-6">
           <div className="mb-2 flex items-center gap-2">

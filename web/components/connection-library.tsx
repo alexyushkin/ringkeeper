@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { LocalUpdate } from "@/components/catalog";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { McpTools } from "@/components/mcp-tools";
-import { Alert, Badge, Button, Details, EnvBadge, Field, Select, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
 import { ENVS, SERVICE, slugify } from "@/lib/client/words";
@@ -152,7 +152,32 @@ function LinkToProject({ connection, projects, onChange }: { connection: Library
   );
 }
 
-/** A connection in its client's library. */
+/** A shared tool for every project, new ones too (or only the ones it's linked to). */
+function AllProjects({ connection, onChange }: { connection: LibraryConnection; onChange: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  async function set(on: boolean) {
+    setError(null);
+    try {
+      await api(`connections/${connection.name}`, { method: "PATCH", json: { all_projects: on } });
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return (
+    <>
+      <Toggle
+        label="All projects"
+        checked={Boolean(connection.all_projects)}
+        onChange={set}
+        hint={connection.all_projects ? "Every project has it, and new projects get it too." : "Only the projects below. Turn on to give it to every project, new ones too."}
+      />
+      {error ? <Alert>{error}</Alert> : null}
+    </>
+  );
+}
+
+/** A connection in its client's library (or a shared tool, in the shared tools). */
 export function LibraryCard({ connection, projects, services, onChange }: { connection: LibraryConnection; projects: string[]; services: RemoteService[]; onChange: () => void }) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -190,12 +215,14 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         <span className="font-medium">{connection.name}</span>
         <EnvBadge env={connection.env} />
         <span className="text-xs text-muted">{serviceName(connection, services)}</span>
+        {connection.shared ? <Badge tone="accent">shared tool</Badge> : null}
         {connection.config.source === "signin" ? <Badge tone="good">signed in</Badge> : null}
         {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
         {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
         {connection.last_test_at ? <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span> : null}
       </div>
       {connection.last_test_ok === false && connection.last_test_message ? <Alert>{connection.last_test_message}</Alert> : null}
+      {connection.shared ? <AllProjects connection={connection} onChange={onChange} /> : null}
       <ul className="space-y-1">
         {(connection.links ?? []).map((link) => (
           <LinkRow key={link.project} connection={connection} link={link} onChange={onChange} />
@@ -369,7 +396,7 @@ export function useLibrary(client: string) {
   const services = useApi<RemoteService[]>("remote-services");
   const same = (owner: string) => owner.trim().toLowerCase() === client.trim().toLowerCase();
   return {
-    connections: (connections.data ?? []).filter((c) => same(c.owner)),
+    connections: (connections.data ?? []).filter((c) => !c.shared && same(c.owner)),
     projects: (projects.data ?? []).filter((p) => same(p.owner)).map((p) => p.name),
     services: services.data ?? [],
     loading: connections.loading || projects.loading,

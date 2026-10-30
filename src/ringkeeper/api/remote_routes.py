@@ -91,6 +91,9 @@ class LocalConnectionIn(PlanIn):
     project: Slug | None = None
     values: Values = Field(default_factory=dict[str, str], repr=False)
     replace: Slug | None = None  # update this connection to the planned version instead
+    # A shared tool (no client's data): any client's project, or all of them.
+    shared: bool = False
+    all_projects: bool = False
 
 
 def redirect_uri(request: Request, settings: Settings) -> str:
@@ -183,8 +186,9 @@ def install_local(data: LocalConnectionIn, session: SessionDep) -> dict[str, Any
     if data.fingerprint != plan.fingerprint:
         raise HTTPException(409, detail="The package changed since you confirmed. Look again.")
     new = NewConnection(
-        name=data.replace or data.name, owner=data.owner, env=data.env, server=data.server,
-        project=data.project,
+        name=data.replace or data.name, env=data.env, server=data.server,
+        owner=instances.SHARED_OWNER if data.shared else data.owner,
+        project=data.project, shared=data.shared, all_projects=data.all_projects,
     )  # fmt: skip
     if data.replace:
         current = instances.get_instance(session, data.replace)
@@ -224,7 +228,8 @@ def _store_local(
                 session,
                 InstanceIn(
                     name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref,
-                    owner=new.owner, config=config,
+                    owner=new.owner, config=config, shared=new.shared,
+                    all_projects=new.all_projects,
                 ),
             )  # fmt: skip
             admin_audit.record(
@@ -293,6 +298,9 @@ class ExtensionIn(Input):
     owner: NonEmpty
     project: Slug | None = None
     values: Values = Field(default_factory=dict[str, str], repr=False)
+    # A shared tool (no client's data): any client's project, or all of them.
+    shared: bool = False
+    all_projects: bool = False
 
 
 @router.post("/connections/extension", status_code=202, dependencies=[RecentAuth])
@@ -307,7 +315,10 @@ def install_extension(data: ExtensionIn, session: SessionDep) -> dict[str, Any]:
         raise RuleViolationError(f"{bundle.title} can't run here: {bundle.problem}.")
     # As an extension imported from Claude Desktop: Test data, and its calls wait for
     # approval by the generic tool rules (adapters.mcp). It can be set to Production.
-    new = NewConnection(name=data.name, owner=data.owner, env=Env.DEV, project=data.project)
+    new = NewConnection(
+        name=data.name, owner=instances.SHARED_OWNER if data.shared else data.owner,
+        env=Env.DEV, project=data.project, shared=data.shared, all_projects=data.all_projects,
+    )  # fmt: skip
     remote_connections.check_new(session, new)
     values = dict(data.values)
     bundles.values_for(bundle, values)  # anything required that's missing, before starting
@@ -337,7 +348,7 @@ def _store_extension(new: NewConnection, bundle: bundles.Bundle, spec: dict[str,
             session,
             InstanceIn(
                 name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref,
-                owner=new.owner, config=config,
+                owner=new.owner, config=config, shared=new.shared, all_projects=new.all_projects,
             ),
         )  # fmt: skip
         admin_audit.record(

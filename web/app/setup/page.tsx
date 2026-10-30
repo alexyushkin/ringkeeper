@@ -165,7 +165,7 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
           projects.reload();
         }}
       />
-      <ClaudeDesktopImport projects={names} quiet />
+      <ClaudeDesktopImport quiet onImported={projects.reload} />
       <Card>
         <h2 className="mb-1 text-lg font-semibold">{names.length ? "Add another project" : "Add your first project"}</h2>
         <p className="mb-4 text-sm text-muted">A project is one piece of client work: a website, an app, a set of automations.</p>

@@ -56,6 +56,15 @@ enforces it by argument name: an ID the link pins is filled in when a call
 leaves it out and refused when a call names another, and tools that work
 across the whole account are refused on a narrowed link.
 
+A **shared tool** is the other kind: an MCP server that holds no client's data,
+such as a browser, files on this computer or a web fetcher. It's yours, not a
+client's, so it can be linked to any client's projects, or to **all projects**
+(new ones get it too). Only MCP servers can be shared tools, and anything they
+do that isn't marked read-only still waits for your approval, with the usual
+per-tool overrides. Importing from Claude Desktop or the catalog asks which kind
+each server is, and suggests a shared tool when it needs no key, token, login
+or address.
+
 Services with an official remote MCP server (Neon, Supabase, Airtable,
 Sentry, Notion, Linear, Cloudflare, Atlassian) connect with one click: the
 service's own sign-in page, using MCP's OAuth with dynamic client

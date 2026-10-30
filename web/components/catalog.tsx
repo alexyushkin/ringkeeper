@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { RemoteServices } from "@/components/connection-library";
+import { KindChoice, type Kind } from "@/components/shared-tools";
 import { Alert, Badge, Button, Details, Field, Select, Spinner, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { ENVS, slugify } from "@/lib/client/words";
@@ -390,6 +391,8 @@ function RemoteConnect({ url, server, headers, signin, title, client, project, o
 /** One confirmation screen: who published it, exactly what installs and runs. */
 function LocalInstall({ server, index, client, project, onAdded, replace }: { server: CatalogServer; index: number; replace?: string } & Target) {
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [kind, setKind] = useState<Kind | null>(null); // asked once the plan shows what it needs
+  const [all, setAll] = useState(false);
   const [name, setName] = useState(replace ?? slugify(`${client} ${server.title}`).slice(0, 60));
   const [env, setEnv] = useState("dev");
   const [values, setValues] = useState<Record<string, string>>({});
@@ -398,16 +401,23 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
 
   useEffect(() => {
     api<Plan>("catalog/plan", { json: { server: server.name, package: index } })
-      .then(setPlan)
+      .then((found) => {
+        setPlan(found);
+        // Nothing secret to give it: most likely your own tool, not a client's account.
+        const suggested: Kind = [...found.env, ...found.arguments].some((f) => f.secret) ? "client" : "shared";
+        setKind(suggested);
+        if (!replace && suggested === "shared") setName(slugify(server.title).slice(0, 60));
+      })
       .catch((err: unknown) => setError(errorText(err)));
-  }, [server.name, index]);
+  }, [server.name, server.title, index, replace]);
 
   async function install() {
     if (!plan) return;
     setState("installing");
     setError(null);
     try {
-      await api("connections/local", { json: { server: server.name, package: index, fingerprint: plan.fingerprint, name, owner: client, env, project: replace ? null : (project ?? null), values, replace: replace ?? null } });
+      const shared = kind === "shared";
+      await api("connections/local", { json: { server: server.name, package: index, fingerprint: plan.fingerprint, name, owner: client, env, project: replace ? null : (project ?? null), values, replace: replace ?? null, shared, all_projects: shared && all } });
       await installed(name);
       onAdded(name);
     } catch (err) {
@@ -441,6 +451,18 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
         </dd>
       </dl>
       {plan.missing ? <Alert tone="warn">This needs {plan.needs}, which isn&apos;t on this computer. Install it, then come back.</Alert> : null}
+      {!replace && kind ? (
+        <SharedChoice
+          kind={kind}
+          onKind={(next) => {
+            setKind(next);
+            setName(slugify(next === "shared" ? server.title : `${client} ${server.title}`).slice(0, 60));
+          }}
+          all={all}
+          onAll={setAll}
+          project={project}
+        />
+      ) : null}
       {!replace ? <ConnectionBasics name={name} setName={setName} env={env} setEnv={setEnv} /> : null}
       {fields.map((f) => (
         <Field key={f.name} label={`${f.name}${f.required ? "" : " (optional)"}`} type={f.secret ? "password" : "text"} value={values[f.name] ?? ""} onChange={(v) => setValues({ ...values, [f.name]: v })} placeholder={f.default || undefined} hint={f.description || undefined} />
@@ -462,6 +484,8 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
  */
 function InstallExtension({ client, project, onAdded }: Target) {
   const [shown, setShown] = useState<Extension | null>(null);
+  const [kind, setKind] = useState<Kind>("client");
+  const [all, setAll] = useState(false);
   const [name, setName] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [state, setState] = useState<"idle" | "reading" | "installing">("idle");
@@ -476,7 +500,9 @@ function InstallExtension({ client, project, onAdded }: Target) {
     try {
       const found = await api<Extension>("catalog/extensions", { body: file, contentType: "application/octet-stream" });
       setShown(found);
-      setName(slugify(`${client} ${found.title}`).slice(0, 60));
+      const suggested: Kind = found.settings.some((s) => s.secret) ? "client" : "shared";
+      setKind(suggested);
+      setName(slugify(suggested === "shared" ? found.title : `${client} ${found.title}`).slice(0, 60));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -489,7 +515,8 @@ function InstallExtension({ client, project, onAdded }: Target) {
     setState("installing");
     setError(null);
     try {
-      await api("connections/extension", { json: { fingerprint: shown.fingerprint, name, owner: client, project: project ?? null, values } });
+      const shared = kind === "shared";
+      await api("connections/extension", { json: { fingerprint: shown.fingerprint, name, owner: client, project: project ?? null, values, shared, all_projects: shared && all } });
       await installed(name);
       onAdded(name);
     } catch (err) {
@@ -537,6 +564,16 @@ function InstallExtension({ client, project, onAdded }: Target) {
             </dd>
           </dl>
           {shown.problem ? <Alert tone="warn">This can&apos;t run here: {shown.problem}.</Alert> : null}
+          <SharedChoice
+            kind={kind}
+            onKind={(next) => {
+              setKind(next);
+              setName(slugify(next === "shared" ? shown.title : `${client} ${shown.title}`).slice(0, 60));
+            }}
+            all={all}
+            onAll={setAll}
+            project={project}
+          />
           <Field label="Name" value={name} onChange={(v) => setName(slugify(v))} hint="A short name the agent uses for it." />
           <p className="text-xs text-muted">Added as Test data, like an extension imported from Claude Desktop: tools marked read-only run without asking; everything else waits for you.</p>
           {shown.settings.map((s) =>
@@ -553,6 +590,24 @@ function InstallExtension({ client, project, onAdded }: Target) {
         </>
       ) : null}
       {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+/** A local server or an extension: a client's account, or your own tool for any client. */
+function SharedChoice({ kind, onKind, all, onAll, project }: { kind: Kind; onKind: (kind: Kind) => void; all: boolean; onAll: (on: boolean) => void; project?: string }) {
+  return (
+    <div className="space-y-2">
+      <KindChoice value={kind} onChange={(next) => onKind(next === "client" ? "client" : "shared")} />
+      {kind === "shared" ? (
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={all} onChange={(e) => onAll(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
+          <span>
+            For <strong>all projects</strong>, new ones too
+            <span className="text-muted">{all ? "" : project ? ` (otherwise only ${project}; link it to more later)` : " (otherwise link it to projects later)"}</span>
+          </span>
+        </label>
+      ) : null}
     </div>
   );
 }

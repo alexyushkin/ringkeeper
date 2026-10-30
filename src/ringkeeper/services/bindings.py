@@ -27,10 +27,11 @@ def same_client(a: str, b: str) -> bool:
 
 
 def check_same_client(session: Session, project_name: str, instance_name: str) -> None:
-    """The app's rule: a connection is shared only among one client's projects. (A
-    registry file may still link across owners, where an owner is a team.)"""
+    """The app's rule: a client's connection is shared only among that client's
+    projects; a shared tool (no client's data) goes to any project. (A registry file
+    may still link across owners, where an owner is a team.)"""
     project, instance = _resolve(session, project_name, instance_name)
-    if not same_client(project.owner, instance.owner):
+    if not instance.shared and not same_client(project.owner, instance.owner):
         raise RuleViolationError(
             f"'{instance.name}' is {instance.owner}'s connection and '{project.name}' is "
             f"{project.owner}'s project. A connection is shared only among one client's projects."

@@ -28,7 +28,7 @@ from ringkeeper.desktop import server
 from ringkeeper.desktop.update import updates
 from ringkeeper.models import AuthMode, DecisionKind, InstanceType, TaskStatus
 from ringkeeper.services import claude_desktop, inbox, instances, subscription, tasks
-from ringkeeper.services.calls import run_call
+from ringkeeper.services.calls import RefusalError, run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
 from tests.helpers import fake_key_check
@@ -405,6 +405,94 @@ def test_claude_code_folders_are_offered_as_projects(
 
     (config / ".claude.json").write_text("not json", encoding="utf-8")
     assert win.get("/bff/desktop/claude-code-folders").json() == []
+
+
+def test_a_shared_tool_works_for_every_client_and_a_client_connection_does_not(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server = Path(__file__).parent / "fixtures" / "fake_mcp_server.py"
+    config = tmp_path / "claude_desktop_config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    # No key, token or address: your own tool.
+                    "files": {"command": sys.executable, "args": [str(server)]},
+                    # A key: a client's account.
+                    "crm": {
+                        "command": sys.executable,
+                        "args": [str(server)],
+                        "env": {"FAKE_API_KEY": "fake-key-1234567890"},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(claude_desktop, "config_paths", lambda: [config])
+    win = window(desktop)
+    for project, client in (("acme-web", "acme"), ("globex-app", "globex")):
+        assert win.post("/bff/projects", json={"name": project, "owner": client}).status_code == 201
+
+    listed = win.get("/bff/desktop/claude-desktop-servers").json()["servers"]
+    servers = {s["name"]: s for s in listed}
+    assert (servers["files"]["suggested"], servers["crm"]["suggested"]) == ("shared", "client")
+
+    # A client's connection can't be given to two clients' projects at once...
+    mixed = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [{"name": "crm", "projects": ["acme-web", "globex-app"]}]},
+    )
+    assert mixed.status_code == 422
+    assert "one client's" in mixed.json()["detail"]
+    made = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [
+            {"name": "crm", "projects": ["acme-web"]},
+            {"name": "files", "all_projects": True},  # shared: what it looks like
+        ]},
+    )  # fmt: skip
+    assert made.json() == {"imported": {"crm": "crm", "files": "files"}}, made.text
+    # ...nor linked to another client's project later.
+    crossing = win.put("/bff/projects/globex-app/connections/crm", json={"is_default": False})
+    assert crossing.status_code == 409
+    assert "only among one client's projects" in crossing.json()["detail"]
+
+    connections = {c["name"]: c for c in win.get("/bff/connections").json()}
+    assert (connections["files"]["shared"], connections["files"]["all_projects"]) == (True, True)
+    assert connections["files"]["owner"] == instances.SHARED_OWNER
+    assert connections["files"]["projects"] == ["acme-web", "globex-app"]
+    assert (connections["crm"]["shared"], connections["crm"]["owner"]) == (False, "acme")
+
+    # A project added later gets the all-projects tool, and nothing of a client's.
+    assert win.post("/bff/projects", json={"name": "acme-shop", "owner": "acme"}).status_code == 201
+    connections = {c["name"]: c for c in win.get("/bff/connections").json()}
+    assert connections["files"]["projects"] == ["acme-shop", "acme-web", "globex-app"]
+    assert connections["crm"]["projects"] == ["acme-web"]
+
+    # The shared tool works from both clients' projects; writes wait for approval in each.
+    assert win.post("/bff/connections/files/test").json()["ok"] is True  # learns its hints
+    vault = get_vault(get_settings())
+    for project in ("acme-web", "globex-app"):
+        caller = Caller(project, f"session-{project}", f"token-{project}")
+
+        def run(tool: str, caller: Caller = caller) -> dict[str, Any]:
+            call = ToolCall(caller, InstanceType.MCP, "call_tool", "files", {"tool": tool})
+            return asyncio.run(run_call(call, vault))
+
+        assert run("read_notes")["structured"] == {"result": ["first note"]}, project
+        assert run("delete_note")["status"] == "held_for_approval", project
+
+    # The client's connection doesn't reach the other client's project.
+    other = Caller("globex-app", "session-x", "token-x")
+    refused = ToolCall(other, InstanceType.MCP, "call_tool", "crm", {"tool": "read_notes"})
+    with pytest.raises(RefusalError, match="not available to project 'globex-app'"):
+        asyncio.run(run_call(refused, vault))
+
+    # A shared tool goes back to being a client's only once no other client uses it.
+    back = win.patch("/bff/connections/files", json={"shared": False, "owner": "acme"})
+    assert back.status_code == 422
+    assert "globex-app" in back.json()["detail"]
 
 
 def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(

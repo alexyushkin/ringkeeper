@@ -25,7 +25,7 @@ PROJECT_FIELDS = (
     "owner", "description", "aliases", "repo_url", "workspace_path", "autonomy", "checks",
     "models",
 )  # fmt: skip
-INSTANCE_FIELDS = ("type", "env", "base_url", "secret_ref", "owner")
+INSTANCE_FIELDS = ("type", "env", "base_url", "secret_ref", "owner", "shared", "all_projects")
 BINDING_FIELDS = ("default", "allowed_tools", "preapproved_writes")
 
 

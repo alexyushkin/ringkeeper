@@ -3,6 +3,25 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **"Use my Claude Code login" says what it found.** An old login says
+  "Found an old Claude Code login from <date> that has expired" and points to
+  `claude setup-token`; no login says so, and that the Claude desktop app keeps
+  its own. The `setup-token` token comes first in setup and Settings: it lasts a
+  year.
+- **Shared tools.** A browser, files on this computer, a fetcher: MCP servers
+  that hold no client's data can now be your own tool, linked to any client's
+  projects or to all of them (new projects get them too). A client's
+  connections are still only for that client's projects. Their writes still
+  wait for your approval.
+- **Importing from Claude Desktop** asks, for each server, whether it's a
+  client's account or your own tool (it suggests one), and gives it to several
+  projects at once, or to all projects for a shared tool. Skip is still there.
+  The catalog's local servers and extension files ask the same.
+- Changing a connection's kind of data no longer drops an MCP server's saved
+  settings (its tool rules and package).
+
 ## 0.1.0-beta.3 (2026-10-28)
 
 - **First run can use your Claude subscription** when personal subscription

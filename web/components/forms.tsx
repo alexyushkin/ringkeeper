@@ -148,6 +148,8 @@ export interface ConnectionData {
   type: string;
   env: string;
   owner: string;
+  shared?: boolean; // a shared tool: any client's projects can use it
+  all_projects?: boolean; // ...and every project gets it, new ones too
   base_url: string | null;
   config: { preview?: string; [key: string]: unknown };
   secret_stored: boolean;

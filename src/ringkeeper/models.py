@@ -245,6 +245,12 @@ class Instance(TimestampMixin, Base):
     base_url: Mapped[str | None] = mapped_column(Text)
     secret_ref: Mapped[str] = mapped_column(Text)
     owner: Mapped[str] = mapped_column(Text)
+    # A shared tool: an MCP server that holds no client's data (a browser, files on
+    # this computer), yours, linkable to any client's projects. False: a client's
+    # connection, linked only to that client's projects.
+    shared: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # A shared tool every project gets, including projects added later.
+    all_projects: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # Service-specific settings that aren't secret (an MCP server: how it runs, a
     # preview of its command, which of its tools are read-only).
     config: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")

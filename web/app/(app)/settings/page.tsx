@@ -309,10 +309,9 @@ function ThisComputer({ startAtLogin, onChange }: { startAtLogin: boolean; onCha
 }
 
 function ImportFromClaudeDesktop() {
-  const projects = useApi<{ name: string }[]>("projects");
   return (
     <div className="mb-4">
-      <ClaudeDesktopImport projects={(projects.data ?? []).map((p) => p.name)} />
+      <ClaudeDesktopImport />
     </div>
   );
 }

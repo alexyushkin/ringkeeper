@@ -167,3 +167,35 @@ def test_files_that_arent_installed(owner: TestClient, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(bundles, "MAX_BYTES", 100)
     assert upload(owner, bundle(NOTES)).status_code == 413
+
+
+def test_an_extension_can_be_a_shared_tool_for_every_client(owner: TestClient) -> None:
+    for name, client in (("acme-web", "acme"), ("globex-app", "globex")):
+        owner.post("/projects", json={"name": name, "owner": client})
+    shown = upload(owner, bundle(NOTES, {"server/index.js": "// the server"})).json()
+    body = {"fingerprint": shown["fingerprint"], "name": "notes-desk", "owner": "acme",
+            "project": "acme-web", "values": {"api_key": "secret-notes-key"},
+            "shared": True, "all_projects": True}  # fmt: skip
+    assert owner.post("/connections/extension", json=body).status_code == 202
+    assert wait_installed(owner, "notes-desk")["state"] == "done"
+    [tool] = [c for c in owner.get("/connections").json() if c["name"] == "notes-desk"]
+    assert (tool["shared"], tool["all_projects"], tool["owner"]) == (True, True, "you")
+    assert tool["projects"] == ["acme-web", "globex-app"]
+    owner.post("/projects", json={"name": "initech-site", "owner": "initech"})
+    [tool] = [c for c in owner.get("/connections").json() if c["name"] == "notes-desk"]
+    assert tool["projects"] == ["acme-web", "globex-app", "initech-site"]
+    # Changing it keeps what it is: its package and source stay (they used to be dropped).
+    changed = owner.patch("/connections/notes-desk", json={"env": "staging"}).json()
+    assert (changed["env"], changed["config"]["source"], changed["shared"]) == (
+        "staging", "mcpb", True,
+    )  # fmt: skip
+    # Only an MCP server can be shared: a client's database can't.
+    made = owner.post(
+        "/connections",
+        json={"name": "acme-db", "type": "supabase", "env": "dev", "owner": "acme",
+              "secret": "postgresql://u:p@db.example/acme"},
+    )  # fmt: skip
+    assert made.status_code == 201, made.text
+    refused = owner.patch("/connections/acme-db", json={"shared": True})
+    assert refused.status_code == 422
+    assert "only MCP servers" in refused.json()["detail"]

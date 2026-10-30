@@ -426,6 +426,8 @@ class ConnectionIn(Input):
 class ConnectionPatch(Input):
     env: Env | None = None
     owner: NonEmpty | None = None
+    shared: bool | None = None  # a shared tool (MCP only), or a client's connection
+    all_projects: bool | None = None  # a shared tool every project gets
     base_url: str | None = None
     # Required with a new base_url: the key goes wherever the address points, so
     # an address can't be changed to send the stored key somewhere else.
@@ -441,6 +443,8 @@ class ConnectionOut(BaseModel):
     type: InstanceType
     env: Env
     owner: str
+    shared: bool = False  # a shared tool: any client's projects can use it
+    all_projects: bool = False  # ...and every project gets it, new ones too
     config: dict[str, Any]  # never secret (for an MCP server: a masked preview, read-only tools)
     base_url: str | None
     secret_stored: bool
@@ -468,6 +472,7 @@ def _connection_out(instance: Instance) -> ConnectionOut:
     )  # fmt: skip
     return ConnectionOut(
         name=instance.name, type=instance.type, env=instance.env, owner=instance.owner,
+        shared=instance.shared, all_projects=instance.all_projects,
         config=dict(instance.config or {}), base_url=instance.base_url,
         secret_stored=_stored(instance.secret_ref),
         projects=instances.bound_project_names(instance), links=links,
@@ -531,12 +536,18 @@ def update_connection(
         except RuleViolationError as error:
             raise HTTPException(422, detail=str(error)) from None
         instance.last_test_at = instance.last_test_ok = instance.last_test_message = None
+    shared = changes.get("shared", instance.shared)
+    owner = instances.SHARED_OWNER if shared else changes.get("owner", instance.owner)
     merged = InstanceIn(
         name=instance.name, type=instance.type, env=changes.get("env", instance.env),
-        secret_ref=instance.secret_ref, owner=changes.get("owner", instance.owner),
-        base_url=base_url,
+        secret_ref=instance.secret_ref, owner=owner,
+        base_url=base_url, config=dict(instance.config or {}), shared=shared,
+        all_projects=shared and changes.get("all_projects", instance.all_projects),
     )  # fmt: skip
-    instances.update_instance(session, merged)
+    try:
+        instances.update_instance(session, merged)
+    except RuleViolationError as error:
+        raise HTTPException(422, detail=str(error)) from None
     admin_audit.record(
         session, "connection.update", f"changed {', '.join(sorted(changes)) or 'nothing'}",
         by=OWNER, instance=name, details={k: str(v) for k, v in changes.items()},

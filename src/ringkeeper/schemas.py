@@ -93,6 +93,8 @@ class InstanceIn(_Input):
     owner: NonEmpty
     base_url: str | None = None
     config: dict[str, Any] = Field(default_factory=dict[str, Any])
+    shared: bool = False  # a shared tool, linkable to any client's projects (MCP only)
+    all_projects: bool = False  # a shared tool every project gets, new ones too
 
 
 # An ID a link is narrowed to (a Neon project, an Airtable base): it is sent

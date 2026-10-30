@@ -4,8 +4,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
-from ringkeeper.models import Env, Instance, InstanceType, ProjectInstance
+from ringkeeper.models import Env, Instance, InstanceType, Project, ProjectInstance
 from ringkeeper.schemas import InstanceIn
+
+# The owner shown for a shared tool: yours, not a client's (Instance.shared decides).
+SHARED_OWNER = "you"
 
 
 def find_instance(session: Session, name: str) -> Instance | None:
@@ -38,17 +41,56 @@ def bound_project_names(instance: Instance) -> list[str]:
     return sorted(binding.project.name for binding in instance.bindings)
 
 
+def _check_kind(data: InstanceIn) -> None:
+    if data.shared and data.type is not InstanceType.MCP:
+        raise RuleViolationError(
+            f"'{data.name}' can't be a shared tool: only MCP servers can (a {data.type} "
+            "connection holds a client's account)."
+        )
+    if data.all_projects and not data.shared:
+        raise RuleViolationError(
+            f"'{data.name}' is a client's connection, so it can't go to all projects."
+        )
+
+
+def link_everywhere(session: Session, instance: Instance) -> list[str]:
+    """A shared tool for all projects: linked to every project it isn't linked to
+    yet. Returns those projects."""
+    linked = {b.project_id for b in instance.bindings}
+    added: list[str] = []
+    for project in session.scalars(select(Project).order_by(Project.name)):
+        if project.id not in linked:
+            session.add(ProjectInstance(project=project, instance=instance))
+            added.append(project.name)
+    session.flush()
+    return added
+
+
 def create_instance(session: Session, data: InstanceIn) -> Instance:
     if find_instance(session, data.name) is not None:
         raise AlreadyExistsError(f"instance '{data.name}' already exists")
+    _check_kind(data)
     instance = Instance(**data.model_dump(), bindings=[])
     session.add(instance)
     session.flush()
+    if instance.all_projects:
+        link_everywhere(session, instance)
     return instance
 
 
 def update_instance(session: Session, data: InstanceIn) -> Instance:
     instance = get_instance(session, data.name)
+    _check_kind(data)
+    if instance.shared and not data.shared:
+        others = sorted(
+            b.project.name for b in instance.bindings
+            if b.project.owner.strip().casefold() != data.owner.strip().casefold()
+        )  # fmt: skip
+        if others:
+            raise RuleViolationError(
+                f"'{instance.name}' can't become {data.owner}'s connection while other "
+                f"clients' projects use it: {', '.join(others)}. Unlink those first."
+            )
     if data.type != instance.type and instance.bindings:
         raise RuleViolationError(
             f"cannot change the type of instance '{instance.name}' while it is bound to: "
@@ -68,6 +110,8 @@ def update_instance(session: Session, data: InstanceIn) -> Instance:
     # The FK cascade rewrote instance_type/instance_env on the bindings.
     for binding in instance.bindings:
         session.refresh(binding)
+    if instance.all_projects:
+        link_everywhere(session, instance)
     return instance
 
 

@@ -120,7 +120,12 @@ def claude_desktop_servers(session: SessionDep) -> dict[str, Any]:
 
 class ImportChoice(Input):
     name: str  # the server's key (its name, or extension:<folder>)
-    project: Slug
+    project: Slug | None = None  # one project (older clients); see projects
+    projects: list[Slug] = Field(default_factory=list[str])
+    # A shared tool (no client's data): any client's projects, or all of them.
+    # None: what the server looks like (Server.suggested).
+    shared: bool | None = None
+    all_projects: bool = False
     # What an extension needs that Claude Desktop's files don't show (an API key).
     values: dict[str, Annotated[str, Field(max_length=4000)]] = Field(
         default_factory=dict[str, str], repr=False
@@ -149,9 +154,18 @@ def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> d
             raise HTTPException(
                 409, detail=f"{server.name} is already imported as {done[choice.name]}."
             )
+        named: list[str] = [choice.project] if choice.project else []
+        linked = list(dict.fromkeys([*named, *choice.projects]))
+        shared = server.suggested() == "shared" if choice.shared is None else choice.shared
         try:
             created[choice.name] = claude_desktop.import_server(
-                session, get_settings(), server, choice.project, dict(choice.values)
+                session,
+                get_settings(),
+                server,
+                linked,
+                dict(choice.values),
+                shared=shared,
+                all_projects=choice.all_projects,
             )
         except RuleViolationError as error:
             raise HTTPException(422, detail=str(error)) from None
