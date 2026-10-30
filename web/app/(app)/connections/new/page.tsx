@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Catalog } from "@/components/catalog";
+import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm } from "@/components/forms";
 import { Button, Card, Details, Field, PageHeader, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
@@ -22,6 +23,7 @@ export default function NewConnectionPage() {
   const [picked, setPicked] = useState(scope.client);
   const [typed, setTyped] = useState("");
   const [client, setClient] = useState<string | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
   const chosen = picked === NEW ? slugify(typed) || typed.trim() : picked;
 
   if (client === null) {
@@ -38,7 +40,15 @@ export default function NewConnectionPage() {
       </>
     );
   }
-  const done = () => router.push(clientHref(client));
+  if (added) {
+    return (
+      <>
+        <PageHeader title={`Add a connection for ${client}`} />
+        <ConnectionAdded name={added} onAnother={() => setAdded(null)} onDone={() => router.push(clientHref(client))} doneLabel={`Open ${client}'s connections`} />
+      </>
+    );
+  }
+  const done = (name: string) => setAdded(name);
   return (
     <>
       <PageHeader title={`Add a connection for ${client}`} />
@@ -46,7 +56,7 @@ export default function NewConnectionPage() {
         <h2 className="font-semibold">Connect a service</h2>
         <Catalog client={client} onAdded={done} />
         <Details label="Other services (a database, n8n, Twilio, Gmail…)">
-          <ConnectionForm client={client} onSaved={done} />
+          <ConnectionForm client={client} onSaved={(c) => done(c.name)} />
         </Details>
         <Button kind="ghost" onClick={() => setClient(null)}>
           ‹ Another client

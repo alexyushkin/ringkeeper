@@ -19,6 +19,10 @@ publishes it as the release notes and the app shows it with the update.
   client's account or your own tool (it suggests one), and gives it to several
   projects at once, or to all projects for a shared tool. Skip is still there.
   The catalog's local servers and extension files ask the same.
+- **After adding a connection** (a client's page, a project's page, Add a
+  connection), a card offers **Also use in…** for the other projects that may
+  use it (narrowed per project where the service allows) and **Add another
+  connection**.
 - Changing a connection's kind of data no longer drops an MCP server's saved
   settings (its tool rules and package).
 

@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
 import { Catalog } from "@/components/catalog";
+import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { Alert, Button, Card, Details, EnvBadge, Loading, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -127,13 +128,18 @@ export function ProjectView({ name }: { name: string }) {
           <BoundRow key={instance.name} project={name} instance={instance} fields={byName.get(instance.name)?.scope_fields ?? []} onChange={() => run(async () => undefined)} />
         ))}
         {added ? (
-          <div className="space-y-2 rounded-xl border border-line p-3">
-            <Alert tone="good">Added {added}. Its secret is stored encrypted and won&apos;t be shown again.</Alert>
-            <TestButton name={added} />
-            <Button kind="ghost" onClick={() => setAdded(null)}>
-              Done
-            </Button>
-          </div>
+          <ConnectionAdded
+            name={added}
+            onAnother={() => {
+              setAdded(null);
+              setConnecting(true);
+            }}
+            onDone={() => {
+              setAdded(null);
+              project.reload();
+              connections.reload();
+            }}
+          />
         ) : connecting ? (
           <div className="space-y-3 rounded-xl border border-line p-3">
             <h3 className="font-medium">New connection for {name}</h3>

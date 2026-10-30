@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { LibraryCard, useLibrary } from "@/components/connection-library";
 import { Catalog } from "@/components/catalog";
+import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm } from "@/components/forms";
 import { Alert, Button, Card, Details, Empty, Loading } from "@/components/ui";
 import { projectHref } from "@/lib/client/routes";
@@ -55,7 +56,19 @@ export function ClientView({ name }: { name: string }) {
         <p className="text-sm text-muted">
           {name}&apos;s services. Connect each one once, then link it to any of {name}&apos;s projects; a link can be narrowed to one database, base or project. Other clients&apos; projects can&apos;t use these.
         </p>
-        {added ? <Alert tone="good">Added {added}. Link it to a project below, and test it.</Alert> : null}
+        {added ? (
+          <ConnectionAdded
+            name={added}
+            onAnother={() => {
+              setAdded(null);
+              setAdding(true);
+            }}
+            onDone={() => {
+              setAdded(null);
+              library.reload();
+            }}
+          />
+        ) : null}
         {adding ? (
           <div className="space-y-4 rounded-xl border border-line p-3">
             <h3 className="font-medium">Connect a service</h3>
