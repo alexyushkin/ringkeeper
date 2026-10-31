@@ -279,7 +279,7 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
  * or paste a token for. With `project`, the new connection is linked to it, and
  * the link can be narrowed right away.
  */
-export function RemoteServices({ client, project, onAdded }: { client: string; project?: string; onAdded: (name: string) => void }) {
+export function RemoteServices({ client, project, shared = false, onAdded }: { client: string; project?: string; shared?: boolean; onAdded: (name: string) => void }) {
   const services = useApi<RemoteService[]>("remote-services");
   const [chosen, setChosen] = useState<RemoteService | null>(null);
   return (
@@ -298,13 +298,13 @@ export function RemoteServices({ client, project, onAdded }: { client: string; p
         ))}
       </div>
       {services.error ? <Alert>{services.error}</Alert> : null}
-      {chosen ? <ConnectRemote key={chosen.key} service={chosen} client={client} project={project} onAdded={onAdded} /> : null}
+      {chosen ? <ConnectRemote key={chosen.key} service={chosen} client={client} project={project} shared={shared} onAdded={onAdded} /> : null}
     </div>
   );
 }
 
-function ConnectRemote({ service, client, project, onAdded }: { service: RemoteService; client: string; project?: string; onAdded: (name: string) => void }) {
-  const [name, setName] = useState(slugify(`${client} ${service.key}`));
+function ConnectRemote({ service, client, project, shared = false, onAdded }: { service: RemoteService; client: string; project?: string; shared?: boolean; onAdded: (name: string) => void }) {
+  const [name, setName] = useState(slugify(shared ? service.key : `${client} ${service.key}`));
   const [env, setEnv] = useState("dev");
   const [scope, setScope] = useState<Record<string, string>>({});
   const [token, setToken] = useState("");
@@ -312,7 +312,7 @@ function ConnectRemote({ service, client, project, onAdded }: { service: RemoteS
   const [waiting, setWaiting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const body = { remote: service.key, name, owner: client, env, project: project ?? null, scope: cleaned(scope) };
+  const body = { remote: service.key, name, owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
 
   // After the service's page opens: the connection appears once its sign-in finishes.
   useEffect(() => {

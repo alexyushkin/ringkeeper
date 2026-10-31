@@ -165,15 +165,14 @@ export function Catalog(target: Target) {
     <div className="space-y-4">
       {target.kind === "shared" ? (
         <p className="text-sm text-muted">
-          A shared tool holds no client&apos;s data: a browser, files on this computer, a fetcher, a public docs server. Services with built-in rules (Neon, Supabase, Airtable…) hold a client&apos;s account: add those from the client&apos;s page.
+          Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
         </p>
-      ) : (
-        <div className="space-y-2">
-          <h3 className="font-medium">Recommended</h3>
-          <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed (to one Neon project, one Airtable base and so on), and SQL is checked before it runs.</p>
-          <RemoteServices client={target.client} project={target.project} onAdded={target.onAdded} />
-        </div>
-      )}
+      ) : null}
+      <div className="space-y-2">
+        <h3 className="font-medium">Recommended</h3>
+        <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed (to one Neon project, one Airtable base and so on), and SQL is checked before it runs.</p>
+        <RemoteServices client={target.client} project={target.project} shared={target.kind === "shared"} onAdded={target.onAdded} />
+      </div>
       <CatalogSearch {...target} />
       <Details label="Add a server by its address">
         <AddByUrl {...target} />
@@ -287,11 +286,7 @@ function ServerConnect({ server, client, project, kind, onAdded }: { server: Cat
   const services = useApi<{ key: string; name: string }[]>("remote-services");
   if (server.recommended) {
     const known = services.data?.find((s) => s.key === server.recommended);
-    return kind === "shared" ? (
-      <Alert tone="warn">This is {known?.name ?? server.recommended}, which holds a client&apos;s account: add it from that client&apos;s page.</Alert>
-    ) : (
-      <Alert tone="good">This is {known?.name ?? server.recommended}, which has built-in rules: connect it from Recommended above.</Alert>
-    );
+    return <Alert tone="good">This is {known?.name ?? server.recommended}, which has built-in rules: connect it from Recommended above.</Alert>;
   }
   if (!remote && packageIndex < 0) {
     return <Alert tone="warn">Ringkeeper can&apos;t connect this one yet: it has no remote address it can use and no npm, PyPI or container package that runs over stdio.</Alert>;
@@ -716,9 +711,7 @@ function AddByUrl(target: Target) {
       </Button>
       {error ? <Alert>{error}</Alert> : null}
       {probed?.recommended ? (
-        <Alert tone={target.kind === "shared" ? "warn" : "good"}>
-          {target.kind === "shared" ? "That's a service that holds a client's account: add it from that client's page." : "That's a service with built-in rules: connect it from Recommended above."}
-        </Alert>
+        <Alert tone="good">That&apos;s a service with built-in rules: connect it from Recommended above.</Alert>
       ) : null}
       {probed && !probed.recommended ? <RemoteConnect key={probed.url} url={probed.url} headers={[]} signin={probed.signin} open={probed.open} title={new URL(probed.url).hostname.split(".").slice(-2, -1)[0] ?? "server"} {...target} /> : null}
     </div>

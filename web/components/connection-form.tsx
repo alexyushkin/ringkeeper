@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 import type { ConnectionData } from "@/components/forms";
-import { Alert, Button, Field, Select } from "@/components/ui";
+import { SHARED_OWNER } from "@/components/shared-tools";
+import { Alert, Button, Field, Select, Toggle } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { ENVS, slugify } from "@/lib/client/words";
 
@@ -12,7 +13,7 @@ interface ServiceInfo {
   example: string; // a name, for the Name field's placeholder
   get: [string, string][]; // where to get the credential: [link text, URL]
   steps: string; // what to do there
-  address?: { label: string; placeholder: string };
+  address?: { label: string; placeholder: string; optional?: boolean };
   // One secret field, or several sent as JSON (the adapter reads them back).
   secret: { key: string; label: string; placeholder?: string; hidden?: boolean; optional?: boolean }[];
   note?: string;
@@ -65,6 +66,19 @@ export const SERVICES: Record<string, ServiceInfo> = {
     ],
     note: "Every text waits for your approval before it's sent.",
   },
+  github: {
+    label: "GitHub",
+    example: "Acme code",
+    get: [
+      ["a fine-grained token", "https://github.com/settings/personal-access-tokens/new"],
+      ["a classic token", "https://github.com/settings/tokens/new"],
+    ],
+    steps:
+      "Fine-grained (best): Resource owner = the client's organization (or you), Repository access = Only select repositories (this client's), then Repository permissions: Contents, Issues, Pull requests and Metadata (read and write to let Ringkeeper push and open issues and PRs; read-only to only read). Leave everything else, settings above all, at No access. Set an expiry. A classic token (scope: repo) only if the organization doesn't allow fine-grained ones.",
+    address: { label: "GitHub Enterprise Server address", placeholder: "empty for github.com, or https://github.acme.example", optional: true },
+    secret: [{ key: "", label: "Token", placeholder: "github_pat_… or ghp_…", hidden: true }],
+    note: "Reading runs. Issues, comments, pull requests, merges and pushes wait for your approval; a merge needs the name typed. Pin a repository per project to keep each project on its own repo.",
+  },
   gmail: {
     label: "Gmail",
     example: "Acme inbox",
@@ -83,8 +97,19 @@ export const SERVICES: Record<string, ServiceInfo> = {
  * that service when it isn't production and there's none yet). The secret goes in
  * once and is never shown again.
  */
-export function ConnectionForm({ client, project, onSaved }: { client?: string; project?: string; onSaved: (connection: ConnectionData) => void }) {
+export function ConnectionForm({
+  client,
+  project,
+  shared = false,
+  onSaved,
+}: {
+  client?: string;
+  project?: string;
+  shared?: boolean; // yours: any client's projects (or all of them), not one client's
+  onSaved: (connection: ConnectionData) => void;
+}) {
   const [type, setType] = useState("supabase");
+  const [all, setAll] = useState(false);
   const [title, setTitle] = useState("");
   const [owner, setOwner] = useState(client ?? "");
   const [env, setEnv] = useState("dev");
@@ -107,7 +132,11 @@ export function ConnectionForm({ client, project, onSaved }: { client?: string; 
     setError(null);
     try {
       const saved = await api<ConnectionData>("connections", {
-        json: { name, type, env, owner: slugify(owner) || owner, base_url: service.address ? address.trim() || null : null, secret: secretValue() },
+        json: {
+          name, type, env, owner: shared ? SHARED_OWNER : slugify(owner) || owner,
+          base_url: service.address ? address.trim() || null : null, secret: secretValue(),
+          shared, all_projects: shared && all,
+        },
       });
       setParts({});
       if (project) {
@@ -148,7 +177,8 @@ export function ConnectionForm({ client, project, onSaved }: { client?: string; 
         <p className="text-muted">{service.steps}</p>
       </div>
       <Field label="Name" value={title} onChange={setTitle} placeholder={service.example} hint={name ? `Short name: ${name}` : undefined} required />
-      {client ? null : <Field label="Client" value={owner} onChange={setOwner} placeholder="Acme Inc." required />}
+      {client || shared ? null : <Field label="Client" value={owner} onChange={setOwner} placeholder="Acme Inc." required />}
+      {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}
       <Select
         label="Kind of data"
         value={env}
@@ -156,7 +186,16 @@ export function ConnectionForm({ client, project, onSaved }: { client?: string; 
         options={ENVS}
         hint={env === "prod" ? "Changes to production are always held for your approval." : "Test data: changes can run without asking."}
       />
-      {service.address ? <Field label={service.address.label} value={address} onChange={setAddress} placeholder={service.address.placeholder} inputMode="url" required /> : null}
+      {service.address ? (
+        <Field
+          label={service.address.optional ? `${service.address.label} (optional)` : service.address.label}
+          value={address}
+          onChange={setAddress}
+          placeholder={service.address.placeholder}
+          inputMode="url"
+          required={!service.address.optional}
+        />
+      ) : null}
       {service.secret.map((f) => (
         <Field
           key={`${type}-${f.key}`}
@@ -170,7 +209,7 @@ export function ConnectionForm({ client, project, onSaved }: { client?: string; 
       ))}
       {service.note ? <p className="text-sm text-muted">{service.note}</p> : null}
       {error ? <Alert>{error}</Alert> : null}
-      <Button type="submit" kind="primary" busy={busy} disabled={!name || !filled || !owner.trim() || (!!service.address && !address.trim())}>
+      <Button type="submit" kind="primary" busy={busy} disabled={!name || !filled || (!shared && !owner.trim()) || (!!service.address && !service.address.optional && !address.trim())}>
         {project ? `Add and link to ${project}` : "Add connection"}
       </Button>
     </form>

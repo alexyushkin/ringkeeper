@@ -16,7 +16,7 @@ import re
 import unicodedata
 from typing import Any, cast
 
-from ringkeeper.adapters import google, mcp
+from ringkeeper.adapters import github, google, mcp
 from ringkeeper.models import InstanceType
 
 # Writes through these tools change nothing irreversibly; any other write tool
@@ -37,6 +37,9 @@ SAFE_TOOLS = {
     # Google: each write waits for approval (unless the owner lets that tool run);
     # the trash keeps mail 30 days, and nothing else removes anything.
     *((InstanceType.GOOGLE, tool) for tool in google.WRITES),
+    # GitHub: each write waits for approval; a push never forces. A merge is the one that
+    # needs the name typed.
+    *((InstanceType.GITHUB, tool) for tool in github.WRITES if tool != "merge_pull"),
     (InstanceType.N8N, "retry_execution"),
     (InstanceType.N8N, "stop_execution"),
 }
@@ -44,6 +47,7 @@ MCP_REASONS = {
     mcp.BY_USER: "you set to need the connection's name",
     mcp.BY_ANNOTATIONS: "its server marks as destructive",
     mcp.BY_NAME: "sounds like it deletes",
+    mcp.BY_SERVICE: "calls an endpoint that deletes (or doesn't say which)",
 }
 
 _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
@@ -168,7 +172,12 @@ def reason(
     if service is InstanceType.MCP and tool == "call_tool":
         # Held unless it reads; the typed name is for the ones marked or sounding final.
         name = str(args.get("tool", ""))
-        found = mcp.rule(config or {}, name)
+        arguments = args.get("arguments")
+        found = mcp.call_rule(
+            config or {},
+            name,
+            cast(dict[str, Any], arguments) if isinstance(arguments, dict) else None,
+        )
         if found.source == mcp.BY_SQL:
             sql = _sql_of(args.get("arguments"))
             return sql_reason(sql) if sql else "has no SQL to check"

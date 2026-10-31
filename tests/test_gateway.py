@@ -48,7 +48,17 @@ async def test_health(gateway: str) -> None:
         response = await http.get(f"{gateway}/health")
     assert response.json() == {
         "status": "ok",
-        "services": ["airtable", "gmail", "google", "mcp", "n8n", "supabase", "twilio", "vercel"],
+        "services": [
+            "airtable",
+            "github",
+            "gmail",
+            "google",
+            "mcp",
+            "n8n",
+            "supabase",
+            "twilio",
+            "vercel",
+        ],
     }
 
 

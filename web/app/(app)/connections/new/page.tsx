@@ -110,11 +110,9 @@ function NewConnection() {
           <GoogleConnect owner={owner} shared={shared} onAdded={done} />
         </Details>
         <Catalog client={owner} kind={kind} onAdded={done} />
-        {shared ? null : (
-          <Details label="Other services (a database, n8n, Twilio, Gmail…)">
-            <ConnectionForm client={owner} onSaved={(c) => done(c.name)} />
-          </Details>
-        )}
+        <Details label="Other services (a database, n8n, Twilio, Gmail…)">
+          <ConnectionForm client={shared ? undefined : owner} shared={shared} onSaved={(c) => done(c.name)} />
+        </Details>
         <Button kind="ghost" onClick={() => (shared ? setKind(null) : setClient(null))}>
           {shared ? "‹ Back" : "‹ Another client"}
         </Button>

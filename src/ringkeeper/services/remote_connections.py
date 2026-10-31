@@ -209,4 +209,5 @@ def catalog_shelf() -> list[dict[str, Any]]:
             "sql": bool(r.sql_tools),
         }
         for r in remote.CATALOG
+        if r.shelf
     ]  # fmt: skip

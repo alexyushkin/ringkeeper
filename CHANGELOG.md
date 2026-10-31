@@ -3,6 +3,23 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Every kind of connection can be yours or a client's.** A database, n8n,
+  Airtable, Vercel, Twilio, Gmail, GitHub or Google connection, like an MCP
+  server, is either a client's (only their projects can use it) or your own
+  (any project, or all of them). Add as many of each as you like.
+- **GitHub connections**: a token (the form says which repositories and
+  permissions to give it), on github.com or your GitHub Enterprise Server. Pin a
+  repository per project and the agent can't reach the others. Reading runs;
+  issues, comments, pull requests, merges and pushes wait for your approval. A
+  task's branch can be pushed and a pull request opened with that project's
+  token, never your computer's git credentials.
+- **Retell AI** is on the Recommended shelf: Retell's own MCP server with an API
+  key. Reading agents, calls and numbers runs; creating or updating agents,
+  placing calls and buying numbers wait for your approval; deleting needs the
+  name typed.
+
 ## 0.1.0-beta.5 (2026-10-31)
 
 - **Shared tools are easier to add.** Add a connection asks first: "A client's

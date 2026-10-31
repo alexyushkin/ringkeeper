@@ -5,6 +5,7 @@ choice, else the server's annotations, else its name."""
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -94,6 +95,32 @@ def test_the_users_choice_wins_and_decides_holds_and_typed_names() -> None:
         "runs 'what_i_got', which you set to need the connection's name"
     )
     assert typed("delete_note", None) == "runs 'delete_note', which sounds like it deletes"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "level"),
+    [
+        ("list_agents", mcp.READ), ("retrieve_call", mcp.READ), ("getAgent", mcp.READ),
+        ("create_agent", mcp.APPROVE), ("update_agent", mcp.APPROVE),
+        ("create_phone_call", mcp.APPROVE), ("publish_agent", mcp.APPROVE),
+        ("delete_call", mcp.CONFIRM), ("", mcp.CONFIRM),
+    ],
+)  # fmt: skip
+def test_retell_decides_each_call_by_its_endpoint(endpoint: str, level: str) -> None:
+    """Retell's server calls any API endpoint through one tool: reads run, creating or
+    updating agents and placing calls wait, deleting (or not saying) needs the name typed."""
+    config: dict[str, object] = {"remote": "retell"}
+    arguments: dict[str, Any] = {"endpoint_name": endpoint, "args": {}}
+    args: dict[str, Any] = {"tool": "invoke_api_endpoint", "arguments": arguments}
+    assert mcp.call_tool.classify is not None
+    kind = mcp.call_tool.classify(target(config), args)
+    assert kind is (ToolKind.READ if level == mcp.READ else ToolKind.WRITE)
+    typed = destructive.reason(InstanceType.MCP, "call_tool", args, config)
+    assert (typed is not None) == (level == mcp.CONFIRM)
+    assert mcp.rule(config, "list_api_endpoints") == mcp.Rule(mcp.READ, mcp.BY_SERVICE)
+    # The owner's own rule for the tool still wins.
+    mine = {**config, "tool_rules": {"invoke_api_endpoint": "approve"}}
+    assert mcp.call_rule(mine, "invoke_api_endpoint", arguments).level == mcp.APPROVE
 
 
 async def test_the_server_runs_with_its_secrets_and_nothing_else(

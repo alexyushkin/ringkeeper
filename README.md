@@ -71,7 +71,10 @@ Services with an official remote MCP server (Neon, Supabase, Airtable,
 Sentry, Notion, Linear, Cloudflare, Atlassian) connect with one click: the
 service's own sign-in page, using MCP's OAuth with dynamic client
 registration. Tokens go to the vault and are refreshed before they expire.
-Pasting a token stays available, and is the only way for GitHub. Notion and
+Pasting a token stays available. Retell AI's server takes an API key: it calls
+any Retell endpoint through one tool, so each call is decided by the endpoint
+(reads run; creating or updating agents and placing calls wait for approval;
+deleting needs the name typed). GitHub is its own connection type (below). Notion and
 Linear can't be narrowed below the workspace you sign in to. In server mode,
 sign-in needs `RINGKEEPER_WEB_ORIGIN` (the address the service sends you back
 to). SQL run through a remote service's SQL tool is checked like a database
@@ -119,7 +122,7 @@ client and is linked to that client's projects.
 worker (Claude Code, …)
    │  MCP over HTTP, Authorization: Bearer <worker token>
    ▼
-gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/google  /mcp/mcp
+gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/google  /mcp/github  /mcp/mcp
    1. valid token?            (signed, short-lived, names project + session)
    2. instance exists?        (omitted only for reads: the project default)
    3. bound to the project?
@@ -224,6 +227,7 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
 | `/mcp/gmail` | `search_messages`, `get_message` | `create_draft` (never held), `send_email` (always held) |
 | `/mcp/google` | `search_mail`, `read_mail`, `search_files`, `read_file`, `list_events`, `read_sheet` | `send_mail`, `create_draft`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account) |
+| `/mcp/github` | `list_repos`, `get_repo`, `list_issues`, `get_issue`, `list_pulls`, `get_pull`, `get_file`, `list_branches`, `list_commits` | `create_issue`, `comment`, `update_issue`, `create_pull`, `merge_pull` (name typed), `push_branch` (all always held) |
 | `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
 A worker only gets the endpoints of the services its project is connected to.
@@ -262,6 +266,15 @@ A worker only gets the endpoints of the services its project is connected to.
   JSON with the address and the app password. Reading never marks mail as
   read. Drafts run without asking; sending always waits for approval. The
   simple fallback to a Google account connection.
+- **github:** a token (fine-grained, limited to the client's repositories, or
+  classic), on github.com or a GitHub Enterprise Server address. A project's
+  link can pin one repository (owner/name): calls naming another are refused,
+  and account-wide tools (`list_repos`) aren't available on it. Reading runs;
+  issues, comments, pull requests, merges and pushes always wait for approval.
+  `push_branch` pushes a task's `ringkeeper/...` branch from the project's
+  folder (desktop app) with the connection's token, in git's environment, with
+  hooks off and every credential helper cleared, so your computer's own git
+  credentials are never used; then `create_pull` opens the pull request.
 - **google:** a Google account (Gmail, Drive, Calendar, Sheets), signed in
   through your own Google app (desktop app, Settings › Google: an OAuth
   "Desktop app" client in your own Google Cloud project, published "In

@@ -423,12 +423,15 @@ class ConnectionIn(Input):
     owner: NonEmpty
     base_url: str | None = None
     secret: str = Field(repr=False)
+    # Yours (a shared tool: any client's projects, or all of them), not a client's.
+    shared: bool = False
+    all_projects: bool = False
 
 
 class ConnectionPatch(Input):
     env: Env | None = None
     owner: NonEmpty | None = None
-    shared: bool | None = None  # a shared tool (MCP only), or a client's connection
+    shared: bool | None = None  # yours (a shared tool), or a client's connection
     all_projects: bool | None = None  # a shared tool every project gets
     base_url: str | None = None
     # Required with a new base_url: the key goes wherever the address points, so
@@ -506,8 +509,9 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
     instance = instances.create_instance(
         session,
         InstanceIn(
-            name=data.name, type=data.type, env=data.env, secret_ref=ref, owner=data.owner,
-            base_url=base_url,
+            name=data.name, type=data.type, env=data.env, secret_ref=ref,
+            owner=instances.SHARED_OWNER if data.shared else data.owner, base_url=base_url,
+            shared=data.shared, all_projects=data.shared and data.all_projects,
         ),
     )  # fmt: skip
     admin_audit.record(

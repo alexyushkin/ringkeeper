@@ -43,6 +43,7 @@ class Target:
     base_url: str | None
     secret: Secret = field(repr=False)
     config: JSON = field(default_factory=dict[str, Any])  # the connection's non-secret settings
+    project: str | None = None  # the calling project (a push uses its folder)
 
 
 Handler = Callable[..., Awaitable[JSON]]

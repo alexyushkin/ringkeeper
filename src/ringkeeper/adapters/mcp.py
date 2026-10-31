@@ -166,6 +166,9 @@ LEVELS = (READ, APPROVE, CONFIRM)
 # Where that came from.
 BY_USER, BY_ANNOTATIONS, BY_NAME, BY_DEFAULT = "you", "annotations", "name", "default"
 BY_SQL = "sql"  # a remote service's SQL tool: the statement decides (ringkeeper.destructive)
+BY_SERVICE = "service"  # what Ringkeeper knows of a Recommended service's tools (ringkeeper.remote)
+# An API endpoint that only reads, by its name (getAgent, list_calls, retrieve_phone_number).
+READ_ENDPOINT = re.compile(r"^(get|list|retrieve|search|fetch)([_A-Z]|$)")
 # A tool whose name says it deletes or resets something, when its server doesn't say.
 DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
 RUNS = {
@@ -205,7 +208,27 @@ def rule(config: Mapping[str, Any], tool: str) -> Rule:
     service = remote.BY_KEY.get(str(config.get("remote") or ""))
     if service is not None and tool in service.sql_tools:
         return Rule(APPROVE, BY_SQL)  # whatever its hints say: the SQL decides
+    if service is not None and tool in service.read_tools:
+        return Rule(READ, BY_SERVICE)
+    if service is not None and tool in service.endpoint_tools:
+        return Rule(APPROVE, BY_SERVICE)  # the careful answer; each call names its endpoint
     return default_rule(cast(JSON, config.get("annotations") or {}).get(tool), tool)
+
+
+def call_rule(config: Mapping[str, Any], tool: str, arguments: Mapping[str, Any] | None) -> Rule:
+    """What this call needs: the tool's rule, or, for a tool that calls any endpoint of the
+    service's API, the endpoint's (unless the user chose a rule for the tool)."""
+    found = rule(config, tool)
+    service = remote.BY_KEY.get(str(config.get("remote") or ""))
+    if found.source != BY_SERVICE or service is None or tool not in service.endpoint_tools:
+        return found
+    names = [arguments.get(a) for a in service.endpoint_tools[tool]] if arguments else []
+    endpoint = next((str(n) for n in names if isinstance(n, str) and n), "")
+    if READ_ENDPOINT.match(endpoint):
+        return Rule(READ, BY_SERVICE)
+    if not endpoint or DESTRUCTIVE_NAME.search(endpoint):
+        return Rule(CONFIRM, BY_SERVICE)  # deletes, or can't tell what it calls
+    return Rule(APPROVE, BY_SERVICE)
 
 
 def _hints(tool: Any) -> JSON:
@@ -233,8 +256,8 @@ async def list_tools(target: Target) -> JSON:
     listed: list[JSON] = []
     for t in tools:
         now, default = rule(config, t.name), default_rule(hints[t.name], t.name)
-        if now.source == BY_SQL:
-            default = now  # a remote service's SQL tool: its statement decides
+        if now.source in (BY_SQL, BY_SERVICE):
+            default = now  # a Recommended service's rules: the statement or endpoint decides
         listed.append(
             {
                 "name": t.name,
@@ -268,7 +291,9 @@ def arguments_of(listed: JSON) -> dict[str, list[str]]:
 
 
 def _classify(target: Target, args: JSON) -> ToolKind:
-    level = rule(target.config, str(args.get("tool", ""))).level
+    arguments = args.get("arguments")
+    given = cast(JSON, arguments) if isinstance(arguments, dict) else None
+    level = call_rule(target.config, str(args.get("tool", "")), given).level
     return ToolKind.READ if level == READ else ToolKind.WRITE
 
 

@@ -412,6 +412,11 @@ def _one_line(text: str, limit: int) -> str:
 
 DATA_SERVICES = (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE)
 SENDS = (InstanceType.TWILIO, InstanceType.GMAIL)
+GITHUB_HEADINGS = {
+    "push_branch": "A push to GitHub",
+    "create_pull": "A pull request on GitHub",
+    "merge_pull": "A merge on GitHub",
+}
 # A Google account's writes that reach other people (the rest change its own data).
 GOOGLE_REACHES_PEOPLE = {
     "send_mail": "A message to real people",
@@ -439,6 +444,8 @@ def heading(decision: Decision) -> str | None:
         return "A message to real people"
     if decision.service is InstanceType.GOOGLE and decision.tool in GOOGLE_REACHES_PEOPLE:
         return GOOGLE_REACHES_PEOPLE[decision.tool]
+    if decision.service is InstanceType.GITHUB and decision.tool in GITHUB_HEADINGS:
+        return GITHUB_HEADINGS[decision.tool]
     session = object_session(decision)
     env = (
         session.scalar(select(Instance.env).where(Instance.name == decision.instance))

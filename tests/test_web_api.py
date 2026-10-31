@@ -929,7 +929,8 @@ def test_signing_in_to_a_remote_service_adds_a_narrowed_connection(
     owner.post("/projects", json={"name": "globex-portal", "owner": "globex"})
     catalog = {s["key"]: s for s in owner.get("/remote-services").json()}
     assert catalog["neon"]["signin"] is True
-    assert catalog["github"]["signin"] is False
+    assert catalog["retell"]["signin"] is False  # an API key
+    assert "github" not in catalog  # its own connection type now (GitHub Enterprise, pushes)
     assert "stripe" not in catalog
     assert [f["key"] for f in catalog["neon"]["scope"]] == ["project", "branch"]
 

@@ -16,6 +16,7 @@ from typing import cast
 from ringkeeper.adapters import (
     ADAPTERS,
     airtable,
+    github,
     gmail,
     google,
     mcp,
@@ -66,6 +67,8 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911 (o
             return await gmail.probe(target)
         case InstanceType.GOOGLE:
             return await google.probe(target)
+        case InstanceType.GITHUB:
+            return await github.probe(target)
         case InstanceType.MCP:
             listed = await mcp.list_tools.handler(target)
             mcp_tools.remember(target.name, listed)

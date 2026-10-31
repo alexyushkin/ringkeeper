@@ -25,6 +25,7 @@ export const SERVICE: Record<string, string> = {
   google: "Google",
   twilio: "Twilio",
   gmail: "Gmail",
+  github: "GitHub",
   mcp: "MCP server",
 };
 

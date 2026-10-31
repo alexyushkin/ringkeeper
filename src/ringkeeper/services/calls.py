@@ -218,7 +218,7 @@ def _authorize_or_refuse(call: ToolCall, spec: ToolSpec) -> Authorized:
     raise caught
 
 
-def _target(vault: Vault, adapter: Adapter, auth: Authorized) -> Target:
+def _target(vault: Vault, adapter: Adapter, auth: Authorized, project: str | None) -> Target:
     try:
         secret = google_oauth.connection_secret(
             vault, adapter.service, auth.instance, auth.secret_ref
@@ -233,7 +233,7 @@ def _target(vault: Vault, adapter: Adapter, auth: Authorized) -> Target:
             "in again under Connections"
         ) from None
     secret.also_scrub(*adapter.secret_fragments(secret.reveal()))
-    return Target(auth.instance, auth.env, auth.base_url, secret, auth.config)
+    return Target(auth.instance, auth.env, auth.base_url, secret, auth.config, project)
 
 
 async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], tool: str) -> JSON:
@@ -325,7 +325,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     is_write = spec.kind is ToolKind.WRITE
 
     try:
-        target = _target(vault, adapter, auth)
+        target = _target(vault, adapter, auth, call.caller.project)
     except ToolError as error:
         if is_write:
             await anyio.to_thread.run_sync(
@@ -448,7 +448,7 @@ async def approve(
         return await anyio.to_thread.run_sync(partial(finish, AuditOutcome.REFUSED, reason=reason))
 
     try:
-        target = _target(vault, ADAPTERS[call.service], auth)
+        target = _target(vault, ADAPTERS[call.service], auth, call.caller.project)
         if spec.precondition is not None and stored_precondition is not None:
             current = await _invoke(spec.precondition, target, call.args, call.tool)
             if current != stored_precondition:

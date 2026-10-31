@@ -93,14 +93,17 @@ class InstanceIn(_Input):
     owner: NonEmpty
     base_url: str | None = None
     config: dict[str, Any] = Field(default_factory=dict[str, Any])
-    shared: bool = False  # a shared tool, linkable to any client's projects (MCP only)
+    shared: bool = False  # yours: a shared tool, linkable to any client's projects
     all_projects: bool = False  # a shared tool every project gets, new ones too
 
 
-# An ID a link is narrowed to (a Neon project, an Airtable base): it is sent
-# to the service in calls, so only plain ID characters.
+# An ID a link is narrowed to (a Neon project, an Airtable base, a GitHub owner/name):
+# it is sent to the service in calls, so only plain ID characters (and one slash).
 ScopeValue = Annotated[
-    str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9_.:\-]{1,200}$")
+    str,
+    StringConstraints(
+        strip_whitespace=True, pattern=r"^[A-Za-z0-9_.:\-]{1,100}(/[A-Za-z0-9_.:\-]{1,100})?$"
+    ),
 ]
 
 

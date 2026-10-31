@@ -45,8 +45,19 @@ class Remote:
     open_tools: frozenset[str] = frozenset()
     # Tools that run SQL: checked like a database connection's (destructive.sql_reason).
     sql_tools: frozenset[str] = frozenset()
+    # Tools known to only read (whatever the server's annotations say).
+    read_tools: frozenset[str] = frozenset()
+    # Tools that call any API endpoint, named in one of these arguments: each call is
+    # decided by the endpoint's name (get/list/retrieve run, delete needs the name typed,
+    # anything else waits for approval). See adapters.mcp.call_rule.
+    endpoint_tools: Mapping[str, tuple[str, ...]] = field(
+        default_factory=dict[str, tuple[str, ...]]
+    )
     note: str = ""
     extra: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
+    # its own connection type, with GitHub Enterprise Server and pushes).
+    shelf: bool = True
 
 
 CATALOG: tuple[Remote, ...] = (
@@ -132,6 +143,16 @@ CATALOG: tuple[Remote, ...] = (
         note="You pick the site when you sign in. Calls use Atlassian's Rovo credits.",
     ),
     Remote(
+        "retell", "Retell AI", "https://mcp.retellai.com", signin=False,
+        paste="Retell API key", paste_url="https://dashboard.retellai.com/",
+        paste_steps="In the Retell dashboard, open Settings, then API Keys, and create a key "
+        "(one per client's workspace).",
+        read_tools=frozenset({"list_api_endpoints", "get_api_endpoint_schema"}),
+        endpoint_tools={"invoke_api_endpoint": ("endpoint_name", "endpoint")},
+        note="Reading agents, calls and numbers runs. Creating or updating agents, placing "
+        "calls and buying numbers wait for your approval; deleting needs the name typed.",
+    ),
+    Remote(
         "github", "GitHub", "https://api.githubcopilot.com/mcp/", signin=False,
         paste="GitHub fine-grained token",
         paste_url="https://github.com/settings/personal-access-tokens/new",
@@ -142,6 +163,7 @@ CATALOG: tuple[Remote, ...] = (
         ),
         open_tools=frozenset({"get_me", "search_code"}),
         note="GitHub doesn't let apps register themselves, so it takes a token.",
+        shelf=False,
     ),
 )  # fmt: skip
 
@@ -168,6 +190,12 @@ NATIVE: dict[str, ScopeSpec] = {
         "Airtable",
         (ScopeField("base", "Airtable base", ("base_id",), "The base ID (app...)."),),
         frozenset({"whoami"}),
+    ),
+    # A project's link pins one repository; the account-wide tools (list_repos) aren't
+    # available on it.
+    "github": ScopeSpec(
+        "GitHub",
+        (ScopeField("repo", "Repository", ("repo",), "owner/name, like acme-inc/website."),),
     ),
     "vercel": ScopeSpec(
         "Vercel",

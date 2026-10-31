@@ -11,9 +11,9 @@ interface McpTool {
   name: string;
   description: string;
   rule: Level;
-  rule_from: "you" | "annotations" | "name" | "default" | "sql";
+  rule_from: "you" | "annotations" | "name" | "default" | "sql" | "service";
   default: Level;
-  default_from: "annotations" | "name" | "default" | "sql";
+  default_from: "annotations" | "name" | "default" | "sql" | "service";
   hints: { read_only: boolean | null; destructive: boolean | null };
 }
 
@@ -27,6 +27,7 @@ const FROM: Record<McpTool["default_from"], string> = {
   name: "from its name",
   default: "no annotations",
   sql: "deleting or changing tables needs the name typed",
+  service: "known for this service: by what each call does",
 };
 
 /** What the server says about a tool (its MCP annotations), if anything. */

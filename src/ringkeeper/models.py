@@ -58,6 +58,7 @@ class InstanceType(enum.StrEnum):
     TWILIO = "twilio"
     GMAIL = "gmail"  # IMAP/SMTP with an app password (the simple option)
     MCP = "mcp"  # an MCP server imported from Claude Desktop, run behind the gateway
+    GITHUB = "github"  # a token, on github.com or GitHub Enterprise Server
 
 
 class Env(enum.StrEnum):

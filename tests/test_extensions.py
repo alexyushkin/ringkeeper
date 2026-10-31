@@ -189,13 +189,13 @@ def test_an_extension_can_be_a_shared_tool_for_every_client(owner: TestClient) -
     assert (changed["env"], changed["config"]["source"], changed["shared"]) == (
         "staging", "mcpb", True,
     )  # fmt: skip
-    # Only an MCP server can be shared: a client's database can't.
+    # Any kind of connection can be yours: a database too, made shared after the fact.
     made = owner.post(
         "/connections",
         json={"name": "acme-db", "type": "supabase", "env": "dev", "owner": "acme",
               "secret": "postgresql://u:p@db.example/acme"},
     )  # fmt: skip
     assert made.status_code == 201, made.text
-    refused = owner.patch("/connections/acme-db", json={"shared": True})
-    assert refused.status_code == 422
-    assert "only MCP servers" in refused.json()["detail"]
+    shared = owner.patch("/connections/acme-db", json={"shared": True})
+    assert shared.status_code == 200, shared.text
+    assert (shared.json()["owner"], shared.json()["shared"]) == ("you", True)

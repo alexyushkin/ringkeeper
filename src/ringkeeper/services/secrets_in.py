@@ -116,6 +116,10 @@ def store_telegram(session: Session, settings: Settings, token: str) -> str:
     return f"@{username}"
 
 
+# Fine-grained, classic, and the OAuth/app kinds a user might paste.
+GITHUB_TOKENS = ("github_pat_", "ghp_", "gho_", "ghu_", "ghs_")
+
+
 def check_connection_secret(kind: InstanceType, secret: str) -> str:
     secret = secret.strip()
     if not secret:
@@ -131,6 +135,11 @@ def check_connection_secret(kind: InstanceType, secret: str) -> str:
                 "Neon it's under Connect; in Supabase, Connect > Session pooler."
             )
         netpolicy.check_dsn(secret)
+    elif kind is InstanceType.GITHUB and not secret.startswith(GITHUB_TOKENS):
+        raise RuleViolationError(
+            "Paste a GitHub token: a fine-grained one starts with github_pat_, a classic one "
+            "with ghp_."
+        )
     elif kind is InstanceType.AIRTABLE and not secret.startswith("pat"):
         raise RuleViolationError(
             "Paste an Airtable personal access token (it starts with pat). Make one at "
