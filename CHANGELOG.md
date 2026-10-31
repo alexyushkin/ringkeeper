@@ -12,6 +12,9 @@ publishes it as the release notes and the app shows it with the update.
 - **Remote servers can be shared tools** too. The catalog suggests a client's
   account when a server wants a sign-in or a key, and your own tool when it
   answers with nothing; a server that needs nothing connects without a key.
+- **A new icon**: a key ring with three keys, on a navy tile. In the taskbar,
+  the tray (with its red dot when something waits for you), the installer, and
+  the browser tab. At small sizes the keys are drawn thicker so they stay apart.
 - **Check for updates** in Settings › About and in the tray menu. It shows
   this version, when it last checked, and the result: "You're up to date",
   "Update available" with the release notes and **Install and restart**, or

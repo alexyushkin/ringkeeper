@@ -11,7 +11,14 @@ export const metadata: Metadata = {
   description: "Your clients' projects, connections and approvals in one place.",
   applicationName: "Ringkeeper",
   appleWebApp: { capable: true, title: "Ringkeeper", statusBarStyle: "default" },
-  icons: { apple: "/apple-icon.png" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

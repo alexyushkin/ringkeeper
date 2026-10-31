@@ -23,7 +23,10 @@
           "English"
         ],
         "displayLanguageSelector": false,
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/installer-header.bmp",
+        "sidebarImage": "icons/installer-sidebar.bmp"
       }
     }
   }
