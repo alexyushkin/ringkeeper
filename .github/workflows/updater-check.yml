@@ -1,0 +1,88 @@
+name: Updater check
+
+# Check for updates, end to end, against the real releases repo, on a clean
+# Windows runner (never on a developer's PC: it installs the app for the
+# current user). This commit is built as an older version and installed, and
+# its shell also as the latest release's version; shell/scripts/updater_check.py
+# then checks "up to date", offline, "update available" with the notes, that
+# Install and restart waits for running work, and that the update installs.
+# By hand only: nothing is published.
+
+on:
+  workflow_dispatch:
+    inputs:
+      older:
+        description: Version to build this commit as (older than the latest release)
+        default: 0.1.0-beta.3.99
+
+permissions:
+  contents: read
+
+env:
+  TAURI_CLI: "@tauri-apps/cli@2.12.2"
+  LATEST: https://github.com/alexyushkin/ringkeeper-releases/releases/latest/download/latest.json
+
+jobs:
+  updater:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shell/target
+          key: updater-${{ runner.os }}-${{ hashFiles('shell/Cargo.lock') }}
+      - run: uv sync --locked
+      - run: npm ci --no-fund
+        working-directory: web
+      - name: Lay out Python, the web app, MinGit and the notices
+        run: python shell/scripts/bundle.py
+
+      - name: Build the older version's installer
+        working-directory: shell
+        shell: bash
+        env:
+          OLDER: ${{ inputs.older }}
+        run: |
+          rm -rf target/release/bundle
+          echo "{\"version\": \"$OLDER\", \"bundle\": {\"createUpdaterArtifacts\": false}}" > "$RUNNER_TEMP/older.json"
+          npx --yes "$TAURI_CLI" build --ci --config bundle/windows.json --config "$RUNNER_TEMP/older.json"
+          cp target/release/ringkeeper.exe "$RUNNER_TEMP/old.exe"
+          cp target/release/bundle/nsis/*-setup.exe "$RUNNER_TEMP/setup.exe"
+      - name: Build the shell as the latest release's version
+        working-directory: shell
+        shell: bash
+        run: |
+          newest=$(curl -fsSL "$LATEST" | python -c "import json, sys; print(json.load(sys.stdin)['version'])")
+          echo "latest release: $newest"
+          echo "{\"version\": \"$newest\", \"bundle\": {\"createUpdaterArtifacts\": false}}" > "$RUNNER_TEMP/current.json"
+          npx --yes "$TAURI_CLI" build --ci --no-bundle --config bundle/windows.json --config "$RUNNER_TEMP/current.json"
+          cp target/release/ringkeeper.exe "$RUNNER_TEMP/current.exe"
+
+      - name: Check for updates, end to end
+        shell: bash
+        run: >
+          uv run python shell/scripts/updater_check.py
+          --installer "$RUNNER_TEMP/setup.exe"
+          --old-exe "$RUNNER_TEMP/old.exe"
+          --current-exe "$RUNNER_TEMP/current.exe"
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: updater-check-logs
+          path: ~/AppData/Local/Ringkeeper/logs
+          if-no-files-found: ignore
