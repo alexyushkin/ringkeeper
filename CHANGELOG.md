@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.5 (2026-10-31)
 
 - **Shared tools are easier to add.** Add a connection asks first: "A client's
   account or your own tool?", and only a client's account asks whose it is.
