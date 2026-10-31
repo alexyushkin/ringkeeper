@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm } from "@/components/forms";
+import { GoogleConnect } from "@/components/google";
 import { SHARED_OWNER, type Kind } from "@/components/shared-tools";
 import { Button, Card, Details, Field, PageHeader, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
@@ -105,6 +106,9 @@ function NewConnection() {
       <PageHeader title={title} subtitle={shared ? "Yours, for any client's projects. Anything not marked read-only waits for your approval." : undefined} />
       <Card className="space-y-4">
         <h2 className="font-semibold">{shared ? "Find a tool" : "Connect a service"}</h2>
+        <Details label={shared ? "Your Google account (Gmail, Drive, Calendar, Sheets)" : "A Google account (Gmail, Drive, Calendar, Sheets)"}>
+          <GoogleConnect owner={owner} shared={shared} onAdded={done} />
+        </Details>
         <Catalog client={owner} kind={kind} onAdded={done} />
         {shared ? null : (
           <Details label="Other services (a database, n8n, Twilio, Gmail…)">

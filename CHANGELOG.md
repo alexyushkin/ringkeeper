@@ -12,6 +12,15 @@ publishes it as the release notes and the app shows it with the update.
 - **Remote servers can be shared tools** too. The catalog suggests a client's
   account when a server wants a sign-in or a key, and your own tool when it
   answers with nothing; a server that needs nothing connects without a key.
+- **Google accounts** (desktop app): Gmail, Drive, Calendar and Sheets for
+  your clients' Google accounts and your own, through a Google app you create
+  once in your own Google Cloud project (Settings › Google walks you through
+  it). Each account is its own connection with the access you choose; a
+  client's stays with that client's projects, yours can go to any or all. A
+  project can have several, with one as its default. Reading runs; every write
+  (sending, sharing, invites, edits, uploads, drafts, the trash) asks you
+  first, and you can let a tool run without asking, per account. The Gmail
+  app-password connection stays as the simple option.
 - **A new icon**: a key ring with three keys, on a navy tile. In the taskbar,
   the tray (with its red dot when something waits for you), the installer, and
   the browser tab. At small sizes the keys are drawn thicker so they stay apart.

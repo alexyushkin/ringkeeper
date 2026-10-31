@@ -42,7 +42,7 @@ function BoundRow({ project, instance, fields, onChange }: { project: string; in
     <div className="space-y-2 rounded-xl border border-line p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{instance.name}</span>
-        <EnvBadge env={instance.env} />
+        {instance.type === "google" ? null : <EnvBadge env={instance.env} />}
         <span className="text-xs text-muted">{SERVICE[instance.type] ?? instance.type}</span>
         <span className="text-xs text-muted">{scopeText(instance.scope ?? {}, fields)}</span>
         <div className="ml-auto flex items-center gap-3">

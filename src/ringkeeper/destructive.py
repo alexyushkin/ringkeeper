@@ -16,7 +16,7 @@ import re
 import unicodedata
 from typing import Any, cast
 
-from ringkeeper.adapters import mcp
+from ringkeeper.adapters import google, mcp
 from ringkeeper.models import InstanceType
 
 # Writes through these tools change nothing irreversibly; any other write tool
@@ -34,6 +34,9 @@ SAFE_TOOLS = {
     (InstanceType.TWILIO, "send_sms"),
     (InstanceType.GMAIL, "send_email"),
     (InstanceType.GMAIL, "create_draft"),
+    # Google: each write waits for approval (unless the owner lets that tool run);
+    # the trash keeps mail 30 days, and nothing else removes anything.
+    *((InstanceType.GOOGLE, tool) for tool in google.WRITES),
     (InstanceType.N8N, "retry_execution"),
     (InstanceType.N8N, "stop_execution"),
 }

@@ -10,6 +10,7 @@ can't point Telegram approvals at another chat or send a key elsewhere.
 """
 
 import asyncio
+import contextlib
 import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -59,6 +60,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import (
     admin_audit,
     bindings,
+    google_oauth,
     instances,
     local_servers,
     mcp_oauth,
@@ -575,7 +577,11 @@ def delete_connection(
 ) -> None:
     found = instances.get_instance(session, name)
     secret_ref, package = found.secret_ref, dict((found.config or {}).get("package") or {})
+    kind = found.type
     unbound = instances.remove_instance(session, name, force=force)
+    if kind is InstanceType.GOOGLE:  # tell Google this sign-in isn't used any more
+        with contextlib.suppress(RingkeeperError):
+            google_oauth.revoke(get_vault(get_settings()).resolve(secret_ref).reveal())
     secrets_in.forget(get_settings(), secret_ref)  # the client's secret leaves the vault too
     if package.get("pinned"):  # a local server from the catalog: its installed copy goes too
         local_servers.remove_folder(

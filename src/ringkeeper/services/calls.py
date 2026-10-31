@@ -46,7 +46,15 @@ from ringkeeper.models import (
     ProjectInstance,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import audit, decisions, holds, mcp_oauth, mcp_tools, revocations
+from ringkeeper.services import (
+    audit,
+    decisions,
+    google_oauth,
+    holds,
+    mcp_oauth,
+    mcp_tools,
+    revocations,
+)
 from ringkeeper.vault import Vault, VaultError
 
 logger = logging.getLogger(__name__)
@@ -212,7 +220,9 @@ def _authorize_or_refuse(call: ToolCall, spec: ToolSpec) -> Authorized:
 
 def _target(vault: Vault, adapter: Adapter, auth: Authorized) -> Target:
     try:
-        secret = mcp_oauth.resolve(vault, auth.instance, auth.secret_ref)
+        secret = google_oauth.connection_secret(
+            vault, adapter.service, auth.instance, auth.secret_ref
+        )
     except VaultError as error:
         raise ToolError(
             f"the secret for instance '{auth.instance}' is unavailable: {error}"
@@ -234,6 +244,13 @@ async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], 
     except Exception:
         logger.exception("tool %s failed unexpectedly", tool)  # records are scrubbed
         raise ToolError(f"'{tool}' failed unexpectedly; see the gateway log") from None
+
+
+def runs_without_asking(config: JSON, tool: str) -> bool:
+    """The owner let this write run without asking on this connection (a Google
+    account's per-tool setting, `write_rules`). It's still audited."""
+    rules = cast(dict[str, str], config.get("write_rules") or {})
+    return rules.get(tool) == "run"
 
 
 def unauthenticated(
@@ -281,6 +298,8 @@ def bound_instances(caller: Caller) -> list[dict[str, Any]]:
                 "is_default": b.is_default,
                 "allowed_tools": list(b.allowed_tools) or "all",
             }
+            # A Google account says which one it is ("send from the info@ mailbox").
+            | ({"account": b.instance.config["email"]} if b.instance.config.get("email") else {})
             for b in sorted(project.bindings, key=lambda b: (b.instance.type, b.instance.name))
         ]
 
@@ -333,9 +352,10 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
             result = _limit_listing(result, auth)
         return scrub_obj(result)
 
-    if spec.hold is Hold.ALWAYS or (
+    held = spec.hold is Hold.ALWAYS or (
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved
-    ):
+    )
+    if held and not runs_without_asking(auth.config, call.tool):
         return await _hold(call, spec, target)
 
     try:

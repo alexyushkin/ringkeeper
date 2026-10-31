@@ -6,7 +6,7 @@ import json
 import httpx2
 import pytest
 
-from ringkeeper.adapters import ADAPTERS, airtable, gmail, twilio, vercel
+from ringkeeper.adapters import ADAPTERS, airtable, gmail, google, twilio, vercel
 from ringkeeper.adapters.base import Hold, Target, ToolError, ToolKind
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, InstanceType
@@ -64,7 +64,13 @@ def test_every_service_has_its_adapter_and_sends_hold_always() -> None:
         (InstanceType.N8N, "retry_execution"): Hold.ALWAYS,
         (InstanceType.N8N, "stop_execution"): Hold.ALWAYS,
         (InstanceType.MCP, "call_tool"): Hold.ALWAYS,
+        # Every Google write asks first (unless the owner lets that tool run, per account).
+        **{(InstanceType.GOOGLE, tool): Hold.ALWAYS for tool in google.WRITES},
     }
+    assert set(google.WRITES) == {
+        "send_mail", "create_draft", "trash_mail", "upload_file", "share_file", "create_event",
+        "update_sheet", "append_rows",
+    }  # fmt: skip
 
 
 # --- Airtable ---

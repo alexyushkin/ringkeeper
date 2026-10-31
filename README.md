@@ -119,7 +119,7 @@ client and is linked to that client's projects.
 worker (Claude Code, …)
    │  MCP over HTTP, Authorization: Bearer <worker token>
    ▼
-gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/mcp
+gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/google  /mcp/mcp
    1. valid token?            (signed, short-lived, names project + session)
    2. instance exists?        (omitted only for reads: the project default)
    3. bound to the project?
@@ -223,6 +223,7 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
 | `/mcp/gmail` | `search_messages`, `get_message` | `create_draft` (never held), `send_email` (always held) |
+| `/mcp/google` | `search_mail`, `read_mail`, `search_files`, `read_file`, `list_events`, `read_sheet` | `send_mail`, `create_draft`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account) |
 | `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
 A worker only gets the endpoints of the services its project is connected to.
@@ -259,7 +260,23 @@ A worker only gets the endpoints of the services its project is connected to.
   audited. Override any tool under Connections › Tools and approvals.
 - **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
   JSON with the address and the app password. Reading never marks mail as
-  read. Drafts run without asking; sending always waits for approval.
+  read. Drafts run without asking; sending always waits for approval. The
+  simple fallback to a Google account connection.
+- **google:** a Google account (Gmail, Drive, Calendar, Sheets), signed in
+  through your own Google app (desktop app, Settings › Google: an OAuth
+  "Desktop app" client in your own Google Cloud project, published "In
+  production" so sign-ins don't expire weekly). Each account is its own
+  connection with the access you tick when signing it in; Drive uses
+  `drive.file` (files Ringkeeper creates or is given) unless you tick "read all
+  files". An account is a client's (only their projects) or yours (any project,
+  or all of them), like shared tools. A project can have several; one can be
+  its default, and the agent names the one it means (`list_instances` shows
+  each one's address). Every write waits for approval, even on test data; per
+  account, you can let a tool run without asking (Connections › Tools and
+  approvals). The tokens are refreshed before each call; when Google stops
+  accepting one (a password change, six months unused), the agent is told to
+  have you sign in again. Unverified, your app allows 100 accounts over its life
+  and each sign-in shows Google's "unverified app" screen.
 
 ### Worker tokens
 

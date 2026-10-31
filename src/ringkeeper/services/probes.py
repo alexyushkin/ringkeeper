@@ -13,13 +13,23 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from ringkeeper.adapters import ADAPTERS, airtable, gmail, mcp, n8n, supabase, twilio, vercel
+from ringkeeper.adapters import (
+    ADAPTERS,
+    airtable,
+    gmail,
+    google,
+    mcp,
+    n8n,
+    supabase,
+    twilio,
+    vercel,
+)
 from ringkeeper.adapters.base import JSON, Target, ToolError
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import scrub
-from ringkeeper.services import admin_audit, instances, mcp_oauth, mcp_tools
+from ringkeeper.services import admin_audit, google_oauth, instances, mcp_tools
 from ringkeeper.vault import get_vault
 
 TIMEOUT_SECONDS = 20
@@ -54,6 +64,8 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911 (o
             return "Connected to Twilio: the key works."
         case InstanceType.GMAIL:
             return await gmail.probe(target)
+        case InstanceType.GOOGLE:
+            return await google.probe(target)
         case InstanceType.MCP:
             listed = await mcp.list_tools.handler(target)
             mcp_tools.remember(target.name, listed)
@@ -78,7 +90,7 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         config = dict(instance.config or {})
     timeout = MCP_TIMEOUT_SECONDS if kind is InstanceType.MCP else TIMEOUT_SECONDS
     try:
-        secret = mcp_oauth.resolve(get_vault(), name, ref)
+        secret = google_oauth.connection_secret(get_vault(), kind, name, ref)
         if kind in ADAPTERS:
             secret.also_scrub(*ADAPTERS[kind].secret_fragments(secret.reveal()))
         target = Target(name, env, base_url, secret, config)

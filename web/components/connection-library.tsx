@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { LocalUpdate } from "@/components/catalog";
 import { TestButton, type ConnectionData } from "@/components/forms";
+import { GoogleAccount } from "@/components/google";
 import { McpTools } from "@/components/mcp-tools";
 import { Alert, Badge, Button, CompactRow, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -213,7 +214,8 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
   const head = (
     <>
       <span className="font-medium">{connection.name}</span>
-      <EnvBadge env={connection.env} />
+      {/* A Google account's writes all ask first, whatever the data: no kind-of-data badge. */}
+      {connection.type === "google" ? null : <EnvBadge env={connection.env} />}
       <span className="text-xs text-muted">{serviceName(connection, services)}</span>
       {connection.shared ? <Badge tone="accent">shared tool</Badge> : null}
       {connection.config.source === "signin" ? <Badge tone="good">signed in</Badge> : null}
@@ -240,11 +242,12 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
       {connection.config.package ? <LocalUpdate connection={connection.name} client={connection.owner} onDone={onChange} /> : null}
       <TestButton name={connection.name} onDone={() => onChange()} />
       {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
+      {connection.type === "google" ? <GoogleAccount name={connection.name} onChange={onChange} /> : null}
       <Details label="Change">
         <div className="space-y-3">
           {imported ? <p className="text-sm text-muted">Its settings came from Claude Desktop. To change them, change them there, remove this connection, and import it again.</p> : null}
           {remote || fromCatalog ? <p className="text-sm text-muted">To sign in again or use another key, remove it and connect again.</p> : null}
-          {connection.type !== "mcp" ? (
+          {connection.type !== "mcp" && connection.type !== "google" ? (
             <>
               <p className="text-sm">Secret: {connection.secret_stored ? "saved ✓ (hidden)" : "missing"}</p>
               <Field label="New secret" type="password" value={secret} onChange={setSecret} />

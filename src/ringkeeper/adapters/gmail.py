@@ -1,4 +1,5 @@
-"""Gmail over IMAP and SMTP with an app password (no Google OAuth in v1). The secret is JSON:
+"""Gmail over IMAP and SMTP with an app password (the simple option; a Google account
+connection signs in with OAuth instead, adapters.google). The secret is JSON:
 
     {"address": "name@gmail.com", "app_password": "abcd efgh ijkl mnop"}
 

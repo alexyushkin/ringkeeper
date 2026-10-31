@@ -412,6 +412,12 @@ def _one_line(text: str, limit: int) -> str:
 
 DATA_SERVICES = (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE)
 SENDS = (InstanceType.TWILIO, InstanceType.GMAIL)
+# A Google account's writes that reach other people (the rest change its own data).
+GOOGLE_REACHES_PEOPLE = {
+    "send_mail": "A message to real people",
+    "share_file": "Sharing a file with someone",
+    "create_event": "A calendar event (any guests get an invitation)",
+}
 
 
 def production_hold(decision: Decision) -> bool:
@@ -431,6 +437,8 @@ def heading(decision: Decision) -> str | None:
         return None
     if decision.service in SENDS:
         return "A message to real people"
+    if decision.service is InstanceType.GOOGLE and decision.tool in GOOGLE_REACHES_PEOPLE:
+        return GOOGLE_REACHES_PEOPLE[decision.tool]
     session = object_session(decision)
     env = (
         session.scalar(select(Instance.env).where(Instance.name == decision.instance))

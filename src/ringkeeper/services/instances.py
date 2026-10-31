@@ -41,11 +41,15 @@ def bound_project_names(instance: Instance) -> list[str]:
     return sorted(binding.project.name for binding in instance.bindings)
 
 
+# What can be your own (a shared tool): MCP servers, and your own Google account.
+SHAREABLE = (InstanceType.MCP, InstanceType.GOOGLE)
+
+
 def _check_kind(data: InstanceIn) -> None:
-    if data.shared and data.type is not InstanceType.MCP:
+    if data.shared and data.type not in SHAREABLE:
         raise RuleViolationError(
-            f"'{data.name}' can't be a shared tool: only MCP servers can (a {data.type} "
-            "connection holds a client's account)."
+            f"'{data.name}' can't be a shared tool: only MCP servers and Google accounts can "
+            f"(a {data.type} connection holds a client's account)."
         )
     if data.all_projects and not data.shared:
         raise RuleViolationError(

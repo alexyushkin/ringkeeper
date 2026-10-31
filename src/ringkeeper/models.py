@@ -54,9 +54,9 @@ class InstanceType(enum.StrEnum):
     NEON = "neon"
     VERCEL = "vercel"
     AIRTABLE = "airtable"
-    GOOGLE = "google"
+    GOOGLE = "google"  # a Google account signed in through the owner's Google app
     TWILIO = "twilio"
-    GMAIL = "gmail"  # IMAP/SMTP with an app password (no Google OAuth in v1)
+    GMAIL = "gmail"  # IMAP/SMTP with an app password (the simple option)
     MCP = "mcp"  # an MCP server imported from Claude Desktop, run behind the gateway
 
 

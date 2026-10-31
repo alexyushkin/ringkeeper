@@ -10,6 +10,7 @@ import { Alert, Button, Card, Details, Field, Loading, PageHeader, Section, Sele
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { AboutCard } from "@/components/about";
+import { GoogleSettings } from "@/components/google";
 import { AUTO, VoiceSettings } from "@/components/voice";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
@@ -111,6 +112,7 @@ export default function SettingsPage() {
           },
         ]
       : []),
+    ...(DESKTOP ? [{ key: "google", label: "Google", content: () => <GoogleSettings /> }] : []),
     {
       key: "notifications",
       label: "Notifications",
