@@ -23,30 +23,95 @@ Var RkPrevious
   ${EndIf}
 !macroend
 
+; Sets $R7 to the full path of a program running from the install folder
+; (Ringkeeper, its Python or its Git), or "" if none is. By path, not by name:
+; a ringkeeper.exe running from anywhere else (a developer's copy) isn't this
+; install's. Nor is this installer itself: an uninstall over a reinstall runs
+; $INSTDIR\uninstall.exe in place. The installer is 32-bit; it sees 64-bit
+; programs' paths too.
+!macro RK_FIND_RUNNING
+  Push $4
+  Push $5
+  Push $6
+  Push $7
+  Push $8
+  Push $9
+  StrCpy $R7 ""
+  System::Call 'kernel32::GetCurrentProcessId() i .r4'
+  System::Call 'kernel32::CreateToolhelp32Snapshot(i 2, i 0) p .r6'  ; the processes
+  ${If} $6 <> -1
+    ; PROCESSENTRY32W
+    System::Call '*(&l4, i 0, i 0, p 0, i 0, i 0, i 0, i 0, i 0, &w260 "") p .r7'
+    System::Call 'kernel32::Process32FirstW(p r6, p r7) i .r8'
+    ${DoWhile} $8 <> 0
+      System::Call '*$7(i, i, i .r9)'
+      ${If} $9 = $4
+        StrCpy $9 0
+      ${Else}
+        ; PROCESS_QUERY_LIMITED_INFORMATION
+        System::Call 'kernel32::OpenProcess(i 0x1000, i 0, i r9) p .r9'
+      ${EndIf}
+      ${If} $9 <> 0
+        System::Call 'kernel32::QueryFullProcessImageNameW(p r9, i 0, w .r5, *i ${NSIS_MAX_STRLEN}) i .r8'
+        System::Call 'kernel32::CloseHandle(p r9)'
+        StrLen $9 "$INSTDIR\"
+        StrCpy $9 $5 $9
+        ${If} $8 <> 0
+        ${AndIf} $9 == "$INSTDIR\"  ; == ignores case, as Windows paths do
+          StrCpy $R7 $5
+          ${Break}
+        ${EndIf}
+      ${EndIf}
+      System::Call 'kernel32::Process32NextW(p r6, p r7) i .r8'
+    ${Loop}
+    System::Free $7
+    System::Call 'kernel32::CloseHandle(p r6)'
+  ${EndIf}
+  Pop $9
+  Pop $8
+  Pop $7
+  Pop $6
+  Pop $5
+  Pop $4
+!macroend
+
 ; Asks a running Ringkeeper to quit (it stops its work the way Quit does) and
-; waits until its program and its Python are no longer in use.
+; waits until nothing runs from the install folder and its Python folder can
+; be replaced. If that takes too long, says what's still there.
 !macro RK_QUIT_AND_WAIT
   ${If} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
     DetailPrint "Closing Ringkeeper if it's running"
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --quit'
     StrCpy $R8 0
     ${Do}
-      ClearErrors
-      ${If} ${FileExists} "$INSTDIR\python\*.*"
+      !insertmacro RK_FIND_RUNNING
+      StrCpy $R6 ""  ; a folder in use (testing ${Errors} clears it, so not that)
+      ${If} $R7 == ""
+      ${AndIf} ${FileExists} "$INSTDIR\python\*.*"
+        ClearErrors
         Rename "$INSTDIR\python" "$INSTDIR\python.in-use-check"
-        ${IfNot} ${Errors}
+        ${If} ${Errors}
+          StrCpy $R6 "$INSTDIR\python"
+        ${Else}
           Rename "$INSTDIR\python.in-use-check" "$INSTDIR\python"
         ${EndIf}
       ${EndIf}
-      ${IfNot} ${Errors}
-        nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-        Pop $R9
-        ${IfThen} $R9 <> 0 ${|} ${Break} ${|}
+      ${If} $R7 == ""
+      ${AndIf} $R6 == ""
+        ${Break}
       ${EndIf}
       ; Quit gives running work a minute to stop.
       ${If} $R8 >= 90
-        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Ringkeeper is still running. Quit it from its tray icon, then click Retry." /SD IDCANCEL IDRETRY +2
-        Abort "Ringkeeper is still running."
+        ${If} $R7 != ""
+          StrCpy $R9 "Ringkeeper is running from $R7."
+          StrCpy $R6 "Quit it from its tray icon, then click Retry."
+        ${Else}
+          StrCpy $R9 "Another program is using $R6."
+          StrCpy $R6 "Close it (a terminal or File Explorer window open there, perhaps), then click Retry."
+        ${EndIf}
+        DetailPrint "$R9"
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$R9$\n$\n$R6" /SD IDCANCEL IDRETRY +2
+        Abort "$R9"
         StrCpy $R8 0
       ${EndIf}
       Sleep 1000

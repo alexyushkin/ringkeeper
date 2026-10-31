@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Updates no longer wait for an unrelated ringkeeper.exe.** The installer
+  only waits for programs running from Ringkeeper's own folder, not for any
+  program with the same name elsewhere. If one doesn't quit, the message says
+  which one ("Ringkeeper is running from …") or which folder is in use.
+
 ## 0.1.0-beta.6 (2026-10-31)
 
 - **Every kind of connection can be yours or a client's.** A database, n8n,
