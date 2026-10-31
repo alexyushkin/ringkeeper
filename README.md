@@ -580,7 +580,10 @@ PyPI, each checked against the hash the installer lists) and the speech model:
 Fast (faster-whisper's `tiny`, about 160 MB in all) unless you choose Accuracy
 (its `small`, about 570 MB) in Settings › Voice. The size is shown before
 anything downloads, then its progress; only the chosen model is kept, and the
-installer stays smaller for everyone who never uses voice.
+installer stays smaller for everyone who never uses voice. Settings › Voice
+also sets the language you speak: Auto-detect, or one of the model's ~100
+languages (setting it is faster and makes fewer mistakes on short clips). Fast
+is weak outside English; for other languages, choose Accuracy.
 Speech becomes text on your computer: the recording never leaves it, and is
 dropped once it's transcribed, with the same limits as the server's `stt`
 service. From source, install the engine with `uv sync --extra voice`.

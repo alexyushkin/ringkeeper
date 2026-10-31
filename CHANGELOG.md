@@ -12,6 +12,10 @@ publishes it as the release notes and the app shows it with the update.
 - **Remote servers can be shared tools** too. The catalog suggests a client's
   account when a server wants a sign-in or a key, and your own tool when it
   answers with nothing; a server that needs nothing connects without a key.
+- **Voice has a Language choice.** Settings › Voice: Auto-detect, or a
+  searchable list of the speech model's languages. With the Fast model and a
+  language other than English, it suggests Accuracy, which handles other
+  languages much better.
 
 ## 0.1.0-beta.4 (2026-10-30)
 

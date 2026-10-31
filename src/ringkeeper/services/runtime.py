@@ -11,7 +11,7 @@ manager reads the effective settings on every tick).
 import logging
 from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from ringkeeper.schemas import Input, ModelId, WorkspaceId
 from ringkeeper.services import admin_audit
 from ringkeeper.storage import events
 from ringkeeper.storage.sql import insert
+from ringkeeper.voice import AUTO, LANGUAGES
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,15 @@ RUNTIME_KEY = "runtime"
 SETTINGS_CHANNEL = "ringkeeper_settings"
 
 Positive = Annotated[int, Field(ge=1)]
+
+
+def _spoken(code: str) -> str:
+    if code != AUTO and code not in LANGUAGES:
+        raise ValueError("isn't a language the speech model knows")
+    return code
+
+
+SpokenLanguage = Annotated[str, AfterValidator(_spoken)]
 
 
 class RuntimeIn(Input):
@@ -59,6 +69,7 @@ class RuntimeIn(Input):
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None
     paused: bool | None = None
     start_at_login: bool | None = None  # desktop mode only
+    stt_language: SpokenLanguage | None = None  # a Whisper code, or "auto"
 
 
 EDITABLE = tuple(RuntimeIn.model_fields)

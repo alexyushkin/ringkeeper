@@ -12,6 +12,7 @@ handled at once, and slow clients are cut off.
 
 import json
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +24,7 @@ from ringkeeper_stt.config import SttConfig
 logger = logging.getLogger(__name__)
 
 MAX_HINT_CHARS = 500
+LANGUAGE = re.compile(r"[a-z]{2,3}")  # a Whisper code; "auto" detects it
 MAX_IN_FLIGHT = 2  # requests read and decoded at once; one transcribes at a time
 SOCKET_TIMEOUT = 30.0  # seconds a client may stall while sending
 
@@ -74,7 +76,11 @@ class Engine(Protocol):
         """Raises DecodeError, or TooLongError once past max_seconds."""
         ...
 
-    def transcribe(self, audio: Decoded, hint: str | None = None) -> Transcript: ...
+    def transcribe(
+        self, audio: Decoded, hint: str | None = None, language: str | None = None
+    ) -> Transcript:
+        """`language`: a Whisper code, or None to detect it."""
+        ...
 
 
 class Service:
@@ -86,11 +92,15 @@ class Service:
         self._lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(MAX_IN_FLIGHT)
 
-    def transcribe(self, data: bytes, hint: str | None = None) -> tuple[int, dict[str, Any]]:
-        if len(data) > self.config.max_bytes:
-            return 413, {"error": "too_large", "max_bytes": self.config.max_bytes}
-        if sniff(data) is None:
-            return 422, {"error": "undecodable"}
+    def transcribe(
+        self, data: bytes, hint: str | None = None, language: str | None = None
+    ) -> tuple[int, dict[str, Any]]:
+        """`language`: a Whisper code, "auto" to detect it, or None for the configured one."""
+        if refused := self._refuse(data, language):
+            return refused
+        spoken = self.config.language if language is None else language
+        if spoken == "auto":
+            spoken = None
         try:
             audio = self.engine.decode(data, self.config.max_seconds)
         except DecodeError:
@@ -105,8 +115,18 @@ class Service:
                 "error": "too_long", "seconds": seconds, "max_seconds": self.config.max_seconds,
             }  # fmt: skip
         with self._lock:
-            result = self.engine.transcribe(audio, (hint or "")[:MAX_HINT_CHARS] or None)
+            result = self.engine.transcribe(audio, (hint or "")[:MAX_HINT_CHARS] or None, spoken)
         return 200, {"text": result.text, "language": result.language, "duration": seconds}
+
+    def _refuse(self, data: bytes, language: str | None) -> tuple[int, dict[str, Any]] | None:
+        """Checked before decoding anything."""
+        if language not in (None, "auto") and not LANGUAGE.fullmatch(language):
+            return 422, {"error": "bad_language"}
+        if len(data) > self.config.max_bytes:
+            return 413, {"error": "too_large", "max_bytes": self.config.max_bytes}
+        if sniff(data) is None:
+            return 422, {"error": "undecodable"}
+        return None
 
 
 def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
@@ -152,8 +172,10 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
                 self._send(503, {"error": "busy"})
                 return
             try:
-                hint = parse_qs(url.query).get("hint", [""])[0]
-                status, body = service.transcribe(self.rfile.read(length), hint)
+                query = parse_qs(url.query)
+                hint = query.get("hint", [""])[0]
+                language = query.get("language", [""])[0] or None
+                status, body = service.transcribe(self.rfile.read(length), hint, language)
             except TimeoutError:
                 self.close_connection = True
                 return  # the client stalled: nothing to answer

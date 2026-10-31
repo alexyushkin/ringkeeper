@@ -30,7 +30,15 @@ import httpx2
 
 from ringkeeper import voice_engine
 from ringkeeper.config import Settings
-from ringkeeper.voice import UNREACHABLE, SttClient, Transcriber, VoiceError, answer
+from ringkeeper.voice import (
+    LANGUAGES,
+    UNREACHABLE,
+    SttClient,
+    Transcriber,
+    VoiceError,
+    answer,
+    spoken_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +158,7 @@ class LocalModel:
 
     def status(self) -> dict[str, Any]:
         """What the app shows: ready or not, the download's size, and its progress,
-        and what each choice would download."""
+        what each choice would download, and the languages to choose from."""
         progress = self.progress
         if self.available() and progress.state != "downloading":
             for key in CHOICES:
@@ -177,6 +185,7 @@ class LocalModel:
                 }
                 for c in CHOICES.values()
             ],
+            "languages": LANGUAGES,
         }
 
     def choose(self, choice: str) -> None:
@@ -319,7 +328,7 @@ class LocalStt:
 
     def transcribe(self, audio: bytes, hint: str | None = None) -> str:
         try:
-            status, body = self._service.transcribe(audio, hint)
+            status, body = self._service.transcribe(audio, hint, spoken_language(self.settings))
         except Exception:
             logger.exception("local transcription failed")
             raise VoiceError(UNREACHABLE) from None

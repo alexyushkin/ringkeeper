@@ -44,6 +44,14 @@ def test_a_voice_note_is_downloaded_and_transcribed(fakes: tuple[FakeTelegram, F
     assert audio.startswith(AUDIO_MARKER)
 
 
+def test_the_chosen_language_goes_with_the_recording(fakes: tuple[FakeTelegram, FakeStt]) -> None:
+    telegram, stt = fakes
+    run(telegram, note(telegram))
+    run(telegram, note(telegram), settings(stt_language="ru"))
+    run(telegram, note(telegram), settings(stt_language="auto"))
+    assert stt.languages == [None, "ru", "auto"]  # unset: the stt service's own setting
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

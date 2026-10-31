@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Alert, Button, Card, Select } from "@/components/ui";
 import { api } from "@/lib/client/api";
@@ -22,7 +22,10 @@ export interface LocalVoice {
   error: string | null;
   choice: string;
   choices: VoiceChoice[];
+  languages: Record<string, string>; // the speech model's codes, by name
 }
+
+export const AUTO = "auto";
 
 const DESCRIPTIONS: Record<string, string> = {
   fast: "quick, good for short requests in English",
@@ -118,8 +121,51 @@ export function VoiceSetup({ status, error, onDownload, onClose }: { status: Loc
   );
 }
 
-/** Settings › Voice: Fast or Accuracy, each with its download size shown before it starts. */
-export function VoiceSettings() {
+/** Auto-detect, or one of the speech model's languages, found by typing its name. */
+function LanguagePicker({ value, languages, onChange }: { value: string; languages: Record<string, string>; onChange: (code: string) => void }) {
+  const [query, setQuery] = useState("");
+  const id = useId();
+  const all: [string, string][] = [[AUTO, "Auto-detect"], ...Object.entries(languages).sort(([, a], [, b]) => a.localeCompare(b))];
+  const wanted = query.trim().toLowerCase();
+  const found = wanted ? all.filter(([code, name]) => code === wanted || name.toLowerCase().includes(wanted)) : all;
+  // The current choice stays in the list, so the list always shows what's chosen.
+  const shown = found.some(([code]) => code === value) ? found : [...all.filter(([code]) => code === value), ...found];
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="block text-sm font-medium">
+        Language
+      </label>
+      <input
+        id={id}
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search languages"
+        aria-controls={`${id}-list`}
+        className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-base"
+      />
+      <select
+        id={`${id}-list`}
+        aria-label="Language"
+        size={6}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border border-line bg-surface px-1 py-1 text-base"
+      >
+        {shown.map(([code, name]) => (
+          <option key={code} value={code} className="rounded-lg px-2 py-1">
+            {name}
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-muted">The language you speak. Choosing it is faster and makes fewer mistakes on short recordings than auto-detect.</p>
+    </div>
+  );
+}
+
+/** Settings › Voice: Fast or Accuracy, each with its download size shown before it
+ * starts, and the language spoken (saved as stt_language). */
+export function VoiceSettings({ language, onLanguage }: { language: string; onLanguage: (code: string) => void }) {
   const voice = useLocalVoice();
   const status = voice.status;
   if (!status?.engine) return null;
@@ -137,6 +183,20 @@ export function VoiceSettings() {
         options={status.choices.map((c) => [c.key, `${c.label}: ${DESCRIPTIONS[c.key] ?? c.model} (${size(c)})`])}
         hint={downloading ? "You can switch once the download is done." : undefined}
       />
+      <LanguagePicker value={language} languages={status.languages} onChange={onLanguage} />
+      {status.choice === "fast" && language !== "en" ? (
+        <Alert tone="warn">
+          <span>
+            The Fast model is weak outside English.{" "}
+            {language === AUTO ? "If you speak other languages, choose Accuracy." : `For ${status.languages[language] ?? language}, choose Accuracy.`}
+          </span>{" "}
+          {downloading ? null : (
+            <Button kind="ghost" onClick={() => void voice.choose("accuracy")}>
+              Use Accuracy
+            </Button>
+          )}
+        </Alert>
+      ) : null}
       {downloading ? (
         <Progress status={status} />
       ) : status.state === "ready" ? (

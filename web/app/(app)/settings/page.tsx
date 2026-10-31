@@ -10,7 +10,7 @@ import { Alert, Button, Card, Details, Field, Loading, PageHeader, Section, Sele
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { AboutCard } from "@/components/about";
-import { VoiceSettings } from "@/components/voice";
+import { AUTO, VoiceSettings } from "@/components/voice";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
 
@@ -39,6 +39,7 @@ interface Settings {
     retention_days: number;
     paused: boolean;
     start_at_login: boolean;
+    stt_language: string | null;
   };
   overridden: string[];
   services: Record<string, { running: boolean; error: string | null }>;
@@ -101,7 +102,15 @@ export default function SettingsPage() {
         </Section>
       ),
     },
-    ...(DESKTOP ? [{ key: "voice", label: "Voice", content: () => <VoiceSettings /> }] : []),
+    ...(DESKTOP
+      ? [
+          {
+            key: "voice",
+            label: "Voice",
+            content: () => <VoiceSettings language={v.stt_language ?? AUTO} onLanguage={(code) => change({ stt_language: code }, "Saved the language.")} />,
+          },
+        ]
+      : []),
     {
       key: "notifications",
       label: "Notifications",

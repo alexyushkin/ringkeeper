@@ -152,6 +152,7 @@ def test_accuracy_is_a_choice_with_its_size_shown_and_only_one_model_kept(
     assert before["choice"] == "fast"
     sizes = {c["key"]: (c["model"], c["download"], c["ready"]) for c in before["choices"]}
     assert sizes == {"fast": ("tiny", 50_006, False), "accuracy": ("small", 120_006, False)}
+    assert (before["languages"]["en"], before["languages"]["ru"]) == ("English", "Russian")
     model.start()
     wait_for(model, "ready")
 
@@ -181,10 +182,12 @@ def test_a_model_downloaded_before_the_choice_keeps_being_used(tmp_path: Path) -
 class FakeService:
     def __init__(self, status: int, body: dict[str, Any]) -> None:
         self.answer = (status, body)
-        self.got: list[tuple[bytes, str | None]] = []
+        self.got: list[tuple[bytes, str | None, str | None]] = []
 
-    def transcribe(self, data: bytes, hint: str | None = None) -> tuple[int, dict[str, Any]]:
-        self.got.append((data, hint))
+    def transcribe(
+        self, data: bytes, hint: str | None = None, language: str | None = None
+    ) -> tuple[int, dict[str, Any]]:
+        self.got.append((data, hint, language))
         return self.answer
 
 
@@ -200,7 +203,7 @@ class FakeService:
 def test_local_speech_answers_like_the_stt_service(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, body: dict[str, Any], said: str
 ) -> None:
-    settings = Settings(mode="desktop", data_dir=tmp_path)
+    settings = Settings(mode="desktop", data_dir=tmp_path, stt_language="ru")
     service = FakeService(status, body)
 
     def loaded(_self: voice_local.LocalModel, _settings: Settings) -> FakeService:
@@ -211,7 +214,7 @@ def test_local_speech_answers_like_the_stt_service(
     assert isinstance(stt, voice_local.LocalStt)
     if status == 200 and body["text"].strip():
         assert stt.transcribe(b"audio", "acme-web") == said
-        assert service.got == [(b"audio", "acme-web")]
+        assert service.got == [(b"audio", "acme-web", "ru")]
     else:
         with pytest.raises(VoiceError, match=said):
             stt.transcribe(b"audio")

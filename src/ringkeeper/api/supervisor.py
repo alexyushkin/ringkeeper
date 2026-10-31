@@ -49,7 +49,7 @@ def telegram_key(settings: Settings, token: str | None) -> tuple[object, ...]:
     return (
         settings.telegram, token, tuple(settings.telegram_chat_ids), settings.telegram_requests,
         settings.telegram_summary_chars, settings.telegram_question_chars,
-        settings.telegram_confirm_minutes, settings.stt_url,
+        settings.telegram_confirm_minutes, settings.stt_url, settings.stt_language,
     )  # fmt: skip
 
 

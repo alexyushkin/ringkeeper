@@ -146,7 +146,8 @@ class Settings(BaseSettings):
     stt_max_bytes: int = 5_000_000
     stt_timeout_seconds: float = 120.0
     # The spoken language, if it's always the same (faster detection, fewer
-    # mistakes on short clips). The desktop app's local voice uses it too.
+    # mistakes on short clips): a Whisper code, or "auto" to detect it. Unset,
+    # the stt service's own setting decides. Settings > Voice changes it.
     stt_language: str | None = None
 
     # Full session events (transcripts) older than this are deleted daily; task

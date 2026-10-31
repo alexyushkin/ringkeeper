@@ -35,6 +35,7 @@ class FakeEngine:
         self.seconds = seconds
         self.decoded: list[int] = []
         self.hints: list[str | None] = []
+        self.languages: list[str | None] = []
         self.slots = threading.BoundedSemaphore(1)  # the service's, set by the fixture
 
     def decode(self, data: bytes, max_seconds: float) -> Decoded:
@@ -43,8 +44,11 @@ class FakeEngine:
         self.decoded.append(len(data))
         return Decoded(samples=None, seconds=self.seconds)
 
-    def transcribe(self, audio: Decoded, hint: str | None = None) -> Transcript:
+    def transcribe(
+        self, audio: Decoded, hint: str | None = None, language: str | None = None
+    ) -> Transcript:
         self.hints.append(hint)
+        self.languages.append(language)
         return Transcript(text="voice works", language="en")
 
 
@@ -70,6 +74,17 @@ def test_config_defaults_and_overrides() -> None:
         load({"RINGKEEPER_STT_MAX_BYTES": "lots"})
 
 
+def test_the_language_can_be_chosen_per_recording() -> None:
+    engine = FakeEngine()
+    service = Service(engine, SttConfig(language="de", max_seconds=60, max_bytes=1000))
+    for language in (None, "ru", "auto", "yue"):
+        assert service.transcribe(b"OggS", None, language)[0] == 200
+    assert engine.languages == ["de", "ru", None, "yue"]  # None: the configured one
+    for bad in ("EN", "english", "e", "../x"):
+        assert service.transcribe(b"OggS", None, bad) == (422, {"error": "bad_language"})
+    assert engine.decoded == [4, 4, 4, 4]  # a bad language is refused before decoding
+
+
 def test_transcribe_and_limits(fake_stt: tuple[str, FakeEngine]) -> None:
     url, engine = fake_stt
     with httpx2.Client(base_url=url) as http:
@@ -80,6 +95,7 @@ def test_transcribe_and_limits(fake_stt: tuple[str, FakeEngine]) -> None:
         hinted = http.post("/transcribe", params={"hint": "acme-web, n8n"}, content=b"OggS")
         assert hinted.status_code == 200
         assert engine.hints == [None, "acme-web, n8n"]
+        assert engine.languages == [None, None]  # none configured: detected
 
         # Too big: refused from Content-Length alone, never decoded.
         big = http.post("/transcribe", content=b"OggS" + b"x" * 2000)

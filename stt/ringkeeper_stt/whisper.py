@@ -2,9 +2,9 @@
 # faster-whisper is only installed in the stt image, never in Ringkeeper's own environment.
 """The faster-whisper engine: CPU, int8, voice activity detection on.
 
-Setting the language (RINGKEEPER_STT_LANGUAGE) is strongly recommended: the
-automatic detection pass doubles the time, and on short accented clips it can
-pick the wrong language and write the transcript in it.
+Setting the language (RINGKEEPER_STT_LANGUAGE, or per recording) is strongly
+recommended: the automatic detection pass doubles the time, and on short
+accented clips it can pick the wrong language and write the transcript in it.
 """
 
 import io
@@ -66,11 +66,13 @@ class WhisperEngine:
         samples = np.concatenate(chunks).astype(np.float32) / 32768.0
         return Decoded(samples=samples, seconds=len(samples) / SAMPLE_RATE)
 
-    def transcribe(self, audio: Decoded, hint: str | None = None) -> Transcript:
+    def transcribe(
+        self, audio: Decoded, hint: str | None = None, language: str | None = None
+    ) -> Transcript:
         # hotwords: names the speaker is likely to say (projects, connections),
         # so "acme-web" and "n8n" come out spelled that way.
         segments, info = self.model.transcribe(
-            audio.samples, language=self.config.language, vad_filter=True, beam_size=5,
+            audio.samples, language=language, vad_filter=True, beam_size=5,
             hotwords=hint or None,
         )  # fmt: skip
         text = " ".join(segment.text.strip() for segment in segments).strip()

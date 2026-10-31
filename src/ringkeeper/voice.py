@@ -30,6 +30,33 @@ SILENT = "I couldn't hear anything in that. Try again."
 COMMON_WORDS = ("Ringkeeper", "n8n", "Supabase", "README")
 HINT_CHARS = 500
 
+# Whisper's languages (the speech model's codes), by their English names.
+# "auto" detects the language of each recording.
+AUTO = "auto"
+LANGUAGES = {
+    "af": "Afrikaans", "sq": "Albanian", "am": "Amharic", "ar": "Arabic", "hy": "Armenian",
+    "as": "Assamese", "az": "Azerbaijani", "ba": "Bashkir", "eu": "Basque", "be": "Belarusian",
+    "bn": "Bengali", "bs": "Bosnian", "br": "Breton", "bg": "Bulgarian", "my": "Burmese",
+    "yue": "Cantonese", "ca": "Catalan", "zh": "Chinese", "hr": "Croatian", "cs": "Czech",
+    "da": "Danish", "nl": "Dutch", "en": "English", "et": "Estonian", "fo": "Faroese",
+    "fi": "Finnish", "fr": "French", "gl": "Galician", "ka": "Georgian", "de": "German",
+    "el": "Greek", "gu": "Gujarati", "ht": "Haitian Creole", "ha": "Hausa", "haw": "Hawaiian",
+    "he": "Hebrew", "hi": "Hindi", "hu": "Hungarian", "is": "Icelandic", "id": "Indonesian",
+    "it": "Italian", "ja": "Japanese", "jw": "Javanese", "kn": "Kannada", "kk": "Kazakh",
+    "km": "Khmer", "ko": "Korean", "lo": "Lao", "la": "Latin", "lv": "Latvian",
+    "ln": "Lingala", "lt": "Lithuanian", "lb": "Luxembourgish", "mk": "Macedonian",
+    "mg": "Malagasy", "ms": "Malay", "ml": "Malayalam", "mt": "Maltese", "mi": "Maori",
+    "mr": "Marathi", "mn": "Mongolian", "ne": "Nepali", "no": "Norwegian",
+    "nn": "Norwegian Nynorsk", "oc": "Occitan", "ps": "Pashto", "fa": "Persian",
+    "pl": "Polish", "pt": "Portuguese", "pa": "Punjabi", "ro": "Romanian", "ru": "Russian",
+    "sa": "Sanskrit", "sr": "Serbian", "sn": "Shona", "sd": "Sindhi", "si": "Sinhala",
+    "sk": "Slovak", "sl": "Slovenian", "so": "Somali", "es": "Spanish", "su": "Sundanese",
+    "sw": "Swahili", "sv": "Swedish", "tl": "Tagalog", "tg": "Tajik", "ta": "Tamil",
+    "tt": "Tatar", "te": "Telugu", "th": "Thai", "bo": "Tibetan", "tr": "Turkish",
+    "tk": "Turkmen", "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
+    "cy": "Welsh", "yi": "Yiddish", "yo": "Yoruba",
+}  # fmt: skip
+
 
 class VoiceError(RingkeeperError):
     """Something to tell the user, in a sentence they can act on."""
@@ -72,6 +99,12 @@ def too_big(size: int | None, limit: int) -> VoiceError:
     )
 
 
+def spoken_language(settings: Settings) -> str | None:
+    """The language to ask the speech model for: a code, "auto" (detect it), or None
+    (not set here: the stt service's own setting decides)."""
+    return settings.stt_language or None
+
+
 class Transcriber(Protocol):
     """Speech to text: the stt service over HTTP, or in the desktop app's process."""
 
@@ -96,13 +129,18 @@ class SttClient:
             response = self._http.post(
                 "/transcribe",
                 content=audio,
-                params={"hint": hint} if hint else None,
+                params=_params(hint, spoken_language(self.settings)),
                 headers={"Content-Type": "application/octet-stream"},
             )
             body = cast(dict[str, Any], response.json())
         except (httpx2.HTTPError, ValueError):
             raise VoiceError(UNREACHABLE) from None
         return answer(response.status_code, body, len(audio), self.settings)
+
+
+def _params(hint: str | None, language: str | None) -> dict[str, str] | None:
+    params = {"hint": hint or "", "language": language or ""}
+    return {k: v for k, v in params.items() if v} or None
 
 
 def answer(status: int, body: dict[str, Any], size: int, settings: Settings) -> str:

@@ -475,6 +475,10 @@ def test_settings_change_live_and_reset_to_env(owner: TestClient) -> None:
     assert reset["overridden"] == ["telegram_requests"]
     assert owner.patch("/settings", json={"database_url": "x"}).status_code == 422
     assert owner.patch("/settings", json={"max_concurrent_workers": 0}).status_code == 422
+    for language in ("ru", "auto"):
+        saved = owner.patch("/settings", json={"stt_language": language}).json()
+        assert saved["values"]["stt_language"] == language
+    assert owner.patch("/settings", json={"stt_language": "russian"}).status_code == 422
     assert "changed settings: max_concurrent_workers, telegram_requests" in audit_text()
 
 
