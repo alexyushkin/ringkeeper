@@ -78,7 +78,7 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await page.getByLabel("Kind of data").selectOption("prod");
     await page.getByLabel("Connection string").fill(PROD_DSN);
     await page.getByRole("button", { name: "Add connection" }).click();
-    await expect(page.getByText(/^Added acme-databaseb/)).toBeVisible(); // ", for acme-web" once it has loaded
+    await expect(page.getByText(/^Added acme-database\b/)).toBeVisible(); // ", for acme-web" once it has loaded
     await page.getByRole("button", { name: "Test connection" }).click();
     await expect(page.getByText("Connected: read 1 table.")).toBeVisible();
     await page.getByRole("button", { name: "Finish", exact: true }).click();
