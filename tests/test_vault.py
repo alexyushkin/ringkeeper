@@ -314,7 +314,8 @@ def test_desktop_keeps_only_the_master_key_in_the_keychain(
 ) -> None:
     settings = Settings(mode="desktop")
     first = load_master_key(settings)
-    assert list(keychain.items) == [("Ringkeeper", "master-key")]
+    # The tests' own keychain name (conftest), never the real app's.
+    assert list(keychain.items) == [("RingkeeperTests", "master-key")]
     assert not (data_dir / "master.key").exists()
     assert load_master_key(Settings(mode="desktop")) == first
     vault = get_vault(settings)
@@ -353,7 +354,8 @@ def test_uninstalling_with_the_data_removes_the_keychain_key(keychain: MemoryKey
     from ringkeeper.desktop import uninstall  # noqa: PLC0415
 
     load_master_key(Settings(mode="desktop"))
-    assert list(keychain.items) == [("Ringkeeper", "master-key")]
+    # The tests' own keychain name (conftest), never the real app's.
+    assert list(keychain.items) == [("RingkeeperTests", "master-key")]
     assert uninstall.main() == 0
     assert keychain.items == {}
     assert uninstall.main() == 0  # nothing left to remove is fine too
