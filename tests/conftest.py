@@ -7,11 +7,14 @@ os.environ["RINGKEEPER_ENV_FILE"] = ""
 os.environ["RINGKEEPER_ALLOW_LOCAL_CONNECTIONS"] = "1"
 
 import socket
+import sys
 import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, cast
 
+import keyring
 import psycopg
 import pytest
 import uvicorn
@@ -23,6 +26,7 @@ from ringkeeper import migrate, scrub
 from ringkeeper.adapters import n8n
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
+from ringkeeper.desktop import paths as desktop_paths
 from ringkeeper.gateway.app import create_app
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import Autonomy, Base, Env, InstanceType
@@ -31,6 +35,83 @@ from ringkeeper.storage.sql import make_engine
 from ringkeeper.vault import Vault, get_vault
 from tests.fake_n8n import API_KEY, FakeN8n
 from tests.helpers import bind, make_instance, make_project
+
+# --- The guard: tests never touch the real app ---
+#
+# Any read or write of the installed app's keychain item (service "Ringkeeper"),
+# its data folder, this checkout's own .ringkeeper, or the projects folder
+# (Documents/Ringkeeper) stops the whole run: the call fails with
+# TouchedRealDataError (a BaseException, so `except Exception` can't swallow
+# it), and the run ends after that test.
+
+
+class TouchedRealDataError(BaseException):
+    pass
+
+
+REAL_KEYCHAIN_SERVICE = "Ringkeeper"
+REAL_FOLDERS = tuple(
+    os.path.normcase(os.path.abspath(p))
+    for p in (desktop_paths.data_dir(), Path(".ringkeeper"), desktop_paths.workspaces_dir())
+)
+_FILE_EVENTS = {
+    "open", "os.mkdir", "os.rmdir", "os.remove", "os.rename", "os.listdir", "os.scandir",
+    "os.chmod", "os.truncate", "shutil.rmtree", "shutil.copyfile", "shutil.move",
+    "sqlite3.connect",
+}  # fmt: skip
+touched: list[str] = []
+
+
+def _real(path: object) -> str | None:
+    if isinstance(path, bytes):
+        path = os.fsdecode(path)
+    if not isinstance(path, (str, os.PathLike)):
+        return None
+    try:
+        full: str = os.path.normcase(os.path.abspath(os.fspath(cast(str, path))))
+    except (TypeError, ValueError):
+        return None
+    for folder in REAL_FOLDERS:
+        if full == folder or full.startswith(folder + os.sep):
+            return full
+    return None
+
+
+def _audit(event: str, args: tuple[object, ...]) -> None:
+    if event not in _FILE_EVENTS or touched:
+        return
+    for arg in args[:2]:
+        if (found := _real(arg)) is not None:
+            touched.append(f"{event} {found}")
+            raise TouchedRealDataError(f"a test touched the real app's data: {event} {found}")
+
+
+def _guard_keyring() -> None:
+    def wrap(name: str) -> None:
+        original = getattr(keyring, name)
+
+        def guarded(service: str, *args: Any, **kwargs: Any) -> Any:
+            if service.strip().casefold() == REAL_KEYCHAIN_SERVICE.casefold():
+                touched.append(f"keyring.{name}({service!r})")
+                raise TouchedRealDataError(f"a test used the real app's keychain item ({service})")
+            return original(service, *args, **kwargs)
+
+        setattr(keyring, name, guarded)
+
+    for name in ("get_password", "set_password", "delete_password", "get_credential"):
+        wrap(name)
+
+
+sys.addaudithook(_audit)
+_guard_keyring()
+
+
+@pytest.fixture(autouse=True)
+def _real_data_untouched() -> Iterator[None]:
+    yield
+    if touched:
+        pytest.exit(f"stopped: {touched[0]} (tests must never touch the real app)", returncode=3)
+
 
 POSTGRES_IMAGE = "postgres:16-alpine"
 # Which database Ringkeeper's own state lives in for this run: postgres (server
