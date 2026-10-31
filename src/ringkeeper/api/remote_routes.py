@@ -61,17 +61,23 @@ class RemoteConnectionIn(Input):
     env: Env = Env.DEV
     project: Slug | None = None
     scope: dict[Slug, ScopeValue] = Field(default_factory=dict[str, str])
+    # A shared tool (no client's data): any client's project, or all of them.
+    shared: bool = False
+    all_projects: bool = False
 
     def new(self) -> NewConnection:
         return NewConnection(
             remote=self.remote, url=self.url, server=self.server, name=self.name,
-            owner=self.owner, env=self.env, project=self.project, scope=dict(self.scope) or None,
+            owner=instances.SHARED_OWNER if self.shared else self.owner, env=self.env,
+            project=self.project, scope=dict(self.scope) or None, shared=self.shared,
+            all_projects=self.all_projects,
         )  # fmt: skip
 
 
 class TokenConnectionIn(RemoteConnectionIn):
     token: str | None = Field(default=None, repr=False, max_length=4000)
     headers: Values = Field(default_factory=dict[str, str], repr=False)
+    open: bool = False  # the server needs no token, header or sign-in
 
 
 class ProbeIn(Input):
@@ -129,13 +135,14 @@ def catalog_server(name: str) -> dict[str, Any]:
 
 @router.post("/catalog/probe")
 def probe_url(data: ProbeIn) -> dict[str, Any]:
-    """For adding a server by its address: is it a known service, does sign-in work?"""
+    """For adding a server: is it a known service, does sign-in work, does it need nothing?"""
     new = remote_connections.resolve(
         NewConnection(name="probe", owner="probe", env=Env.DEV, url=data.url)
     )
     known = remote_connections.service(new.remote) if new.remote else None
     signin = catalog.probe(new.url or "") if known is None or known.signin else False
-    return {"url": new.url, "recommended": new.remote, "signin": signin}
+    open_ = known is None and mcp_oauth.needs_nothing(new.url or "")
+    return {"url": new.url, "recommended": new.remote, "signin": signin, "open": open_}
 
 
 @router.post("/connections/signin", dependencies=[RecentAuth])
@@ -153,9 +160,12 @@ def start_signin(data: RemoteConnectionIn, request: Request, session: SessionDep
 
 @router.post("/connections/remote", status_code=201, dependencies=[RecentAuth])
 def add_with_token(data: TokenConnectionIn, session: WriteSessionDep) -> dict[str, Any]:
-    """A remote server with a pasted token (Authorization: Bearer) or the headers it needs."""
+    """A remote server with a pasted token (Authorization: Bearer), the headers it needs, or
+    (open) nothing at all."""
     new = data.new()
-    if data.headers:
+    if data.open:
+        secret, how = remote_connections.open_secret(new), "open"
+    elif data.headers:
         secret, how = remote_connections.headers_secret(new, dict(data.headers)), "headers"
     else:
         secret, how = remote_connections.token_secret(new, data.token or ""), "token"

@@ -51,7 +51,8 @@ export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }:
     <div className="space-y-3 rounded-xl border border-line p-3">
       <Alert tone="good">
         Added {name}
-        {connection?.projects.length ? `, for ${connection.projects.join(", ")}` : ""}. Its secrets are stored encrypted and won&apos;t be shown again.
+        {connection?.projects.length ? `, for ${connection.projects.join(", ")}` : ""}.
+        {connection?.config.source === "open" ? " It needs no key." : " Its secrets are stored encrypted and won't be shown again."}
       </Alert>
       <TestButton name={name} />
       {connection?.shared && connection.all_projects ? (

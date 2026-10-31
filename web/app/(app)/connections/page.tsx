@@ -51,7 +51,7 @@ export default function ConnectionsPage() {
       </div>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      <Section id="shared" title="Your shared tools" summary={sharedSummary}>
+      <Section id="shared" title="Your shared tools" summary={sharedSummary} action={<LinkButton href="/connections/new?kind=shared">Add a shared tool</LinkButton>}>
         <SharedTools />
       </Section>
       {connections.data && !shown.length ? <Empty>{all.some((c) => !c.shared) ? "Nothing matches." : "No client connections yet."}</Empty> : null}

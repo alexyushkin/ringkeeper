@@ -12,8 +12,10 @@ import { ENVS, slugify } from "@/lib/client/words";
  * The open catalog: the Recommended shelf (services with built-in rules: scope
  * narrowing, SQL checks), then any MCP server from the MCP Registry (searchable,
  * and from a cache when offline), then any remote server by its address, then a
- * desktop extension from its file. Every connection belongs to `client`; with
- * `project`, it's linked to that project.
+ * desktop extension from its file. Every connection belongs to `client`, or is a
+ * shared tool (yours, for any client's projects); with `project`, it's linked to
+ * that project. With `kind`, that was asked up front; otherwise each server asks,
+ * suggesting from what it needs.
  */
 
 interface Header {
@@ -121,8 +123,12 @@ interface Extension {
 interface Target {
   client: string;
   project?: string;
+  kind?: Kind; // already chosen: a client's account, or (shared) your own tool
   onAdded: (name: string) => void;
 }
+
+/** A client's connection is named after the client; your own tool after itself. */
+const nameFor = (kind: Kind, client: string, title: string) => slugify(kind === "shared" ? title : `${client} ${title}`).slice(0, 60);
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -157,11 +163,17 @@ function SignInBadge({ signin }: { signin: boolean | null }) {
 export function Catalog(target: Target) {
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <h3 className="font-medium">Recommended</h3>
-        <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed (to one Neon project, one Airtable base and so on), and SQL is checked before it runs.</p>
-        <RemoteServices client={target.client} project={target.project} onAdded={target.onAdded} />
-      </div>
+      {target.kind === "shared" ? (
+        <p className="text-sm text-muted">
+          A shared tool holds no client&apos;s data: a browser, files on this computer, a fetcher, a public docs server. Services with built-in rules (Neon, Supabase, Airtable…) hold a client&apos;s account: add those from the client&apos;s page.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <h3 className="font-medium">Recommended</h3>
+          <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed (to one Neon project, one Airtable base and so on), and SQL is checked before it runs.</p>
+          <RemoteServices client={target.client} project={target.project} onAdded={target.onAdded} />
+        </div>
+      )}
       <CatalogSearch {...target} />
       <Details label="Add a server by its address">
         <AddByUrl {...target} />
@@ -268,14 +280,18 @@ function ConnectionBasics({ name, setName, env, setEnv }: { name: string; setNam
 }
 
 /** A catalog server: connect to its remote, or install its package. */
-function ServerConnect({ server, client, project, onAdded }: { server: CatalogServer } & Target) {
+function ServerConnect({ server, client, project, kind, onAdded }: { server: CatalogServer } & Target) {
   const remote = server.remotes.find((r) => r.usable);
   const packageIndex = server.packages.findIndex((p) => p.usable);
   const [how, setHow] = useState<"remote" | "local">(remote ? "remote" : "local");
   const services = useApi<{ key: string; name: string }[]>("remote-services");
   if (server.recommended) {
     const known = services.data?.find((s) => s.key === server.recommended);
-    return <Alert tone="good">This is {known?.name ?? server.recommended}, which has built-in rules: connect it from Recommended above.</Alert>;
+    return kind === "shared" ? (
+      <Alert tone="warn">This is {known?.name ?? server.recommended}, which holds a client&apos;s account: add it from that client&apos;s page.</Alert>
+    ) : (
+      <Alert tone="good">This is {known?.name ?? server.recommended}, which has built-in rules: connect it from Recommended above.</Alert>
+    );
   }
   if (!remote && packageIndex < 0) {
     return <Alert tone="warn">Ringkeeper can&apos;t connect this one yet: it has no remote address it can use and no npm, PyPI or container package that runs over stdio.</Alert>;
@@ -286,27 +302,55 @@ function ServerConnect({ server, client, project, onAdded }: { server: CatalogSe
         <Select label="How" value={how} onChange={(v) => setHow(v as "remote" | "local")} options={[["remote", "Connect to its server"], ["local", "Install it on this computer"]]} />
       ) : null}
       {how === "remote" && remote ? (
-        <RemoteConnect url={remote.url} server={server.name} headers={remote.headers} signin={server.signin} title={server.title} client={client} project={project} onAdded={onAdded} />
+        <RemoteConnect url={remote.url} server={server.name} headers={remote.headers} signin={server.signin} title={server.title} client={client} project={project} kind={kind} onAdded={onAdded} />
       ) : (
-        <LocalInstall server={server} index={packageIndex} client={client} project={project} onAdded={onAdded} />
+        <LocalInstall server={server} index={packageIndex} client={client} project={project} kind={kind} onAdded={onAdded} />
       )}
     </div>
   );
 }
 
-/** A remote server without built-in rules: sign in, or give it the token or headers it needs. */
-function RemoteConnect({ url, server, headers, signin, title, client, project, onAdded }: { url: string; server?: string; headers: Header[]; signin: boolean | null; title: string } & Target) {
-  const [name, setName] = useState(slugify(`${client} ${title}`).slice(0, 60));
+/**
+ * A remote server without built-in rules: sign in, give it the token or headers it
+ * needs, or (a server that needs nothing) just connect. Signing in or a key
+ * suggests a client's account; needing nothing suggests your own tool.
+ */
+function RemoteConnect({ url, server, headers, signin, open: probed, title, client, project, kind: fixed, onAdded }: { url: string; server?: string; headers: Header[]; signin: boolean | null; open?: boolean; title: string } & Target) {
+  // Headers to fill in: no value, or a value with a {placeholder} in it.
+  const named = headers.filter((h) => !h.value || h.value.includes("{"));
+  const [open, setOpen] = useState<boolean | null>(probed ?? (named.some((h) => h.required) ? false : null));
+  const [kind, setKind] = useState<Kind>(fixed ?? (open ? "shared" : "client"));
+  const [all, setAll] = useState(false);
+  const [name, setName] = useState(nameFor(kind, client, title));
   const [env, setEnv] = useState("dev");
   const [token, setToken] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
-  const [pasting, setPasting] = useState(signin === false);
+  const [pasting, setPasting] = useState(signin === false && !open);
   const [waiting, setWaiting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const body = { url, server: server ?? null, name, owner: client, env, project: project ?? null };
-  // Headers to fill in: no value, or a value with a {placeholder} in it.
-  const named = headers.filter((h) => !h.value || h.value.includes("{"));
+  const shared = kind === "shared";
+  const body = { url, server: server ?? null, name, owner: client, env, project: project ?? null, shared, all_projects: shared && all };
+
+  useEffect(() => {
+    // From the catalog: ask the server whether it needs anything at all.
+    if (open !== null) return;
+    let cancelled = false;
+    api<{ open: boolean }>("catalog/probe", { json: { url } })
+      .then((found) => {
+        if (cancelled) return;
+        setOpen(found.open);
+        if (found.open) setPasting(false);
+        if (found.open && !fixed) {
+          setKind("shared");
+          setName(nameFor("shared", client, title));
+        }
+      })
+      .catch(() => !cancelled && setOpen(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, url, fixed, client, title]);
 
   useEffect(() => {
     if (!waiting) return;
@@ -347,7 +391,7 @@ function RemoteConnect({ url, server, headers, signin, title, client, project, o
       const filled = Object.fromEntries(
         headers.map((h) => [h.name, !h.value ? (values[h.name] ?? "") : h.value.replace(/\{[^}]+\}/, values[h.name] ?? "")]),
       );
-      await api("connections/remote", { json: named.length ? { ...body, headers: filled } : { ...body, token } });
+      await api("connections/remote", { json: open && !pasting ? { ...body, open: true } : named.length ? { ...body, headers: filled } : { ...body, token } });
       onAdded(name);
     } catch (err) {
       setError(errorText(err));
@@ -359,9 +403,32 @@ function RemoteConnect({ url, server, headers, signin, title, client, project, o
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted">{url}</p>
+      <SharedChoice
+        fixed={fixed}
+        kind={kind}
+        onKind={(next) => {
+          setKind(next);
+          setName(nameFor(next, client, title));
+        }}
+        all={all}
+        onAll={setAll}
+        project={project}
+      />
       <ConnectionBasics name={name} setName={setName} env={env} setEnv={setEnv} />
       {waiting ? <Alert tone="good">Finish signing in on the page that opened in your browser. This updates when it&apos;s done.</Alert> : null}
-      {!pasting ? (
+      {open && !pasting ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted">This server answers without a sign-in or a key.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button kind="primary" busy={busy} disabled={!name} onClick={connect}>
+              Connect
+            </Button>
+            <Button kind="ghost" onClick={() => setPasting(true)}>
+              Use a key instead
+            </Button>
+          </div>
+        </div>
+      ) : !pasting ? (
         <div className="flex flex-wrap gap-2">
           <Button kind="primary" busy={busy} disabled={!name} onClick={signIn}>
             Sign in
@@ -395,11 +462,11 @@ function RemoteConnect({ url, server, headers, signin, title, client, project, o
 }
 
 /** One confirmation screen: who published it, exactly what installs and runs. */
-function LocalInstall({ server, index, client, project, onAdded, replace }: { server: CatalogServer; index: number; replace?: string } & Target) {
+function LocalInstall({ server, index, client, project, kind: fixed, onAdded, replace }: { server: CatalogServer; index: number; replace?: string } & Target) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [kind, setKind] = useState<Kind | null>(null); // asked once the plan shows what it needs
   const [all, setAll] = useState(false);
-  const [name, setName] = useState(replace ?? slugify(`${client} ${server.title}`).slice(0, 60));
+  const [name, setName] = useState(replace ?? nameFor(fixed ?? "client", client, server.title));
   const [env, setEnv] = useState("dev");
   const [values, setValues] = useState<Record<string, string>>({});
   const [state, setState] = useState<"idle" | "installing">("idle");
@@ -410,12 +477,12 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
       .then((found) => {
         setPlan(found);
         // Nothing secret to give it: most likely your own tool, not a client's account.
-        const suggested: Kind = [...found.env, ...found.arguments].some((f) => f.secret) ? "client" : "shared";
+        const suggested: Kind = fixed ?? ([...found.env, ...found.arguments].some((f) => f.secret) ? "client" : "shared");
         setKind(suggested);
-        if (!replace && suggested === "shared") setName(slugify(server.title).slice(0, 60));
+        if (!replace) setName(nameFor(suggested, client, server.title));
       })
       .catch((err: unknown) => setError(errorText(err)));
-  }, [server.name, server.title, index, replace]);
+  }, [server.name, server.title, index, replace, fixed, client]);
 
   async function install() {
     if (!plan) return;
@@ -459,10 +526,11 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
       {plan.missing ? <Alert tone="warn">This needs {plan.needs}, which isn&apos;t on this computer. Install it, then come back.</Alert> : null}
       {!replace && kind ? (
         <SharedChoice
+          fixed={fixed}
           kind={kind}
           onKind={(next) => {
             setKind(next);
-            setName(slugify(next === "shared" ? server.title : `${client} ${server.title}`).slice(0, 60));
+            setName(nameFor(next, client, server.title));
           }}
           all={all}
           onAll={setAll}
@@ -488,7 +556,7 @@ function LocalInstall({ server, index, client, project, onAdded, replace }: { se
  * Same rules as an extension imported from Claude Desktop: Test data, and
  * anything not marked read-only waits for approval.
  */
-function InstallExtension({ client, project, onAdded }: Target) {
+function InstallExtension({ client, project, kind: fixed, onAdded }: Target) {
   const [shown, setShown] = useState<Extension | null>(null);
   const [kind, setKind] = useState<Kind>("client");
   const [all, setAll] = useState(false);
@@ -506,9 +574,9 @@ function InstallExtension({ client, project, onAdded }: Target) {
     try {
       const found = await api<Extension>("catalog/extensions", { body: file, contentType: "application/octet-stream" });
       setShown(found);
-      const suggested: Kind = found.settings.some((s) => s.secret) ? "client" : "shared";
+      const suggested: Kind = fixed ?? (found.settings.some((s) => s.secret) ? "client" : "shared");
       setKind(suggested);
-      setName(slugify(suggested === "shared" ? found.title : `${client} ${found.title}`).slice(0, 60));
+      setName(nameFor(suggested, client, found.title));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -571,10 +639,11 @@ function InstallExtension({ client, project, onAdded }: Target) {
           </dl>
           {shown.problem ? <Alert tone="warn">This can&apos;t run here: {shown.problem}.</Alert> : null}
           <SharedChoice
+            fixed={fixed}
             kind={kind}
             onKind={(next) => {
               setKind(next);
-              setName(slugify(next === "shared" ? shown.title : `${client} ${shown.title}`).slice(0, 60));
+              setName(nameFor(next, client, shown.title));
             }}
             all={all}
             onAll={setAll}
@@ -600,11 +669,12 @@ function InstallExtension({ client, project, onAdded }: Target) {
   );
 }
 
-/** A local server or an extension: a client's account, or your own tool for any client. */
-function SharedChoice({ kind, onKind, all, onAll, project }: { kind: Kind; onKind: (kind: Kind) => void; all: boolean; onAll: (on: boolean) => void; project?: string }) {
+/** A client's account, or your own tool for any client (unless that was asked up front). */
+function SharedChoice({ fixed, kind, onKind, all, onAll, project }: { fixed?: Kind; kind: Kind; onKind: (kind: Kind) => void; all: boolean; onAll: (on: boolean) => void; project?: string }) {
+  if (fixed === "client") return null;
   return (
     <div className="space-y-2">
-      <KindChoice value={kind} onChange={(next) => onKind(next === "client" ? "client" : "shared")} />
+      {fixed ? null : <KindChoice value={kind} onChange={(next) => onKind(next === "client" ? "client" : "shared")} />}
       {kind === "shared" ? (
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={all} onChange={(e) => onAll(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
@@ -621,7 +691,7 @@ function SharedChoice({ kind, onKind, all, onAll, project }: { kind: Kind; onKin
 /** Any remote MCP server, by its address: sign in if it offers that, else a key. */
 function AddByUrl(target: Target) {
   const [url, setUrl] = useState("");
-  const [probed, setProbed] = useState<{ url: string; signin: boolean; recommended: string | null } | null>(null);
+  const [probed, setProbed] = useState<{ url: string; signin: boolean; open: boolean; recommended: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -645,8 +715,12 @@ function AddByUrl(target: Target) {
         Look it up
       </Button>
       {error ? <Alert>{error}</Alert> : null}
-      {probed?.recommended ? <Alert tone="good">That&apos;s a service with built-in rules: connect it from Recommended above.</Alert> : null}
-      {probed && !probed.recommended ? <RemoteConnect key={probed.url} url={probed.url} headers={[]} signin={probed.signin} title={new URL(probed.url).hostname.split(".").slice(-2, -1)[0] ?? "server"} {...target} /> : null}
+      {probed?.recommended ? (
+        <Alert tone={target.kind === "shared" ? "warn" : "good"}>
+          {target.kind === "shared" ? "That's a service that holds a client's account: add it from that client's page." : "That's a service with built-in rules: connect it from Recommended above."}
+        </Alert>
+      ) : null}
+      {probed && !probed.recommended ? <RemoteConnect key={probed.url} url={probed.url} headers={[]} signin={probed.signin} open={probed.open} title={new URL(probed.url).hostname.split(".").slice(-2, -1)[0] ?? "server"} {...target} /> : null}
     </div>
   );
 }

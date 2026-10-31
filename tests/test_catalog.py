@@ -32,6 +32,7 @@ REGISTRY = "https://registry.modelcontextprotocol.io/v0.1/servers"
 NOTES = "https://mcp.notes.example/mcp"
 NOTES_AUTH = "https://auth.notes.example"
 WEATHER = "https://weather.example/mcp"
+DOCS = "https://docs.example/mcp"  # answers with no key at all
 DIGEST = "ghcr.io/dan/search-mcp@sha256:" + "ab" * 32
 
 
@@ -94,6 +95,10 @@ class FakeWorld:
         if not self.online:
             raise httpx2.ConnectError("offline", request=request)
         url = str(request.url).split("?", 1)[0]
+        if request.method == "POST" and url == DOCS:
+            return httpx2.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {}})
+        if request.method == "POST" and url == WEATHER:
+            return httpx2.Response(401)
         if url == REGISTRY:
             words = request.url.params.get("search", "").lower().split()
             found = [
@@ -257,6 +262,47 @@ def test_adding_a_server_by_its_address(owner: TestClient, world: FakeWorld) -> 
     assert owner.post("/connections/remote", json=token).status_code == 201
     with session_scope() as session:
         assert instances.get_instance(session, "acme-neon").config["remote"] == "neon"
+
+
+def test_a_remote_server_can_be_a_shared_tool(owner: TestClient, world: FakeWorld) -> None:
+    for name, client in (("acme-web", "acme"), ("globex-app", "globex")):
+        owner.post("/projects", json={"name": name, "owner": client})
+    probed = [owner.post("/catalog/probe", json={"url": u}).json() for u in (DOCS, WEATHER, NOTES)]
+    assert [p["open"] for p in probed] == [True, False, False]
+
+    # Needs nothing: added with no key, for all projects, from any client's.
+    body = {"url": DOCS, "name": "docs", "owner": "acme", "open": True, "shared": True,
+            "all_projects": True}  # fmt: skip
+    assert owner.post("/connections/remote", json=body).status_code == 201
+    with session_scope() as session:
+        stored = instances.get_instance(session, "docs")
+        assert (stored.owner, stored.shared, stored.all_projects) == ("you", True, True)
+        assert json.loads(get_vault().resolve(stored.secret_ref).reveal()) == {
+            "url": DOCS, "headers": {},
+        }  # fmt: skip
+    owner.post("/projects", json={"name": "initech-site", "owner": "initech"})
+    [docs] = [c for c in owner.get("/connections").json() if c["name"] == "docs"]
+    assert sorted(link["project"] for link in docs["links"]) == [
+        "acme-web", "globex-app", "initech-site",
+    ]  # fmt: skip
+
+    # Signed in, as a shared tool: the sign-in carries it to the callback.
+    signin = {"server": "com.example.notes/notes", "url": NOTES, "name": "notes",
+              "owner": "acme", "project": "globex-app", "shared": True}  # fmt: skip
+    started = owner.post("/connections/signin", json=signin)
+    assert started.status_code == 200, started.text
+    state = parse_qs(urlsplit(str(started.json()["url"])).query)["state"][0]
+    assert owner.get("/oauth/callback", params={"state": state, "code": "any"}).status_code == 200
+    [notes] = [c for c in owner.get("/connections").json() if c["name"] == "notes"]
+    assert (notes["owner"], notes["shared"], notes["all_projects"]) == ("you", True, False)
+    assert [link["project"] for link in notes["links"]] == ["globex-app"]
+    linked = owner.put("/projects/acme-web/connections/notes", json={})
+    assert linked.status_code == 200, linked.text  # another client's project: fine, it's shared
+
+    # A client's remote connection still stays with that client.
+    mine = {"url": WEATHER, "name": "acme-weather", "owner": "acme", "project": "globex-app",
+            "headers": {"X-Api-Key": "k-123456"}}  # fmt: skip
+    assert owner.post("/connections/remote", json=mine).status_code == 409
 
 
 class FakeNpm:

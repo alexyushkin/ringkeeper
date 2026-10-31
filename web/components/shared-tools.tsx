@@ -13,6 +13,9 @@ import { useApi } from "@/lib/client/api";
 
 export type Kind = "client" | "shared";
 
+/** Who owns a shared tool (instances.SHARED_OWNER on the server). */
+export const SHARED_OWNER = "you";
+
 export interface ProjectRef {
   name: string;
   owner: string;
@@ -121,7 +124,7 @@ export function SharedTools() {
       </p>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      {connections.data && !tools.length ? <Empty>No shared tools yet. Import one from Claude Desktop or the catalog and choose &quot;Your own tool&quot;.</Empty> : null}
+      {connections.data && !tools.length ? <Empty>No shared tools yet. Add one, or import one from Claude Desktop and choose &quot;Your own tool&quot;.</Empty> : null}
       {tools.map((tool) => (
         <LibraryCard key={tool.name} connection={tool} projects={projects.list.map((p) => p.name)} services={services.data ?? []} onChange={reload} compact />
       ))}

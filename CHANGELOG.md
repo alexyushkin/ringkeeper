@@ -3,6 +3,16 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Shared tools are easier to add.** Add a connection asks first: "A client's
+  account or your own tool?", and only a client's account asks whose it is.
+  Connections has **Add a shared tool**, which opens the catalog for shared
+  tools only.
+- **Remote servers can be shared tools** too. The catalog suggests a client's
+  account when a server wants a sign-in or a key, and your own tool when it
+  answers with nothing; a server that needs nothing connects without a key.
+
 ## 0.1.0-beta.4 (2026-10-30)
 
 - **"Use my Claude Code login" says what it found.** An old login says

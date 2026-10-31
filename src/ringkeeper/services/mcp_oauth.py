@@ -115,6 +115,23 @@ def discover(url: str) -> tuple[dict[str, Any], dict[str, Any]]:
     return resource, server
 
 
+def needs_nothing(url: str) -> bool:
+    """Whether the MCP server answers an initialize with no sign-in, token or header."""
+    hello = {
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                   "clientInfo": {"name": "Ringkeeper", "version": "probe"}},
+    }  # fmt: skip
+    accept = {"Accept": "application/json, text/event-stream"}
+    with _http() as http:
+        try:
+            # Only the status matters; an event stream isn't read.
+            with http.stream("POST", url, json=hello, headers=accept) as response:
+                return 200 <= response.status_code < 300
+        except httpx2.HTTPError:
+            return False
+
+
 def _register(server: dict[str, Any], redirect_uri: str, scope: str | None) -> dict[str, Any]:
     endpoint = server.get("registration_endpoint")
     if not endpoint:

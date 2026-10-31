@@ -15,8 +15,9 @@ without them waits for approval (adapters.mcp).
 
 Either way the result is an `mcp` connection: its secret (in the vault) names
 the server's URL with the OAuth tokens or the headers, and its config says
-which server it is. A connection belongs to one client; with `project`, it's
-linked to that project too.
+which server it is. A connection belongs to one client, or (a shared tool: a
+server that holds no client's data) to you, for any client's projects; with
+`project`, it's linked to that project too.
 """
 
 import json
@@ -45,14 +46,14 @@ class NewConnection:
     server: str | None = None  # its name in the MCP Registry, if it came from there
     project: str | None = None
     scope: dict[str, str] | None = None
-    shared: bool = False  # a shared tool (a local MCP server with no client's data)
+    shared: bool = False  # a shared tool (an MCP server with no client's data)
     all_projects: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "remote": self.remote, "url": self.url, "server": self.server, "name": self.name,
             "owner": self.owner, "env": self.env.value, "project": self.project,
-            "scope": self.scope or {},
+            "scope": self.scope or {}, "shared": self.shared, "all_projects": self.all_projects,
         }  # fmt: skip
 
     @classmethod
@@ -61,6 +62,7 @@ class NewConnection:
             remote=data.get("remote"), url=data.get("url"), server=data.get("server"),
             name=str(data["name"]), owner=str(data["owner"]), env=Env(data["env"]),
             project=data.get("project"), scope=data.get("scope") or None,
+            shared=bool(data.get("shared")), all_projects=bool(data.get("all_projects")),
         )  # fmt: skip
 
 
@@ -143,10 +145,16 @@ def headers_secret(new: NewConnection, headers: dict[str, str]) -> str:
     return json.dumps({"url": new.url, "headers": cleaned})
 
 
+def open_secret(new: NewConnection) -> str:
+    """A server that needs nothing: only its address."""
+    return json.dumps({"url": resolve(new).url, "headers": {}})
+
+
 def create(
     session: Session, settings: Settings, new: NewConnection, secret: str, *, how: str
 ) -> Instance:
-    """Store the secret, add the connection (and its link). `how`: signin, token or headers."""
+    """Store the secret, add the connection (and its link). `how`: signin, token, headers or
+    open (nothing needed)."""
     new = check(session, new)
     ref = secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
     config: dict[str, Any] = {"source": how, "preview": new.url}
@@ -161,10 +169,14 @@ def create(
         session,
         InstanceIn(
             name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref, owner=new.owner,
-            config=config,
+            config=config, shared=new.shared, all_projects=new.all_projects,
         ),
     )  # fmt: skip
-    via = {"signin": "signed in", "token": "token", "headers": "headers"}.get(how, how)
+    via = {"signin": "signed in", "token": "token", "headers": "headers", "open": "no key"}.get(
+        how, how
+    )
+    if new.shared:
+        via += ", shared tool"
     admin_audit.record(
         session, "connection.create",
         f"added {label} connection {new.name} ({new.env}, {via})",
