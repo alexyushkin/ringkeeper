@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::logic::{Runtime, Status};
+use crate::logic::{CheckReport, Runtime, Status};
 
 const RUNTIME_FILE: &str = "desktop.json";
 /// The backend's exit code when another one already holds the data folder.
@@ -223,6 +223,26 @@ pub fn offer_update(
     match response.status().as_u16() {
         204 => Ok(()),
         code => Err(format!("update offer refused ({code})")),
+    }
+}
+
+/// Tells the backend how an update check is going, so the window can say so.
+pub fn report_check(
+    agent: &ureq::Agent,
+    runtime: &Runtime,
+    report: &CheckReport,
+) -> Result<(), String> {
+    let response = agent
+        .post(format!(
+            "{}/desktop/api/desktop/update/checked",
+            runtime.url
+        ))
+        .header("Authorization", bearer(runtime))
+        .send_json(report)
+        .map_err(|e| e.to_string())?;
+    match response.status().as_u16() {
+        204 => Ok(()),
+        code => Err(format!("check report refused ({code})")),
     }
 }
 

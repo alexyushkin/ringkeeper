@@ -9,9 +9,12 @@
 //! Arguments: `--hidden` starts in the tray only (used when starting at
 //! sign-in); `--quit` asks the running app to quit (the installer uses it).
 //!
-//! Updates: checked at start and every 6 hours, but never while work runs;
-//! downloaded and checked against the release signing key, then offered in the
-//! window. The shell installs one only when the user asks and nothing runs.
+//! Updates: checked at start and every 6 hours while no work runs (unless
+//! "Check automatically" is off), and whenever the user asks (Settings > About,
+//! or the tray's Check for updates); downloaded and checked against the release
+//! signing key, then offered in the window. Each check is reported to the
+//! backend, so the window can say how it went. The shell installs an update
+//! only when the user asks and nothing runs.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -25,7 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::image::Image;
 use tauri::ipc::CapabilityBuilder;
@@ -41,15 +44,16 @@ use tauri_plugin_opener::OpenerExt as _;
 use tauri_plugin_updater::{Update, UpdaterExt as _};
 
 use backend::{Backend, Launcher};
-use logic::{Crashes, Runtime, Status, UPDATE_EVERY, UPDATE_RETRY};
+use logic::{CheckReport, Crashes, Runtime, Status, UpdateFailure, UPDATE_EVERY, UPDATE_RETRY};
 
 const WINDOW: &str = "main";
 const TRAY: &str = "tray";
 const HIDDEN_ARG: &str = "--hidden";
 const QUIT_ARG: &str = "--quit";
 const STATUS_EVERY: Duration = Duration::from_secs(3);
-/// How often the updater looks at the backend (to tell a restarted one about a download).
-const UPDATER_TICK: Duration = Duration::from_secs(30);
+/// How often the updater looks at what it knows (in memory): whether the user asked
+/// for a check, and whether a restarted backend needs telling about the last one.
+const UPDATER_TICK: Duration = Duration::from_secs(1);
 /// How long Quit waits for running work to stop before killing the backend.
 const QUIT_GRACE: Duration = Duration::from_secs(60);
 const TRAY_NOTICE: &str = "Ringkeeper is still running in the tray. Right-click the icon to quit.";
@@ -86,6 +90,8 @@ struct Shell {
     commands: Mutex<Sender<Command>>,
     pause_item: Mutex<Option<CheckMenuItem<tauri::Wry>>>,
     downloaded: Mutex<Option<Downloaded>>,
+    /// The tray's Check for updates was clicked.
+    check_now: AtomicBool,
 }
 
 /// Small things the shell remembers between launches (data_dir/shell.json).
@@ -93,6 +99,9 @@ struct Shell {
 struct Remembered {
     #[serde(default)]
     tray_notice_shown: bool,
+    /// The last update check that ended, for Settings > About after a restart.
+    #[serde(default)]
+    last_check: Option<CheckReport>,
 }
 
 impl Shell {
@@ -164,6 +173,7 @@ fn main() {
                 commands: Mutex::new(sender),
                 pause_item: Mutex::new(None),
                 downloaded: Mutex::new(None),
+                check_now: AtomicBool::new(false),
             };
             app.manage(shell);
             remove_previous_version(app.handle());
@@ -368,12 +378,20 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
+    let check = MenuItem::with_id(
+        app,
+        "check",
+        "Check for updates…",
+        updates_enabled(),
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
             &open,
             &pause,
+            &check,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
         ],
@@ -389,6 +407,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => open_window(app, None),
             "pause" => toggle_pause(app),
+            "check" => check_for_updates(app),
             "quit" => quit(app),
             _ => {}
         })
@@ -404,6 +423,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// Checks now, and shows the result in Settings > About.
+fn check_for_updates(app: &AppHandle) {
+    app.state::<Shell>().check_now.store(true, Ordering::SeqCst);
+    open_window(app, Some("/settings#about"));
 }
 
 fn toggle_pause(app: &AppHandle) {
@@ -721,27 +746,43 @@ fn updates_enabled() -> bool {
     !cfg!(debug_assertions) || std::env::var_os("RINGKEEPER_SHELL_UPDATES").is_some()
 }
 
-/// Checks at start and every 6 hours while nothing runs, downloads what it
-/// finds, and tells the backend (again, after a restart) so the window offers it.
+/// Checks at start and every 6 hours while nothing runs (unless the user turned
+/// that off), and when the user asks; downloads what it finds, and tells the
+/// backend (again, after a restart) so the window offers it and says how the
+/// last check went.
 fn watch_for_updates(app: &AppHandle) {
     let shell = app.state::<Shell>();
     let mut next_check = Instant::now();
-    let mut told: Option<String> = None; // the backend (by its secret) that knows
+    let mut told: Option<String> = None; // the backend (by its secret) that knows the download
+    let mut told_check: Option<String> = None; // ... and the last check
+    let mut handled: Option<String> = None; // the window's last request
     while !shell.quitting.load(Ordering::SeqCst) {
         if let Some(runtime) = shell.runtime() {
             let status = shell.status.lock().ok().and_then(|s| s.clone());
-            if logic::check_for_update_now(status.as_ref(), Instant::now(), next_check) {
-                next_check = match check_and_download(app) {
-                    Ok(true) => {
-                        told = None;
-                        Instant::now() + UPDATE_EVERY
-                    }
-                    Ok(false) => Instant::now() + UPDATE_EVERY,
-                    Err(error) => {
-                        backend::log(&shell.data_dir, &format!("update check failed: {error}"));
-                        Instant::now() + UPDATE_RETRY
-                    }
+            let request = logic::asked_in_window(status.as_ref(), handled.as_deref());
+            let from_tray = shell.check_now.swap(false, Ordering::SeqCst);
+            let asked = request.is_some() || from_tray;
+            if logic::check_for_update_now(status.as_ref(), asked, Instant::now(), next_check) {
+                if request.is_some() {
+                    handled.clone_from(&request);
+                }
+                let report = check(app, &runtime, request);
+                let wait = if report.state == "failed" {
+                    UPDATE_RETRY
+                } else {
+                    UPDATE_EVERY
                 };
+                next_check = Instant::now() + wait;
+                let mut remembered = shell.remembered();
+                remembered.last_check = Some(report);
+                shell.remember(&remembered);
+                told_check = Some(runtime.secret.clone());
+            }
+            if told_check.as_deref() != Some(runtime.secret.as_str()) {
+                let last = shell.remembered().last_check;
+                if last.is_none_or(|l| backend::report_check(&shell.agent, &runtime, &l).is_ok()) {
+                    told_check = Some(runtime.secret.clone());
+                }
             }
             let offer = shell.downloaded.lock().ok().and_then(|d| {
                 d.as_ref()
@@ -760,33 +801,101 @@ fn watch_for_updates(app: &AppHandle) {
     }
 }
 
-/// True when a new version was downloaded (its signature checked by the updater).
-fn check_and_download(app: &AppHandle) -> Result<bool, String> {
+/// One check: tells the backend it started (and that it's downloading, if it
+/// found something), then how it ended. Returns the ending, to remember.
+fn check(app: &AppHandle, runtime: &Runtime, request: Option<String>) -> CheckReport {
     let shell = app.state::<Shell>();
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let found = tauri::async_runtime::block_on(updater.check()).map_err(|e| e.to_string())?;
-    let Some(update) = found else {
-        return Ok(false);
+    let say = |report: &CheckReport| {
+        let _ = backend::report_check(&shell.agent, runtime, report);
     };
+    say(&CheckReport {
+        request,
+        ..CheckReport::new("checking")
+    });
+    let found = check_and_download(app, |version| {
+        say(&CheckReport {
+            version: Some(version.into()),
+            ..CheckReport::new("downloading")
+        });
+    });
+    let mut ended = match found {
+        Ok(Some((version, notes))) => {
+            // Offered before "ready" is said, so the window has the notes to show.
+            let _ = backend::offer_update(&shell.agent, runtime, &version, &notes);
+            CheckReport {
+                version: Some(version),
+                ..CheckReport::new("ready")
+            }
+        }
+        Ok(None) => CheckReport::new("current"),
+        Err(failure) => {
+            backend::log(
+                &shell.data_dir,
+                &format!("update check failed: {failure:?}"),
+            );
+            CheckReport {
+                error: Some(logic::failure_words(&failure)),
+                ..CheckReport::new("failed")
+            }
+        }
+    };
+    ended.at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs_f64());
+    say(&ended);
+    ended
+}
+
+/// The newer version and its notes, if there is one: downloaded now (its
+/// signature checked by the updater), or before.
+fn check_and_download(
+    app: &AppHandle,
+    downloading: impl Fn(&str),
+) -> Result<Option<(String, String)>, UpdateFailure> {
+    let shell = app.state::<Shell>();
+    let updater = app.updater().map_err(|e| failure(&e))?;
+    let found = tauri::async_runtime::block_on(updater.check()).map_err(|e| failure(&e))?;
+    let Some(update) = found else {
+        return Ok(None);
+    };
+    let notes = update.body.clone().unwrap_or_default();
     let have = shell
         .downloaded
         .lock()
         .ok()
         .and_then(|d| d.as_ref().map(|d| d.update.version.clone()));
     if have.as_deref() == Some(update.version.as_str()) {
-        return Ok(false);
+        return Ok(Some((update.version, notes)));
     }
     backend::log(
         &shell.data_dir,
         &format!("downloading the update to {}", update.version),
     );
+    downloading(&update.version);
     let bytes = tauri::async_runtime::block_on(update.download(|_, _| {}, || {}))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| failure(&e))?;
     backend::log(&shell.data_dir, "update downloaded");
+    let version = update.version.clone();
     if let Ok(mut downloaded) = shell.downloaded.lock() {
         *downloaded = Some(Downloaded { update, bytes });
     }
-    Ok(true)
+    Ok(Some((version, notes)))
+}
+
+/// The updater's error, sorted by what the user can do about it.
+fn failure(error: &tauri_plugin_updater::Error) -> UpdateFailure {
+    use tauri_plugin_updater::Error as E;
+    match error {
+        E::Reqwest(_) | E::Network(_) => UpdateFailure::Offline,
+        E::Minisign(_) | E::Base64(_) | E::SignatureUtf8(_) | E::SignedVersionMismatch { .. } => {
+            UpdateFailure::Signature
+        }
+        E::ReleaseNotFound | E::Serialization(_) | E::TargetNotFound(_) | E::TargetsNotFound(_) => {
+            UpdateFailure::Unreadable
+        }
+        other => UpdateFailure::Other(other.to_string()),
+    }
 }
 
 fn ready_to_install(app: &AppHandle) -> bool {

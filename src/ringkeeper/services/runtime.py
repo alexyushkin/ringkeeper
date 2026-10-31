@@ -69,6 +69,7 @@ class RuntimeIn(Input):
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None
     paused: bool | None = None
     start_at_login: bool | None = None  # desktop mode only
+    check_updates: bool | None = None  # desktop mode only
     stt_language: SpokenLanguage | None = None  # a Whisper code, or "auto"
 
 

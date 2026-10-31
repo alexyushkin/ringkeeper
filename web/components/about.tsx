@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 import { Button, Card, Details } from "@/components/ui";
+import { UpdatesCard } from "@/components/update-banner";
 import { api, useApi } from "@/lib/client/api";
+import { DESKTOP } from "@/lib/client/routes";
 
 interface Component {
   name: string;
@@ -19,7 +21,8 @@ interface About {
   notices: boolean;
 }
 
-/** Settings > About: the version, and what Ringkeeper includes under which license. */
+/** Settings > About: the version, updates (the desktop app), and what Ringkeeper
+ * includes under which license. */
 export function AboutCard() {
   const about = useApi<About>("about");
   const [text, setText] = useState<string | null>(null);
@@ -41,6 +44,7 @@ export function AboutCard() {
         <span className="text-muted"> · {data.mode === "desktop" ? "desktop app" : "server"} · MIT License</span>
       </p>
       <p className="text-xs text-muted">Copyright (c) 2026 General Informatics LLC and contributors</p>
+      {DESKTOP ? <UpdatesCard /> : null}
       {data.notices ? (
         <>
           <p className="text-sm text-muted">

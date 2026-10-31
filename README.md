@@ -651,10 +651,15 @@ turned back on without reinstalling Windows.
   data in `%LOCALAPPDATA%\Ringkeeper` (the master key that protects your saved
   keys is in Windows Credential Manager), new projects in
   `Documents\Ringkeeper`.
-- **Updates:** Ringkeeper checks when it starts and every 6 hours, downloads
-  updates in the background and shows **Update ready, restart when you're
-  done**. It never restarts by itself, waits for running tasks, and never
-  touches your data. If an update fails, the old version keeps working.
+- **Updates:** Ringkeeper checks when it starts and every 6 hours (turn off
+  **Check automatically** in Settings › About to check only when you ask),
+  downloads updates in the background and shows **Update ready**. To check
+  now, use **Check for updates** in Settings › About or the tray menu: it
+  shows when it last checked, "You're up to date", the new version with its
+  release notes and **Install and restart**, or what went wrong (offline, a
+  signature that didn't verify). It never restarts by itself: while tasks run,
+  the button is **Restart when tasks finish**. It never touches your data, and
+  if an update fails, the old version keeps working.
 - **Uninstall:** Settings → Apps → Ringkeeper → Uninstall. Your data stays
   unless you tick **Also delete my data**; your project folders always stay.
 

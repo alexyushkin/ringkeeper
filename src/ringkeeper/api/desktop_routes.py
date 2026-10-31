@@ -7,6 +7,7 @@ with the launch secret (/desktop/api/..., see desktop/server.py); the window
 through /bff like the rest of the API.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,7 +18,7 @@ from ringkeeper import voice_local
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
-from ringkeeper.desktop.update import updates
+from ringkeeper.desktop.update import State, updates
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Project, Task, TaskStatus
 from ringkeeper.schemas import Input, Slug
@@ -50,6 +51,8 @@ def status(session: SessionDep) -> dict[str, Any]:
         "waiting": waiting,
         "running": _running(session),
         "install_update": updates.restart_requested,
+        "check_updates": settings.check_updates,
+        "check_update": updates.request,  # a check the user asked for (its id)
     }
 
 
@@ -73,12 +76,50 @@ def update_ready(data: UpdateIn) -> None:
 
 @router.get("/update")
 def update_status(session: SessionDep) -> dict[str, Any]:
-    ready = updates.ready
+    """This version, the last check and how it ended, what's downloaded, and whether
+    a restart waits for running tasks."""
+    ready, last = updates.ready, updates.last
     return {
+        "version": get_settings().app_version,
         "ready": None if ready is None else {"version": ready.version, "notes": ready.notes},
         "restart_requested": updates.restart_requested,
         "running": _running(session),
+        "checking": updates.request is not None or updates.working is not None,
+        "downloading": updates.downloading,
+        "unanswered": updates.unanswered(),
+        "last": None
+        if last is None
+        else {
+            "at": datetime.fromtimestamp(last.at, UTC).isoformat(),
+            "result": last.state,
+            "error": last.error,
+        },
+        "check_updates": runtime.effective(session).check_updates,
     }
+
+
+@router.post("/update/check", status_code=202)
+def update_check(session: SessionDep) -> dict[str, Any]:
+    """Check now (Settings > About): the shell picks it up within a few seconds."""
+    updates.request_check()
+    return update_status(session)
+
+
+class CheckedIn(Input):
+    state: State
+    request: str | None = Field(default=None, max_length=64)
+    version: str | None = Field(default=None, max_length=64)
+    error: str | None = Field(default=None, max_length=500)
+    at: float | None = None  # unix time; the shell remembers its last check across restarts
+
+
+@router.post("/update/checked", status_code=204)
+def update_checked(data: CheckedIn) -> None:
+    """The shell: a check started, is downloading, or ended (and how)."""
+    updates.report(
+        data.state, request=data.request, version=data.version, error=data.error,
+        at=data.at,
+    )  # fmt: skip
 
 
 @router.post("/update/restart", status_code=202)

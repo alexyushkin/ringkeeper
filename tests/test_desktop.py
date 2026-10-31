@@ -171,7 +171,7 @@ def test_the_shell_reads_the_tray_state_and_pauses(desktop: dict[str, Any]) -> N
     tray = shell(desktop)
     assert tray.get("/desktop/api/desktop/status").json() == {
         "paused": False, "start_at_login": True, "waiting": [], "running": 0,
-        "install_update": False,
+        "install_update": False, "check_updates": True, "check_update": None,
     }  # fmt: skip
     with session_scope() as session:
         inbox.create(
@@ -225,6 +225,52 @@ def test_an_update_waits_for_the_user_and_for_running_work(desktop: dict[str, An
     assert asked["running"] == 1
     status = tray.get("/desktop/api/desktop/status").json()
     assert (status["install_update"], status["running"]) == (True, 1)
+    updates.__init__()
+
+
+def test_check_for_updates_asks_the_shell_and_shows_how_it_went(
+    desktop: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    updates.__init__()
+    tray, win = shell(desktop), window(desktop)
+    before = win.get("/bff/desktop/update").json()
+    assert (before["checking"], before["last"], before["check_updates"]) == (False, None, True)
+
+    # The window asks; the shell sees the request in its status and reports with its id.
+    asked = win.post("/bff/desktop/update/check").json()
+    assert asked["checking"] is True
+    request = tray.get("/desktop/api/desktop/status").json()["check_update"]
+    assert request
+    assert win.post("/bff/desktop/update/check").status_code == 202  # asking again: same one
+    assert tray.get("/desktop/api/desktop/status").json()["check_update"] == request
+
+    def report(**body: object) -> None:
+        sent = tray.post("/desktop/api/desktop/update/checked", json=body)
+        assert sent.status_code == 204, sent.text
+
+    report(state="checking", request=request)
+    assert tray.get("/desktop/api/desktop/status").json()["check_update"] is None
+    report(state="downloading", version="0.1.1")
+    assert win.get("/bff/desktop/update").json()["downloading"] == "0.1.1"
+    report(state="current", at=1_793_000_000)
+    done = win.get("/bff/desktop/update").json()
+    assert (done["checking"], done["downloading"]) == (False, None)
+    assert done["last"] == {"at": "2026-10-26T07:33:20+00:00", "result": "current", "error": None}
+
+    offline = "Couldn't reach the update server. Check that this computer is online."
+    report(state="failed", error=offline)
+    assert win.get("/bff/desktop/update").json()["last"]["error"] == offline
+    bad = tray.post("/desktop/api/desktop/update/checked", json={"state": "maybe"})
+    assert bad.status_code == 422
+
+    # Asked, and nothing picks it up (a build without updates): the window says so.
+    monkeypatch.setattr("ringkeeper.desktop.update.UNANSWERED_SECONDS", -1.0)
+    assert win.post("/bff/desktop/update/check").json()["unanswered"] is True
+
+    # "Check automatically" off: the shell then checks only when asked.
+    assert win.patch("/bff/settings", json={"check_updates": False}).status_code == 200
+    assert tray.get("/desktop/api/desktop/status").json()["check_updates"] is False
+    assert win.get("/bff/desktop/update").json()["check_updates"] is False
     updates.__init__()
 
 

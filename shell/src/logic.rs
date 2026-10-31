@@ -5,7 +5,7 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// `desktop.json`, written by the backend once it listens (see desktop/server.py).
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -35,6 +35,16 @@ pub struct Status {
     /// The user asked to restart into the downloaded update.
     #[serde(default)]
     pub install_update: bool,
+    /// "Check automatically" (Settings > About): on unless the user turned it off.
+    #[serde(default = "yes")]
+    pub check_updates: bool,
+    /// A check the user asked for in the window (its id), until the shell reports it.
+    #[serde(default)]
+    pub check_update: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -50,9 +60,77 @@ const NOTICES_AT_ONCE: usize = 3;
 pub const UPDATE_EVERY: Duration = Duration::from_secs(6 * 3600);
 pub const UPDATE_RETRY: Duration = Duration::from_secs(3600);
 
-/// Check (and download) now? When it's time and no work is running: never mid-task.
-pub fn check_for_update_now(status: Option<&Status>, now: Instant, next: Instant) -> bool {
-    now >= next && status.is_some_and(|s| s.running == 0)
+/// Check (and download) now? When the user asked; otherwise, checking
+/// automatically, when it's time and no work is running. Never installs: that
+/// waits for the user, and for running work to finish.
+pub fn check_for_update_now(
+    status: Option<&Status>,
+    asked: bool,
+    now: Instant,
+    next: Instant,
+) -> bool {
+    asked || (now >= next && status.is_some_and(|s| s.check_updates && s.running == 0))
+}
+
+/// A check asked for in the window that this shell hasn't handled yet.
+pub fn asked_in_window(status: Option<&Status>, handled: Option<&str>) -> Option<String> {
+    status
+        .and_then(|s| s.check_update.clone())
+        .filter(|id| Some(id.as_str()) != handled)
+}
+
+/// What the shell tells the backend about a check (POST /desktop/update/checked):
+/// started, downloading, or ended. The last one that ended is remembered.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CheckReport {
+    /// checking, downloading, current, ready or failed
+    pub state: String,
+    /// The window's request this answers, if it asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    /// When it ended (unix seconds).
+    #[serde(default)]
+    pub at: Option<f64>,
+}
+
+impl CheckReport {
+    pub fn new(state: &str) -> Self {
+        Self {
+            state: state.into(),
+            request: None,
+            version: None,
+            error: None,
+            at: None,
+        }
+    }
+}
+
+/// Why a check failed, sorted into what the user can do about it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum UpdateFailure {
+    Offline,
+    Signature,
+    Unreadable,
+    Other(String),
+}
+
+/// What the window says when a check fails.
+pub fn failure_words(failure: &UpdateFailure) -> String {
+    match failure {
+        UpdateFailure::Offline => {
+            "Couldn't reach the update server. Check that this computer is online, then try again."
+                .into()
+        }
+        UpdateFailure::Signature => "The update's signature couldn't be verified, so it wasn't installed. This version keeps running.".into(),
+        UpdateFailure::Unreadable => {
+            "The update server's answer couldn't be read. Try again later.".into()
+        }
+        UpdateFailure::Other(error) => format!("The update check failed: {error}"),
+    }
 }
 
 /// Install now? Only when the user asked, the download is here, and nothing runs.
@@ -234,6 +312,8 @@ mod tests {
             waiting: vec![],
             running: 0,
             install_update: false,
+            check_updates: true,
+            check_update: None,
         };
         assert_eq!(tooltip(Some(&status), false), "Ringkeeper");
         assert_eq!(tooltip(Some(&status), true), "Ringkeeper: starting…");
@@ -252,15 +332,30 @@ mod tests {
             r#"{"paused": false, "start_at_login": true, "waiting": [], "running": 1}"#,
         )
         .unwrap();
-        assert!(!check_for_update_now(Some(&status), start, start));
-        assert!(!check_for_update_now(None, start, start)); // backend not up yet
+        assert!(status.check_updates); // on unless turned off
+        assert!(!check_for_update_now(Some(&status), false, start, start));
+        assert!(!check_for_update_now(None, false, start, start)); // backend not up yet
         status.running = 0;
-        assert!(check_for_update_now(Some(&status), start, start));
+        assert!(check_for_update_now(Some(&status), false, start, start));
         assert!(!check_for_update_now(
             Some(&status),
+            false,
             start,
             start + UPDATE_EVERY
         ));
+        // Asked for: checks now, even mid-task (only the install waits).
+        status.running = 1;
+        assert!(check_for_update_now(
+            Some(&status),
+            true,
+            start,
+            start + UPDATE_EVERY
+        ));
+        // "Check automatically" off: only when asked.
+        status.running = 0;
+        status.check_updates = false;
+        assert!(!check_for_update_now(Some(&status), false, start, start));
+        assert!(check_for_update_now(Some(&status), true, start, start));
 
         assert!(!install_update_now(&status, true)); // the user didn't ask
         status.install_update = true;
@@ -268,6 +363,29 @@ mod tests {
         assert!(!install_update_now(&status, false));
         status.running = 2;
         assert!(!install_update_now(&status, true)); // waits for the work to finish
+    }
+
+    #[test]
+    fn a_check_asked_for_in_the_window_is_handled_once() {
+        let mut status: Status = serde_json::from_str(
+            r#"{"paused": false, "start_at_login": true, "waiting": [], "check_update": "a1"}"#,
+        )
+        .unwrap();
+        assert_eq!(asked_in_window(Some(&status), None), Some("a1".into()));
+        assert_eq!(asked_in_window(Some(&status), Some("a1")), None);
+        status.check_update = None;
+        assert_eq!(asked_in_window(Some(&status), Some("a1")), None);
+        assert_eq!(asked_in_window(None, None), None);
+    }
+
+    #[test]
+    fn a_failed_check_says_what_to_do() {
+        assert!(failure_words(&UpdateFailure::Offline).contains("online"));
+        assert!(failure_words(&UpdateFailure::Signature).contains("signature couldn't be verified"));
+        assert_eq!(
+            failure_words(&UpdateFailure::Other("disk full".into())),
+            "The update check failed: disk full"
+        );
     }
 
     #[test]

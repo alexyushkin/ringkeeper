@@ -12,6 +12,12 @@ publishes it as the release notes and the app shows it with the update.
 - **Remote servers can be shared tools** too. The catalog suggests a client's
   account when a server wants a sign-in or a key, and your own tool when it
   answers with nothing; a server that needs nothing connects without a key.
+- **Check for updates** in Settings › About and in the tray menu. It shows
+  this version, when it last checked, and the result: "You're up to date",
+  "Update available" with the release notes and **Install and restart**, or
+  what went wrong in plain words (offline, a signature that didn't verify).
+  While tasks run, it offers **Restart when tasks finish** instead: it never
+  restarts mid-task. **Check automatically** (on by default) can be turned off.
 - **Voice has a Language choice.** Settings › Voice: Auto-detect, or a
   searchable list of the speech model's languages. With the Fast model and a
   language other than English, it suggests Accuracy, which handles other

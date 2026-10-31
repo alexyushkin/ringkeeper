@@ -300,9 +300,15 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
   const [stored, setStored] = useRemembered(`rk-tab:${id}`, tabs[0]?.key ?? "");
   const [hash, setHash] = useState<string | null>(null);
   useEffect(() => {
-    const fromUrl = window.location.hash.slice(1);
-    if (tabs.some((t) => t.key === fromUrl)) setHash(fromUrl);
-    // Only on arrival: the URL names a tab to open.
+    // The URL names a tab to open: on arrival, or when the app is sent to
+    // another tab of the page it's on (the tray's Check for updates).
+    const follow = () => {
+      const fromUrl = window.location.hash.slice(1);
+      if (tabs.some((t) => t.key === fromUrl)) setHash(fromUrl);
+    };
+    follow();
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
   }, []);
   const active = tabs.find((t) => t.key === (hash ?? stored)) ?? tabs[0];
   function open(key: string) {

@@ -15,8 +15,10 @@ no terminal:
    version and the third-party notices.
 3. Close the window (it stays in the tray), sign out and in: it starts hidden
    in the tray (start at sign-in).
-4. Update: from the previous release, "Update ready, restart when you're done"
-   appears; Restart now; the new version opens with the same data.
+4. Update: from the previous release, Check for updates (tray or Settings ›
+   About) shows "Update available: <version>" with the notes; Install and
+   restart; the new version opens with the same data and, checking again,
+   says "You're up to date".
 5. Uninstall (Settings › Apps): without "Also delete my data", the data stays
    and a reinstall finds it; with it, `%LOCALAPPDATA%\Ringkeeper` and the
    keychain entry are gone.

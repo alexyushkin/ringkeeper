@@ -157,6 +157,9 @@ class Settings(BaseSettings):
     paused: bool = False
     # Desktop mode: the app shell starts Ringkeeper when the user signs in.
     start_at_login: bool = True
+    # Desktop mode: the app looks for updates by itself (every 6 hours, when no
+    # task runs). Off, it checks only when asked (Settings > About, the tray).
+    check_updates: bool = True
     # Set by the desktop app's shell: its version (from the release tag) and
     # where the installed third-party notices are. Shown in Settings > About.
     app_version: str | None = None
