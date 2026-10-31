@@ -30,6 +30,7 @@ WAIT = ["-n", "3600", "127.0.0.1"]
 IDRETRY, WM_COMMAND = 4, 0x0111
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
@@ -70,15 +71,46 @@ def children(hwnd: int) -> list[tuple[str, str]]:
     return found
 
 
+class ProcessEntry(ctypes.Structure):
+    _fields_ = (  # PROCESSENTRY32W
+        ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", wintypes.LONG),
+        ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260),
+    )  # fmt: skip
+
+
+def with_children(pid: int) -> set[int]:
+    """This process and every process it started (a reinstall runs the old
+    copy's uninstaller, which asks too)."""
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snapshot = kernel32.CreateToolhelp32Snapshot(2, 0)
+    parents: dict[int, int] = {}
+    entry = ProcessEntry(dwSize=ctypes.sizeof(ProcessEntry))
+    more = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+    while more:
+        parents[entry.th32ProcessID] = entry.th32ParentProcessID
+        more = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    kernel32.CloseHandle(snapshot)
+    family = {pid}
+    while grown := {child for child, parent in parents.items() if parent in family} - family:
+        family |= grown
+    return family
+
+
 def message_box(pid: int) -> tuple[int, str] | None:
-    """The Retry/Cancel box the installer (process pid) shows: its window and
-    text. (The installer's own window is a dialog too, without a Retry.)"""
+    """The Retry/Cancel box the installer (process pid, or one it started)
+    shows: its window and text. (The installer's own window is a dialog too,
+    without a Retry.)"""
+    family = with_children(pid)
     dialogs: list[int] = []
 
     def each(hwnd: int, _: int) -> bool:
         owner = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value == pid and class_name(hwnd) == "#32770" and user32.IsWindowVisible(hwnd):
+        visible = user32.IsWindowVisible(hwnd)
+        if owner.value in family and class_name(hwnd) == "#32770" and visible:
             dialogs.append(hwnd)
         return True
 
