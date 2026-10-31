@@ -109,6 +109,20 @@ class App:
         return self.call("GET", "/about")["version"]
 
 
+def use_exe(exe: Path) -> None:
+    """Puts this shell in the install folder, once the last one has exited (its
+    backend leaves first, so the shell may still hold the file for a moment)."""
+
+    def copied() -> bool:
+        try:
+            shutil.copy2(exe, INSTALL / "ringkeeper.exe")
+        except PermissionError:
+            return False
+        return True
+
+    wait_for("the shell to exit", copied, 60)
+
+
 def launch() -> App:
     subprocess.Popen([str(INSTALL / "ringkeeper.exe"), "--hidden"])  # noqa: S603
     app = App()
@@ -156,7 +170,7 @@ def install(installer: Path) -> None:
 
 def up_to_date_then_offline(current_exe: Path, newest: str) -> None:
     step(f"as {newest}: up to date, then offline")
-    shutil.copy2(current_exe, INSTALL / "ringkeeper.exe")
+    use_exe(current_exe)
     app = launch()
     expect(app.update()["version"] == newest, app.update())
     last = app.check()
@@ -175,7 +189,7 @@ def up_to_date_then_offline(current_exe: Path, newest: str) -> None:
 
 def found_and_installed(old_exe: Path, newest: str) -> None:
     step("as the older build: the update is found, downloaded, and offered")
-    shutil.copy2(old_exe, INSTALL / "ringkeeper.exe")
+    use_exe(old_exe)
     app = launch()
     old_pid, version = app.info["pid"], app.version()
     print(f"running {version}")
