@@ -5,12 +5,12 @@
 Setting the language (RINGKEEPER_STT_LANGUAGE, or per recording) is strongly
 recommended: the automatic detection pass doubles the time, and on short
 accented clips it can pick the wrong language and write the transcript in it.
+Several ("en,ru"), for someone who speaks more than one: the detection pass
+only chooses among those, so it can't land on a language never spoken.
 """
 
 import io
 from itertools import chain
-
-import numpy as np
 
 from ringkeeper_stt.config import SttConfig
 from ringkeeper_stt.server import Decoded, DecodeError, TooLongError, Transcript, sniff
@@ -33,6 +33,7 @@ class WhisperEngine:
         """Like faster_whisper.audio.decode_audio (16 kHz mono), from a buffer (the
         audio never touches the disk), with a known demuxer, stopping at max_seconds."""
         import av  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415 (with faster-whisper: the stt image, the desktop app)
 
         demuxer = sniff(data)
         if demuxer is None:
@@ -69,6 +70,8 @@ class WhisperEngine:
     def transcribe(
         self, audio: Decoded, hint: str | None = None, language: str | None = None
     ) -> Transcript:
+        if language and "," in language:
+            language = self.likeliest(audio, language.split(","))
         # hotwords: names the speaker is likely to say (projects, connections),
         # so "acme-web" and "n8n" come out spelled that way.
         segments, info = self.model.transcribe(
@@ -77,3 +80,13 @@ class WhisperEngine:
         )  # fmt: skip
         text = " ".join(segment.text.strip() for segment in segments).strip()
         return Transcript(text=text, language=info.language)
+
+    def likeliest(self, audio: Decoded, choices: list[str]) -> str:
+        """Which of these the recording is in. Whisper transcribes in one language or
+        detects any, so: its detection pass, read only for these."""
+        try:
+            _, _, scores = self.model.detect_language(audio=audio.samples, vad_filter=True)
+        except Exception:  # no speech found, say: the first one
+            return choices[0]
+        likely = dict(scores)
+        return max(choices, key=lambda code: likely.get(code, 0.0))

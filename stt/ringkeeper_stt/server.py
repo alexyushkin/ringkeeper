@@ -24,7 +24,8 @@ from ringkeeper_stt.config import SttConfig
 logger = logging.getLogger(__name__)
 
 MAX_HINT_CHARS = 500
-LANGUAGE = re.compile(r"[a-z]{2,3}")  # a Whisper code; "auto" detects it
+# A Whisper code, or several ("en,ru": one of those); "auto" detects any.
+LANGUAGE = re.compile(r"[a-z]{2,3}(,[a-z]{2,3})*")
 MAX_IN_FLIGHT = 2  # requests read and decoded at once; one transcribes at a time
 SOCKET_TIMEOUT = 30.0  # seconds a client may stall while sending
 
@@ -79,7 +80,8 @@ class Engine(Protocol):
     def transcribe(
         self, audio: Decoded, hint: str | None = None, language: str | None = None
     ) -> Transcript:
-        """`language`: a Whisper code, or None to detect it."""
+        """`language`: a Whisper code, several ("en,ru": one of those), or None to
+        detect it."""
         ...
 
 
@@ -95,7 +97,8 @@ class Service:
     def transcribe(
         self, data: bytes, hint: str | None = None, language: str | None = None
     ) -> tuple[int, dict[str, Any]]:
-        """`language`: a Whisper code, "auto" to detect it, or None for the configured one."""
+        """`language`: a Whisper code, several ("en,ru"), "auto" to detect it, or None for
+        the configured one."""
         if refused := self._refuse(data, language):
             return refused
         spoken = self.config.language if language is None else language

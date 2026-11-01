@@ -9,7 +9,7 @@ class ConfigError(Exception):
 @dataclass(frozen=True)
 class SttConfig:
     model: str = "small"
-    language: str | None = None  # None: detect it per recording
+    language: str | None = None  # "en", or "en,ru" (one of those); None: detect it
     max_seconds: float = 180.0
     max_bytes: int = 5_000_000
     port: int = 9000

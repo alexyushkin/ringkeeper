@@ -22,7 +22,7 @@ from ringkeeper.schemas import Input, ModelId, WorkspaceId
 from ringkeeper.services import admin_audit
 from ringkeeper.storage import events
 from ringkeeper.storage.sql import insert
-from ringkeeper.voice import AUTO, LANGUAGES
+from ringkeeper.voice import AUTO, LANGUAGES, MAX_SPOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +32,16 @@ SETTINGS_CHANNEL = "ringkeeper_settings"
 Positive = Annotated[int, Field(ge=1)]
 
 
-def _spoken(code: str) -> str:
-    if code != AUTO and code not in LANGUAGES:
+def _spoken(value: str) -> str:
+    """ "auto", a language, or several ("en,ru"), kept in the order chosen."""
+    if value == AUTO:
+        return value
+    codes = list(dict.fromkeys(code.strip() for code in value.split(",") if code.strip()))
+    if not codes or any(code not in LANGUAGES for code in codes):
         raise ValueError("isn't a language the speech model knows")
-    return code
+    if len(codes) > MAX_SPOKEN:
+        raise ValueError(f"choose at most {MAX_SPOKEN} languages")
+    return ",".join(codes)
 
 
 SpokenLanguage = Annotated[str, AfterValidator(_spoken)]
@@ -70,7 +76,7 @@ class RuntimeIn(Input):
     paused: bool | None = None
     start_at_login: bool | None = None  # desktop mode only
     check_updates: bool | None = None  # desktop mode only
-    stt_language: SpokenLanguage | None = None  # a Whisper code, or "auto"
+    stt_language: SpokenLanguage | None = None  # Whisper codes ("en,ru"), or "auto"
 
 
 EDITABLE = tuple(RuntimeIn.model_fields)

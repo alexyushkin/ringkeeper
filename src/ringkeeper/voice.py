@@ -31,8 +31,10 @@ COMMON_WORDS = ("Ringkeeper", "n8n", "Supabase", "README")
 HINT_CHARS = 500
 
 # Whisper's languages (the speech model's codes), by their English names.
-# "auto" detects the language of each recording.
+# "auto" detects the language of each recording; several ("en,ru") pick one of
+# those for each.
 AUTO = "auto"
+MAX_SPOKEN = 5
 LANGUAGES = {
     "af": "Afrikaans", "sq": "Albanian", "am": "Amharic", "ar": "Arabic", "hy": "Armenian",
     "as": "Assamese", "az": "Azerbaijani", "ba": "Bashkir", "eu": "Basque", "be": "Belarusian",
@@ -100,8 +102,8 @@ def too_big(size: int | None, limit: int) -> VoiceError:
 
 
 def spoken_language(settings: Settings) -> str | None:
-    """The language to ask the speech model for: a code, "auto" (detect it), or None
-    (not set here: the stt service's own setting decides)."""
+    """The language to ask the speech model for: a code, several ("en,ru": one of those),
+    "auto" (detect it), or None (not set here: the stt service's own setting decides)."""
     return settings.stt_language or None
 
 

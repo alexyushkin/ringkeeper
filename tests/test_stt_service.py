@@ -12,6 +12,7 @@ import docker
 import httpx2
 import pytest
 
+from ringkeeper_stt import whisper
 from ringkeeper_stt.config import ConfigError, SttConfig, load
 from ringkeeper_stt.server import (
     MAX_IN_FLIGHT,
@@ -77,12 +78,44 @@ def test_config_defaults_and_overrides() -> None:
 def test_the_language_can_be_chosen_per_recording() -> None:
     engine = FakeEngine()
     service = Service(engine, SttConfig(language="de", max_seconds=60, max_bytes=1000))
-    for language in (None, "ru", "auto", "yue"):
+    for language in (None, "ru", "auto", "yue", "en,ru"):
         assert service.transcribe(b"OggS", None, language)[0] == 200
-    assert engine.languages == ["de", "ru", None, "yue"]  # None: the configured one
-    for bad in ("EN", "english", "e", "../x"):
+    # None: the configured one; several: the engine picks one of them.
+    assert engine.languages == ["de", "ru", None, "yue", "en,ru"]
+    for bad in ("EN", "english", "e", "../x", "en,", "en,,ru", "auto,en"):
         assert service.transcribe(b"OggS", None, bad) == (422, {"error": "bad_language"})
-    assert engine.decoded == [4, 4, 4, 4]  # a bad language is refused before decoding
+    assert engine.decoded == [4] * 5  # a bad language is refused before decoding
+
+
+class FakeWhisper:
+    """faster-whisper's model: its detection pass scores languages; transcribing says
+    which language it was asked for."""
+
+    def __init__(self, scores: list[tuple[str, float]] | None) -> None:
+        self.scores = scores
+        self.asked: list[str | None] = []
+
+    def detect_language(self, **_: Any) -> tuple[str, float, list[tuple[str, float]]]:
+        if self.scores is None:
+            raise ValueError("need at least one array to concatenate")  # no speech
+        return self.scores[0][0], self.scores[0][1], self.scores
+
+    def transcribe(self, _samples: Any, language: str | None = None, **_: Any) -> Any:
+        self.asked.append(language)
+        info = type("Info", (), {"language": language or "en"})
+        return iter(()), info
+
+
+def test_several_languages_pick_the_likeliest_of_those() -> None:
+    audio = Decoded(samples=[0.0], seconds=1.0)
+    # Detection leans to Ukrainian, which isn't one of them: Russian is.
+    scores = [("uk", 0.5), ("ru", 0.3), ("en", 0.1)]
+    engine = object.__new__(whisper.WhisperEngine)
+    engine.model = FakeWhisper(scores)
+    assert engine.transcribe(audio, None, "en,ru").language == "ru"
+    assert engine.transcribe(audio, None, "de").language == "de"  # one: no detection pass
+    engine.model = FakeWhisper(None)
+    assert engine.transcribe(audio, None, "fr,en").language == "fr"  # nothing heard: the first
 
 
 def test_transcribe_and_limits(fake_stt: tuple[str, FakeEngine]) -> None:

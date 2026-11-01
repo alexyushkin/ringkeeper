@@ -121,52 +121,88 @@ export function VoiceSetup({ status, error, onDownload, onClose }: { status: Loc
   );
 }
 
-/** Auto-detect, or one of the speech model's languages, found by typing its name. */
-function LanguagePicker({ value, languages, onChange }: { value: string; languages: Record<string, string>; onChange: (code: string) => void }) {
+// At most this many (the server's MAX_SPOKEN).
+const MAX_SPOKEN = 5;
+
+/** The languages chosen, from the saved setting: "auto" (none) or "en,ru". */
+export function spokenLanguages(value: string): string[] {
+  return value === AUTO ? [] : value.split(",").filter(Boolean);
+}
+
+/** The languages you speak: none (any, detected per recording), one, or a few. Each is
+ * found by typing its name and added to the ones chosen. */
+function LanguagePicker({ value, languages, onChange }: { value: string; languages: Record<string, string>; onChange: (value: string) => void }) {
   const [query, setQuery] = useState("");
   const id = useId();
-  const all: [string, string][] = [[AUTO, "Auto-detect"], ...Object.entries(languages).sort(([, a], [, b]) => a.localeCompare(b))];
+  const chosen = spokenLanguages(value);
+  const save = (codes: string[]) => onChange(codes.length ? codes.join(",") : AUTO);
+  const all = Object.entries(languages).sort(([, a], [, b]) => a.localeCompare(b));
   const wanted = query.trim().toLowerCase();
-  const found = wanted ? all.filter(([code, name]) => code === wanted || name.toLowerCase().includes(wanted)) : all;
-  // The current choice stays in the list, so the list always shows what's chosen.
-  const shown = found.some(([code]) => code === value) ? found : [...all.filter(([code]) => code === value), ...found];
+  const shown = all.filter(([code, name]) => !chosen.includes(code) && (!wanted || code === wanted || name.toLowerCase().includes(wanted)));
+  const full = chosen.length >= MAX_SPOKEN;
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="block text-sm font-medium">
-        Language
-      </label>
-      <input
-        id={id}
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search languages"
-        aria-controls={`${id}-list`}
-        className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-base"
-      />
-      <select
-        id={`${id}-list`}
-        aria-label="Language"
-        size={6}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-line bg-surface px-1 py-1 text-base"
-      >
-        {shown.map(([code, name]) => (
-          <option key={code} value={code} className="rounded-lg px-2 py-1">
-            {name}
-          </option>
-        ))}
-      </select>
-      <p className="text-xs text-muted">The language you speak. Choosing it is faster and makes fewer mistakes on short recordings than auto-detect.</p>
+      <p id={`${id}-label`} className="text-sm font-medium">
+        Languages you speak
+      </p>
+      <ul aria-labelledby={`${id}-label`} className="flex flex-wrap gap-2">
+        {chosen.length ? (
+          chosen.map((code) => (
+            <li key={code} className="flex items-center gap-1 rounded-full bg-sunken py-0.5 pr-1 pl-3 text-sm">
+              {languages[code] ?? code}
+              <button type="button" onClick={() => save(chosen.filter((c) => c !== code))} aria-label={`Remove ${languages[code] ?? code}`} className="inline-flex size-7 items-center justify-center rounded-full text-muted hover:bg-surface hover:text-ink">
+                ×
+              </button>
+            </li>
+          ))
+        ) : (
+          <li className="text-sm text-muted">Any language, detected in each recording.</li>
+        )}
+      </ul>
+      {full ? null : (
+        <>
+          <input
+            id={id}
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={chosen.length ? "Add another language" : "Search languages"}
+            aria-controls={`${id}-list`}
+            aria-label="Search languages"
+            className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-base"
+          />
+          <select
+            id={`${id}-list`}
+            aria-label="Add a language"
+            size={6}
+            value=""
+            onChange={(event) => {
+              save([...chosen, event.target.value]);
+              setQuery("");
+            }}
+            className="w-full rounded-xl border border-line bg-surface px-1 py-1 text-base"
+          >
+            {shown.map(([code, name]) => (
+              <option key={code} value={code} className="rounded-lg px-2 py-1">
+                {name}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      <p className="text-xs text-muted">
+        One language is fastest and makes the fewest mistakes. With a few, each recording is checked against just those (a moment slower), so it&apos;s never written in a language you don&apos;t speak. None: any language{full ? `. At most ${MAX_SPOKEN}.` : "."}
+      </p>
     </div>
   );
 }
 
 /** Settings › Voice: Fast or Accuracy, each with its download size shown before it
- * starts, and the language spoken (saved as stt_language). */
-export function VoiceSettings({ language, onLanguage }: { language: string; onLanguage: (code: string) => void }) {
+ * starts, and the languages spoken (saved as stt_language: "auto", or "en,ru"). */
+export function VoiceSettings({ language, onLanguage }: { language: string; onLanguage: (value: string) => void }) {
   const voice = useLocalVoice();
+  const spoken = spokenLanguages(language);
+  const notEnglish = spoken.filter((code) => code !== "en");
   const status = voice.status;
   if (!status?.engine) return null;
   const downloading = status.state === "downloading";
@@ -184,11 +220,11 @@ export function VoiceSettings({ language, onLanguage }: { language: string; onLa
         hint={downloading ? "You can switch once the download is done." : undefined}
       />
       <LanguagePicker value={language} languages={status.languages} onChange={onLanguage} />
-      {status.choice === "fast" && language !== "en" ? (
+      {status.choice === "fast" && (!spoken.length || notEnglish.length) ? (
         <Alert tone="warn">
           <span>
             The Fast model is weak outside English.{" "}
-            {language === AUTO ? "If you speak other languages, choose Accuracy." : `For ${status.languages[language] ?? language}, choose Accuracy.`}
+            {spoken.length ? `For ${notEnglish.map((code) => status.languages[code] ?? code).join(" and ")}, choose Accuracy.` : "If you speak other languages, choose Accuracy."}
           </span>{" "}
           {downloading ? null : (
             <Button kind="ghost" onClick={() => void voice.choose("accuracy")}>
