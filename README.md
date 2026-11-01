@@ -292,7 +292,8 @@ A worker only gets the endpoints of the services its project is connected to.
   approvals). The tokens are refreshed before each call; when Google stops
   accepting one (a password change, six months unused), the agent is told to
   have you sign in again. Unverified, your app allows 100 accounts over its life
-  and each sign-in shows Google's "unverified app" screen.
+  and each sign-in shows Google's "unverified app" screen. What Ringkeeper does
+  with Google data: [PRIVACY.md](PRIVACY.md).
 
 ### Worker tokens
 

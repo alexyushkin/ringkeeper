@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Google setup steps include Branding.** Google won't publish your Google
+  app until its Branding page has a home page, a privacy policy and an
+  authorized domain; the steps in Settings › Google app now say what to enter.
+- **A privacy policy**: [PRIVACY.md](PRIVACY.md), also at
+  <https://yushkin.us/ringkeeper/privacy>.
+
 ## 0.1.0-beta.7 (2026-11-01)
 
 - **Updates no longer wait for an unrelated ringkeeper.exe.** The installer

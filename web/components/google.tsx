@@ -62,8 +62,16 @@ const APIS: [string, string][] = [
   ["Google Sheets API", "sheets.googleapis.com"],
 ];
 export const DEFAULT_ACCESS = ["mail_read", "mail_send"];
+// Ringkeeper's pages, for the Branding page of your Google app.
+const HOMEPAGE = "https://yushkin.us/ringkeeper";
+const PRIVACY = "https://yushkin.us/ringkeeper/privacy";
 // Google's limit for an unverified app, over its whole life.
 const ACCOUNT_CAP = 100;
+
+/** Text to paste into Google's form, in a monospace box. */
+function Copyable({ text }: { text: string }) {
+  return <code className="rounded bg-sunken px-1 py-0.5 text-xs select-all">{text}</code>;
+}
 
 function Outside({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -93,6 +101,22 @@ function SetupSteps({ access }: { access: Access[] }) {
         </li>
         <li>
           Open <Outside href={`${CONSOLE}/auth/branding`}>Google Auth Platform › Branding</Outside> and click <strong>Get started</strong>: app name “Ringkeeper”, your email as support email, <strong>Audience: External</strong>, your email as contact, agree, <strong>Create</strong>.
+        </li>
+        <li>
+          Back in <Outside href={`${CONSOLE}/auth/branding`}>Branding</Outside>, fill in what Google needs before it publishes the app, then <strong>Save</strong>:
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>App name: <Copyable text="Ringkeeper" />; User support email: yours</li>
+            <li>
+              Application home page: <Copyable text={HOMEPAGE} />
+            </li>
+            <li>
+              Application privacy policy link: <Copyable text={PRIVACY} />
+            </li>
+            <li>
+              Authorized domains: <strong>Add domain</strong>, <Copyable text="yushkin.us" />
+            </li>
+            <li>Developer contact information: your email</li>
+          </ul>
         </li>
         <li>
           Open <Outside href={`${CONSOLE}/auth/audience`}>Audience</Outside> and click <strong>Publish app</strong>, then <strong>Confirm</strong>. Left in “Testing”, Google signs every account out after 7 days.
