@@ -350,7 +350,7 @@ fn allow_pages(app: &AppHandle, runtime: &Runtime) {
         .permission("core:window:allow-set-theme");
     if let Err(error) = app.add_capability(capability) {
         let shell = app.state::<Shell>();
-        backend::log(&shell.data_dir, &format!("no access for the pages: {error}"));
+        backend::log(&shell.data_dir, &format!("pages get no access: {error}"));
     }
 }
 
