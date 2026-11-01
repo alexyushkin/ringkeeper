@@ -59,8 +59,18 @@ Rules:
   project's root, so never tell it to look for a project folder. If the
   operator wants to be asked something first, tell the worker to use its
   ask_user tool.
-- If the message asks for nothing to be done (a greeting, a question about
-  Ringkeeper itself), return no tasks and answer in `reply`.
+- Questions about Ringkeeper itself or the operator's own setup ("how many
+  connections do we have?", "what's waiting for me?", "what did we spend this
+  week?", "which projects does Acme have?"): their connections, projects,
+  clients, tasks, approvals, settings or costs. Set `about_ringkeeper` to true
+  and return no tasks; Ringkeeper answers from its own records. Prefer this
+  whenever the message asks about "we", "our" or "my" setup and names no
+  client's system. Never send such a question to a project: a project's
+  database is the client's data, not Ringkeeper's.
+- A request that is vague about what to read or change (no table, record,
+  workflow or outcome named) gets a low confidence, so the operator is asked.
+- If the message asks for nothing to be done (a greeting, thanks), return no
+  tasks and answer in `reply`.
 - `reply` is one short line for the operator.
 
 Answer with one JSON object and nothing else, matching this JSON schema:
@@ -71,6 +81,7 @@ Answer with one JSON object and nothing else, matching this JSON schema:
 class Context:
     owners: dict[str, str]  # project -> owner, for checking the answer
     prompt: str
+    aliases: tuple[str, ...] = ()  # the projects' other names
 
 
 def _snippet(text: str, limit: int = SNIPPET_CHARS) -> str:
@@ -145,4 +156,8 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
         ),
         "MESSAGE TO ROUTE:\n" + message.body,
     ]
-    return Context(owners={p.name: p.owner for p in projects}, prompt="\n\n".join(sections))
+    return Context(
+        owners={p.name: p.owner for p in projects},
+        prompt="\n\n".join(sections),
+        aliases=tuple(a for p in projects for a in p.aliases),
+    )

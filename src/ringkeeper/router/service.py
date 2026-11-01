@@ -1,10 +1,16 @@
 """Route one message: one model call (one retry on invalid output), then
 dispatch each task or ask the operator where it goes.
 
-A task is dispatched when it touches one project and the router is at least
-`router_confidence_threshold` sure. Otherwise it becomes a route decision with
-the top two candidates. A saved routing example that matches the message
-exactly settles a single-task message without asking.
+A task is dispatched when it touches one project, the router is at least
+`router_confidence_threshold` sure, and it won't use production. Otherwise the
+operator is asked in the conversation first (a route decision): which project,
+with the top two candidates, or whether to go ahead on production. A saved
+routing example that matches the message exactly settles a single-task message
+without asking which project.
+
+A question about Ringkeeper itself (its connections, projects, tasks, approvals,
+settings, costs) is answered from Ringkeeper's own records (router.self_answer):
+no project, no worker.
 """
 
 import logging
@@ -13,6 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper.config import Settings, get_settings
@@ -20,7 +27,19 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
 from ringkeeper.model_choice import router_model
-from ringkeeper.models import Decision, DecisionKind, Message, MessageRole, Task
+from ringkeeper.models import (
+    Decision,
+    DecisionKind,
+    Env,
+    InstanceType,
+    Message,
+    MessageRole,
+    Project,
+    Task,
+    TaskKind,
+    TaskRisk,
+)
+from ringkeeper.router import self_answer
 from ringkeeper.router.model import RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
 from ringkeeper.router.schema import (
@@ -85,13 +104,41 @@ def _why_asking(task: RoutedTask, threshold: float) -> str:
     return f"confidence {task.confidence:.2f} is below {threshold:.2f}"
 
 
-def _ask(session: Session, settings: Settings, message: Message, task: RoutedTask) -> Decision:
-    payload = {
+def production_connection(session: Session, task: RoutedTask) -> str | None:
+    """The production connection a task would use, when it would: it changes production,
+    or it works with data and its project has a production connection. Then the operator
+    says go ahead first, so a vague request never reaches a client's live system."""
+    project = session.scalar(select(Project).where(Project.name == task.project))
+    if project is None:
+        return None
+    live = sorted(
+        b.instance.name for b in project.bindings
+        if b.instance.env is Env.PROD and b.instance.type is not InstanceType.GOOGLE
+    )  # fmt: skip
+    if not live:
+        return None
+    if task.risk is TaskRisk.PROD_WRITE or task.kind is TaskKind.DATA:
+        return live[0] if len(live) == 1 else ", ".join(live)
+    return None
+
+
+def _ask(
+    session: Session,
+    settings: Settings,
+    message: Message,
+    task: RoutedTask,
+    production: str | None = None,
+) -> Decision:
+    payload: dict[str, Any] = {
         "message": message.body,
         "candidates": [c.model_dump() for c in candidates(task)],
         "task": _task_fields(task),
         "reason": _why_asking(task, settings.router_confidence_threshold),
     }
+    if production is not None:  # sure of the project; asking before it uses production
+        payload["candidates"] = [{"project": task.project, "confidence": task.confidence}]
+        payload["production"] = production
+        payload["reason"] = f"it would use {production}, a production connection"
     return inbox.create(
         session,
         settings,
@@ -131,13 +178,19 @@ def _apply_example(session: Session, message: Message, output: RouterOutput) -> 
 
 
 def _reply(routed: Routed, output: RouterOutput) -> str:
+    """Plain words: what started, and what Ringkeeper needs from the operator (the
+    question itself is shown under the reply, with its buttons)."""
     lines: list[str] = []
     for task in routed.tasks:
-        how = "architect plans first" if task.phase is not None else "worker queued"
-        lines.append(f"→ {task.project}: task {str(task.id)[:8]} ({task.kind}, {how})")
+        what = task.outcome or "the task"
+        plan = " I'll show you a plan first." if task.phase is not None else ""
+        lines.append(f"Working on it in {task.project}: {what}{plan}")
     for decision in routed.decisions:
-        names = ", ".join(c["project"] for c in (decision.payload or {}).get("candidates", []))
-        lines.append(f"? which project ({names}): decision {str(decision.id)[:8]}")
+        payload = decision.payload or {}
+        if payload.get("production"):
+            lines.append(f"Before I start: this would use {payload['production']} (production).")
+        else:
+            lines.append("Which project is this for?")
     if output.reply:
         lines.insert(0, output.reply)
     return "\n".join(lines) or "Nothing to do."
@@ -171,14 +224,28 @@ def route_message(
         threads.add_reply(session, message.thread_id, reply, role=MessageRole.SYSTEM)
         return Routed(reply=reply, error=error)
 
+    if output.about_ringkeeper or self_answer.asks_about_setup(
+        message.body, [*context.owners, *set(context.owners.values()), *context.aliases]
+    ):
+        reply, spent = self_answer.answer(session, settings, model, message.body)
+        meta |= {
+            "output": output.model_dump(mode="json"), "about_ringkeeper": True,
+            "cost_usd": (cost + spent) or None, "tasks": [], "decisions": [],
+        }  # fmt: skip
+        threads.mark_routed(session, message, meta)
+        threads.add_reply(session, message.thread_id, reply)
+        return Routed(reply=reply)
+
     output = _apply_example(session, message, output)
     routed = Routed()
     threshold = settings.router_confidence_threshold
     for task in output.tasks:
-        if not task.touches and task.confidence >= threshold:
-            routed.tasks.append(_dispatch(session, settings, message, task))
-        else:
+        if task.touches or task.confidence < threshold:
             routed.decisions.append(_ask(session, settings, message, task))
+        elif (live := production_connection(session, task)) is not None:
+            routed.decisions.append(_ask(session, settings, message, task, live))
+        else:
+            routed.tasks.append(_dispatch(session, settings, message, task))
     routed.reply = _reply(routed, output)
     meta |= {
         "output": output.model_dump(mode="json"),

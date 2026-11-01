@@ -111,8 +111,10 @@ one-click sign-in works (Ringkeeper asks the server, and remembers for a week).
 
 A server that is one of the recommended services (matched by its address)
 connects as that service, with its rules. Every other server gets the generic
-rules: its MCP annotations decide what runs without asking (read-only tools),
-and a tool without annotations waits for approval, like any write. Test or
+rules: its MCP annotations decide what runs without asking (read-only tools);
+a tool without annotations runs without asking when its name only reads
+(`list_issues`, `getPage`, `search`) and waits for approval otherwise, as do
+names that may cost money (an enrichment, a paid lookup). Test or
 Production is chosen when connecting, and every connection still belongs to a
 client and is linked to that client's projects.
 
@@ -258,10 +260,13 @@ A worker only gets the endpoints of the services its project is connected to.
   credential, nothing of Ringkeeper's) in its own folder. Each tool's default
   comes from the server's MCP annotations: `readOnlyHint` runs without asking,
   `destructiveHint` needs the connection's name typed to approve, and anything
-  else waits for approval (with no annotations, a tool whose name says it
-  deletes needs the name typed). The annotations are remembered whenever the
-  tools are listed (Test, Connections, or the agent) and a change to them is
-  audited. Override any tool under Connections › Tools and approvals.
+  else waits for approval. With no annotations, the name decides: one that says
+  it deletes needs the name typed, one that only reads (get, list, search,
+  describe...) runs, and one that changes something or may cost money waits. A
+  SQL tool's call (Neon, Supabase) is judged by its statement: one shown to only
+  read runs at once; reading never waits, even on production. The annotations
+  are remembered whenever the tools are listed (Test, Connections, or the
+  agent) and a change to them is audited. Override any tool under Connections › Tools and approvals.
 - **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
   JSON with the address and the app password. Reading never marks mail as
   read. Drafts run without asking; sending always waits for approval. The
@@ -470,7 +475,9 @@ routing example: the same message (ignoring case and spacing) then routes
 without asking, and similar ones get it as a hint. Remove a wrong one with
 `ringkeeper routing examples list` and `delete <id>`.
 
-The **inbox** holds every decision waiting for you:
+The **inbox** holds every decision waiting for you. Approvals are only for
+actions (a held write, a plan, more money for a task); `route` and `question`
+are questions, asked in the conversation with buttons:
 
 | Kind       | What                                  | Answer                          |
 | ---------- | ------------------------------------- | ------------------------------- |
@@ -729,8 +736,8 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 
 | Screen | What it's for |
 | --- | --- |
-| Home | Your conversations, and a box to ask for something: typed, or hold the mic to speak ("I heard: ..." first, nothing is sent until you press Send). A conversation shows how the router split it and live task cards. |
-| Approvals | Everything waiting for you, in full: the SQL of a held write, a plan, a question, which project. Telegram only ever gets summaries; the full text lives here. A held write that deletes or drops data needs the connection's name typed to approve. |
+| Home | Your conversations, and a box to ask for something: typed, or hold the mic to speak ("I heard: ..." first, nothing is sent until you press Send). A conversation shows how the router split it, live task cards, and what Ringkeeper needs from you, with buttons. Questions about Ringkeeper itself ("how many connections do we have?") are answered from its own records, without a project. |
+| Approvals | Every action waiting for your OK, across conversations, in full: the SQL of a held write, a plan, more money for a task. The same card shows in the conversation and on the task page; answering it anywhere clears it everywhere. Questions ("which project?", a worker asking something) are asked in their conversation instead and aren't counted. Telegram only ever gets summaries. A held write that deletes or drops data needs the connection's name typed to approve. |
 | Tasks | Every task, by project and status. A task opens as a transcript: what the assistant said, each tool call (arguments and results folded away), check results, the model, steps and estimated cost, the branch, changed files and diff, and Stop and Resume. |
 | Clients & projects | Create and edit projects (description, other names, folder, repository, how independently it works, checks, model overrides) and link connections, with defaults. |
 | Connections | Forms for databases (Supabase, Neon, any Postgres), n8n, Airtable, Vercel, Twilio and Gmail, each with a link to where you get the key; also on each project's page, where a new connection is linked to the project. Secrets go in once, through password fields, and are never shown again. Production has a red badge. **Test connection** runs one read-only call through the adapter. |

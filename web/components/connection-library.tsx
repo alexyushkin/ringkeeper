@@ -290,6 +290,12 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
       {connection.config.source === "signin" ? <Badge tone="good">signed in</Badge> : null}
       {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
       {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
+      {/* Why the last test failed, without opening the row. */}
+      {compact && connection.last_test_ok === false && connection.last_test_message ? (
+        <span className="order-last w-full truncate text-xs text-bad" title={connection.last_test_message}>
+          {connection.last_test_message}
+        </span>
+      ) : null}
       {compact ? (
         <span className="ml-auto text-xs text-muted">{connection.all_projects ? (connection.reach || "All projects") : links.length === 1 ? "1 project" : `${links.length} projects`}</span>
       ) : connection.last_test_at ? (

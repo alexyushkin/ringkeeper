@@ -16,6 +16,7 @@ from ringkeeper.models import (
     AuthMode,
     Decision,
     DecisionKind,
+    Env,
     Message,
     MessageRole,
     Project,
@@ -23,6 +24,7 @@ from ringkeeper.models import (
     Task,
     TaskKind,
 )
+from ringkeeper.router import self_answer
 from ringkeeper.router.model import Completion, sdk_env
 from ringkeeper.router.service import Router, route_next
 from ringkeeper.services import examples, inbox, threads
@@ -123,7 +125,8 @@ def test_a_small_clear_feature_skips_the_architect() -> None:
     assert (task.kind, task.phase) == (TaskKind.FEATURE, None)
     [first] = task.sessions
     assert (first.role, first.model) == (SessionRole.WORKER, "claude-haiku-5-5")
-    assert "worker queued" in thread_bodies(thread_id)[1][1]
+    assert "Working on it in acme-web" in thread_bodies(thread_id)[1][1]
+    assert "plan first" not in thread_bodies(thread_id)[1][1]
 
 
 def test_the_router_sees_cards_history_tasks_decisions_and_no_secrets() -> None:
@@ -335,3 +338,110 @@ def test_only_big_features_plan_on_the_big_model() -> None:
     [task] = all_tasks()
     [first] = task.sessions
     assert (first.role, first.model) == (SessionRole.ARCHITECT, "claude-opus-5-5")
+
+
+# --- Questions about Ringkeeper itself ---
+
+
+def test_a_question_about_the_setup_is_answered_from_ringkeeper_s_own_data() -> None:
+    """From real use: "how many connections do we have?" went to a client's production
+    database. It names no client, so Ringkeeper answers it itself: no task, no project."""
+    thread_id = ask("How many connections do we have?")
+    model = FakeModel(
+        [output(routed("globex-portal", 0.9)), "You have 1 connection: globex-supabase-dev."]
+    )
+    route(model)
+    assert all_tasks() == []
+    assert route_decisions() == []
+    system, prompt, _ = model.calls[1]
+    assert "own Ringkeeper" in system
+    assert "RINGKEEPER DATA" in prompt
+    assert '"globex-supabase-dev"' in prompt
+    assert "very-secret" not in prompt  # never a secret
+    assert thread_bodies(thread_id)[-1] == (
+        MessageRole.ROUTER,
+        "You have 1 connection: globex-supabase-dev.",
+    )
+
+
+def test_the_router_can_say_a_message_is_about_ringkeeper() -> None:
+    thread_id = ask("Give me the state of things")
+    route(FakeModel([{"tasks": [], "about_ringkeeper": True}, "Nothing is waiting for you."]))
+    assert all_tasks() == []
+    assert thread_bodies(thread_id)[-1][1] == "Nothing is waiting for you."
+
+
+def test_what_counts_as_a_question_about_the_setup() -> None:
+    names = ["acme-web", "acme-reports", "globex-portal", "acme", "globex"]
+    for message in (
+        "How many connections do we have?",
+        "what's waiting for me",
+        "Which projects do I have?",
+        "What did we spend on tasks this week?",
+    ):
+        assert self_answer.asks_about_setup(message, names), message
+    for message in (
+        "How many projects does acme have?",  # names a client: the router decides
+        "Add a connections page to our site",  # asks for work
+        "How many customers are in the database?",  # not the setup
+    ):
+        assert not self_answer.asks_about_setup(message, names), message
+
+
+# --- Production waits for a go-ahead ---
+
+
+def test_production_data_waits_for_a_go_ahead_in_the_conversation() -> None:
+    with session_scope() as session:
+        make_instance(session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db")
+    bind("globex-portal", "globex-db")
+    thread_id = ask("How many orders did globex get today?")
+    route(FakeModel([output(routed("globex-portal", 0.97, kind="data"))]))
+    assert all_tasks() == []  # nothing reaches production yet
+    [decision] = route_decisions()
+    assert decision.payload is not None
+    assert decision.payload["production"] == "globex-db"
+    with session_scope() as session:
+        found = session.get(Decision, decision.id)
+        assert found is not None
+        assert not inbox.is_approval(found)  # a question: not in Approvals or its badge
+    body = thread_bodies(thread_id)[-1][1]
+    assert body == "Before I start: this would use globex-db (production)."
+    assert str(decision.id)[:8] not in body  # no internal ids in the conversation
+
+    with session_scope() as session:
+        answered = inbox.answer(
+            session, get_settings(), str(decision.id), Answer(choice="globex-portal"),
+            by="owner", via=Via.API,
+        )  # fmt: skip
+        assert answered.task is not None
+        assert answered.task.project == "globex-portal"
+
+
+def test_a_change_that_isn_t_data_starts_without_asking() -> None:
+    with session_scope() as session:
+        make_instance(session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db")
+    bind("globex-portal", "globex-db")
+    ask("Fix the typo in globex's footer")
+    route(FakeModel([output(routed("globex-portal", 0.97, kind="fix"))]))
+    assert [t.project for t in all_tasks()] == ["globex-portal"]
+
+
+def test_an_unsure_route_asks_plainly() -> None:
+    thread_id = ask("Update the report")
+    route(
+        FakeModel(
+            [
+                output(
+                    routed(
+                        "acme-reports",
+                        0.4,
+                        alternatives=[{"project": "acme-web", "confidence": 0.3}],
+                    )
+                )
+            ]
+        )
+    )
+    [decision] = route_decisions()
+    assert thread_bodies(thread_id)[-1][1] == "Which project is this for?"
+    assert inbox.options(decision) == ["acme-reports", "acme-web", "none"]

@@ -5,6 +5,26 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Subscription mode reaches every task.** A task created by answering "which
+  project?" (in the app or Telegram) was set to the API key and failed with "No
+  Anthropic API key is stored". Tasks now use what's set in Settings when they
+  start, wherever they came from.
+- **Questions about Ringkeeper itself are answered by Ringkeeper.** "How many
+  connections do we have?" went to a client's production database. Questions
+  about your connections, projects, clients, tasks, approvals, settings and
+  costs are now answered from Ringkeeper's own records: no project, no worker.
+- **Asks before production.** When Ringkeeper isn't sure which project you
+  mean, or the request would work with a production connection's data, it asks
+  you in the conversation before starting anything.
+- **Questions in the conversation, with buttons.** "Which project?" and "go
+  ahead on production?" show right in the conversation, in plain words, not in
+  Approvals and not in its badge. Held changes show there too, and on the task
+  page: what it wants to do, the SQL, Approve or Deny with a note. Approving
+  anywhere clears it everywhere.
+- **Reading never waits.** Only writes wait for approval (changing data,
+  sending, deploying, deleting, spending money). A SQL statement that only reads
+  runs at once, even on production, and so do MCP tools whose names only read,
+  unless they may cost money.
 - **Google setup steps include Branding.** Google won't publish your Google
   app until its Branding page has a home page, a privacy policy and an
   authorized domain; the steps in Settings › Google app now say what to enter.
@@ -12,7 +32,8 @@ publishes it as the release notes and the app shows it with the update.
   <https://yushkin.us/ringkeeper/privacy>.
 - **Test works for Google accounts.** It said "Google returned 404:
   invalid_request" though the account worked: it asked Google at the wrong
-  address. Test again after updating to clear "Last test failed".
+  address. Test again after updating to clear "Last test failed". A failed
+  test now shows its reason on the connection's row, without opening it.
 
 ## 0.1.0-beta.7 (2026-11-01)
 

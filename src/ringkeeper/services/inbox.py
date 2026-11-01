@@ -141,6 +141,25 @@ def list_decisions(
     return session.scalars(query).all()
 
 
+def is_approval(decision: Decision) -> bool:
+    """An action waiting for the owner's OK: a held call, a plan, more money for a task.
+    The rest ("which project?", a worker's question) are questions, asked in the
+    conversation, never in Approvals, and not counted in its badge."""
+    if decision.kind in (DecisionKind.APPROVE, DecisionKind.PLAN):
+        return True
+    return decision.kind is DecisionKind.QUESTION and bool((decision.payload or {}).get("budget"))
+
+
+def quick_approval(decision: Decision) -> bool:
+    """A held call safe to approve from a notification, without seeing its details: not
+    a production change, and not one that needs the connection's name typed."""
+    return (
+        decision.kind is DecisionKind.APPROVE
+        and not production_hold(decision)
+        and not (decision.payload or {}).get("destructive")
+    )
+
+
 def options(decision: Decision) -> list[str]:
     """The choices a decision offers (empty: it takes free text)."""
     if decision.kind in (DecisionKind.APPROVE, DecisionKind.PLAN):

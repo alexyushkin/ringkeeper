@@ -43,6 +43,9 @@ class RoutedTask(_Strict):
 class RouterOutput(_Strict):
     tasks: list[RoutedTask]
     reply: str = ""
+    # A question about Ringkeeper itself (the operator's connections, projects, clients,
+    # tasks, approvals, settings, costs): answered from Ringkeeper's own data, no task.
+    about_ringkeeper: bool = False
 
 
 class InvalidOutputError(ValueError):

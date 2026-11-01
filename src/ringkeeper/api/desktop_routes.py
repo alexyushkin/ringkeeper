@@ -45,6 +45,8 @@ def status(session: SessionDep) -> dict[str, Any]:
             "kind": decision.kind.value,
             "project": decision.project,
             "summary": summary(decision, NOTICE_CHARS).text,
+            "approval": inbox.is_approval(decision),
+            "quick": inbox.quick_approval(decision),
         }
         for decision in inbox.list_waiting(session)
     ]

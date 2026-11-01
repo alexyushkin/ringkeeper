@@ -54,7 +54,8 @@ export function Shell({ children }: { children: ReactNode }) {
       .then((status) => (status.done ? setReady(true) : router.replace("/setup")))
       .catch(() => setReady(true));
   }, [router]);
-  const approvals = useApi<Pending[]>("decisions", { status: "pending", limit: 200 });
+  // Approvals only: a question waits in its conversation, not in this count.
+  const approvals = useApi<Pending[]>("decisions", { status: "pending", category: "approval", limit: 200 });
   const settings = useApi<{ values: { paused: boolean } }>("settings");
   useLive((event) => {
     if (event.type === "approval") approvals.reload();

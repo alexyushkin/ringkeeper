@@ -118,6 +118,7 @@ def _decision_out(decision: Decision, owners: dict[str, str] | None = None) -> D
             "summary": inbox.summary(decision),
             "heading": inbox.heading(decision),
             "options": inbox.options(decision),
+            "approval": inbox.is_approval(decision),
         }
     )
 
@@ -130,13 +131,19 @@ def list_decisions(
     project: str | None = None,
     limit: int = 50,
     client: str | None = None,
+    category: Literal["approval", "question"] | None = None,
 ) -> list[DecisionOut]:
-    """Newest first; `client`/`project` narrow it to those projects' decisions."""
+    """Newest first; `client`/`project` narrow it to those projects' decisions.
+    `category`: approvals (actions: Approvals and its badge) or questions (asked in
+    the conversation)."""
     # A write session: listing marks stale decisions expired first.
     found = inbox.list_decisions(
-        session, status=status, kind=kind, limit=min(max(limit, 1), 1000),
+        session, status=status, kind=kind, limit=1000 if category else min(max(limit, 1), 1000),
         projects=projects.in_scope(session, client, project),
     )  # fmt: skip
+    if category is not None:
+        wanted = category == "approval"
+        found = [d for d in found if inbox.is_approval(d) is wanted][: min(max(limit, 1), 1000)]
     owners = projects.owners(session)
     return [_decision_out(d, owners) for d in found]
 

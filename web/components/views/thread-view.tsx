@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 
 import { Composer } from "@/components/composer";
+import { DecisionCard, type Decision } from "@/components/decision-card";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Badge, Card, Details, Loading, timeAgo } from "@/components/ui";
@@ -28,13 +29,6 @@ interface Thread {
   archived?: boolean;
 }
 
-interface Decision {
-  id: string;
-  kind: string;
-  summary: string;
-  thread_id: string | null;
-}
-
 export function ThreadView({ id }: { id: string }) {
   const router = useRouter();
   const thread = useApi<Thread>(`threads/${id}`);
@@ -44,9 +38,11 @@ export function ThreadView({ id }: { id: string }) {
     if (event.thread_id !== id) return;
     if (event.type === "message" || event.type === "message_routed") thread.reload();
     if (event.type === "task" || event.type === "message_routed") tasks.reload();
-    if (event.type === "approval") pending.reload();
+    if (event.type === "approval" || event.type === "message_routed") pending.reload();
   });
-  const waiting = pending.data?.filter((d) => d.thread_id === id) ?? [];
+  // This conversation's questions, and the holds of its tasks.
+  const mine = new Set((tasks.data ?? []).map((t) => t.id));
+  const waiting = pending.data?.filter((d) => d.thread_id === id || (d.task_id !== null && mine.has(d.task_id))) ?? [];
 
   if (thread.error) return <Alert>{thread.error}</Alert>;
   if (!thread.data) return <Loading />;
@@ -104,18 +100,11 @@ export function ThreadView({ id }: { id: string }) {
       </ol>
 
       {waiting.length ? (
-        <Card className="mt-4 border-warn">
-          <p className="text-sm font-medium">Waiting for you</p>
-          <ul className="mt-2 space-y-1 text-sm">
-            {waiting.map((d) => (
-              <li key={d.id}>
-                <Link href={`/approvals#${d.id}`} className="text-accent">
-                  {d.summary} ›
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <div className="mt-4 space-y-3">
+          {waiting.map((d) => (
+            <DecisionCard key={d.id} decision={d} onDone={pending.reload} />
+          ))}
+        </div>
       ) : null}
 
       {tasks.data?.length ? (

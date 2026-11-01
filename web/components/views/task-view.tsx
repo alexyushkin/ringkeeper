@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
+import { DecisionCard, type Decision } from "@/components/decision-card";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -142,6 +143,7 @@ function EventView({ event }: { event: Event }) {
 export function TaskView({ id }: { id: string }) {
   const router = useRouter();
   const task = useApi<Task>(`tasks/${id}`);
+  const pending = useApi<Decision[]>("decisions", { status: "pending", limit: 200 });
   const [events, setEvents] = useState<Event[]>([]);
   const [retention, setRetention] = useState(90);
   const last = useRef(0);
@@ -180,6 +182,7 @@ export function TaskView({ id }: { id: string }) {
     void more();
   }, [more]);
   useLive((event) => {
+    if (event.type === "approval") pending.reload();
     if (event.task_id !== id) return;
     if (event.type === "session_event") void more();
     if (event.type === "task") task.reload();
@@ -202,12 +205,18 @@ export function TaskView({ id }: { id: string }) {
   if (task.error) return <Alert>{task.error}</Alert>;
   if (!task.data) return <Loading />;
   const t = task.data;
+  const waiting = (pending.data ?? []).filter((d) => d.task_id === id);
 
   return (
     <>
       <Link href={t.thread_id ? threadHref(t.thread_id) : "/tasks"} className="text-sm text-accent">
         ‹ Back
       </Link>
+      {waiting.map((d) => (
+        <div key={d.id} className="mt-2">
+          <DecisionCard decision={d} onDone={pending.reload} inline />
+        </div>
+      ))}
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold">{t.project}</h1>
