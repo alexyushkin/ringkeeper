@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.9 (2026-11-01)
 
 - **Agents.** Each project can have named agents: instructions they always
   follow, the connections they may use (some of the project's; shared tools
