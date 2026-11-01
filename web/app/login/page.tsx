@@ -4,7 +4,7 @@ import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/br
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
-import { Alert, Button, Card, Field } from "@/components/ui";
+import { Alert, Button, Card, Field, Logo } from "@/components/ui";
 import { ApiError, api } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 
@@ -83,7 +83,7 @@ function LoginForm() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-4">
       <div className="mb-6 flex items-center gap-2 text-2xl font-semibold">
-        <span aria-hidden className="inline-block size-6 rounded-full border-4 border-accent" />
+        <Logo className="size-7" />
         Ringkeeper
       </div>
       <Card>

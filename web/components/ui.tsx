@@ -87,6 +87,10 @@ export function LinkButton({ href, children, kind = "secondary" }: { href: strin
   );
 }
 
+export function Logo({ className = "size-6" }: { className?: string }) {
+  return <img src="/icon.svg" alt="" aria-hidden className={`inline-block shrink-0 ${className}`} />;
+}
+
 export function Spinner() {
   return <span aria-hidden className="inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />;
 }

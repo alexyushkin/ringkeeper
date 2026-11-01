@@ -11,7 +11,7 @@ import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
-import { Alert, Button, Card, Field, Loading, Select, Toggle } from "@/components/ui";
+import { Alert, Button, Card, Field, Loading, Logo, Select, Toggle } from "@/components/ui";
 import { ApiError, api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
@@ -82,7 +82,7 @@ export default function SetupPage() {
   return (
     <main className="mx-auto max-w-lg px-4 py-6">
       <div className="mb-1 flex items-center gap-2 text-lg font-semibold">
-        <span aria-hidden className="inline-block size-5 rounded-full border-4 border-accent" />
+        <Logo />
         Set up Ringkeeper
       </div>
       <p className="mb-4 text-sm text-muted">Ringkeeper lets one person run AI agents across many clients without ever switching connections.</p>

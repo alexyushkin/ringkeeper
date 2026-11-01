@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { ScopeSwitcher } from "@/components/scope-switcher";
 import { UpdateBanner } from "@/components/update-banner";
-import { Loading } from "@/components/ui";
+import { Loading, Logo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { ScopeProvider } from "@/lib/client/scope";
@@ -75,7 +75,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="md:flex">
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r border-line bg-surface p-4 md:flex">
         <Link href="/" className="mb-4 flex items-center gap-2 px-2 text-lg font-semibold">
-          <span aria-hidden className="inline-block size-5 rounded-full border-4 border-accent" />
+          <Logo />
           Ringkeeper
         </Link>
         {[...MAIN, ...MORE].map((item) => (
