@@ -4,7 +4,8 @@ Signing is optional and pluggable. Without signing secrets, the release
 workflow (`.github/workflows/release.yml`) builds an **unsigned** installer,
 and Windows SmartScreen warns when people run it (the README tells them how to
 get past it). With secrets, it signs everything it ships that isn't signed
-already, under **General Informatics LLC**:
+already, under **Alexey Yushkin**, Ringkeeper's maintainer, as an individual
+developer:
 
 - the app (`ringkeeper.exe`), the uninstaller, the installer's plugins and the
   installer itself (Tauri runs `shell/scripts/sign.ps1` for each), and
@@ -13,8 +14,8 @@ already, under **General Informatics LLC**:
   Anthropic and is left as it is.
 
 Two kinds of signing are supported: **Azure Artifact Signing** (preferred) and,
-as a fallback, **any other certificate signtool can use**, such as an OV
-certificate.
+as a fallback, **any other certificate signtool can use**, such as an
+individual code-signing certificate from a certificate authority.
 
 Updates are signed separately, with the updater key (see "The updater key"
 below). That signing is always on, and it is what installed apps check before
@@ -29,17 +30,31 @@ more signatures a month than releases use).
 
 ### Set it up in Azure
 
+Artifact Signing validates individual developers as well as organizations;
+Ringkeeper is signed as an individual. Individual validation is currently
+offered in the USA and Canada.
+
 1. **A subscription.** In the [Azure portal](https://portal.azure.com), use (or
-   create) a pay-as-you-go subscription for General Informatics LLC.
+   create) a pay-as-you-go subscription in your own name. Its billing account
+   must be an **Individual** account whose legal name and address match the
+   government ID you'll validate with.
 2. **Register the provider.** Subscriptions → your subscription → Resource
    providers → `Microsoft.CodeSigning` → Register.
 3. **Create an Artifact Signing account.** Search "Artifact Signing" → Create.
-   Pick a resource group, a name (for example `geninfos-signing`), a region and
+   Pick a resource group, a name (for example `ringkeeper-signing`), a region and
    the Basic tier. Note the account's **endpoint**, shown on its overview page
    (for East US it's `https://eus.codesigning.azure.net`).
-4. **Validate the organization.** In the account: Identity validations → New →
-   **Organization**, **Public Trust**. Enter General Informatics LLC's legal
-   details exactly as registered, and follow the email and document requests.
+4. **Validate yourself.** Give yourself the **Artifact Signing Identity
+   Verifier** role on the account (Access control (IAM)), or **New identity**
+   stays greyed out. Then Identity validations → set the type to
+   **Individual** → New identity → **Public**, and pick the subscription's
+   billing account. Enter your first and last name exactly as on your
+   government ID, an email address you read, and your address as on the ID (or
+   a utility bill or bank statement): your name, city, state and country appear
+   on the certificate. Microsoft emails a link to verify your identity (a scan
+   of the ID and a face check, with a Verified ID in Microsoft Authenticator);
+   open it signed in with that same email address. Validation is done in the
+   portal only.
 5. **Create a certificate profile.** Certificate profiles → Create → **Public
    Trust**, using that identity validation. Note the profile's name (for
    example `ringkeeper`).
@@ -65,15 +80,14 @@ In the `ringkeeper` repository: Settings → Secrets and variables → Actions.
 | Variable | `AZURE_SIGNING_PROFILE` | the certificate profile's name |
 
 The next tag builds a signed installer. The workflow's **Signed?** step prints
-the installer's signature; it should say `Valid` and name General Informatics
-LLC. The client secret expires (at most two years): renew it in the app
+the installer's signature; it should say `Valid` and name Alexey Yushkin. The client secret expires (at most two years): renew it in the app
 registration before then and update `AZURE_CLIENT_SECRET`.
 
-## Fallback: an OV certificate
+## Fallback: a certificate from a certificate authority
 
-If Artifact Signing isn't available, buy an **OV (organization validated)
-code-signing certificate** for General Informatics LLC from a certificate
-authority (DigiCert, Sectigo, SSL.com, Certum and others). Since 2023 their
+If Artifact Signing isn't available, buy an **individual-validated
+code-signing certificate** in your own name from a certificate authority
+(Sectigo, SSL.com, Certum and others sell them to individual developers). Since 2023 their
 private keys must stay in hardware: the CA delivers either a USB token or,
 more practical for CI, a **cloud key service** (DigiCert KeyLocker, SSL.com
 eSigner, Certum SimplySign) that signtool reaches through the CA's key
@@ -93,7 +107,7 @@ storage provider.
 `sign.ps1` then signs with `signtool sign /fd SHA256 /td SHA256 /tr
 <timestamp> <your arguments> <files>`. Azure settings win when both are set.
 
-A new OV certificate starts with no reputation, so SmartScreen can still warn
+A new certificate starts with no reputation, so SmartScreen can still warn
 for a while after signing begins; the warning stops as the signed installer is
 downloaded and run without problems.
 
