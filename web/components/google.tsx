@@ -3,8 +3,9 @@
 import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
-import { Alert, Badge, Button, Card, Details, Field, Toggle } from "@/components/ui";
+import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, LinkButton, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { connectionHref } from "@/lib/client/routes";
 
 interface Access {
   key: string;
@@ -13,11 +14,34 @@ interface Access {
   note: string;
 }
 
+interface AppInfo {
+  id: string;
+  name: string;
+  client_id: string;
+  accounts: number;
+}
+
+interface AccountInfo {
+  name: string;
+  email: string | null;
+  owner: string;
+  shared: boolean;
+  app: string | null;
+}
+
 interface GoogleApp {
   configured: boolean;
   client_id: string | null;
+  apps: AppInfo[];
+  accounts: AccountInfo[];
   desktop: boolean;
   access: Access[];
+}
+
+interface Credentials {
+  name?: string;
+  client_id: string;
+  client_secret: string;
 }
 
 interface GoogleTool {
@@ -38,6 +62,8 @@ const APIS: [string, string][] = [
   ["Google Sheets API", "sheets.googleapis.com"],
 ];
 export const DEFAULT_ACCESS = ["mail_read", "mail_send"];
+// Google's limit for an unverified app, over its whole life.
+const ACCOUNT_CAP = 100;
 
 function Outside({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -47,101 +73,202 @@ function Outside({ href, children }: { href: string; children: React.ReactNode }
   );
 }
 
-/** Settings › Google: the owner's own Google app, set up once in their own Google Cloud
- * project. Every Google account (a client's or yours) signs in through it. */
-export function GoogleSettings() {
-  const app = useApi<GoogleApp>("google/app");
+/** How to create a Google app in a Google Cloud project, and what to expect of it. */
+function SetupSteps({ access }: { access: Access[] }) {
+  return (
+    <>
+      <ol className="list-decimal space-y-3 pl-5 text-sm">
+        <li>
+          Open the <Outside href={`${CONSOLE}/projectcreate`}>Google Cloud console</Outside> signed in with your own Google account, and create a project (any name, say “Ringkeeper”). No billing is needed.
+        </li>
+        <li>
+          Turn on the four APIs (each link opens it; click <strong>Enable</strong>):{" "}
+          {APIS.map(([label, id], i) => (
+            <span key={id}>
+              {i ? ", " : ""}
+              <Outside href={`${CONSOLE}/apis/library/${id}`}>{label}</Outside>
+            </span>
+          ))}
+          .
+        </li>
+        <li>
+          Open <Outside href={`${CONSOLE}/auth/branding`}>Google Auth Platform › Branding</Outside> and click <strong>Get started</strong>: app name “Ringkeeper”, your email as support email, <strong>Audience: External</strong>, your email as contact, agree, <strong>Create</strong>.
+        </li>
+        <li>
+          Open <Outside href={`${CONSOLE}/auth/audience`}>Audience</Outside> and click <strong>Publish app</strong>, then <strong>Confirm</strong>. Left in “Testing”, Google signs every account out after 7 days.
+        </li>
+        <li>
+          Open <Outside href={`${CONSOLE}/auth/scopes`}>Data Access</Outside> › <strong>Add or remove scopes</strong>, paste these into “Manually add scopes”, <strong>Add to table</strong>, <strong>Update</strong>, <strong>Save</strong>:
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-sunken p-2 text-xs">{access.map((a) => a.scope).join("\n")}</pre>
+        </li>
+        <li>
+          Open <Outside href={`${CONSOLE}/auth/clients`}>Clients</Outside> › <strong>Create client</strong>: Application type <strong>Desktop app</strong>, name “Ringkeeper desktop”, <strong>Create</strong>. Copy the Client ID and the Client secret now: Google shows the secret only once.
+        </li>
+        <li>Paste both here. They&apos;re stored encrypted on this computer.</li>
+      </ol>
+      <div className="mt-3 space-y-1 rounded-xl bg-sunken p-3 text-xs text-muted">
+        <p>
+          <strong>What to expect:</strong> the app stays “unverified”. Each account you sign in sees “Google hasn&apos;t verified this app”: click <strong>Advanced</strong>, then <strong>Go to Ringkeeper (unsafe)</strong>. It&apos;s your own app, so that&apos;s expected.
+        </p>
+        <p>Google allows an unverified app up to {ACCOUNT_CAP} accounts over its whole life (Gmail, Drive, Calendar and Sheets access all count).</p>
+        <p>A Google account stops working here if its password changes (for mail), if it&apos;s unused for six months, or if its owner removes Ringkeeper; sign in again then. A client&apos;s Workspace admin may need to trust your app&apos;s client ID, or have you use an app in their own Google Cloud project.</p>
+      </div>
+    </>
+  );
+}
+
+/** A Google app's client ID and secret (and, for another app, its name). */
+function AppCredentials({ named = false, saveLabel, onSave, onCancel }: { named?: boolean; saveLabel: string; onSave: (json: Credentials) => Promise<unknown>; onCancel?: () => void }) {
+  const [name, setName] = useState("");
   const [clientId, setClientId] = useState("");
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const data = app.data;
-  if (!data) return null;
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      await api("google/app", { method: "PUT", json: { client_id: clientId.trim(), client_secret: secret } });
-      setSecret("");
-      setClientId("");
-      setSaved(true);
-      app.reload();
+      await onSave({ name: named ? name.trim() : undefined, client_id: clientId.trim(), client_secret: secret });
     } catch (err) {
       setError(errorText(err));
     } finally {
       setBusy(false);
     }
   }
-  async function remove() {
-    if (!window.confirm("Remove your Google app? Google accounts can't sign in again until you add one; the ones signed in keep working until their next refresh fails.")) return;
-    await api("google/app", { method: "DELETE" }).catch((err: unknown) => setError(errorText(err)));
+
+  return (
+    <div className="space-y-3">
+      {named ? <Field label="Name" value={name} onChange={setName} placeholder="Acme's Google Cloud" hint="Whose Google Cloud project it's in, say." /> : null}
+      <Field label="Client ID" value={clientId} onChange={setClientId} placeholder="…apps.googleusercontent.com" />
+      <Field label="Client secret" type="password" value={secret} onChange={setSecret} />
+      <div className="flex flex-wrap gap-2">
+        <Button kind="primary" busy={busy} disabled={!clientId.trim() || !secret || (named && !name.trim())} onClick={save}>
+          {saveLabel}
+        </Button>
+        {onCancel ? (
+          <Button kind="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+/** Settings › Google app: the owner's own Google app, set up once in their own Google
+ * Cloud project; every Google account (a client's or yours) signs in through it. There
+ * can be more than one (a client's own project, or past Google's 100 accounts). */
+export function GoogleSettings() {
+  const app = useApi<GoogleApp>("google/app");
+  const [replacing, setReplacing] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const data = app.data;
+  if (!data) return null;
+  const several = data.apps.length > 1;
+  const appName = (id: string | null) => data.apps.find((a) => a.id === id)?.name ?? id ?? "";
+
+  async function saved(text: string) {
+    setReplacing(null);
+    setError(null);
+    setNotice(text);
     app.reload();
+  }
+  async function remove(id: string) {
+    setNotice(null);
+    try {
+      await api(`google/apps/${id}`, { method: "DELETE" });
+      await saved("Removed.");
+    } catch (err) {
+      setError(errorText(err));
+    }
   }
 
   return (
     <Card className="mb-4 space-y-3">
-      <h2 className="font-semibold">Google</h2>
+      <h2 className="font-semibold">Google app (one-time setup)</h2>
+      <p className="text-sm">This connects Ringkeeper to Google once. Add each Google account under Connections, as many as you need, one per client or project.</p>
       <p className="text-sm text-muted">
-        Gmail, Drive, Calendar and Sheets, for your clients&apos; Google accounts and your own. They sign in through a Google app you create once, in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
+        Gmail, Drive, Calendar and Sheets, for your clients&apos; Google accounts and your own. They sign in through a Google app you create in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
       </p>
       {data.configured ? (
-        <Alert tone="good">
-          Your Google app is set up ({data.client_id}). Add Google accounts under Connections › Add a connection.
-        </Alert>
-      ) : null}
-      <Details label={data.configured ? "How it was set up" : "Set it up (about 10 minutes)"}>
-        <ol className="list-decimal space-y-3 pl-5 text-sm">
-          <li>
-            Open the <Outside href={`${CONSOLE}/projectcreate`}>Google Cloud console</Outside> signed in with your own Google account, and create a project (any name, say “Ringkeeper”). No billing is needed.
-          </li>
-          <li>
-            Turn on the four APIs (each link opens it; click <strong>Enable</strong>):{" "}
-            {APIS.map(([label, id], i) => (
-              <span key={id}>
-                {i ? ", " : ""}
-                <Outside href={`${CONSOLE}/apis/library/${id}`}>{label}</Outside>
-              </span>
+        <>
+          <ul className="space-y-2">
+            {data.apps.map((a) => (
+              <li key={a.id} className="space-y-2 rounded-xl border border-line p-3">
+                <div className="flex flex-wrap items-center gap-x-2 text-sm">
+                  <span className="font-medium">{a.name}</span>
+                  {several && a.id === data.apps[0]?.id ? <Badge tone="accent">default</Badge> : null}
+                  <span className="min-w-0 truncate text-xs text-muted">{a.client_id}</span>
+                  <span className="ml-auto text-xs text-muted">
+                    {a.accounts} of {ACCOUNT_CAP} accounts
+                  </span>
+                </div>
+                {replacing === a.id ? (
+                  <AppCredentials saveLabel="Replace" onCancel={() => setReplacing(null)} onSave={(json) => api(`google/apps/${a.id}`, { method: "PUT", json }).then(() => saved("Saved."))} />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button kind="ghost" onClick={() => setReplacing(a.id)}>
+                      Replace its client ID and secret
+                    </Button>
+                    <ConfirmButton
+                      kind="secondary"
+                      question={
+                        a.accounts
+                          ? `Remove ${a.name}? ${a.accounts === 1 ? "The account" : `The ${a.accounts} accounts`} that signed in through it stop working when their access next renews (within the hour); sign ${a.accounts === 1 ? "it" : "them"} in again through another app.`
+                          : `Remove ${a.name}?`
+                      }
+                      confirm={`Remove ${a.name}`}
+                      onConfirm={() => remove(a.id)}
+                    >
+                      Remove
+                    </ConfirmButton>
+                  </div>
+                )}
+              </li>
             ))}
-            .
-          </li>
-          <li>
-            Open <Outside href={`${CONSOLE}/auth/branding`}>Google Auth Platform › Branding</Outside> and click <strong>Get started</strong>: app name “Ringkeeper”, your email as support email, <strong>Audience: External</strong>, your email as contact, agree, <strong>Create</strong>.
-          </li>
-          <li>
-            Open <Outside href={`${CONSOLE}/auth/audience`}>Audience</Outside> and click <strong>Publish app</strong>, then <strong>Confirm</strong>. Left in “Testing”, Google signs every account out after 7 days.
-          </li>
-          <li>
-            Open <Outside href={`${CONSOLE}/auth/scopes`}>Data Access</Outside> › <strong>Add or remove scopes</strong>, paste these into “Manually add scopes”, <strong>Add to table</strong>, <strong>Update</strong>, <strong>Save</strong>:
-            <pre className="mt-1 overflow-x-auto rounded-lg bg-sunken p-2 text-xs">{data.access.map((a) => a.scope).join("\n")}</pre>
-          </li>
-          <li>
-            Open <Outside href={`${CONSOLE}/auth/clients`}>Clients</Outside> › <strong>Create client</strong>: Application type <strong>Desktop app</strong>, name “Ringkeeper desktop”, <strong>Create</strong>. Copy the Client ID and the Client secret now: Google shows the secret only once.
-          </li>
-          <li>Paste both below. They&apos;re stored encrypted on this computer.</li>
-        </ol>
-        <div className="mt-3 space-y-1 rounded-xl bg-sunken p-3 text-xs text-muted">
-          <p>
-            <strong>What to expect:</strong> the app stays “unverified”. Each account you sign in sees “Google hasn&apos;t verified this app”: click <strong>Advanced</strong>, then <strong>Go to Ringkeeper (unsafe)</strong>. It&apos;s your own app, so that&apos;s expected.
-          </p>
-          <p>Google allows an unverified app up to 100 accounts over its whole life (Gmail, Drive, Calendar and Sheets access all count).</p>
-          <p>A Google account stops working here if its password changes (for mail), if it&apos;s unused for six months, or if its owner removes Ringkeeper; sign in again then. A client&apos;s Workspace admin may need to trust your app&apos;s client ID.</p>
-        </div>
+          </ul>
+          <LinkButton kind="primary" href="/connections/new?google=1">
+            Add a Google account
+          </LinkButton>
+          <div className="space-y-1">
+            <h3 className="text-sm font-medium">Google accounts ({data.accounts.length})</h3>
+            {data.accounts.length ? (
+              <ul className="space-y-1">
+                {data.accounts.map((a) => (
+                  <li key={a.name} className="text-sm">
+                    <Link href={connectionHref(a)} className="text-accent underline">
+                      {a.name}
+                    </Link>
+                    <span className="text-muted">
+                      {" "}
+                      · {a.email} · {a.shared ? "yours" : a.owner}
+                      {several ? ` · through ${appName(a.app)}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">None yet.</p>
+            )}
+          </div>
+          <Details label="Add another Google app">
+            <div className="space-y-3">
+              <p className="text-sm text-muted">
+                For a client whose Workspace admin only trusts an app in their own Google Cloud project, or for more accounts than Google allows one app ({ACCOUNT_CAP}). Create it the same way (the steps below), in that project. Each Google account then picks the app it signs in through; the first is the default.
+              </p>
+              <AppCredentials key={data.apps.length} named saveLabel="Add app" onSave={(json) => api("google/apps", { json }).then(() => saved("Added."))} />
+            </div>
+          </Details>
+        </>
+      ) : null}
+      <Details label={data.configured ? "How a Google app is set up" : "Set it up (about 10 minutes)"}>
+        <SetupSteps access={data.access} />
       </Details>
-      <Field label="Client ID" value={clientId} onChange={setClientId} placeholder="…apps.googleusercontent.com" />
-      <Field label="Client secret" type="password" value={secret} onChange={setSecret} />
-      <div className="flex flex-wrap gap-2">
-        <Button kind="primary" busy={busy} disabled={!clientId.trim() || !secret} onClick={save}>
-          {data.configured ? "Replace" : "Save"}
-        </Button>
-        {data.configured ? (
-          <Button kind="ghost" onClick={remove}>
-            Remove
-          </Button>
-        ) : null}
-      </div>
-      {saved ? <Alert tone="good">Saved.</Alert> : null}
+      {data.configured ? null : <AppCredentials saveLabel="Save" onSave={(json) => api("google/app", { method: "PUT", json }).then(() => saved("Saved. Now add your Google accounts."))} />}
+      {notice ? <Alert tone="good">{notice}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
     </Card>
   );
@@ -156,6 +283,7 @@ export function GoogleConnect({
   project,
   replace,
   initial = DEFAULT_ACCESS,
+  initialApp = "",
   onAdded,
 }: {
   owner?: string;
@@ -163,10 +291,12 @@ export function GoogleConnect({
   project?: string;
   replace?: string;
   initial?: string[];
+  initialApp?: string;
   onAdded: (name: string) => void;
 }) {
   const app = useApi<GoogleApp>("google/app");
   const [access, setAccess] = useState<string[]>(initial);
+  const [appId, setAppId] = useState(initialApp);
   const [name, setName] = useState("");
   const [all, setAll] = useState(false);
   const [state, setState] = useState<string | null>(null);
@@ -198,7 +328,7 @@ export function GoogleConnect({
   if (!data.configured) {
     return (
       <p className="text-sm text-muted">
-        First set up your Google app: <Link href="/settings#google" className="text-accent underline">Settings › Google</Link>.
+        First set up your Google app: <Link href="/settings#google" className="text-accent underline">Settings › Google app</Link>.
       </p>
     );
   }
@@ -207,9 +337,10 @@ export function GoogleConnect({
     setBusy(true);
     setError(null);
     try {
+      const through = appId || undefined; // left out: the first app, or the one it used
       const body = replace
-        ? { access, replace }
-        : { access, owner: shared ? undefined : owner, shared, all_projects: shared && all, name: name.trim() || undefined, project };
+        ? { access, replace, app: through }
+        : { access, owner: shared ? undefined : owner, shared, all_projects: shared && all, name: name.trim() || undefined, project, app: through };
       const started = await api<{ url: string; state: string }>("google/signin", { json: body });
       window.open(started.url, "_blank", "noopener");
       setState(started.state);
@@ -223,6 +354,15 @@ export function GoogleConnect({
 
   return (
     <div className="space-y-3">
+      {data.apps.length > 1 ? (
+        <Select
+          label="Sign in through"
+          value={appId || (replace ? "" : (data.apps[0]?.id ?? ""))}
+          onChange={setAppId}
+          options={[...(replace && !initialApp ? [["", "The app it signed in through"] as [string, string]] : []), ...data.apps.map((a): [string, string] => [a.id, `${a.name} (${a.accounts} of ${ACCOUNT_CAP} accounts)`])]}
+          hint="Which of your Google apps. A client's Workspace admin may trust only the one in their own Google Cloud project."
+        />
+      ) : null}
       <fieldset className="space-y-1">
         <legend className="text-sm font-medium">What may it be used for?</legend>
         {data.access.map((a) => (
@@ -257,7 +397,7 @@ export function GoogleConnect({
 /** A Google account's card: which address, what it was given, and per write tool, ask
  * first (the default) or run without asking. */
 export function GoogleAccount({ name, onChange }: { name: string; onChange: () => void }) {
-  const account = useApi<{ email: string; access: string[]; tools: GoogleTool[] }>(`connections/${name}/google`);
+  const account = useApi<{ email: string; access: string[]; app: string | null; tools: GoogleTool[] }>(`connections/${name}/google`);
   const app = useApi<GoogleApp>("google/app");
   const [changing, setChanging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -283,6 +423,7 @@ export function GoogleAccount({ name, onChange }: { name: string; onChange: () =
       <p className="text-sm">
         <span className="font-medium">{data.email}</span>
         <span className="text-muted"> · {data.access.map((k) => labels[k] ?? k).join(", ")}</span>
+        {(app.data?.apps.length ?? 0) > 1 ? <span className="text-muted"> · through {app.data?.apps.find((a) => a.id === data.app)?.name ?? data.app}</span> : null}
       </p>
       <Details label="Tools and approvals">
         <ul className="space-y-2">
@@ -302,7 +443,7 @@ export function GoogleAccount({ name, onChange }: { name: string; onChange: () =
         </ul>
       </Details>
       {changing ? (
-        <GoogleConnect replace={name} initial={data.access} onAdded={() => { setChanging(false); account.reload(); onChange(); }} />
+        <GoogleConnect replace={name} initial={data.access} initialApp={data.app ?? ""} onAdded={() => { setChanging(false); account.reload(); onChange(); }} />
       ) : (
         <Button kind="ghost" onClick={() => setChanging(true)}>
           Change access or sign in again

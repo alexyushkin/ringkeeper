@@ -22,3 +22,10 @@ export function threadHref(id: string): string {
 export function clientHref(name: string): string {
   return `/client?name=${encodeURIComponent(name)}`;
 }
+
+/** One connection: on its client's page, or (a shared tool) under Connections. The
+ * hash opens the Connections tab, then that connection (LibraryCard). */
+export function connectionHref(connection: { name: string; owner: string; shared: boolean }): string {
+  const hash = `#connections/${encodeURIComponent(connection.name)}`;
+  return connection.shared ? `/connections${hash}` : `${clientHref(connection.owner)}${hash}`;
+}

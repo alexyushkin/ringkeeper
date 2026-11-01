@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ModelSettings, MoneySetting } from "@/components/model-settings";
 import { TelegramPairing } from "@/components/telegram";
-import { Alert, Button, Card, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
+import { Alert, Button, Card, ConfirmButton, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { applyTheme, readTheme } from "@/lib/client/theme";
@@ -69,7 +69,6 @@ export default function SettingsPage() {
   }
 
   async function stopEverything() {
-    if (!window.confirm("Stop every running task and pause everything until you resume?")) return;
     try {
       const result = await api<{ stopped: number }>("stop-all", { method: "POST" });
       setNotice(`Stopped ${result.stopped} task${result.stopped === 1 ? "" : "s"}. Nothing new starts until you resume.`);
@@ -110,11 +109,11 @@ export default function SettingsPage() {
           {
             key: "voice",
             label: "Voice",
-            content: () => <VoiceSettings language={v.stt_language ?? AUTO} onLanguage={(code) => change({ stt_language: code }, "Saved the language.")} />,
+            content: () => <VoiceSettings language={v.stt_language ?? AUTO} onLanguage={(value) => change({ stt_language: value }, "Saved the languages.")} />,
           },
         ]
       : []),
-    ...(DESKTOP ? [{ key: "google", label: "Google", content: () => <GoogleSettings /> }] : []),
+    ...(DESKTOP ? [{ key: "google", label: "Google app", content: () => <GoogleSettings /> }] : []),
     {
       key: "notifications",
       label: "Notifications",
@@ -200,9 +199,9 @@ export default function SettingsPage() {
             Resume
           </Button>
         ) : (
-          <Button kind="danger" onClick={stopEverything}>
+          <ConfirmButton question="Stop every running task and pause everything until you resume?" confirm="Stop every task" onConfirm={stopEverything}>
             Stop everything
-          </Button>
+          </ConfirmButton>
         )}
       </div>
 

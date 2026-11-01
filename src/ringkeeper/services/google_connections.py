@@ -1,5 +1,5 @@
-"""Google accounts as connections: many side by side, all through the owner's one
-Google app, each with its own access (services.google_oauth).
+"""Google accounts as connections: many side by side, each signed in through one of
+the owner's Google apps, each with its own access (services.google_oauth).
 
 An account is a client's (the same-client rule: only that client's projects)
 or yours (a shared tool: any project, or all of them), the same choice as for
@@ -101,7 +101,7 @@ def finish(
     """The callback: store the account (or its new sign-in) and link it. Returns the name."""
     try:
         secret, email, granted = google_oauth.finish(settings, found, code)
-        name = _store(session, settings, found.connection, secret, email, granted)
+        name = _store(session, settings, found, secret, email, granted)
     except (google_oauth.SignInError, RuleViolationError) as failed:
         _ended(state, Outcome("failed", error=str(failed)))
         raise
@@ -112,11 +112,12 @@ def finish(
 def _store(
     session: Session,
     settings: Settings,
-    connection: dict[str, Any],
+    found: google_oauth.Pending,
     secret: str,
     email: str,
     granted: list[str],
 ) -> str:
+    connection = found.connection
     if replace := connection.get("replace"):
         instance = instances.get_instance(session, str(replace))
         before = str(instance.config.get("email") or "")
@@ -125,7 +126,7 @@ def _store(
                 f"That was {email}, but '{instance.name}' is {before}. Sign in as {before}."
             )
         secrets_in.store_connection(session, settings, instance.name, InstanceType.GOOGLE, secret)
-        instance.config = {**instance.config, "email": email, "access": granted}
+        instance.config = {**instance.config, "email": email, "access": granted, "app": found.app}
         admin_audit.record(
             session, "connection.update",
             f"{instance.name}: signed in again as {email} ({', '.join(granted)})",
@@ -145,7 +146,7 @@ def _store(
             # Every write waits for approval whatever the kind of data, so a Google
             # account is never "prod": that lets a project make one its default.
             name=name, type=InstanceType.GOOGLE, env=Env.DEV, secret_ref=ref, owner=owner,
-            config={"email": email, "access": granted, "source": "signin"},
+            config={"email": email, "access": granted, "source": "signin", "app": found.app},
             shared=shared, all_projects=shared and bool(connection.get("all_projects")),
         ),
     )  # fmt: skip
@@ -164,6 +165,28 @@ def _store(
             instance=name,
         )  # fmt: skip
     return name
+
+
+def app_of(instance: Instance, first: str | None) -> str | None:
+    """The app an account signs in through: the one it chose, or (signed in before there
+    could be more than one) the first."""
+    return str(instance.config.get("app") or "") or first
+
+
+def accounts(session: Session, settings: Settings) -> list[dict[str, Any]]:
+    """Every Google account, for Settings > Google app: whose, which address, which app."""
+    apps = google_oauth.list_apps(settings)
+    first = apps[0].id if apps else None
+    return [
+        {
+            "name": i.name,
+            "email": i.config.get("email"),
+            "owner": i.owner,
+            "shared": i.shared,
+            "app": app_of(i, first),
+        }
+        for i in instances.list_instances(session, type=InstanceType.GOOGLE)
+    ]
 
 
 def tools(instance: Instance) -> list[dict[str, Any]]:

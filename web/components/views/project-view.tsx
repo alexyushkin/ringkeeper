@@ -8,7 +8,7 @@ import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from 
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
-import { Alert, Button, Details, EnvBadge, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Details, EnvBadge, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
@@ -97,7 +97,6 @@ export function ProjectView({ name }: { name: string }) {
   }
 
   async function remove() {
-    if (!window.confirm(`Remove ${name}? Its connections stay; only the link to them goes.`)) return;
     await run(() => api(`projects/${name}`, { method: "DELETE" }));
     router.push("/projects");
   }
@@ -252,9 +251,9 @@ export function ProjectView({ name }: { name: string }) {
           <Section id="project-settings" title="About this project" summary={about.description || undefined}>
             <ProjectForm existing={about} onSaved={() => project.reload()} />
           </Section>
-          <Button kind="danger" onClick={remove}>
+          <ConfirmButton question={`Remove ${name}? Its connections stay; only the link to them goes.`} confirm={`Remove ${name}`} onConfirm={remove}>
             Remove project
-          </Button>
+          </ConfirmButton>
         </>
       ),
     },

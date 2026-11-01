@@ -23,6 +23,22 @@ publishes it as the release notes and the app shows it with the update.
   connection says so plainly: "All projects except Acme (client),
   seaside-messages". Left-out projects don't see it, and the gateway refuses
   their calls to it. Turning "All projects" off drops the exceptions.
+- **Google app, set up once; as many Google accounts as you need.** Settings ›
+  Google app says what it is (connecting Ringkeeper to Google once), then shows
+  **Add a Google account** and every account signed in, each linking to it.
+  You can add more Google apps: a client's own Google Cloud project (for a
+  Workspace admin who only trusts their own) or another 100 accounts. Each
+  account picks the app it signs in through; the first is the default.
+- **Projects from Claude Chat and Cowork.** Besides the folders you opened in
+  Claude Code, adding a project now offers the folders you picked in Cowork and
+  the Claude app's Code tab, and your Claude projects: each gets a new folder
+  with its instructions (as CLAUDE.md) and its files.
+- **Several voice languages.** Settings › Voice takes a few languages; each
+  recording is detected among just those.
+- **Removing asks first, in the app.** Removing a project, a connection or a
+  Google app, and Stop everything, ask in place before doing it. The desktop
+  window didn't show the browser's confirmation, so one click did it.
+- **No scroll bar under the tabs** (Settings and other tabbed pages).
 - **Light or dark, your choice.** Settings › Appearance has a Theme: System
   (as before, it follows Windows' light or dark setting), Light or Dark. It's
   kept for this computer, or per browser on a server install.

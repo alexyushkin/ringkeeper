@@ -32,12 +32,15 @@ export default function NewConnectionPage() {
 /**
  * Adding a connection starts with what it is: a client's account, or your own tool
  * that any client's projects can share. Only a client's account asks whose it is.
- * `?kind=shared` (or `client`) skips the first question.
+ * `?kind=shared` (or `client`) skips the first question; `?google=1` opens the
+ * Google account form.
  */
 function NewConnection() {
   const router = useRouter();
   const scope = useScope();
-  const asked = useSearchParams().get("kind");
+  const search = useSearchParams();
+  const asked = search.get("kind");
+  const google = search.get("google") === "1"; // from Settings › Google app
   const projects = useApi<{ owner: string }[]>("projects");
   const clients = [...new Set((projects.data ?? []).map((p) => p.owner))].sort((a, b) => a.localeCompare(b));
   const [kind, setKind] = useState<Kind | null>(asked === "shared" || asked === "client" ? asked : null);
@@ -106,7 +109,7 @@ function NewConnection() {
       <PageHeader title={title} subtitle={shared ? "Yours, for any client's projects. Anything not marked read-only waits for your approval." : undefined} />
       <Card className="space-y-4">
         <h2 className="font-semibold">{shared ? "Find a tool" : "Connect a service"}</h2>
-        <Details label={shared ? "Your Google account (Gmail, Drive, Calendar, Sheets)" : "A Google account (Gmail, Drive, Calendar, Sheets)"}>
+        <Details label={shared ? "Your Google account (Gmail, Drive, Calendar, Sheets)" : "A Google account (Gmail, Drive, Calendar, Sheets)"} defaultOpen={google}>
           <GoogleConnect owner={owner} shared={shared} onAdded={done} />
         </Details>
         <Catalog client={owner} kind={kind} onAdded={done} />

@@ -1,8 +1,12 @@
 """Google accounts through the owner's own Google app (an OAuth client in their own
-Google Cloud project, Settings > Google).
+Google Cloud project, Settings > Google app).
 
-The app (its client ID and secret) is stored once, in the vault. Each Google
-account is its own connection (type `google`), with the scopes chosen for it:
+The app (its client ID and secret) is stored once, in the vault. There may be
+more than one: a client's own Google Cloud project (a Workspace admin who only
+trusts their own app), or another to get past the 100 accounts Google allows an
+unverified app. Each Google account is its own connection (type `google`),
+signed in through one of the apps (the first, unless it chose another), with
+the scopes chosen for it:
 
 1. `start`: the consent page to open, with PKCE and a one-time `state`; what's
    needed to finish stays in this process's memory for ten minutes. Desktop
@@ -21,6 +25,7 @@ import base64
 import contextlib
 import hashlib
 import json
+import re
 import secrets
 import threading
 import time
@@ -40,7 +45,8 @@ AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN = "https://oauth2.googleapis.com/token"  # noqa: S105 (a URL)
 USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
 REVOKE = "https://oauth2.googleapis.com/revoke"
-APP_REF = "file://ringkeeper/google-app"
+APP_REF = "file://ringkeeper/google-app"  # every app, as {"apps": [...]}
+FIRST_APP = "google-app"  # the id of the one app there used to be
 PENDING_SECONDS = 600
 REFRESH_MARGIN_SECONDS = 120
 TIMEOUT = 20.0
@@ -91,6 +97,8 @@ class SignInError(mcp_oauth.SignInError):
 
 @dataclass(frozen=True)
 class App:
+    id: str
+    name: str
     client_id: str
     client_secret: str
 
@@ -101,6 +109,7 @@ class Pending:
     verifier: str
     scopes: list[str]  # access keys
     connection: dict[str, Any]  # what to create (or `replace`), as the start asked
+    app: str  # the id of the app it signs in through
     created: float = field(default_factory=time.monotonic)
 
 
@@ -113,10 +122,39 @@ def _http() -> httpx2.Client:
     return httpx2.Client(timeout=TIMEOUT, transport=transport, follow_redirects=False)
 
 
-# --- The owner's Google app ---
+# --- The owner's Google apps ---
 
 
-def save_app(settings: Settings, client_id: str, client_secret: str) -> App:
+def list_apps(settings: Settings) -> list[App]:
+    try:
+        value = get_vault(settings).resolve(APP_REF).reveal()
+    except RingkeeperError:
+        return []
+    data = json.loads(value)
+    if "apps" not in data:  # stored before there could be more than one
+        data = {"apps": [{"id": FIRST_APP, "name": "Your Google app", **data}]}
+    return [
+        App(str(a["id"]), str(a["name"]), str(a["client_id"]), str(a["client_secret"]))
+        for a in data["apps"]
+    ]
+
+
+def _store_apps(settings: Settings, apps: list[App]) -> None:
+    if apps:
+        get_vault(settings).store(APP_REF, json.dumps({"apps": [a.__dict__ for a in apps]}))
+    else:
+        get_vault(settings).delete(APP_REF)
+
+
+def load_app(settings: Settings, app_id: str | None = None) -> App | None:
+    """That app, or (no id) the first: the one an account uses unless it chose another."""
+    apps = list_apps(settings)
+    if app_id is None:
+        return apps[0] if apps else None
+    return next((a for a in apps if a.id == app_id), None)
+
+
+def _credentials(client_id: str, client_secret: str) -> tuple[str, str]:
     client_id, client_secret = client_id.strip(), "".join(client_secret.split())
     if not client_id.endswith(".apps.googleusercontent.com"):
         raise RuleViolationError(
@@ -124,28 +162,74 @@ def save_app(settings: Settings, client_id: str, client_secret: str) -> App:
         )
     if not client_secret:
         raise RuleViolationError("Paste the client secret too (Google shows it only once).")
-    app = App(client_id, client_secret)
-    get_vault(settings).store(APP_REF, json.dumps(app.__dict__))
+    return client_id, client_secret
+
+
+def save_app(
+    settings: Settings,
+    client_id: str,
+    client_secret: str,
+    app_id: str | None = None,
+    name: str | None = None,
+) -> App:
+    """Replace an app's client (and name), or (no id) the first app's, adding it if there's
+    none yet."""
+    client_id, client_secret = _credentials(client_id, client_secret)
+    apps = list_apps(settings)
+    if app_id is None and not apps:
+        return add_app(settings, name or "Your Google app", client_id, client_secret)
+    target = app_id or apps[0].id
+    current = load_app(settings, target)
+    if current is None:
+        raise RuleViolationError(f"There's no Google app '{target}'.")
+    _check_unused(apps, client_id, but=target)
+    app = App(target, (name or "").strip() or current.name, client_id, client_secret)
+    _store_apps(settings, [app if a.id == target else a for a in apps])
     return app
 
 
-def load_app(settings: Settings) -> App | None:
-    try:
-        value = get_vault(settings).resolve(APP_REF).reveal()
-    except RingkeeperError:
-        return None
-    data = json.loads(value)
-    return App(str(data["client_id"]), str(data["client_secret"]))
+def add_app(settings: Settings, name: str, client_id: str, client_secret: str) -> App:
+    client_id, client_secret = _credentials(client_id, client_secret)
+    name = name.strip()
+    if not name:
+        raise RuleViolationError("Name this Google app (say, whose Google Cloud project it is).")
+    apps = list_apps(settings)
+    _check_unused(apps, client_id)
+    base = FIRST_APP if not apps else re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    base = base[:40].strip("-") or FIRST_APP
+    app_id, n = base, 2
+    while any(a.id == app_id for a in apps):
+        app_id, n = f"{base}-{n}", n + 1
+    app = App(app_id, name, client_id, client_secret)
+    _store_apps(settings, [*apps, app])
+    return app
 
 
-def forget_app(settings: Settings) -> None:
-    get_vault(settings).delete(APP_REF)
+def _check_unused(apps: list[App], client_id: str, but: str | None = None) -> None:
+    for a in apps:
+        if a.client_id == client_id and a.id != but:
+            raise RuleViolationError(f"That client is already set up, as '{a.name}'.")
 
 
-def _app(settings: Settings) -> App:
-    app = load_app(settings)
+def forget_app(settings: Settings, app_id: str | None = None) -> None:
+    """Remove that app (no id: the first). Accounts that signed in through it stop
+    working at their next refresh."""
+    apps = list_apps(settings)
+    target = app_id or (apps[0].id if apps else None)
+    if target is None or not any(a.id == target for a in apps):
+        raise RuleViolationError(f"There's no Google app '{target}'.")
+    _store_apps(settings, [a for a in apps if a.id != target])
+
+
+def _app(settings: Settings, app_id: str | None = None) -> App:
+    app = load_app(settings, app_id)
+    if app is None and app_id is not None and list_apps(settings):
+        raise SignInError(
+            "The Google app this account signed in through was removed (Settings > Google "
+            "app). Sign it in again through another one."
+        )
     if app is None:
-        raise SignInError("Set up your Google app first (Settings > Google).")
+        raise SignInError("Set up your Google app first (Settings > Google app).")
     return app
 
 
@@ -160,10 +244,15 @@ def scopes_for(keys: list[str]) -> list[str]:
 
 
 def start(
-    settings: Settings, redirect_uri: str, keys: list[str], connection: dict[str, Any]
+    settings: Settings,
+    redirect_uri: str,
+    keys: list[str],
+    connection: dict[str, Any],
+    app_id: str | None = None,
 ) -> str:
-    """Google's consent page for these accesses; the connection is made on the way back."""
-    app = _app(settings)
+    """Google's consent page for these accesses, through that app (no id: the first);
+    the connection is made on the way back."""
+    app = _app(settings, app_id)
     scope = " ".join(scopes_for(keys))
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
@@ -183,7 +272,7 @@ def start(
         params["login_hint"] = str(hint)
     with _pending_lock:
         _forget_old()
-        _pending[state] = Pending(redirect_uri, verifier, list(keys), connection)
+        _pending[state] = Pending(redirect_uri, verifier, list(keys), connection, app.id)
     return f"{AUTHORIZE}?{urlencode(params)}"
 
 
@@ -229,7 +318,7 @@ def _token_request(app: App, form: dict[str, str]) -> dict[str, Any]:
         if error in ("invalid_client", "unauthorized_client"):
             raise SignInError(
                 "Google didn't accept your app's client ID or secret. Check them in "
-                "Settings > Google."
+                "Settings > Google app."
             )
         said = tokens.get("error_description") or error
         raise SignInError(f"Google didn't give Ringkeeper access ({said}).")
@@ -252,7 +341,7 @@ def _email(access_token: str) -> str:
 def finish(settings: Settings, found: Pending, code: str) -> tuple[str, str, list[str]]:
     """(secret, the account's address, the accesses granted). An access whose scope was
     unticked on the consent screen isn't granted; none at all is an error."""
-    app = _app(settings)
+    app = _app(settings, found.app)
     tokens = _token_request(
         app,
         {
@@ -271,10 +360,11 @@ def finish(settings: Settings, found: Pending, code: str) -> tuple[str, str, lis
             "Nothing was allowed on Google's page: tick what Ringkeeper may use and try again."
         )
     email = _email(str(tokens["access_token"]))
-    return _secret(email, tokens, str(tokens["refresh_token"])), email, granted
+    return _secret(email, tokens, str(tokens["refresh_token"]), app.id), email, granted
 
 
-def _secret(email: str, tokens: dict[str, Any], refresh_token: str) -> str:
+def _secret(email: str, tokens: dict[str, Any], refresh_token: str, app_id: str) -> str:
+    """A refresh token works only with the app that got it, so the secret says which."""
     expires_in = float(tokens.get("expires_in") or 3600)
     return json.dumps(
         {
@@ -282,6 +372,7 @@ def _secret(email: str, tokens: dict[str, Any], refresh_token: str) -> str:
             "refresh_token": refresh_token,
             "access_token": tokens["access_token"],
             "expires_at": int(time.time() + expires_in),
+            "app": app_id,
         }
     )
 
@@ -321,14 +412,17 @@ def resolve(settings: Settings, vault: Vault, name: str, ref: str) -> Secret:
     with _refresh_locks.setdefault(name, threading.Lock()):
         current = parts(vault.resolve(ref).reveal())
         if _needs_refresh(current):  # not refreshed by another call meanwhile
+            # From before there could be more than one app: the first.
+            app = _app(settings, str(current["app"]) if current.get("app") else None)
             tokens = _token_request(
-                _app(settings),
+                app,
                 {"grant_type": "refresh_token", "refresh_token": str(current["refresh_token"])},
             )
             refreshed = _secret(
                 str(current["email"]),
                 tokens,
                 str(tokens.get("refresh_token") or current["refresh_token"]),
+                app.id,
             )
             vault.store(ref, refreshed)
             return Secret(ref, refreshed)

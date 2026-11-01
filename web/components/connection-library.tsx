@@ -7,7 +7,7 @@ import { LocalUpdate } from "@/components/catalog";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { GoogleAccount } from "@/components/google";
 import { McpTools } from "@/components/mcp-tools";
-import { Alert, Badge, Button, CompactRow, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, CompactRow, ConfirmButton, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
 import { ENVS, SERVICE, slugify } from "@/lib/client/words";
@@ -245,6 +245,11 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
 
 /** A connection in its client's library (or a shared tool, in the shared tools). */
 export function LibraryCard({ connection, projects, services, onChange, compact = false }: { connection: LibraryConnection; projects: string[]; services: RemoteService[]; onChange: () => void; compact?: boolean }) {
+  // A link to this connection (connectionHref) opens it and scrolls to it.
+  const [targeted] = useState(() => typeof window !== "undefined" && window.location.hash === `#connections/${encodeURIComponent(connection.name)}`);
+  useEffect(() => {
+    if (targeted) document.getElementById(`connection-${connection.name}`)?.scrollIntoView({ block: "center" });
+  }, [targeted, connection.name]);
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -265,7 +270,6 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
   }
 
   async function remove() {
-    if (!window.confirm(`Remove ${connection.name}? Its projects lose it too.`)) return;
     try {
       for (const link of connection.links ?? []) await api(`projects/${link.project}/connections/${connection.name}`, { method: "DELETE" });
       await api(`connections/${connection.name}`, { method: "DELETE" });
@@ -322,18 +326,26 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
               </Button>
             </>
           ) : null}
-          <Button kind="danger" onClick={remove}>
+          <ConfirmButton question={`Remove ${connection.name}? Its projects lose it too.`} confirm={`Remove ${connection.name}`} onConfirm={remove}>
             Remove connection
-          </Button>
+          </ConfirmButton>
           {saved ? <Alert tone="good">Saved. Test the connection to check it.</Alert> : null}
         </div>
       </Details>
       {error ? <Alert>{error}</Alert> : null}
     </>
   );
-  if (compact) return <CompactRow head={head}>{body}</CompactRow>;
+  if (compact) {
+    return (
+      <div id={`connection-${connection.name}`}>
+        <CompactRow head={head} defaultOpen={targeted}>
+          {body}
+        </CompactRow>
+      </div>
+    );
+  }
   return (
-    <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
+    <div id={`connection-${connection.name}`} className="space-y-3 rounded-2xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">{head}</div>
       {body}
     </div>

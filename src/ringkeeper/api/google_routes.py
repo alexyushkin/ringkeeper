@@ -1,5 +1,5 @@
-"""Google accounts: the owner's Google app (Settings > Google), signing in an account
-(a client's or your own), and each account's write rules.
+"""Google accounts: the owner's Google apps (Settings > Google app), signing in an
+account (a client's or your own) through one of them, and each account's write rules.
 
 The desktop app only, for now: its sign-in comes back to the app's own loopback
 address, which a "Desktop app" OAuth client accepts on any port. The callback
@@ -16,6 +16,7 @@ from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.api.remote_routes import CALLBACK_PATH
 from ringkeeper.config import Settings, get_settings
+from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import InstanceType
 from ringkeeper.schemas import Input, NonEmpty, Slug
 from ringkeeper.services import admin_audit, google_connections, google_oauth, instances
@@ -35,14 +36,26 @@ def desktop(settings: Settings) -> bool:
 
 
 @router.get("/app")
-def app_status() -> dict[str, Any]:
-    """Whether your Google app is set up (its client ID; the secret never comes back), what
-    an account can be allowed, and the address to give a Web client later."""
+def app_status(session: SessionDep) -> dict[str, Any]:
+    """Your Google apps (each one's client ID; a secret never comes back) and the accounts
+    signed in through each, what an account can be allowed, and whether sign-in works here.
+    `configured` and `client_id`: the first app, the one accounts use unless they chose."""
     settings = get_settings()
-    app = google_oauth.load_app(settings)
+    apps = google_oauth.list_apps(settings)
+    accounts = google_connections.accounts(session, settings)
     return {
-        "configured": app is not None,
-        "client_id": app.client_id if app else None,
+        "configured": bool(apps),
+        "client_id": apps[0].client_id if apps else None,
+        "apps": [
+            {
+                "id": a.id,
+                "name": a.name,
+                "client_id": a.client_id,
+                "accounts": sum(1 for account in accounts if account["app"] == a.id),
+            }
+            for a in apps
+        ],
+        "accounts": accounts,
         "desktop": desktop(settings),
         "access": [
             {"key": a.key, "label": a.label, "scope": a.scope, "note": a.note}
@@ -54,19 +67,53 @@ def app_status() -> dict[str, Any]:
 class AppIn(Input):
     client_id: Annotated[str, Field(min_length=10, max_length=300)]
     client_secret: Annotated[str, Field(min_length=6, max_length=300, repr=False)]
+    name: Annotated[str, Field(max_length=80)] | None = None
 
 
 @router.put("/app", dependencies=[RecentAuth])
 def save_app(data: AppIn, session: WriteSessionDep) -> dict[str, Any]:
-    google_oauth.save_app(get_settings(), data.client_id, data.client_secret)
+    """The first app: set it up, or replace its client."""
+    google_oauth.save_app(get_settings(), data.client_id, data.client_secret, name=data.name)
     admin_audit.record(session, "secret.google_app", "stored the Google app", by="owner")
-    return app_status()
+    return app_status(session)
 
 
 @router.delete("/app", status_code=204, dependencies=[RecentAuth])
 def remove_app(session: WriteSessionDep) -> None:
-    google_oauth.forget_app(get_settings())
+    """The first app."""
+    try:
+        google_oauth.forget_app(get_settings())
+    except RuleViolationError:
+        return  # none to remove
     admin_audit.record(session, "secret.google_app", "removed the Google app", by="owner")
+
+
+@router.post("/apps", status_code=201, dependencies=[RecentAuth])
+def add_app(data: AppIn, session: WriteSessionDep) -> dict[str, Any]:
+    """Another Google app: a client's own Google Cloud project, or one more 100 accounts."""
+    app = google_oauth.add_app(get_settings(), data.name or "", data.client_id, data.client_secret)
+    admin_audit.record(
+        session, "secret.google_app", f"added the Google app {app.name} ({app.id})", by="owner"
+    )
+    return app_status(session)
+
+
+@router.put("/apps/{app_id}", dependencies=[RecentAuth])
+def replace_app(app_id: Slug, data: AppIn, session: WriteSessionDep) -> dict[str, Any]:
+    app = google_oauth.save_app(
+        get_settings(), data.client_id, data.client_secret, app_id=app_id, name=data.name
+    )
+    admin_audit.record(
+        session, "secret.google_app", f"replaced the Google app {app.name} ({app.id})",
+        by="owner",
+    )  # fmt: skip
+    return app_status(session)
+
+
+@router.delete("/apps/{app_id}", status_code=204, dependencies=[RecentAuth])
+def forget_app(app_id: Slug, session: WriteSessionDep) -> None:
+    google_oauth.forget_app(get_settings(), app_id)
+    admin_audit.record(session, "secret.google_app", f"removed the Google app {app_id}", by="owner")
 
 
 class SignInIn(Input):
@@ -79,6 +126,9 @@ class SignInIn(Input):
     project: Slug | None = None
     # Or an account to sign in again (more access, or Google stopped accepting it).
     replace: Slug | None = None
+    # The Google app to sign in through. Left out: a new account uses the first, and
+    # one signing in again the one it used.
+    app: Slug | None = None
 
 
 @router.post("/signin", dependencies=[RecentAuth])
@@ -89,16 +139,18 @@ def start_signin(data: SignInIn, request: Request, session: SessionDep) -> dict[
         raise HTTPException(409, detail="Google accounts work in the desktop app for now.")
     if not data.replace and not data.shared and not data.owner:
         raise HTTPException(422, detail="Say whose Google account this is.")
-    connection: dict[str, Any] = data.model_dump(exclude={"access"}, exclude_none=True)
+    connection: dict[str, Any] = data.model_dump(exclude={"access", "app"}, exclude_none=True)
+    app = data.app
     if data.replace:
-        email = instances.get_instance(session, data.replace).config.get("email")
-        if email:
+        before = instances.get_instance(session, data.replace)
+        if email := before.config.get("email"):
             connection["login_hint"] = email
+        app = app or google_connections.app_of(before, None)
     google_connections.check_start(session, connection)
     try:
         # The app's own loopback address: a "Desktop app" client takes any port.
         back = str(request.base_url).rstrip("/") + CALLBACK_PATH
-        url = google_oauth.start(settings, back, list(data.access), connection)
+        url = google_oauth.start(settings, back, list(data.access), connection, app)
     except google_oauth.SignInError as error:
         raise HTTPException(409, detail=str(error)) from None
     state = url.split("state=", 1)[1].split("&", 1)[0]
@@ -121,9 +173,11 @@ def account(name: str, session: SessionDep) -> dict[str, Any]:
     instance = instances.get_instance(session, name)
     if instance.type is not InstanceType.GOOGLE:
         raise HTTPException(409, detail=f"'{name}' isn't a Google account.")
+    first = google_oauth.load_app(get_settings())
     return {
         "email": instance.config.get("email"),
         "access": instance.config.get("access") or [],
+        "app": google_connections.app_of(instance, first.id if first else None),
         "tools": google_connections.tools(instance),
     }
 

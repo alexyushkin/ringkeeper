@@ -31,6 +31,8 @@ from tests import test_web_api
 setup_code, admin, owner = test_web_api.setup_code, test_web_api.admin, test_web_api.owner
 
 CLIENT_ID = "1234-abc.apps.googleusercontent.com"
+ACME_CLIENT = "5678-acme.apps.googleusercontent.com"  # a client's own Google Cloud project
+CLIENTS = {CLIENT_ID: "s3cret-value", ACME_CLIENT: "acme-s3cret"}
 G = "https://www.googleapis.com/auth/"
 ACCOUNTS = {  # the code Google gives back -> the account that signed in
     "acme": "info@acme.example",
@@ -38,6 +40,7 @@ ACCOUNTS = {  # the code Google gives back -> the account that signed in
     "globex": "sales@globex.example",
     "mine": "me@gmail.com",
     "partial": "info@acme.example",  # unticked everything but reading mail
+    "acme-team": "team@acme.example",
 }
 
 
@@ -47,6 +50,7 @@ class FakeGoogle:
         self.revoked: list[str] = []
         self.refreshes = 0
         self.scopes: dict[str, str] = {}  # code -> scope string asked for
+        self.issued: dict[str, str] = {}  # refresh token -> the client it was given to
 
     def account(self, request: httpx2.Request) -> str:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
@@ -56,9 +60,11 @@ class FakeGoogle:
         url = str(request.url)
         if url == google_oauth.TOKEN:
             form = parse_qs(request.content.decode())
-            assert form["client_id"] == [CLIENT_ID]
-            assert form["client_secret"] == ["s3cret-value"]
+            client = form["client_id"][0]
+            assert form["client_secret"] == [CLIENTS[client]]
             if form["grant_type"] == ["refresh_token"]:
+                if self.issued.get(form["refresh_token"][0]) != client:
+                    return httpx2.Response(400, json={"error": "unauthorized_client"})
                 self.refreshes += 1
                 email = form["refresh_token"][0].split(":", 1)[1]
                 return httpx2.Response(
@@ -67,6 +73,7 @@ class FakeGoogle:
             code = form["code"][0]
             email = ACCOUNTS[code]
             scope = "openid email " + G + "gmail.readonly" if code == "partial" else self.asked
+            self.issued[f"rt:{email}"] = client
             return httpx2.Response(200, json={
                 "access_token": f"at:{email}", "refresh_token": f"rt:{email}",
                 "expires_in": 3600, "scope": scope,
@@ -119,15 +126,15 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeGoogle:
     return world
 
 
-def sign_in(app: TestClient, fake: FakeGoogle, code: str, **body: Any) -> dict[str, Any]:
+def sign_in(http: TestClient, fake: FakeGoogle, code: str, **body: Any) -> dict[str, Any]:
     """Start a sign-in, then come back from Google with `code`; how it went."""
-    started = app.post("/google/signin", json={"access": ["mail_read", "mail_send"], **body})
+    started = http.post("/google/signin", json={"access": ["mail_read", "mail_send"], **body})
     assert started.status_code == 200, started.text
     query = parse_qs(urlsplit(str(started.json()["url"])).query)
     fake.asked = query["scope"][0]
     state = started.json()["state"]
-    back = app.get("/oauth/callback", params={"state": state, "code": code})
-    status = app.get(f"/google/signin/{state}").json()
+    back = http.get("/oauth/callback", params={"state": state, "code": code})
+    status = http.get(f"/google/signin/{state}").json()
     assert (back.status_code == 200) == (status["state"] == "done"), back.text
     return status
 
@@ -152,10 +159,8 @@ def test_your_google_app_is_kept_in_the_vault(owner: TestClient, fake: FakeGoogl
     assert saved.json()["client_id"] == CLIENT_ID
     assert "s3cret-value" not in saved.text
     assert "s3cret-value" not in test_web_api.audit_text()
-    assert (
-        json.loads(get_vault().resolve(google_oauth.APP_REF).reveal())["client_secret"]
-        == "s3cret-value"
-    )
+    stored = json.loads(get_vault().resolve(google_oauth.APP_REF).reveal())
+    assert stored["apps"][0]["client_secret"] == "s3cret-value"
     started = owner.post(
         "/google/signin", json={"access": ["mail_read", "drive_files"], "owner": "acme"}
     )
@@ -320,3 +325,87 @@ def test_scopes_refresh_sign_in_again_and_removal(accounts: TestClient, fake: Fa
     # Removed: Google is told, and the tokens leave the vault.
     assert owner.delete("/connections/acme-ops", params={"force": True}).status_code == 204
     assert fake.revoked == ["rt:ops@acme.example"]
+
+
+def test_more_than_one_google_app(accounts: TestClient, fake: FakeGoogle) -> None:
+    """A client's own Google Cloud project as a second app: an account signs in and
+    refreshes through the app it chose; the others keep the first."""
+    owner = accounts
+    added = owner.post(
+        "/google/apps",
+        json={
+            "name": "Acme's Google Cloud", "client_id": ACME_CLIENT,
+            "client_secret": "acme-s3cret",
+        },
+    )  # fmt: skip
+    assert added.status_code == 201, added.text
+    assert "acme-s3cret" not in added.text
+    apps = {a["id"]: a for a in added.json()["apps"]}
+    assert apps["google-app"]["accounts"] == 4  # the fixture's, signed in through the first
+    assert apps["acme-s-google-cloud"] == {
+        "id": "acme-s-google-cloud", "name": "Acme's Google Cloud", "client_id": ACME_CLIENT,
+        "accounts": 0,
+    }  # fmt: skip
+    twice = owner.post(
+        "/google/apps", json={"name": "Again", "client_id": ACME_CLIENT, "client_secret": "x" * 8}
+    )
+    assert twice.status_code == 409
+    assert "already set up, as 'Acme's Google Cloud'" in twice.text
+
+    # Through Acme's app: Google is asked with its client, and the account remembers it.
+    started = owner.post(
+        "/google/signin",
+        json={"access": ["mail_read"], "owner": "acme", "app": "acme-s-google-cloud"},
+    )
+    assert parse_qs(urlsplit(str(started.json()["url"])).query)["client_id"] == [ACME_CLIENT]
+    done = sign_in(
+        owner, fake, "acme-team", owner="acme", name="acme-own", app="acme-s-google-cloud"
+    )
+    assert done["state"] == "done"
+    listed = {a["name"]: a for a in owner.get("/google/app").json()["accounts"]}
+    assert listed["acme-own"] == {
+        "name": "acme-own", "email": "team@acme.example", "owner": "acme", "shared": False,
+        "app": "acme-s-google-cloud",
+    }  # fmt: skip
+    assert listed["acme-info"]["app"] == "google-app"
+
+    # A refresh goes through the account's own app (the fake refuses any other client).
+    with session_scope() as session:
+        own = instances.get_instance(session, "acme-own").secret_ref
+        first = instances.get_instance(session, "acme-info").secret_ref
+    for ref in (own, first):
+        data = json.loads(get_vault().resolve(ref).reveal())
+        get_vault().store(ref, json.dumps({**data, "expires_at": int(time.time()) - 10}))
+    assert owner.put("/projects/acme-web/connections/acme-own", json={}).status_code == 200
+    call("acme-web", "search_mail", "acme-own")
+    call("acme-web", "search_mail", "acme-info")
+    assert fake.refreshes == 2
+    assert json.loads(get_vault().resolve(own).reveal())["app"] == "acme-s-google-cloud"
+
+    # Signed in before there could be more than one app: the first one, as before.
+    data = json.loads(get_vault().resolve(first).reveal())
+    del data["app"]
+    get_vault().store(first, json.dumps({**data, "expires_at": int(time.time()) - 10}))
+    call("acme-web", "search_mail", "acme-info")
+    assert fake.refreshes == 3
+
+    # Its app removed: the account says so, and signing in again through another works.
+    assert owner.delete("/google/apps/acme-s-google-cloud").status_code == 204
+    data = json.loads(get_vault().resolve(own).reveal())
+    get_vault().store(own, json.dumps({**data, "expires_at": int(time.time()) - 10}))
+    with pytest.raises(ToolError, match="signed in through was removed"):
+        call("acme-web", "search_mail", "acme-own")
+    again = sign_in(owner, fake, "acme-team", replace="acme-own", app="google-app")
+    assert again == {"state": "done", "name": "acme-own", "error": None}
+    with session_scope() as session:
+        assert instances.get_instance(session, "acme-own").config["app"] == "google-app"
+
+
+def test_an_app_stored_before_there_could_be_several(owner: TestClient, fake: FakeGoogle) -> None:
+    get_vault().store(
+        google_oauth.APP_REF, json.dumps({"client_id": CLIENT_ID, "client_secret": "s3cret-value"})
+    )
+    apps = owner.get("/google/app").json()["apps"]
+    assert apps == [
+        {"id": "google-app", "name": "Your Google app", "client_id": CLIENT_ID, "accounts": 0}
+    ]

@@ -78,6 +78,55 @@ export function Button({ children, onClick, kind = "secondary", type = "button",
   );
 }
 
+/** A button for something that can't be undone. The first click only asks, in place;
+ * the button that says what happens does it. Not window.confirm: the desktop app's
+ * window doesn't show the browser's dialogs, so the action ran on the first click. */
+export function ConfirmButton({
+  children,
+  question,
+  confirm,
+  onConfirm,
+  kind = "danger",
+}: {
+  children: ReactNode;
+  question: ReactNode;
+  confirm: string;
+  onConfirm: () => Promise<unknown> | unknown;
+  kind?: "danger" | "secondary";
+}) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!asking) {
+    return (
+      <Button kind={kind} onClick={() => setAsking(true)}>
+        {children}
+      </Button>
+    );
+  }
+  async function go() {
+    setBusy(true);
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+      setAsking(false);
+    }
+  }
+  return (
+    <div role="alertdialog" aria-label={confirm} className="space-y-2 rounded-xl border border-bad p-3">
+      <p className="text-sm">{question}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button kind="danger" busy={busy} onClick={go}>
+          {confirm}
+        </Button>
+        <Button kind="ghost" onClick={() => setAsking(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function LinkButton({ href, children, kind = "secondary" }: { href: string; children: ReactNode; kind?: "primary" | "secondary" }) {
   const styles = kind === "primary" ? "bg-accent text-accent-ink" : "bg-surface border border-line text-ink";
   return (
@@ -228,8 +277,8 @@ export function Toggle({ label, checked, onChange, hint }: { label: string; chec
 }
 
 /** Technical detail stays out of the way until asked for. */
-export function Details({ children, label = "Show details" }: { children: ReactNode; label?: string }) {
-  const [open, setOpen] = useState(false);
+export function Details({ children, label = "Show details", defaultOpen = false }: { children: ReactNode; label?: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div>
       <button type="button" onClick={() => setOpen(!open)} className="text-sm text-accent" aria-expanded={open}>
@@ -306,8 +355,9 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
   useEffect(() => {
     // The URL names a tab to open: on arrival, or when the app is sent to
     // another tab of the page it's on (the tray's Check for updates).
+    // #connections/acme-info: the tab, and something in it (see connectionHref).
     const follow = () => {
-      const fromUrl = window.location.hash.slice(1);
+      const fromUrl = window.location.hash.slice(1).split("/")[0] ?? "";
       if (tabs.some((t) => t.key === fromUrl)) setHash(fromUrl);
     };
     follow();
@@ -327,7 +377,10 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
   if (!active) return null;
   return (
     <div>
-      <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+      {/* The line is a shadow under the tabs, not a border they overlap: overlapping
+          it overflowed the row by a pixel, which showed a scroll bar. Too many tabs
+          for the width still scroll sideways, without a bar. */}
+      <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-line)] [scrollbar-width:none]">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -335,7 +388,7 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
             role="tab"
             aria-selected={t.key === active.key}
             onClick={() => open(t.key)}
-            className={`-mb-px min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium ${t.key === active.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"}`}
+            className={`min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium ${t.key === active.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"}`}
           >
             {t.label}
             {t.count !== undefined ? <span className="ml-1.5 rounded-full bg-sunken px-1.5 text-xs text-muted">{t.count}</span> : null}

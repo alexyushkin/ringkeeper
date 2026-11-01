@@ -276,12 +276,15 @@ A worker only gets the endpoints of the services its project is connected to.
   hooks off and every credential helper cleared, so your computer's own git
   credentials are never used; then `create_pull` opens the pull request.
 - **google:** a Google account (Gmail, Drive, Calendar, Sheets), signed in
-  through your own Google app (desktop app, Settings › Google: an OAuth
-  "Desktop app" client in your own Google Cloud project, published "In
-  production" so sign-ins don't expire weekly). Each account is its own
-  connection with the access you tick when signing it in; Drive uses
-  `drive.file` (files Ringkeeper creates or is given) unless you tick "read all
-  files". An account is a client's (only their projects) or yours (any project,
+  through your own Google app (desktop app, Settings › Google app, set up
+  once: an OAuth "Desktop app" client in your own Google Cloud project,
+  published "In production" so sign-ins don't expire weekly). There can be
+  more than one app (a client's own Google Cloud project, for a Workspace
+  admin who only trusts their own, or past the 100 accounts below); each
+  account picks the one it signs in through, the first by default. Each
+  account is its own connection with the access you tick when signing it in;
+  Drive uses `drive.file` (files Ringkeeper creates or is given) unless you
+  tick "read all files". An account is a client's (only their projects) or yours (any project,
   or all of them), like shared tools. A project can have several; one can be
   its default, and the agent names the one it means (`list_instances` shows
   each one's address). Every write waits for approval, even on test data; per
@@ -611,9 +614,11 @@ Fast (faster-whisper's `tiny`, about 160 MB in all) unless you choose Accuracy
 (its `small`, about 570 MB) in Settings › Voice. The size is shown before
 anything downloads, then its progress; only the chosen model is kept, and the
 installer stays smaller for everyone who never uses voice. Settings › Voice
-also sets the language you speak: Auto-detect, or one of the model's ~100
-languages (setting it is faster and makes fewer mistakes on short clips). Fast
-is weak outside English; for other languages, choose Accuracy.
+also sets the languages you speak: any (detected per recording), or one or a
+few of the model's ~100 languages. One is fastest and makes the fewest mistakes
+on short clips; with a few, each recording is detected among just those, so it
+is never written in a language you don't speak. Fast is weak outside English;
+for other languages, choose Accuracy.
 Speech becomes text on your computer: the recording never leaves it, and is
 dropped once it's transcribed, with the same limits as the server's `stt`
 service. From source, install the engine with `uv sync --extra voice`.
