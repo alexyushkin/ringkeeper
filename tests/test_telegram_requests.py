@@ -230,3 +230,29 @@ def test_requests_from_elsewhere_get_no_notices(bridge: Bridge, telegram: FakeTe
         session.execute(update(Task).values(status=TaskStatus.FAILED))
     assert bridge.send_notices() == 0
     assert telegram.sent == []
+
+
+def test_a_routine_set_to_send_a_summary_sends_it_once(
+    bridge: Bridge, telegram: FakeTelegram
+) -> None:
+    from ringkeeper.services import agents, routines  # noqa: PLC0415
+    from ringkeeper.services.agents import AgentIn  # noqa: PLC0415
+    from ringkeeper.services.routines import RoutineIn  # noqa: PLC0415
+
+    assert bridge.send_new() == 0  # Telegram's first look: from now on
+    with session_scope() as session:
+        agents.create_agent(session, "acme-web", AgentIn("digest"))
+        made = routines.create_routine(
+            session, "acme-web",
+            RoutineIn("Morning digest", "digest", "Digest", "manual", notify="channels"),
+        )  # fmt: skip
+        started = routines.start_run(session, get_settings(), made, "manual")
+        assert started.task is not None
+        started.task.status = TaskStatus.SUCCEEDED
+        started.task.finished_at = datetime.now(UTC)
+        started.task.summary = "3 new leads; nothing failed."
+    assert bridge.send_new() == 1
+    assert telegram.sent[-1]["text"] == (
+        "✔ Routine Morning digest · acme-web · succeeded\n3 new leads; nothing failed."
+    )
+    assert bridge.send_new() == 0

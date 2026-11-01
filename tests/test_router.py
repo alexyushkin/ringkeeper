@@ -445,3 +445,21 @@ def test_an_unsure_route_asks_plainly() -> None:
     [decision] = route_decisions()
     assert thread_bodies(thread_id)[-1][1] == "Which project is this for?"
     assert inbox.options(decision) == ["acme-reports", "acme-web", "none"]
+
+
+def test_naming_an_agent_runs_the_task_as_it() -> None:
+    from ringkeeper.services import agents  # noqa: PLC0415
+    from ringkeeper.services.agents import AgentIn  # noqa: PLC0415
+
+    with session_scope() as session:
+        agents.create_agent(session, "acme-web", AgentIn("follow-up", "Be brief."))
+    ask("Ask the acme follow-up agent to draft a thank-you note")
+    model = FakeModel([output(routed("acme-web", 0.95, kind="content", agent="follow-up"))])
+    route(model)
+    _, prompt, _ = model.calls[0]
+    assert '"name": "follow-up"' in prompt  # the router sees the project's agents
+    [task] = all_tasks()
+    with session_scope() as session:
+        found = session.get(Task, task.id)
+        assert found is not None
+        assert found.agent_id is not None

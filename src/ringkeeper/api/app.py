@@ -11,12 +11,14 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from ringkeeper import __version__
 from ringkeeper.api import (
     about_routes,
+    channels_routes,
     desktop_routes,
     google_routes,
     live_routes,
     manage_routes,
     owner_routes,
     remote_routes,
+    routines_routes,
     work_routes,
 )
 from ringkeeper.api.routes import public, router
@@ -168,6 +170,10 @@ def create_app() -> FastAPI:
     app.include_router(remote_routes.callback)
     app.include_router(google_routes.router)
     app.include_router(google_routes.rules_router)
+    app.include_router(routines_routes.router)
+    app.include_router(routines_routes.hooks)
+    app.include_router(channels_routes.router)
+    app.include_router(channels_routes.opener)
     if get_settings().mode == "desktop":
         app.include_router(desktop_routes.router)
     app.add_middleware(BodyLimit)

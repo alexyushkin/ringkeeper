@@ -135,6 +135,7 @@ class ProjectOut(_Output):
     autonomy: Autonomy
     checks: list[str]
     models: dict[str, str]
+    paused: bool = False  # its routines don't run on their own
 
 
 class InstanceOut(_Output):

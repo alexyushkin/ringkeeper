@@ -21,6 +21,7 @@ const MAIN = [
 const MORE = [
   { href: "/projects", label: "Clients & projects" },
   { href: "/connections", label: "Connections" },
+  { href: "/routines", label: "Routines" },
   { href: "/activity", label: "Activity" },
   { href: "/settings", label: "Settings" },
 ];

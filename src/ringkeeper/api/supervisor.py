@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 import threading
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,7 @@ from ringkeeper.vault import get_vault
 logger = logging.getLogger(__name__)
 
 RECHECK_SECONDS = 30.0
+KINDS = ("slack:", "discord:")  # Slack and Discord channels' runners
 
 
 @dataclass
@@ -97,6 +99,9 @@ class Supervisor:
                 settings.claude_auth_mode, settings.anthropic_workspace_id,
             )  # fmt: skip
             self._ensure("router", key, lambda: self._router(settings))
+        # Routines run while the app runs; each checks its own pauses (services.routines).
+        self._ensure("routines", ("on",), lambda: self._scheduler(settings))
+        self._channels(settings)
         token = self._telegram_token(settings) if settings.telegram else None
         if token is not None:
             self._ensure("telegram", telegram_key(settings, token), lambda: self._bridge(settings))
@@ -142,6 +147,39 @@ class Supervisor:
         from ringkeeper.router.service import Router  # noqa: PLC0415
 
         return Router(AgentSdkModel(get_vault(settings), settings), settings).run_forever
+
+    def _scheduler(self, settings: Settings) -> Callable[..., None]:
+        from ringkeeper.scheduler import Scheduler  # noqa: PLC0415
+
+        return Scheduler(settings).run_forever
+
+    def _channels(self, settings: Settings) -> None:
+        """A runner per Slack or Discord channel that's on; any change restarts it."""
+        from ringkeeper.channels import list_channels  # noqa: PLC0415
+
+        with session_scope(commit=False) as session:
+            wanted = {
+                f"{c.kind}:{c.id}": (c.id, c.updated_at.isoformat())
+                for c in list_channels(session)
+                if c.enabled
+            }
+        for name, (ident, changed) in wanted.items():
+            self._ensure(name, (changed,), lambda ident=ident: self._channel(settings, ident))
+        with self._lock:
+            gone = [n for n in self.children if n.startswith(KINDS) and n not in wanted]
+        for name in gone:
+            self._halt(name)
+            with self._lock:
+                self.children.pop(name, None)
+
+    @staticmethod
+    def _channel(settings: Settings, ident: uuid.UUID) -> Callable[..., None]:
+        from ringkeeper.channels import get_channel, transport  # noqa: PLC0415
+        from ringkeeper.channels.outbox import Runner  # noqa: PLC0415
+
+        with session_scope(commit=False) as session:
+            channel = get_channel(session, ident)
+            return Runner(ident, settings, transport(settings, channel)).run_forever
 
     def _bridge(self, settings: Settings) -> Callable[..., None]:
         from ringkeeper.telegram.api import from_vault  # noqa: PLC0415

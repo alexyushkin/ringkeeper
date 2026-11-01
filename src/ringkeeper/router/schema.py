@@ -38,6 +38,8 @@ class RoutedTask(_Strict):
     complexity: Complexity
     outcome: Text
     prompt: Text
+    # One of the project's agents, when the operator names it ("ask the follow-up agent").
+    agent: str | None = None
 
 
 class RouterOutput(_Strict):

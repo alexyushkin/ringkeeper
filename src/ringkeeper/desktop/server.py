@@ -134,6 +134,7 @@ class FrontDoor:
         port: int,
         web_dir: Path | None,
         shutdown: Callable[[], None] | None = None,
+        hooks_port: int | None = None,
     ) -> None:
         self.api = api
         self.launch = launch
@@ -141,8 +142,13 @@ class FrontDoor:
         self.web_dir = web_dir.resolve() if web_dir else None
         self.hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
         self.origins = {f"http://{host}" for host in self.hosts}
+        # Routines' webhooks: a fixed address on this computer, for nothing else.
+        self.hooks_port = hooks_port
+        self.hook_hosts: set[str] = (
+            {f"127.0.0.1:{hooks_port}", f"localhost:{hooks_port}"} if hooks_port else set()
+        )
 
-    async def __call__(  # noqa: PLR0912 (one branch per kind of request)
+    async def __call__(  # noqa: PLR0911, PLR0912 (one branch per kind of request)
         self, scope: Scope, receive: Receive, send: Send
     ) -> None:
         if scope["type"] == "lifespan":  # the API's: it runs the manager and router
@@ -151,7 +157,19 @@ class FrontDoor:
         if scope["type"] != "http":
             return
         headers = _headers(scope)
-        if headers.get(b"host", b"").decode("latin-1").lower() not in self.hosts:
+        host = headers.get(b"host", b"").decode("latin-1").lower()
+        if host in self.hook_hosts:
+            method = scope["method"].upper()
+            if scope["path"].startswith("/hooks/") and method == "POST":
+                # The routine's secret, in the path, is the check (api.routines_routes).
+                await self.api(self._to_api(scope, scope["path"], ""), receive, send)
+            elif scope["path"] == "/open" and method == "GET":
+                # A signed Open link from Slack or Discord: brings the window up there.
+                await self.api(self._to_api(scope, "/open", ""), receive, send)
+            else:
+                await self._plain(404, "Only routines' webhooks answer here.")(scope, receive, send)
+            return
+        if host not in self.hosts:
             await self._plain(421, "This address isn't one Ringkeeper answers on.")(
                 scope, receive, send
             )
@@ -281,6 +299,23 @@ def _listen() -> socket.socket:
     return sock
 
 
+def _listen_fixed(port: int) -> socket.socket | None:
+    """The webhooks' fixed address on this computer, or None if it's off or taken."""
+    if not port:
+        return None
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows: no one else on the same port
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    try:
+        sock.bind(("127.0.0.1", port))
+    except OSError:
+        sock.close()
+        logger.warning("webhooks' port %d is in use: routines' webhooks are off", port)
+        return None
+    sock.listen(64)
+    return sock
+
+
 @contextlib.contextmanager
 def single_instance(data_dir: Path) -> Generator[None]:
     """Hold an exclusive lock on the data folder while running."""
@@ -358,7 +393,11 @@ def run(
         bootstrap.run(settings)  # the keychain's master key, before the gateway needs it
         launch = Launch()
         stopping = stop or threading.Event()  # set by the caller or the shell
-        front = FrontDoor(create_app(), launch, api_port, web_dir, shutdown=stopping.set)
+        hooks_sock = _listen_fixed(settings.hooks_port)
+        front = FrontDoor(
+            create_app(), launch, api_port, web_dir, shutdown=stopping.set,
+            hooks_port=hooks_sock.getsockname()[1] if hooks_sock else None,
+        )  # fmt: skip
         gateway = uvicorn.Server(
             uvicorn.Config(create_gateway(), log_level="warning", lifespan="on")
         )
@@ -380,7 +419,8 @@ def run(
 
         async def serve() -> None:
             nonlocal runtime
-            task = asyncio.create_task(api.serve(sockets=[api_sock]))
+            sockets = [api_sock, *([hooks_sock] if hooks_sock else [])]
+            task = asyncio.create_task(api.serve(sockets=sockets))
             watcher = asyncio.create_task(watch_stop())
             while not (api.started and gateway.started):
                 if task.done():

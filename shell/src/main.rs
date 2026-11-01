@@ -92,6 +92,8 @@ struct Shell {
     downloaded: Mutex<Option<Downloaded>>,
     /// The tray's Check for updates was clicked.
     check_now: AtomicBool,
+    /// The last Open link from Slack or Discord the window was opened for.
+    opened: Mutex<Option<String>>,
 }
 
 /// Small things the shell remembers between launches (data_dir/shell.json).
@@ -174,6 +176,7 @@ fn main() {
                 pause_item: Mutex::new(None),
                 downloaded: Mutex::new(None),
                 check_now: AtomicBool::new(false),
+                opened: Mutex::new(None),
             };
             app.manage(shell);
             remove_previous_version(app.handle());
@@ -181,7 +184,7 @@ fn main() {
             build_tray(app.handle())?;
             let handle = app.handle().clone();
             app.notification()
-                .on_action(move |_| open_window(&handle, Some("/approvals")))?;
+                .on_action(move |_| open_window(&handle, Some("/approvals".into())))?;
             let handle = app.handle().clone();
             thread::Builder::new()
                 .name("supervisor".into())
@@ -296,7 +299,7 @@ fn show(window: &WebviewWindow) {
 
 /// Shows the window at Ringkeeper (or at `path` in it). Opens it with a fresh
 /// one-time code when the backend is new to the window. Never blocks the caller.
-fn open_window(app: &AppHandle, path: Option<&'static str>) {
+fn open_window(app: &AppHandle, path: Option<String>) {
     let app = app.clone();
     thread::spawn(move || {
         let Some(window) = app.get_webview_window(WINDOW) else {
@@ -314,14 +317,17 @@ fn open_window(app: &AppHandle, path: Option<&'static str>) {
             .zip(Url::parse(&runtime.url).ok())
             .is_some_and(|(at, backend)| at.origin() == backend.origin());
         let target = if known.as_deref() == Some(&runtime.secret) && on_backend {
-            path.map(|p| format!("{}{p}", runtime.url))
+            path.as_ref().map(|p| format!("{}{p}", runtime.url))
         } else {
             match backend::new_code(&shell.agent, &runtime) {
                 Ok(code) => {
                     if let Ok(mut secret) = shell.window_secret.lock() {
                         *secret = Some(runtime.secret.clone());
                     }
-                    let next = path.map(|p| format!("&next={p}")).unwrap_or_default();
+                    let next = path
+                        .as_ref()
+                        .map(|p| format!("&next={}", logic::encode(p)))
+                        .unwrap_or_default();
                     Some(format!("{}/desktop/start?code={code}{next}", runtime.url))
                 }
                 Err(_) => None,
@@ -429,7 +435,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 /// Checks now, and shows the result in Settings > About.
 fn check_for_updates(app: &AppHandle) {
     app.state::<Shell>().check_now.store(true, Ordering::SeqCst);
-    open_window(app, Some("/settings#about"));
+    open_window(app, Some("/settings#about".into()));
 }
 
 fn toggle_pause(app: &AppHandle) {
@@ -443,7 +449,7 @@ fn toggle_pause(app: &AppHandle) {
             .and_then(|item| item.as_ref().and_then(|i| i.is_checked().ok()))
             .unwrap_or(false);
         if let Some(runtime) = shell.runtime() {
-            if backend::set_paused(&shell.agent, &runtime, wanted).is_err() {
+            if backend::set_routines_paused(&shell.agent, &runtime, wanted).is_err() {
                 notify(
                     &app,
                     "Ringkeeper",
@@ -501,7 +507,7 @@ fn apply_status(app: &AppHandle, status: &Status) {
     }
     if let Ok(item) = shell.pause_item.lock() {
         if let Some(item) = item.as_ref() {
-            let _ = item.set_checked(status.paused);
+            let _ = item.set_checked(status.routines_paused);
         }
     }
     let notices = shell
@@ -513,6 +519,13 @@ fn apply_status(app: &AppHandle, status: &Status) {
         notify(app, &notice.title, &notice.body);
     }
     sync_start_at_login(app, status.start_at_login);
+    let handled = shell.opened.lock().ok().and_then(|o| o.clone());
+    if let Some(path) = logic::asked_to_open(status, handled.as_deref()) {
+        if let Ok(mut opened) = shell.opened.lock() {
+            *opened = status.open.as_ref().map(|o| o.id.clone());
+        }
+        open_window(app, Some(path));
+    }
 }
 
 fn sync_start_at_login(app: &AppHandle, wanted: bool) {

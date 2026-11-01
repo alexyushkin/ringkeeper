@@ -27,6 +27,9 @@ pub struct Waiting {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Status {
     pub paused: bool,
+    /// The tray's "Pause all routines".
+    #[serde(default)]
+    pub routines_paused: bool,
     pub start_at_login: bool,
     pub waiting: Vec<Waiting>,
     /// Tasks running or about to: an update waits for these.
@@ -41,6 +44,38 @@ pub struct Status {
     /// A check the user asked for in the window (its id), until the shell reports it.
     #[serde(default)]
     pub check_update: Option<String>,
+    /// A page an Open link from Slack or Discord asked for (its id and path).
+    #[serde(default)]
+    pub open: Option<OpenRequest>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct OpenRequest {
+    pub id: String,
+    pub path: String,
+}
+
+/// A path as a query value (`next=`): all but unreserved characters escaped.
+pub fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                char::from(b).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// A page to open that this shell hasn't opened yet: one of the app's own pages.
+pub fn asked_to_open(status: &Status, handled: Option<&str>) -> Option<String> {
+    status
+        .open
+        .as_ref()
+        .filter(|open| Some(open.id.as_str()) != handled)
+        .filter(|open| open.path.starts_with('/') && !open.path.starts_with("//"))
+        .filter(|open| !open.path.contains(['\\', ':']))
+        .map(|open| open.path.clone())
 }
 
 fn yes() -> bool {
@@ -308,12 +343,14 @@ mod tests {
     fn the_tooltip_says_what_is_going_on() {
         let mut status = Status {
             paused: false,
+            routines_paused: false,
             start_at_login: true,
             waiting: vec![],
             running: 0,
             install_update: false,
             check_updates: true,
             check_update: None,
+            open: None,
         };
         assert_eq!(tooltip(Some(&status), false), "Ringkeeper");
         assert_eq!(tooltip(Some(&status), true), "Ringkeeper: starting…");
@@ -376,6 +413,41 @@ mod tests {
         status.check_update = None;
         assert_eq!(asked_in_window(Some(&status), Some("a1")), None);
         assert_eq!(asked_in_window(None, None), None);
+    }
+
+    #[test]
+    fn a_path_is_escaped_as_a_query_value() {
+        assert_eq!(encode("/task?id=a1&x=y"), "/task%3Fid%3Da1%26x%3Dy");
+        assert_eq!(encode("/settings#about"), "/settings%23about");
+    }
+
+    #[test]
+    fn an_open_link_opens_its_page_once() {
+        let mut status = Status {
+            paused: false,
+            routines_paused: false,
+            start_at_login: false,
+            waiting: vec![],
+            running: 0,
+            install_update: false,
+            check_updates: true,
+            check_update: None,
+            open: None,
+        };
+        assert_eq!(asked_to_open(&status, None), None);
+        status.open = Some(OpenRequest {
+            id: "o1".into(),
+            path: "/approvals".into(),
+        });
+        assert_eq!(asked_to_open(&status, None), Some("/approvals".into()));
+        assert_eq!(asked_to_open(&status, Some("o1")), None);
+        for path in ["//evil.example", "https://evil.example", "/x\\y"] {
+            status.open = Some(OpenRequest {
+                id: "o2".into(),
+                path: path.into(),
+            });
+            assert_eq!(asked_to_open(&status, None), None, "{path}");
+        }
     }
 
     #[test]

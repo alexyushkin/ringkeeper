@@ -24,7 +24,6 @@ in the CLI and API). With it off, they get a hint and nothing runs.
 import logging
 import threading
 import uuid
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -32,6 +31,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper import voice_local
+from ringkeeper.channels import telegram_state
+from ringkeeper.channels.outbox import due, task_event
+from ringkeeper.channels.prefs import ROUTINES
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -44,6 +46,7 @@ from ringkeeper.models import (
     Message,
     MessageRole,
     Notification,
+    Routine,
     Setting,
     Task,
     TaskStatus,
@@ -170,6 +173,16 @@ def finished_text(task: Task) -> str:
     return f"{mark} {task.project} · task {str(task.id)[:8]} {task.status}"
 
 
+def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
+    """A routine's run, in short: which, how it went, and its summary (scrubbed later)."""
+    mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
+    summary = (task.summary or task.error or "").strip()
+    if len(summary) > limit:
+        summary = summary[: limit - 1] + "…"
+    head = f"{mark} Routine {routine.name} · {task.project} · {task.status}"
+    return f"{head}\n{summary}" if summary else head
+
+
 def heard(transcript: str, question: str = "") -> str:
     shown = transcript if len(transcript) <= HEARD_CHARS else transcript[:HEARD_CHARS] + "…"
     return f"I heard: {shown}" + (f"\n\n{question}" if question else "")
@@ -207,23 +220,21 @@ class Bridge:
 
     # --- Outgoing ---
 
-    def _unsent(self, session: Session) -> Sequence[Decision]:
-        # Non-null only: NOT IN over a NULL matches nothing.
-        sent = select(Notification.decision_id).where(
-            Notification.channel == CHANNEL, Notification.decision_id.is_not(None)
-        )
-        return session.scalars(
-            select(Decision)
-            .where(Decision.status == DecisionStatus.PENDING, Decision.id.not_in(sent))
-            .order_by(Decision.created_at)
-        ).all()
-
     def send_new(self) -> int:
-        """Send every pending decision not sent yet, to every allowed chat."""
+        """Send what's due to every allowed chat: decisions waiting, and the ends of
+        tasks and routine runs, as Telegram's prefs say (Settings > Notifications)."""
         sent = 0
         with session_scope() as session:
-            inbox.list_pending(session)  # expires stale ones first
-            for decision in self._unsent(session):
+            prefs, since = telegram_state(session)
+            found = due(session, CHANNEL, prefs, since, datetime.now(UTC), own_threads=CHANNEL)
+            for task, routine in found.tasks:
+                text = (
+                    routine_text(routine, task)
+                    if routine is not None and task_event(task, routine) == ROUTINES
+                    else finished_text(task)
+                )
+                sent += self._notify(session, text, None, task_id=task.id)
+            for decision in found.decisions:
                 text = render(decision, self.settings)
                 for chat in sorted(self.chats):
                     note = Notification(decision_id=decision.id, channel=CHANNEL, chat_id=chat)
@@ -286,7 +297,8 @@ class Bridge:
         return sent
 
     def send_notices(self) -> int:
-        """For requests from Telegram: what the router did, and when each task ends."""
+        """For requests from Telegram: what the router did, and when each task ends
+        (whatever the prefs say: these are answers to what you asked)."""
         sent = 0
         with session_scope() as session:
             noticed = select(Notification.message_id).where(

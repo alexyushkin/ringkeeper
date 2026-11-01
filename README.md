@@ -536,6 +536,39 @@ Add checks per project in the registry:
 
 The worker image includes pytest and uv.
 
+## Agents and routines
+
+A project's **agents** are named helpers (Project > Agents): instructions every
+task they run starts with, the connections they may use (some of the project's;
+a shared tool only when ticked), and their own model, effort and autonomy. The
+gateway refuses an agent's call to any other connection, and its list of
+connections shows only its own. In a conversation, "ask the Seaside follow-up
+agent to..." runs the task as that agent.
+
+A **routine** (Project > Routines, or Routines across projects) runs one agent
+with a prompt (fill-ins: `{{today}}`, `{{now}}`, `{{project}}`, `{{event}}`,
+`{{event.field}}`):
+
+- **On a schedule:** every day, weekdays, chosen days, monthly or every few
+  hours, at a time in your time zone (kept across daylight saving). After the
+  computer slept, one run makes up for the missed ones and says how many.
+- **On an event:** its webhook is called (`POST /hooks/<routine>/<secret>`, on
+  this computer only: `127.0.0.1:17845`, `RINGKEEPER_HOOKS_PORT`; an
+  `Idempotency-Key` header makes a repeat the same event), a file is added to
+  the project's folder, a new Airtable record, or a new email matching a Gmail
+  search (a Google account). Each event starts one run.
+- **By hand:** Run now.
+
+New routines start paused, with **Test run**. Each run is an ordinary task run
+as the agent: reads run, actions wait for approval like any other. Limits per
+run: steps and minutes (default 40 and 15), plus a dollar cap in API key mode;
+and runs a day. Nothing runs on its own while the routine, its project, all
+routines (the tray's "Pause all routines") or everything ("Stop everything")
+is paused. Each run is in the routine's history (status, steps, estimated cost,
+summary), optionally with a summary sent to your notification channels.
+Templates: daily digest, new-lead
+follow-up draft, weekly report, data sync check.
+
 ## Models
 
 | Role                          | Default             | Setting                       |
@@ -562,6 +595,33 @@ has a spending cap (`RINGKEEPER_TASK_BUDGET_USD`, $1 by default) across all
 its sessions: at the cap the task pauses and asks whether to give it that much
 more. Settings in the web app lists Anthropic's models (recommended first)
 and changes all of these, and the maximum steps per task, without a restart.
+
+## Notification channels
+
+Telegram, Slack and Discord each choose, under **Settings > Notifications**,
+what they get (approvals and questions, routine results, failures, finished
+tasks), quiet hours (nothing is sent then; what came up is sent when they end,
+an approval only if it's still waiting), and which clients and projects (all
+by default). Each thing goes to each channel once.
+
+**Slack** is your own Slack app in Socket Mode, and **Discord** your own bot on
+the gateway: both connect out from this computer, so nothing needs a public
+address. Settings walks through creating them (Slack: an app manifest to
+paste, install it, the bot token and an app-level token with
+`connections:write`; Discord: an application, its bot token, and an invite link
+that asks only to see channels and send messages), then where it posts (a
+channel or a DM) and your member or user ID. Tokens go to the vault. **Send
+test** posts a message whose button tells you whether your presses count.
+
+Messages are a short summary (code and SQL hidden, scrubbed) with Approve /
+Deny / Open buttons. Approve follows the notification rule: only for a held
+call that isn't a production change and doesn't need the connection's name
+typed; those, plans and questions say "Approve it in Ringkeeper" and offer
+Open (and Deny). Only the approver's presses count: anyone else in the channel
+is told they're not allowed, and every answer is audited as `via=slack` or
+`via=discord`. Open goes to `RINGKEEPER_WEB_ORIGIN` on a server; on the desktop
+it's a signed link to this computer (the routines' webhook port) that brings
+the app window up at that page.
 
 ## Telegram
 

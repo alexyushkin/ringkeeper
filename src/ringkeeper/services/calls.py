@@ -47,6 +47,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import (
+    agents,
     audit,
     decisions,
     google_oauth,
@@ -146,6 +147,13 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
     if instances.excluded(instance, project):  # never linked; refused even if it were
         raise RefusalError(
             unavailable, f"instance '{name}' is for all projects except '{project.name}'"
+        )
+    agent = agents.for_worker_session(session, caller.session_id)
+    if agent is not None and instance.name not in agent.connections:
+        raise RefusalError(
+            f"instance '{name}' isn't one of the {agent.name} agent's connections. It can "
+            f"use: {', '.join(agent.connections) or 'none'}",
+            f"instance '{name}' is not one of agent '{agent.name}''s connections",
         )
     if instance.type != call.service:
         raise RefusalError(
@@ -295,6 +303,7 @@ def bound_instances(caller: Caller) -> list[dict[str, Any]]:
                 f"project '{caller.project}' from the worker token no longer exists",
                 "token project does not exist",
             )
+        agent = agents.for_worker_session(session, caller.session_id)
         return [
             {
                 "name": b.instance.name,
@@ -306,6 +315,8 @@ def bound_instances(caller: Caller) -> list[dict[str, Any]]:
             # A Google account says which one it is ("send from the info@ mailbox").
             | ({"account": b.instance.config["email"]} if b.instance.config.get("email") else {})
             for b in sorted(project.bindings, key=lambda b: (b.instance.type, b.instance.name))
+            # An agent sees only its own connections.
+            if agent is None or b.instance.name in agent.connections
         ]
 
 

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, object_session
 from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
+    Agent,
     ArchitectPhase,
     AuditEvent,
     AuditOutcome,
@@ -34,6 +35,7 @@ from ringkeeper.models import (
     Env,
     Instance,
     InstanceType,
+    Project,
     SessionRole,
     Task,
     TaskKind,
@@ -55,6 +57,8 @@ class Via(enum.StrEnum):
     CLI = "cli"
     API = "api"
     TELEGRAM = "telegram"
+    SLACK = "slack"
+    DISCORD = "discord"
 
 
 @dataclass(frozen=True)
@@ -357,10 +361,20 @@ def _answer_route(
     message = payload.get("message")
     if message:
         examples.save(session, message, choice, kind=kind, decision_id=decision.id, by=by)
+    agent = (
+        session.scalar(
+            select(Agent)
+            .join(Project, Project.id == Agent.project_id)
+            .where(Project.name == choice, Agent.name == routed["agent"])
+        )
+        if routed.get("agent")
+        else None
+    )
     return tasks.create_task(
         session,
         settings,
         project=choice,
+        agent_id=agent.id if agent is not None else None,
         prompt=routed.get("prompt") or message or "",
         kind=kind,
         risk=TaskRisk(routed["risk"]) if routed.get("risk") else None,

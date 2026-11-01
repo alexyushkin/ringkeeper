@@ -9,9 +9,11 @@ import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { Alert, Button, ConfirmButton, Details, EnvBadge, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
+import { Agents, type AgentData } from "@/components/agents";
+import { NewRoutine, RoutineList } from "@/components/routines";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { api, useApi } from "@/lib/client/api";
-import { clientHref, projectHref } from "@/lib/client/routes";
+import { clientHref, projectHref, routineHref } from "@/lib/client/routes";
 import { clientName } from "@/lib/client/scope";
 import { AUTONOMY, SERVICE, slugify } from "@/lib/client/words";
 
@@ -73,6 +75,7 @@ function BoundRow({ project, instance, fields, onChange }: { project: string; in
 
 interface Detail extends ProjectData {
   instances: Bound[];
+  paused?: boolean;
 }
 
 export function ProjectView({ name }: { name: string }) {
@@ -243,6 +246,12 @@ export function ProjectView({ name }: { name: string }) {
       ),
     },
     { key: "connections", label: "Connections", count: instances.length, content: () => connectionsTab },
+    {
+      key: "agents",
+      label: "Agents",
+      content: () => <Agents project={name} linked={instances.map((i) => ({ name: i.name, type: i.type, shared: byName.get(i.name)?.shared }))} />,
+    },
+    { key: "routines", label: "Routines", content: () => <ProjectRoutines project={name} paused={Boolean(project.data?.paused)} onPaused={project.reload} /> },
     { key: "tasks", label: "Tasks", count: tasksSummary.count, content: () => <ScopedTasks project={name} /> },
     {
       key: "settings",
@@ -307,6 +316,34 @@ function RenameProject({ name }: { name: string }) {
         Rename
       </Button>
       {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+/** Project › Routines: its routines, adding one (from a template), and pausing them
+ * all for this project. */
+function ProjectRoutines({ project, paused, onPaused }: { project: string; paused: boolean; onPaused: () => void }) {
+  const router = useRouter();
+  const agents = useApi<AgentData[]>(`projects/${project}/agents`);
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className="space-y-4">
+      <Toggle
+        label={`Pause ${project}'s routines`}
+        checked={paused}
+        onChange={(on) => void api(`projects/${project}/routines/paused`, { json: { paused: on } }).then(onPaused)}
+        hint="None of this project's routines runs on its own while paused."
+      />
+      <RoutineList project={project} />
+      {adding ? (
+        <div className="rounded-xl border border-line p-3">
+          <NewRoutine project={project} agents={agents.data ?? []} onCreated={(id) => router.push(routineHref(id))} />
+        </div>
+      ) : (
+        <Button kind="primary" onClick={() => setAdding(true)}>
+          Add a routine
+        </Button>
+      )}
     </div>
   );
 }

@@ -218,6 +218,8 @@ class Project(TimestampMixin, Base):
     checks: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     # Model overrides for this project: keys architect, worker, low, medium, high.
     models: Mapped[dict[str, str]] = mapped_column(Doc, server_default="{}")
+    # Its routines don't run while paused (services.routines).
+    paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
     bindings: Mapped[list["ProjectInstance"]] = relationship(
         back_populates="project",
@@ -234,6 +236,93 @@ class Client(Base):
 
     slug: Mapped[str] = mapped_column(String(63), primary_key=True)
     name: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+
+
+class Agent(TimestampMixin, Base):
+    """A project's agent: instructions, which of the project's connections it may use
+    (shared tools only when ticked), and its model, effort and autonomy (empty: the
+    project's). See services.agents."""
+
+    __tablename__ = "agents"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_agents_project_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_agents_project")
+    )
+    name: Mapped[str] = mapped_column(String(63))
+    instructions: Mapped[str] = mapped_column(Text, server_default="")
+    connections: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
+    model: Mapped[str | None] = mapped_column(Text)
+    effort: Mapped[str | None] = mapped_column(Text)
+    autonomy: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["Project"] = relationship()
+
+
+class Routine(TimestampMixin, Base):
+    """Runs one agent with a prompt: on a schedule, an event, or by hand. New routines
+    start paused (a Test run first). See services.routines."""
+
+    __tablename__ = "routines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_routines_project")
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE", name="fk_routines_agent")
+    )
+    name: Mapped[str] = mapped_column(Text)
+    prompt: Mapped[str] = mapped_column(Text)
+    trigger: Mapped[str] = mapped_column(Text)  # schedule, event, manual
+    schedule: Mapped[dict[str, Any] | None] = mapped_column(Doc)  # ringkeeper.schedules
+    event: Mapped[dict[str, Any] | None] = mapped_column(Doc)  # {"source": ..., ...}
+    budget_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
+    max_steps: Mapped[int] = mapped_column(Integer, server_default=text("40"))
+    max_minutes: Mapped[int] = mapped_column(Integer, server_default=text("15"))
+    max_runs_per_day: Mapped[int] = mapped_column(Integer, server_default=text("10"))
+    notify: Mapped[str] = mapped_column(Text, server_default="app")  # app, channels, none
+    catch_up: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    paused: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    hook_secret: Mapped[str | None] = mapped_column(Text)
+    next_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    state: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")  # event cursors
+
+    project: Mapped["Project"] = relationship()
+    agent: Mapped[Agent] = relationship()
+
+
+class RoutineRun(Base):
+    """One run of a routine: what started it and the task it made, or why it was
+    skipped (the day's limit, paused). An event starts one run (`event_key`)."""
+
+    __tablename__ = "routine_runs"
+    __table_args__ = (
+        UniqueConstraint("routine_id", "event_key", name="uq_routine_runs_event"),
+        Index("ix_routine_runs_routine_created", "routine_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    routine_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("routines.id", ondelete="CASCADE", name="fk_routine_runs_routine")
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL", name="fk_routine_runs_task")
+    )
+    trigger: Mapped[str] = mapped_column(Text)  # schedule, catch_up, event, manual, test
+    event_key: Mapped[str | None] = mapped_column(Text)
+    event: Mapped[dict[str, Any] | None] = mapped_column(Doc)
+    missed: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    due_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    skipped: Mapped[str | None] = mapped_column(Text)  # why it didn't start
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
@@ -477,6 +566,8 @@ class Task(Base):
     review_round: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     failed_check_rounds: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     worker_prompt: Mapped[str | None] = mapped_column(Text)
+    # The project agent it runs as (its instructions, connections, model): see agents.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column()
 
     sessions: Mapped[list["WorkerSession"]] = relationship(
         back_populates="task", order_by="WorkerSession.ordinal", passive_deletes=True
@@ -671,6 +762,8 @@ class Notification(Base):
     channel: Mapped[str] = mapped_column(Text)
     chat_id: Mapped[int] = mapped_column(BigInteger)
     external_id: Mapped[int | None] = mapped_column(BigInteger)  # Telegram message_id
+    # Slack and Discord: "<channel id>/<message ts or id>" (chat_id is 0 there).
+    external_ref: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)  # sent, failed, closed
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
@@ -724,6 +817,27 @@ class VoiceConfirmation(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
     resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+
+
+class Channel(TimestampMixin, Base):
+    """A Slack or Discord notification channel: your own app or bot (tokens in the
+    vault), where it posts, who may answer from it, and what it sends (prefs).
+    Telegram's prefs live in settings_kv. See ringkeeper.channels."""
+
+    __tablename__ = "channels"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    kind: Mapped[str] = mapped_column(Text)  # slack, discord
+    name: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # target: a channel id or a user id (a DM); approver: the one user id whose
+    # buttons count; plus what setup learned (workspace, bot, app id).
+    config: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")
+    prefs: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")
+    # Only what happens after this is sent: turning a channel on never sends the past.
+    since: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
 class Setting(Base):

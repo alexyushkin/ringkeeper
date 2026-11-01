@@ -21,6 +21,7 @@ from ringkeeper.api import manage_routes
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
+from ringkeeper.desktop import opener
 from ringkeeper.desktop.update import State, updates
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Project, Task, TaskStatus
@@ -52,12 +53,14 @@ def status(session: SessionDep) -> dict[str, Any]:
     ]
     return {
         "paused": settings.paused,
+        "routines_paused": settings.routines_paused,
         "start_at_login": settings.start_at_login,
         "waiting": waiting,
         "running": _running(session),
         "install_update": updates.restart_requested,
         "check_updates": settings.check_updates,
         "check_update": updates.request,  # a check the user asked for (its id)
+        "open": opener.pending(),  # a page an Open link from Slack or Discord asked for
     }
 
 

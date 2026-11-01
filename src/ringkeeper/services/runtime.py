@@ -74,6 +74,7 @@ class RuntimeIn(Input):
     max_concurrent_workers: Annotated[int, Field(ge=1, le=64)] | None = None
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None
     paused: bool | None = None
+    routines_paused: bool | None = None
     start_at_login: bool | None = None  # desktop mode only
     check_updates: bool | None = None  # desktop mode only
     stt_language: SpokenLanguage | None = None  # Whisper codes ("en,ru"), or "auto"

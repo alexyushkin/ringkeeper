@@ -139,6 +139,12 @@ class Settings(BaseSettings):
     # How long an "I heard: ..." waits for Confirm or Redo.
     telegram_confirm_minutes: int = 10
 
+    # Slack and Discord (ringkeeper.channels): your own app or bot, its tokens in the
+    # vault under this prefix. Socket Mode and the Discord gateway: no public address.
+    channel_secret_prefix: str = "file://ringkeeper/channels"  # noqa: S105 (a ref)
+    slack_api_url: str = "https://slack.com/api"
+    discord_api_url: str = "https://discord.com/api/v10"
+
     # Speech to text for voice notes (the optional `stt` compose service).
     # Empty turns voice off. Audio is never stored: only the transcript.
     stt_url: str = "http://stt:9000"
@@ -155,6 +161,10 @@ class Settings(BaseSettings):
     retention_days: int = 90
     # "Stop everything": no new sessions start and the router waits.
     paused: bool = False
+    routines_paused: bool = False  # the tray's "Pause all routines" (services.routines)
+    # Desktop: a fixed address on this computer for routines' webhooks (the app's own
+    # port changes each launch). Only POST /hooks/... answers there. 0: none.
+    hooks_port: int = 17845
     # Desktop mode: the app shell starts Ringkeeper when the user signs in.
     start_at_login: bool = True
     # Desktop mode: the app looks for updates by itself (every 6 hours, when no

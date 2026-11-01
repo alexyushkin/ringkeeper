@@ -97,6 +97,7 @@ def create_task(
     outcome: str | None = None,
     thread_id: uuid.UUID | None = None,
     message_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
 ) -> Task:
     """Queue a task. A feature starts with the architect (plan first), unless it's
     small and clear (see `planned`); anything else starts with a worker."""
@@ -140,6 +141,7 @@ def create_task(
         thread_id=thread_id,
         message_id=message_id,
         phase=ArchitectPhase.PLANNING if planned(kind, complexity) else None,
+        agent_id=agent_id,
     )
     session.add(task)
     session.flush()

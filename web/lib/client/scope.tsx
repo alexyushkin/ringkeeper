@@ -92,6 +92,8 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
 
   const query = { ...(scope.client ? { client: scope.client } : {}), ...(scope.project ? { project: scope.project } : {}) };
   const value = { ...scope, set, query, clients: clients.data ?? [], reloadClients: clients.reload };
+  // Pages show clients by name (clientName): wait for the names the first time.
+  if (!clients.data && !clients.error) return null;
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
 }
 

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ModelSettings, MoneySetting } from "@/components/model-settings";
 import { TelegramPairing } from "@/components/telegram";
+import { KindSection, TelegramPrefs, useChannels } from "@/components/channels";
 import { Alert, Button, Card, ConfirmButton, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
@@ -53,6 +54,7 @@ interface Settings {
 
 export default function SettingsPage() {
   const settings = useApi<Settings>("settings");
+  const channels = useChannels();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -83,6 +85,12 @@ export default function SettingsPage() {
   const v = settings.data.values;
   const telegramState = settings.data.services.telegram;
 
+  function channelSummary(kind: string): string {
+    const mine = (channels.data?.channels ?? []).filter((c) => c.kind === kind);
+    if (!mine.length) return "not set up";
+    const on = mine.filter((c) => c.enabled).length;
+    return on ? `${on} on` : "off";
+  }
   const telegramSummary = !settings.data.telegram.token ? "not connected" : v.telegram ? (telegramState?.running ? "on" : "on, not running") : "off";
   const tabs: Tab[] = [
     {
@@ -118,6 +126,7 @@ export default function SettingsPage() {
       key: "notifications",
       label: "Notifications",
       content: () => (
+        <div className="space-y-4">
         <Section id="telegram" title="Telegram" summary={telegramSummary}>
           {DESKTOP && !settings.data!.telegram.token ? (
             <>
@@ -151,7 +160,15 @@ export default function SettingsPage() {
               <NumberSetting label="Question length" value={v.telegram_question_chars} onSave={(n) => change({ telegram_question_chars: n })} />
             </div>
           </Details>
+          {channels.data ? <TelegramPrefs prefs={channels.data.telegram.prefs} onSaved={channels.reload} /> : null}
         </Section>
+        <Section id="slack" title="Slack" summary={channelSummary("slack")}>
+          <KindSection kind="slack" list={channels.data?.channels ?? []} onChanged={channels.reload} />
+        </Section>
+        <Section id="discord" title="Discord" summary={channelSummary("discord")}>
+          <KindSection kind="discord" list={channels.data?.channels ?? []} onChanged={channels.reload} />
+        </Section>
+        </div>
       ),
     },
     {

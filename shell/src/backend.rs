@@ -196,11 +196,16 @@ pub fn status(agent: &ureq::Agent, runtime: &Runtime) -> Result<Status, String> 
     response.body_mut().read_json().map_err(|e| e.to_string())
 }
 
-pub fn set_paused(agent: &ureq::Agent, runtime: &Runtime, paused: bool) -> Result<(), String> {
+/// The tray's "Pause all routines": routines only ("Stop everything" is the app's).
+pub fn set_routines_paused(
+    agent: &ureq::Agent,
+    runtime: &Runtime,
+    paused: bool,
+) -> Result<(), String> {
     let response = agent
         .patch(format!("{}/desktop/api/settings", runtime.url))
         .header("Authorization", bearer(runtime))
-        .send_json(json!({ "paused": paused }))
+        .send_json(json!({ "routines_paused": paused }))
         .map_err(|e| e.to_string())?;
     match response.status().as_u16() {
         200 => Ok(()),

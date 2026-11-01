@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from ringkeeper.config import Settings
 from ringkeeper.models import (
     TERMINAL_STATUSES,
+    Agent,
     Decision,
     DecisionStatus,
     Message,
@@ -43,6 +44,9 @@ Rules:
   help you match the operator's words to a project.
 - ROUTING EXAMPLES are past answers from the operator: follow them for the
   same or very similar phrasing.
+- `agent`: when the operator asks one of a project's agents by name ("ask the
+  Seaside follow-up agent to..."), that agent's name exactly as listed under the
+  project's `agents`. Otherwise leave it out.
 - kind: feature (new behaviour in code), fix (broken code), data (read or
   change data in the project's instances), content (copy, docs), ops
   (workflows, deploys, configuration).
@@ -89,7 +93,7 @@ def _snippet(text: str, limit: int = SNIPPET_CHARS) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
-def _project_card(project: Project) -> dict[str, Any]:
+def _project_card(project: Project, agents: dict[str, list[Agent]]) -> dict[str, Any]:
     return {
         "name": project.name,
         "owner": project.owner,
@@ -98,6 +102,10 @@ def _project_card(project: Project) -> dict[str, Any]:
         "instances": [
             {"name": b.instance.name, "type": b.instance.type.value, "env": b.instance.env.value}
             for b in sorted(project.bindings, key=lambda b: b.instance.name)
+        ],
+        "agents": [
+            {"name": a.name, "does": _snippet(a.instructions, 200)}
+            for a in agents.get(project.name, [])
         ],
     }
 
@@ -133,9 +141,12 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
         .limit(20)
     ).all()
     saved = examples.list_examples(session, limit=settings.router_examples)
+    agents: dict[str, list[Agent]] = {}
+    for agent in session.scalars(select(Agent).order_by(Agent.name)):
+        agents.setdefault(agent.project.name, []).append(agent)
 
     sections = [
-        "PROJECTS:\n" + json.dumps([_project_card(p) for p in projects], indent=1),
+        "PROJECTS:\n" + json.dumps([_project_card(p, agents) for p in projects], indent=1),
         "THREAD SO FAR:\n"
         + ("\n".join(f"- {m.role}: {_snippet(m.body)}" for m in history) or "(new thread)"),
         "OPEN TASKS:\n"

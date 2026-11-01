@@ -217,7 +217,7 @@ def _clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
                     "owner, owner_sessions, passkeys, login_attempts, "
                     "session_events, sessions, tasks, token_revocations, audit_events, "
                     "decisions, messages, threads, project_instances, projects, instances, "
-                    "clients CASCADE"
+                    "clients, routine_runs, routines, agents, channels CASCADE"
                 )
             )
             return

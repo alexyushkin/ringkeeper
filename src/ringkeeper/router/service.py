@@ -28,6 +28,7 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
 from ringkeeper.model_choice import router_model
 from ringkeeper.models import (
+    Agent,
     Decision,
     DecisionKind,
     Env,
@@ -95,6 +96,7 @@ def _task_fields(task: RoutedTask) -> dict[str, Any]:
         "risk": task.risk.value,
         "complexity": task.complexity.value,
         "outcome": task.outcome,
+        "agent": task.agent,
     }
 
 
@@ -150,6 +152,14 @@ def _ask(
 
 
 def _dispatch(session: Session, settings: Settings, message: Message, task: RoutedTask) -> Task:
+    # The agent the operator named, if it's one of the project's (else the plain task).
+    agent = None
+    if task.agent:
+        project = session.scalar(select(Project).where(Project.name == task.project))
+        if project is not None:
+            agent = session.scalar(
+                select(Agent).where(Agent.project_id == project.id, Agent.name == task.agent)
+            )
     return tasks.create_task(
         session,
         settings,
@@ -161,6 +171,7 @@ def _dispatch(session: Session, settings: Settings, message: Message, task: Rout
         outcome=task.outcome,
         thread_id=message.thread_id,
         message_id=message.id,
+        agent_id=agent.id if agent is not None else None,
     )
 
 

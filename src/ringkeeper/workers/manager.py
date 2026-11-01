@@ -40,6 +40,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.services import (
+    agents,
     architect,
     architect_loop,
     cleanup,
@@ -378,9 +379,21 @@ class Manager:
             workspace = resolve_workspace(project.workspace_path, settings.workspaces_root)
             autonomy = project.autonomy
             checks = list(project.checks)
-            # Only the services this project is connected to: every other endpoint
-            # would refuse it anyway, and each one's tools crowd the agent's context.
-            served = {b.instance_type for b in project.bindings if b.instance_type in ADAPTERS}
+            task_row = session.get(Task, job.task_id)
+            agent = agents.of_task(session, task_row) if task_row is not None else None
+            # Only the services this project (or its agent) is connected to: every other
+            # endpoint would refuse it anyway, and each one's tools crowd the context.
+            served = {
+                b.instance_type for b in project.bindings
+                if b.instance_type in ADAPTERS
+                and (agent is None or b.instance.name in agent.connections)
+            }  # fmt: skip
+            prompt, model, effort = job.prompt, job.model, None
+            if agent is not None:  # its instructions, and its own model, effort, autonomy
+                prompt = agents.instructions_for(agent, job.prompt)
+                model = agent.model or model
+                effort = agent.effort
+                autonomy = Autonomy(agent.autonomy) if agent.autonomy else autonomy
             endpoints = sorted(agent_name(service) for service in served)
         architect_role = job.role is SessionRole.ARCHITECT
         subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
@@ -399,7 +412,7 @@ class Manager:
         task: dict[str, Any] = {
             "task_id": str(job.task_id),
             "session_ordinal": job.ordinal,
-            "prompt": job.prompt,
+            "prompt": prompt,
             "max_turns": job.max_turns,
             "branch": tasks.branch_name(job.task_id),
             "mcp_servers": (
@@ -414,8 +427,8 @@ class Manager:
             "checks": checks if job.feature and not architect_role else [],
             "max_budget_usd": job.budget_usd if credential.mode is AuthMode.API_KEY else None,
             "resume": job.sdk_session_id,
-            "model": job.model,
-            "effort": session_effort(settings, job.role, job.complexity),
+            "model": model,
+            "effort": effort or session_effort(settings, job.role, job.complexity),
         }
         if settings.worker_stub:
             task["stub"] = json.loads(settings.worker_stub)

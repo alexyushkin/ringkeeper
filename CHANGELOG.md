@@ -5,6 +5,34 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Agents.** Each project can have named agents: instructions they always
+  follow, the connections they may use (some of the project's; shared tools
+  only when ticked: the gateway refuses the rest), and their own model, effort
+  and autonomy. Ask one in a conversation: "ask the Seaside follow-up agent
+  to...".
+- **Routines.** A routine runs an agent on a schedule (every day, weekdays,
+  chosen days, monthly or every few hours, in your time zone), when something
+  happens (its webhook is called on this computer, a file is added to the
+  project's folder, a new Airtable record, a new matching email), or when you
+  run it. Start from a template: daily digest, new-lead follow-up draft,
+  weekly report, data sync check. New routines start paused with a Test run.
+  Each run is a task: reads run, actions wait for your approval (in Approvals,
+  the routine's page and notifications). Limits per run: steps and minutes, and
+  a dollar cap with an API key; and runs a day. After the computer slept, one
+  run makes up for the missed ones and says so. Pause one routine, a project's,
+  or all of them (the tray's "Pause all routines" now pauses routines only;
+  "Stop everything" stays separate). Every run is in the routine's history,
+  with an optional summary to your notification channels.
+- **Slack and Discord.** Settings > Notifications sets up your own Slack app
+  (Socket Mode) or Discord bot, step by step; neither needs anything on this
+  computer opened to the internet. Approvals and results arrive as a short
+  summary with Approve / Deny / Open buttons. Approve is offered only where
+  it's safe without the details (not production changes or deletes); only you
+  can press them, and anyone else in the channel is told they're not allowed.
+  Open brings Ringkeeper up at that page on this computer. Send test checks it.
+- **Choose what each channel sends.** Telegram, Slack and Discord each pick
+  approvals, routine results, failures or finished tasks, quiet hours, and
+  which clients and projects.
 - **Clients of their own.** A client is kept with its name as you typed it
   ("Seaside Windows & Doors"); the short form is only for links. Typing a new
   client anywhere creates it, and a client with only connections, or nothing
