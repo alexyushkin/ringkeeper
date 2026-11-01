@@ -13,6 +13,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from ringkeeper.storage.sqlite_baseline import restore_triggers
 from ringkeeper.storage.types import UTCDateTime
 
 revision: str = "0011"
@@ -30,3 +31,4 @@ def downgrade() -> None:
     for table in ("threads", "tasks"):
         with op.batch_alter_table(table) as batch:
             batch.drop_column("archived_at")
+    restore_triggers("tasks")

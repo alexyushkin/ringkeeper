@@ -7,6 +7,7 @@ from sqlalchemy import Engine, create_engine, inspect, text
 from ringkeeper import migrate
 from ringkeeper.db import dispose_engines
 from ringkeeper.models import Base
+from ringkeeper.storage.sqlite_baseline import TRIGGERS
 
 
 def test_migrations_match_models(engine: Engine) -> None:
@@ -70,3 +71,16 @@ def test_owners_become_clients(database_url: str) -> None:
         probe.dispose()
     assert found == {"acme": "Acme", "seaside": "seaside"}
     assert owners == {"acme-web": "acme", "acme-app": "acme", "seaside": "seaside"}
+    if database_url.startswith("sqlite"):
+        # Rebuilding a table to drop a column on the way down takes its triggers
+        # with it; live updates must still be there after the way back up.
+        probe = create_engine(database_url)
+        try:
+            with probe.connect() as connection:
+                triggers = connection.execute(
+                    text("SELECT name FROM sqlite_master WHERE type = 'trigger'")
+                ).scalars()
+                names = set(triggers)
+        finally:
+            probe.dispose()
+        assert set(TRIGGERS) <= names

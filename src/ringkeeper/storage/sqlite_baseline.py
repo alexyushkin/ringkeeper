@@ -521,6 +521,17 @@ TRIGGERS = {
 }  # fmt: skip
 
 
+def restore_triggers(*tables: str) -> None:
+    """After batch_alter_table on SQLite: it rebuilds the table, and the table's
+    triggers (live updates, the audit log's guard) go with the old one."""
+    if op.get_bind().dialect.name != "sqlite":
+        return
+    for name, (event, table, body, when) in TRIGGERS.items():
+        if table in tables:
+            op.execute(f"DROP TRIGGER IF EXISTS {name}")
+            op.execute(trigger_sql(name, event, table, body, when))
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     metadata.create_all(bind)
