@@ -416,3 +416,28 @@ def test_a_new_airtable_record_starts_one_run(
             session, "seaside",
             RoutineIn("x", "follow-up", "p", "event", event={**event, "connection": "seaside-db"}),
         )  # fmt: skip
+
+
+def test_agents_and_routines_across_projects_follow_the_switcher(owner: TestClient) -> None:
+    for name, client in (("seaside", "Seaside"), ("acme-web", "Acme")):
+        made = owner.post("/projects", json={"name": name, "owner": client})
+        assert made.status_code == 201, made.text
+        added = owner.post(f"/projects/{name}/agents", json={"name": "digest"})
+        assert added.status_code == 201, added.text
+    template = owner.get("/routine-templates").json()["daily-digest"]
+    made = owner.post("/projects/seaside/routines", json={**template, "agent": "digest"})
+    assert made.status_code == 201, made.text
+
+    everyone = owner.get("/agents").json()
+    assert [(a["project"], a["client"], a["name"], a["routines"]) for a in everyone] == [
+        ("acme-web", "acme", "digest", 0),
+        ("seaside", "seaside", "digest", 1),
+    ]
+    assert [a["project"] for a in owner.get("/agents", params={"client": "seaside"}).json()] == [
+        "seaside"
+    ]
+    assert [a["project"] for a in owner.get("/agents", params={"project": "acme-web"}).json()] == [
+        "acme-web"
+    ]
+    assert owner.get("/routines", params={"client": "acme"}).json() == []
+    assert len(owner.get("/routines", params={"client": "seaside"}).json()) == 1

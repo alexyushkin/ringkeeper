@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 
-import { Alert, Badge, Button, CompactRow, ConfirmButton, Empty, Field, Select, TextArea } from "@/components/ui";
+import Link from "@/components/link";
+import { Alert, Badge, Button, CompactRow, ConfirmButton, Empty, Field, Loading, Select, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { projectHref } from "@/lib/client/routes";
+import { place, useScope } from "@/lib/client/scope";
 import { AUTONOMY } from "@/lib/client/words";
+
+/** The pair, in one line, wherever either is empty. */
+export const AGENTS_AND_ROUTINES = "An agent is who does the work; a routine is when it runs.";
 
 export interface AgentData {
   name: string;
@@ -14,6 +20,8 @@ export interface AgentData {
   effort: string | null;
   autonomy: string | null;
   routines: number;
+  project?: string;
+  client?: string;
 }
 
 /** A connection the project is linked to: an agent can be given some of them. */
@@ -42,7 +50,7 @@ export function Agents({ project, linked }: { project: string; linked: Linked[] 
         An agent works only with the connections you give it, follows its instructions every time, and can run on a routine. In a conversation, ask it by name: “ask the follow-up agent to…”.
       </p>
       {agents.error ? <Alert>{agents.error}</Alert> : null}
-      {agents.data && !agents.data.length && !adding ? <Empty>No agents yet.</Empty> : null}
+      {agents.data && !agents.data.length && !adding ? <Empty>No agents yet. {AGENTS_AND_ROUTINES}</Empty> : null}
       <div className="space-y-2">
         {(agents.data ?? []).map((agent) => (
           <CompactRow
@@ -76,6 +84,100 @@ export function Agents({ project, linked }: { project: string; linked: Linked[] 
           Add an agent
         </Button>
       )}
+    </div>
+  );
+}
+
+/** The connections linked to a project, for choosing an agent's. */
+function useLinked(project: string): Linked[] | null {
+  const detail = useApi<{ instances: { name: string; type: string }[] }>(`projects/${project}`);
+  const connections = useApi<{ name: string; shared: boolean }[]>("connections");
+  if (!detail.data) return null;
+  const shared = new Set((connections.data ?? []).filter((c) => c.shared).map((c) => c.name));
+  return detail.data.instances.map((i) => ({ name: i.name, type: i.type, shared: shared.has(i.name) }));
+}
+
+/** An agent's form outside its project's page: loads what the project is linked to. */
+export function ProjectAgentForm({ project, existing, onSaved, onCancel }: { project: string; existing?: AgentData; onSaved: () => void; onCancel?: () => void }) {
+  const linked = useLinked(project);
+  if (!linked) return <Loading />;
+  return <AgentForm project={project} linked={linked} existing={existing} onSaved={onSaved} onCancel={onCancel} />;
+}
+
+/** Which project: the switcher's, or one of the switcher's client's (all, without one). */
+export function ProjectPicker({ value, onChange, hint }: { value: string; onChange: (project: string) => void; hint?: string }) {
+  const scope = useScope();
+  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const mine = (projects.data ?? []).filter((p) => !scope.client || p.owner === scope.client);
+  return (
+    <Select
+      label="Project"
+      value={value}
+      onChange={onChange}
+      hint={hint}
+      options={[["", mine.length ? "Choose a project…" : "No projects yet"], ...mine.map((p): [string, string] => [p.name, place(p.owner, p.name)])]}
+    />
+  );
+}
+
+/** A new agent from anywhere: the project first, then its form. */
+export function NewAgent({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+  const scope = useScope();
+  const [project, setProject] = useState(scope.project);
+  return (
+    <div className="space-y-3 rounded-xl border border-line p-3">
+      <ProjectPicker value={project} onChange={setProject} hint="An agent belongs to one project and uses some of its connections." />
+      {project ? <ProjectAgentForm key={project} project={project} onSaved={onSaved} onCancel={onCancel} /> : null}
+      {!project ? (
+        <Button kind="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The Agents page: every project's agents, narrowed by the client/project switcher. */
+export function AgentDirectory() {
+  const scope = useScope();
+  const list = useApi<AgentData[]>("agents", scope.query);
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className="space-y-3">
+      {adding ? (
+        <NewAgent
+          onSaved={() => {
+            setAdding(false);
+            list.reload();
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <Button kind="primary" onClick={() => setAdding(true)}>
+          New agent
+        </Button>
+      )}
+      {list.error ? <Alert>{list.error}</Alert> : null}
+      {list.data && !list.data.length ? <Empty>No agents yet. {AGENTS_AND_ROUTINES}</Empty> : null}
+      <div className="space-y-2">
+        {(list.data ?? []).map((agent) => (
+          <CompactRow
+            key={`${agent.project}/${agent.name}`}
+            head={
+              <>
+                <span className="font-medium">{agent.name}</span>
+                <Link href={projectHref(agent.project ?? "")} className="text-xs text-accent">
+                  {place(agent.client, agent.project)}
+                </Link>
+                <span className="text-xs text-muted">{agent.connections.length ? agent.connections.join(", ") : "no connections"}</span>
+                {agent.routines ? <Badge>{agent.routines === 1 ? "1 routine" : `${agent.routines} routines`}</Badge> : null}
+              </>
+            }
+          >
+            <ProjectAgentForm project={agent.project ?? ""} existing={agent} onSaved={list.reload} />
+          </CompactRow>
+        ))}
+      </div>
     </div>
   );
 }

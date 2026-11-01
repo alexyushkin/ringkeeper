@@ -64,6 +64,19 @@ def list_agents(session: Session, project: str) -> list[Agent]:
     )
 
 
+def list_all(
+    session: Session, *, client: str | None = None, project: str | None = None
+) -> list[tuple[Agent, Project]]:
+    """Agents across projects, for the Agents page (the client/project switcher)."""
+    query = select(Agent, Project).join(Project, Project.id == Agent.project_id)
+    if client:
+        query = query.where(Project.owner == client)
+    if project:
+        query = query.where(Project.name == project)
+    rows = session.execute(query.order_by(Project.name, Agent.name)).all()
+    return [(agent, found) for agent, found in rows]
+
+
 def get_agent(session: Session, project: str, name: str) -> Agent:
     found = projects.get_project(session, project)
     agent = session.scalar(

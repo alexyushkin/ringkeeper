@@ -52,6 +52,8 @@ class AgentOut(BaseModel):
     effort: str | None
     autonomy: str | None
     routines: int = 0
+    project: str = ""
+    client: str = ""
 
 
 def _agent_out(agent: Agent, routine_count: int = 0) -> AgentOut:
@@ -67,6 +69,22 @@ def list_agents(name: str, session: SessionDep) -> list[AgentOut]:
     for routine in routines.list_routines(session, name):
         counts[routine.agent.name] = counts.get(routine.agent.name, 0) + 1
     return [_agent_out(a, counts.get(a.name, 0)) for a in agents.list_agents(session, name)]
+
+
+@router.get("/agents")
+def list_all_agents(
+    session: SessionDep, client: str | None = None, project: str | None = None
+) -> list[AgentOut]:
+    """Every project's agents (the Agents page), narrowed like the switcher."""
+    counts: dict[object, int] = {}
+    for routine in routines.list_routines(session, project, client):
+        counts[routine.agent_id] = counts.get(routine.agent_id, 0) + 1
+    return [
+        _agent_out(agent, counts.get(agent.id, 0)).model_copy(
+            update={"project": found.name, "client": found.owner}
+        )
+        for agent, found in agents.list_all(session, client=client, project=project)
+    ]
 
 
 @router.post("/projects/{name}/agents", status_code=201)
@@ -175,8 +193,10 @@ def templates() -> dict[str, dict[str, Any]]:
 
 
 @router.get("/routines")
-def list_routines(session: SessionDep, project: str | None = None) -> list[RoutineOut]:
-    return [_routine_out(session, r) for r in routines.list_routines(session, project)]
+def list_routines(
+    session: SessionDep, project: str | None = None, client: str | None = None
+) -> list[RoutineOut]:
+    return [_routine_out(session, r) for r in routines.list_routines(session, project, client)]
 
 
 @router.post("/projects/{name}/routines", status_code=201)

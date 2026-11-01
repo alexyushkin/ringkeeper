@@ -132,10 +132,14 @@ def get_routine(session: Session, ident: str | uuid.UUID) -> Routine:
     return found
 
 
-def list_routines(session: Session, project: str | None = None) -> list[Routine]:
+def list_routines(
+    session: Session, project: str | None = None, client: str | None = None
+) -> list[Routine]:
     query = select(Routine).join(Project, Project.id == Routine.project_id)
     if project:
         query = query.where(Project.name == project)
+    if client:
+        query = query.where(Project.owner == client)
     return list(session.scalars(query.order_by(Project.name, Routine.name)))
 
 

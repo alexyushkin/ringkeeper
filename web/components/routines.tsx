@@ -3,11 +3,11 @@
 import Link from "@/components/link";
 import { useState } from "react";
 
-import type { AgentData } from "@/components/agents";
-import { Alert, Badge, Button, Empty, Field, Select, StatusBadge, TextArea, Toggle, timeAgo } from "@/components/ui";
+import { AGENTS_AND_ROUTINES, ProjectAgentForm, ProjectPicker, type AgentData } from "@/components/agents";
+import { Alert, Badge, Button, Empty, Field, Loading, Select, StatusBadge, TextArea, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { routineHref } from "@/lib/client/routes";
-import { place } from "@/lib/client/scope";
+import { place, useScope } from "@/lib/client/scope";
 
 export interface RoutineData {
   id: string;
@@ -72,11 +72,11 @@ export function browserZone(): string {
 
 /** Routines, one row each: when it runs, its last run, the next one, on or paused,
  * Run now. `project`: only that project's. */
-export function RoutineList({ project }: { project?: string }) {
-  const list = useApi<RoutineData[]>("routines", project ? { project } : undefined);
+export function RoutineList({ project, client }: { project?: string; client?: string }) {
+  const list = useApi<RoutineData[]>("routines", project ? { project } : client ? { client } : undefined);
   if (list.error) return <Alert>{list.error}</Alert>;
   if (!list.data) return null;
-  if (!list.data.length) return <Empty>No routines yet.</Empty>;
+  if (!list.data.length) return <Empty>No routines yet. {AGENTS_AND_ROUTINES}</Empty>;
   return (
     <ul className="space-y-2">
       {list.data.map((routine) => (
@@ -134,7 +134,7 @@ function RoutineRow({ routine, showProject, onChange }: { routine: RoutineData; 
 export function NewRoutine({ project, agents, onCreated }: { project: string; agents: AgentData[]; onCreated: (id: string) => void }) {
   const templates = useApi<Record<string, Template>>("routine-templates");
   const [start, setStart] = useState<Template | null>(null);
-  if (!agents.length) return <p className="text-sm text-muted">Add an agent first (Agents tab): a routine runs one.</p>;
+  if (!agents.length) return <p className="text-sm text-muted">Add an agent first: a routine runs one. {AGENTS_AND_ROUTINES}</p>;
   if (!start) {
     return (
       <div className="space-y-2">
@@ -155,6 +155,55 @@ export function NewRoutine({ project, agents, onCreated }: { project: string; ag
     );
   }
   return <RoutineForm project={project} agents={agents} start={start} onSaved={onCreated} onCancel={() => setStart(null)} />;
+}
+
+/** New routine from the Routines page: the project, then its agent (making one there
+ * if it has none), then the routine. */
+export function NewRoutineAnywhere({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
+  const scope = useScope();
+  const [project, setProject] = useState(scope.project);
+  return (
+    <div className="space-y-3 rounded-xl border border-line p-3">
+      <ProjectPicker value={project} onChange={setProject} hint="A routine runs one of the project's agents." />
+      {project ? <RoutineFor key={project} project={project} onCreated={onCreated} /> : null}
+      <Button kind="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
+  );
+}
+
+function RoutineFor({ project, onCreated }: { project: string; onCreated: (id: string) => void }) {
+  const agents = useApi<AgentData[]>(`projects/${project}/agents`);
+  const [making, setMaking] = useState(false);
+  if (agents.error) return <Alert>{agents.error}</Alert>;
+  if (!agents.data) return <Loading />;
+  if (agents.data.length) return <NewRoutine project={project} agents={agents.data} onCreated={onCreated} />;
+  if (making) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium">New agent for {project}</p>
+        <ProjectAgentForm
+          project={project}
+          onSaved={() => {
+            setMaking(false);
+            agents.reload();
+          }}
+          onCancel={() => setMaking(false)}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted">
+        {project} has no agents yet. {AGENTS_AND_ROUTINES}
+      </p>
+      <Button kind="primary" onClick={() => setMaking(true)}>
+        Create an agent
+      </Button>
+    </div>
+  );
 }
 
 /** A routine's settings: agent, prompt, when it runs, its limits, how you hear of it. */

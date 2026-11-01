@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Agents in the sidebar.** An Agents page lists every project's agents,
+  narrowed by the client and project switcher, with New agent (it asks which
+  project first). The Routines page has New routine: pick the project, then
+  its agent, or create one right there if it has none. Empty pages say how
+  they fit: an agent is who does the work; a routine is when it runs.
+
 ## 0.1.0-beta.9 (2026-11-01)
 
 - **Agents.** Each project can have named agents: instructions they always
