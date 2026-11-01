@@ -21,12 +21,14 @@ ASSETS = ROOT / "assets"
 ICONS = ROOT / "shell" / "icons"
 PUBLIC = ROOT / "web" / "public"
 APP = ROOT / "web" / "app"
+SPLASH = ROOT / "shell" / "ui"  # the window's "Starting Ringkeeper…" page
 ICON = (ASSETS / "icon.svg").read_text(encoding="utf-8")
 SMALL = (ASSETS / "icon-small.svg").read_text(encoding="utf-8")
 NAVY = (1, 26, 71)  # the tile's middle
 WHITE = (255, 255, 255, 255)
 DOT = (232, 72, 60, 255)  # the badge: red, readable on light and dark taskbars
 SMALL_UP_TO = 24
+INSTALLER_SCALES = (100, 125, 150, 175, 200, 225, 250, 300, 350)  # Windows' display scales
 
 
 def render(size: int, svg: str | None = None) -> Image.Image:
@@ -79,15 +81,29 @@ def bmp(image: Image.Image, path: Path) -> None:
     image.convert("RGB").save(path, format="BMP")
 
 
+def at(scale: int, pixels: int) -> int:
+    """A size at this display scale (percent), rounded down as the installer's
+    integer math does (shell/windows/hooks.nsh, RK_SHARP_IMAGES)."""
+    return pixels * scale // 100
+
+
 def installer_images() -> None:
-    # The welcome/finish pages' sidebar (164x314): the icon on the tile's navy.
-    sidebar = Image.new("RGBA", (164, 314), (*NAVY, 255))
-    sidebar.alpha_composite(render(120), (22, 70))
-    bmp(sidebar, ICONS / "installer-sidebar.bmp")
-    # The other pages' header (150x57): the icon on white, at the right.
-    header = Image.new("RGBA", (150, 57), WHITE)
-    header.alpha_composite(render(48), (150 - 48 - 6, 4))
-    bmp(header, ICONS / "installer-header.bmp")
+    """The installer's images at each display scale it picks from: Windows
+    stretches a bitmap with plain pixel scaling, which turns the icon's edges
+    jagged, so the installer shows the largest that fits, unscaled."""
+    for scale in INSTALLER_SCALES:
+        suffix = "" if scale == 100 else f"-{scale}"
+        # The welcome/finish pages' sidebar (164x314 at 100%): the icon on the
+        # tile's navy. A tenth taller than the page: what's past it is cut off.
+        size = (at(scale, 164), at(scale, 314) * 11 // 10)
+        sidebar = Image.new("RGBA", size, (*NAVY, 255))
+        sidebar.alpha_composite(render(at(scale, 120)), (at(scale, 22), at(scale, 70)))
+        bmp(sidebar, ICONS / f"installer-sidebar{suffix}.bmp")
+        # The other pages' header (150x57 at 100%): the icon on white, at the right.
+        width, icon = at(scale, 150), at(scale, 48)
+        header = Image.new("RGBA", (width, at(scale, 57)), WHITE)
+        header.alpha_composite(render(icon), (width - icon - at(scale, 6), at(scale, 4)))
+        bmp(header, ICONS / f"installer-header{suffix}.bmp")
 
 
 def main() -> None:
@@ -109,6 +125,7 @@ def main() -> None:
     installer_images()
 
     (PUBLIC / "icon.svg").write_text(ICON, encoding="utf-8", newline="\n")
+    (SPLASH / "icon.svg").write_text(ICON, encoding="utf-8", newline="\n")
     render(16).save(PUBLIC / "icon-16.png")
     render(32).save(PUBLIC / "icon-32.png")
     render(192).save(PUBLIC / "icon-192.png")

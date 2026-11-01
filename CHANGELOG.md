@@ -9,6 +9,12 @@ publishes it as the release notes and the app shows it with the update.
   only waits for programs running from Ringkeeper's own folder, not for any
   program with the same name elsewhere. If one doesn't quit, the message says
   which one ("Ringkeeper is running from …") or which folder is in use.
+- **The new icon everywhere.** The "Starting Ringkeeper…" screen and the logo
+  beside the name in the app now use it. After an update, the taskbar and Start
+  menu now show the new icon too, instead of the one Windows remembered from
+  before.
+- **Sharp installer images** at any display scale (125%, 150% and up), instead
+  of a stretched, blurry icon.
 
 ## 0.1.0-beta.6 (2026-10-31)
 

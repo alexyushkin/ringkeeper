@@ -120,6 +120,99 @@ Var RkPrevious
   ${EndIf}
 !macroend
 
+; The installer's images, sharp at any display scale. Windows stretches a
+; bitmap with plain pixel scaling, which made the icon's edges jagged at 125%
+; or 150%. shell/scripts/make_icons.py draws each image at the scales below;
+; these pick the largest that fits and show it unscaled. The header's spare
+; room is its own white; the sidebar is drawn a tenth taller than the page,
+; which cuts off the rest. RK_SHARP_IMAGES goes after HEADERIMAGE and
+; SIDEBARIMAGE are defined, with the sidebar set to NoStretchNoCrop.
+!macro RK_IMAGE_FILE OUT IMAGE SCALE
+  !if "${SCALE}" == "100"
+    File "/oname=${OUT}" "${IMAGE}"
+  !else
+    !searchreplace RK_SCALED "${IMAGE}" ".bmp" "-${SCALE}.bmp"
+    File "/oname=${OUT}" "${RK_SCALED}"
+    !undef RK_SCALED
+  !endif
+!macroend
+
+; $R1 x $R2: the header image's place in pixels.
+!macro RK_HEADER_AT SCALE
+  !define /math RK_W 150 * ${SCALE}
+  !define /redef /math RK_W ${RK_W} / 100
+  !define /math RK_H 57 * ${SCALE}
+  !define /redef /math RK_H ${RK_H} / 100
+  ${If} $R0 == ""
+  ${AndIf} $R1 >= ${RK_W}
+  ${AndIf} $R2 >= ${RK_H}
+    StrCpy $R0 ${SCALE}
+    !insertmacro RK_IMAGE_FILE "$PLUGINSDIR\modern-header.bmp" "${HEADERIMAGE}" ${SCALE}
+  ${EndIf}
+  !undef RK_W
+  !undef RK_H
+!macroend
+
+; $R1: the window's display scale, in percent. (The sidebar's place doesn't
+; exist yet: its page makes it.)
+!macro RK_SIDEBAR_AT SCALE
+  ${If} $R0 == ""
+  ${AndIf} $R1 >= ${SCALE}
+    StrCpy $R0 ${SCALE}
+    !insertmacro RK_IMAGE_FILE "$PLUGINSDIR\modern-wizard.bmp" "${SIDEBARIMAGE}" ${SCALE}
+  ${EndIf}
+!macroend
+
+!macro RK_SHARP_IMAGES UN
+  ; After the Modern UI has put its images in place (MUI_CUSTOMFUNCTION_GUIINIT).
+  Function ${UN}RkSharpImages
+    Push $0
+    Push $1
+    Push $R0
+    Push $R1
+    Push $R2
+    GetDlgItem $0 $HWNDPARENT 1046
+    System::Call '*(i 0, i 0, i 0, i 0) p .r1'
+    System::Call 'user32::GetClientRect(p r0, p r1)'
+    System::Call '*$1(i, i, i .R1, i .R2)'
+    System::Free $1
+    StrCpy $R0 ""
+    !insertmacro RK_HEADER_AT 350
+    !insertmacro RK_HEADER_AT 300
+    !insertmacro RK_HEADER_AT 250
+    !insertmacro RK_HEADER_AT 225
+    !insertmacro RK_HEADER_AT 200
+    !insertmacro RK_HEADER_AT 175
+    !insertmacro RK_HEADER_AT 150
+    !insertmacro RK_HEADER_AT 125
+    !insertmacro RK_HEADER_AT 100
+    ${If} $R0 != ""
+      !insertmacro MUI_LOADANDXALIGNIMAGE $0 "$PLUGINSDIR\modern-header.bmp" Auto Leak
+    ${EndIf}
+    !if "${UN}" == ""  ; the uninstaller has no welcome or finish page
+      System::Call 'user32::GetDpiForWindow(p $HWNDPARENT) i .R1'
+      ${IfThen} $R1 < 96 ${|} StrCpy $R1 96 ${|}
+      IntOp $R1 $R1 * 100
+      IntOp $R1 $R1 / 96
+      StrCpy $R0 ""
+      !insertmacro RK_SIDEBAR_AT 350
+      !insertmacro RK_SIDEBAR_AT 300
+      !insertmacro RK_SIDEBAR_AT 250
+      !insertmacro RK_SIDEBAR_AT 225
+      !insertmacro RK_SIDEBAR_AT 200
+      !insertmacro RK_SIDEBAR_AT 175
+      !insertmacro RK_SIDEBAR_AT 150
+      !insertmacro RK_SIDEBAR_AT 125
+      !insertmacro RK_SIDEBAR_AT 100
+    !endif
+    Pop $R2
+    Pop $R1
+    Pop $R0
+    Pop $1
+    Pop $0
+  FunctionEnd
+!macroend
+
 !macro RK_SET_ASIDE_PART part
   ${If} ${FileExists} "$INSTDIR\${part}"
     ClearErrors
@@ -173,6 +266,22 @@ Var RkPrevious
 
 ; previous-version stays after a successful install: the new version removes
 ; it in the background when it starts, so the update finishes sooner.
+
+; An update replaces the program and its shortcuts in place, and the taskbar
+; keeps showing the icon it already had for them (Windows 11 kept the old
+; icon after the new one shipped). Telling Explorer they changed refreshes it.
+!macro RK_UPDATED path
+  ${If} ${FileExists} "${path}"
+    System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x5, w "${path}", p 0)'  ; SHCNE_UPDATEITEM, SHCNF_PATHW
+  ${EndIf}
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  !insertmacro RK_UPDATED "$INSTDIR\${MAINBINARYNAME}.exe"
+  !insertmacro RK_UPDATED "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+  !insertmacro RK_UPDATED "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+  !insertmacro RK_UPDATED "$DESKTOP\${PRODUCTNAME}.lnk"
+!macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
   !insertmacro RK_QUIT_AND_WAIT

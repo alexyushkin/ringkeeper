@@ -164,6 +164,13 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !define MUI_HEADERIMAGE_UNBITMAP "${UNINSTALLERHEADERIMAGE}"
 !endif
 
+; Ringkeeper: the images, sharp at any display scale (hooks.nsh).
+!define MUI_WELCOMEFINISHPAGE_BITMAP_STRETCH NoStretchNoCrop
+!define MUI_CUSTOMFUNCTION_GUIINIT RkSharpImages
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.RkSharpImages
+!insertmacro RK_SHARP_IMAGES ""
+!insertmacro RK_SHARP_IMAGES "un."
+
 ; Uninstaller icon
 !if "${UNINSTALLERICON}" != ""
   !define MUI_UNICON "${UNINSTALLERICON}"
