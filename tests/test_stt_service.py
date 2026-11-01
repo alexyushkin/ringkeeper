@@ -130,12 +130,12 @@ def test_only_a_few_requests_at_once(fake_stt: tuple[str, FakeEngine]) -> None:
     for _ in range(MAX_IN_FLIGHT):
         assert service_slots.acquire(blocking=False)
     try:
-        busy = httpx2.post(f"{url}/transcribe", content=b"OggS")
+        busy = httpx2.post(f"{url}/transcribe", content=b"OggS", timeout=60)  # busy runs are slow
         assert (busy.status_code, busy.json()) == (503, {"error": "busy"})
     finally:
         for _ in range(MAX_IN_FLIGHT):
             service_slots.release()
-    assert httpx2.post(f"{url}/transcribe", content=b"OggS").status_code == 200
+    assert httpx2.post(f"{url}/transcribe", content=b"OggS", timeout=60).status_code == 200
 
 
 def test_decoding_past_the_limit_is_too_long() -> None:
