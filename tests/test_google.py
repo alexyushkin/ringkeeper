@@ -212,6 +212,11 @@ def test_accounts_side_by_side_never_cross(accounts: TestClient, fake: FakeGoogl
         stored = get_vault().resolve(acme.secret_ref).reveal()
         assert json.loads(stored)["refresh_token"] == "rt:info@acme.example"
 
+    # Test: Google says which account it is (at its exact address, no trailing slash).
+    tested = owner.post("/connections/acme-info/test").json()
+    assert tested["ok"] is True, tested
+    assert "Connected to Google as info@acme.example" in tested["message"]
+
     # A client's account stays with that client; yours goes anywhere (it's in all already).
     crossed = owner.put("/projects/globex-app/connections/acme-info", json={})
     assert crossed.status_code == 409

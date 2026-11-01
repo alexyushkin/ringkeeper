@@ -10,6 +10,9 @@ publishes it as the release notes and the app shows it with the update.
   authorized domain; the steps in Settings › Google app now say what to enter.
 - **A privacy policy**: [PRIVACY.md](PRIVACY.md), also at
   <https://yushkin.us/ringkeeper/privacy>.
+- **Test works for Google accounts.** It said "Google returned 404:
+  invalid_request" though the account worked: it asked Google at the wrong
+  address. Test again after updating to clear "Last test failed".
 
 ## 0.1.0-beta.7 (2026-11-01)
 

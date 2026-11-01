@@ -41,7 +41,9 @@ DRIVE = "https://www.googleapis.com/drive/v3"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 CALENDAR = "https://www.googleapis.com/calendar/v3"
 SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
-USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
+# The account's address. Its own base, called with a path: an HTTP client adds a
+# slash to a base address, and Google answers .../userinfo/ with a 404.
+OPENID = "https://openidconnect.googleapis.com/v1"
 MAX_TEXT_CHARS = 20_000
 # Tests swap in httpx2.MockTransport; production talks to Google.
 transport: httpx2.AsyncBaseTransport | None = None
@@ -117,7 +119,7 @@ async def _call(target: Target, base: str, method: str, path: str, **kwargs: Any
 
 async def probe(target: Target) -> str:
     """Which account this is (the Test button)."""
-    me = await _call(target, USERINFO, "GET", "")
+    me = await _call(target, OPENID, "GET", "/userinfo")
     allowed = ", ".join(config_access(target)) or "nothing"
     return f"Connected to Google as {me.get('email')} (allowed: {allowed})."
 
