@@ -5,7 +5,9 @@ name: Installer check
 # installer is built, then shell/scripts/installer_check.py checks that a
 # ringkeeper.exe from another folder doesn't block an install, and that a
 # program running from the install folder (or its Python folder in use) is
-# named in the message, with Retry finishing the install. Nothing is published.
+# named in the message, with Retry finishing the install. First, a copy that
+# 0.1.0-beta.6 (the last release under the old publisher) installed in a folder
+# of its own must update in that folder. Nothing is published.
 
 on:
   workflow_dispatch:
@@ -21,6 +23,7 @@ permissions:
 
 env:
   TAURI_CLI: "@tauri-apps/cli@2.12.2"
+  OLD_RELEASE: https://github.com/alexyushkin/ringkeeper-releases/releases/download/v0.1.0-beta.6/Ringkeeper_0.1.0-beta.6_x64-setup.exe
 
 jobs:
   installer:
@@ -56,13 +59,19 @@ jobs:
         shell: bash
         run: |
           rm -rf target/release/bundle
-          echo '{"bundle": {"createUpdaterArtifacts": false}}' > "$RUNNER_TEMP/check.json"
+          # Newer than any release, so installing it over 0.1.0-beta.6 is an update.
+          echo '{"version": "99.0.0", "bundle": {"createUpdaterArtifacts": false}}' > "$RUNNER_TEMP/check.json"
           npx --yes "$TAURI_CLI" build --ci --config bundle/windows.json --config "$RUNNER_TEMP/check.json"
           cp target/release/bundle/nsis/*-setup.exe "$RUNNER_TEMP/setup.exe"
+
+      - name: The last release under the old publisher
+        shell: bash
+        run: curl -fsSL -o "$RUNNER_TEMP/old-setup.exe" "$OLD_RELEASE"
 
       - name: The "still running" check
         shell: bash
         run: >
           uv run python shell/scripts/installer_check.py
           --installer "$RUNNER_TEMP/setup.exe"
+          --old-installer "$RUNNER_TEMP/old-setup.exe"
           --scratch "$RUNNER_TEMP/installer-check"

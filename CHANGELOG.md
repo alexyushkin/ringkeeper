@@ -15,6 +15,9 @@ publishes it as the release notes and the app shows it with the update.
   before.
 - **Sharp installer images** at any display scale (125%, 150% and up), instead
   of a stretched, blurry icon.
+- **Published by Alexey Yushkin.** Windows' list of installed apps names him
+  as Ringkeeper's publisher. An update from an earlier version still installs
+  into the folder that version was installed in.
 - **All projects, except…** A shared tool for all projects can leave out
   clients (all their projects, new ones too) and single projects. The
   connection says so plainly: "All projects except Acme (client),

@@ -11,6 +11,12 @@
 !define RK_PREVIOUS "previous-version"
 Var RkPrevious
 
+; Up to 0.1.0-beta.6 the publisher was General Informatics LLC, and the
+; installer kept the install folder under that name. An update finds it there
+; (RestorePreviousInstallLocation), and once the folder is kept under the new
+; name, the old key goes.
+!define RK_OLD_MANUKEY "Software\General Informatics LLC"
+
 ; Windows paths stop at 260 characters, and the bundled Python's deepest file
 ; is up to 165 below the install folder (shell/scripts/bundle.py checks).
 !define RK_MAX_INSTDIR 90
@@ -281,6 +287,8 @@ Var RkPrevious
   !insertmacro RK_UPDATED "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
   !insertmacro RK_UPDATED "$SMPROGRAMS\${PRODUCTNAME}.lnk"
   !insertmacro RK_UPDATED "$DESKTOP\${PRODUCTNAME}.lnk"
+  DeleteRegKey SHCTX "${RK_OLD_MANUKEY}\${PRODUCTNAME}"
+  DeleteRegKey /ifempty SHCTX "${RK_OLD_MANUKEY}"
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

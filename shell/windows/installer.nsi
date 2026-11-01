@@ -959,6 +959,10 @@ SectionEnd
 
 Function RestorePreviousInstallLocation
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
+  ; Ringkeeper: or where a copy installed under the old publisher is (hooks.nsh).
+  ${If} $4 == ""
+    ReadRegStr $4 SHCTX "${RK_OLD_MANUKEY}\${PRODUCTNAME}" ""
+  ${EndIf}
   StrCmp $4 "" +2 0
     StrCpy $INSTDIR $4
 FunctionEnd

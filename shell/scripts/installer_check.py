@@ -10,6 +10,11 @@ installs Ringkeeper for the current user):
    once it's gone, Retry finishes the install.
 3. With nothing running from the install folder but its Python folder in use
    (a program whose current folder it is), the message says that instead.
+
+Before those, on the clean runner: a copy installed by 0.1.0-beta.6, the last
+release under the old publisher (--old-installer), in a folder of its own,
+updates in that folder, and the folder is then kept under the new publisher's
+name, not the old one's.
 """
 
 import argparse
@@ -19,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import time
+import winreg
 from ctypes import wintypes
 from pathlib import Path
 
@@ -28,6 +34,9 @@ DATA = LOCAL / "Ringkeeper"
 PING = Path(os.environ["SYSTEMROOT"]) / "System32" / "PING.EXE"  # stays running, does nothing
 WAIT = ["-n", "3600", "127.0.0.1"]
 IDRETRY, WM_COMMAND = 4, 0x0111
+# Where the installer keeps the install folder: under the publisher's name.
+OLD_PUBLISHER, PUBLISHER = r"Software\General Informatics LLC", r"Software\Alexey Yushkin"
+UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Ringkeeper"
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -132,20 +141,60 @@ def wait_for_message(setup: subprocess.Popen[bytes], seconds: float) -> tuple[in
     raise CheckFailedError("the installer never said what's running")
 
 
-def quit_app() -> None:
+def quit_app(folder: Path = INSTALL) -> None:
     """The installer may start the app; this check wants it closed."""
     if (DATA / "desktop.json").exists():
-        subprocess.run([str(INSTALL / "ringkeeper.exe"), "--quit"], check=False, timeout=120)  # noqa: S603
+        subprocess.run([str(folder / "ringkeeper.exe"), "--quit"], check=False, timeout=120)  # noqa: S603
         deadline = time.monotonic() + 120
         while (DATA / "desktop.json").exists() and time.monotonic() < deadline:
             time.sleep(1)
 
 
-def install(installer: Path, *flags: str) -> tuple[int, float]:
+def install(installer: Path, *flags: str, folder: Path = INSTALL) -> tuple[int, float]:
     started = time.monotonic()
     code = subprocess.run([str(installer), *flags], check=False, timeout=900).returncode  # noqa: S603
-    quit_app()
+    quit_app(folder)
     return code, time.monotonic() - started
+
+
+def registry_value(key: str, name: str = "") -> str | None:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as opened:
+            return str(winreg.QueryValueEx(opened, name)[0])
+    except FileNotFoundError:
+        return None
+
+
+def same_folder(value: str | None, folder: Path) -> bool:
+    return value is not None and os.path.normcase(value) == os.path.normcase(str(folder))
+
+
+def under_the_new_publisher(old_installer: Path, installer: Path, scratch: Path) -> None:
+    step("a copy installed under the old publisher updates in its own folder")
+    folder = scratch / "elsewhere" / "Ringkeeper"
+    code, _ = install(old_installer, "/S", f"/D={folder}", folder=folder)
+    installed = code == 0 and (folder / "ringkeeper.exe").exists()
+    expect(installed, f"0.1.0-beta.6 didn't install ({code})")
+    kept = registry_value(rf"{OLD_PUBLISHER}\Ringkeeper")
+    expect(same_folder(kept, folder), f"0.1.0-beta.6 kept its folder as {kept}")
+
+    code, took = install(installer, "/S", folder=folder)
+    print(f"updated: exit {code}, {took:.0f}s")
+    expect(code == 0, f"the update failed (exit {code})")
+    expect(not INSTALL.exists(), f"the update went to {INSTALL} instead of {folder}")
+    publisher = registry_value(UNINSTALL, "Publisher")
+    expect(publisher == "Alexey Yushkin", f"the publisher is still {publisher}")
+    kept = registry_value(rf"{PUBLISHER}\Ringkeeper")
+    expect(same_folder(kept, folder), f"the folder is kept as {kept}, not {folder}")
+    left = registry_value(rf"{OLD_PUBLISHER}\Ringkeeper")
+    expect(left is None, f"the old publisher's key is still there ({left})")
+
+    # The other checks start from a clean slate, in the usual folder.
+    uninstall = folder / "uninstall.exe"
+    subprocess.run([str(uninstall), "/S", f"_?={folder}"], check=True, timeout=600)  # noqa: S603
+    shutil.rmtree(folder)
+    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, rf"{PUBLISHER}\Ringkeeper")
+    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, PUBLISHER)
 
 
 def holder(exe: Path, cwd: Path | None = None) -> subprocess.Popen[bytes]:
@@ -213,9 +262,11 @@ def says_the_folder_is_in_use(installer: Path, scratch: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--installer", type=Path, required=True)
+    parser.add_argument("--old-installer", type=Path, required=True)
     parser.add_argument("--scratch", type=Path, required=True)
     args = parser.parse_args()
     args.scratch.mkdir(parents=True, exist_ok=True)
+    under_the_new_publisher(args.old_installer, args.installer, args.scratch)
     step("install")
     code, _ = install(args.installer, "/S")
     expect(code == 0 and (INSTALL / "ringkeeper.exe").exists(), f"install failed ({code})")
