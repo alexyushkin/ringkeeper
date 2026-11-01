@@ -304,8 +304,9 @@ def _listen_fixed(port: int) -> socket.socket | None:
     if not port:
         return None
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows: no one else on the same port
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    exclusive: int | None = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+    if exclusive is not None:  # Windows: no one else on the same port
+        sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
     try:
         sock.bind(("127.0.0.1", port))
     except OSError:

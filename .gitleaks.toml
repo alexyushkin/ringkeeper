@@ -11,4 +11,5 @@ paths = ['''^tests/''']
 regexes = [
   '''^wrkspc_01AbC$''',  # a made-up Anthropic workspace ID
   '''^--api-key=abc123$''',  # a fake CLI argument
+  '''^xapp-1-A111-2222-fakeapptokenvalue$''',  # the fake Slack app token (fake_chat)
 ]
