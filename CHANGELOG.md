@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.8 (2026-11-01)
 
 - **Subscription mode reaches every task.** A task created by answering "which
   project?" (in the app or Telegram) was set to the API key and failed with "No
