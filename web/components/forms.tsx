@@ -154,6 +154,9 @@ export interface ConnectionData {
   owner: string;
   shared?: boolean; // a shared tool: any client's projects can use it
   all_projects?: boolean; // ...and every project gets it, new ones too
+  except_clients?: string[]; // ...except these clients' projects
+  except_projects?: string[]; // ...and these projects
+  reach?: string; // "All projects except Acme (client), seaside-messages"
   base_url: string | null;
   config: { preview?: string; [key: string]: unknown };
   secret_stored: boolean;

@@ -41,32 +41,69 @@ def bound_project_names(instance: Instance) -> list[str]:
     return sorted(binding.project.name for binding in instance.bindings)
 
 
-def _check_kind(data: InstanceIn) -> None:
+def _check_kind(session: Session, data: InstanceIn, before: Instance | None = None) -> None:
     """Any kind of connection is a client's (only their projects) or yours (a shared tool:
-    any project, or all of them)."""
+    any project, or all of them, maybe except some clients and projects)."""
     if data.all_projects and not data.shared:
         raise RuleViolationError(
             f"'{data.name}' is a client's connection, so it can't go to all projects."
         )
+    if (data.except_clients or data.except_projects) and not data.all_projects:
+        raise RuleViolationError(
+            f"'{data.name}' isn't for all projects, so it has no exceptions: link it to "
+            "the projects that should have it instead."
+        )
+    # Newly named projects must exist (an old name may outlive its project).
+    known = set(before.except_projects) if before is not None else set[str]()
+    names = set(session.scalars(select(Project.name)))
+    missing = [p for p in data.except_projects if p not in known and p not in names]
+    if missing:
+        raise RuleViolationError(f"no project named {', '.join(missing)}")
+
+
+def excluded(instance: Instance, project: Project) -> bool:
+    """A shared tool for all projects except some: whether `project` is left out,
+    by its name or its client (matched ignoring case and spaces)."""
+    if not instance.all_projects:
+        return False
+    client = project.owner.strip().casefold()
+    return project.name in instance.except_projects or any(
+        c.strip().casefold() == client for c in instance.except_clients
+    )
+
+
+def describe_reach(instance: Instance) -> str:
+    """What it reaches, like "All projects except Acme (client), seaside-messages"
+    ("" if not for all projects)."""
+    if not instance.all_projects:
+        return ""
+    left_out = [f"{c} (client)" for c in instance.except_clients] + list(instance.except_projects)
+    return "All projects" + (f" except {', '.join(left_out)}" if left_out else "")
 
 
 def link_everywhere(session: Session, instance: Instance) -> list[str]:
     """A shared tool for all projects: linked to every project it isn't linked to
-    yet. Returns those projects."""
-    linked = {b.project_id for b in instance.bindings}
+    yet, unless left out, and unlinked from the projects left out. Returns the
+    projects it was newly linked to."""
     added: list[str] = []
     for project in session.scalars(select(Project).order_by(Project.name)):
-        if project.id not in linked:
+        binding = next((b for b in instance.bindings if b.project_id == project.id), None)
+        if excluded(instance, project):
+            if binding is not None:
+                session.delete(binding)
+                session.expire(project, ["bindings"])
+        elif binding is None:
             session.add(ProjectInstance(project=project, instance=instance))
             added.append(project.name)
     session.flush()
+    session.expire(instance, ["bindings"])
     return added
 
 
 def create_instance(session: Session, data: InstanceIn) -> Instance:
     if find_instance(session, data.name) is not None:
         raise AlreadyExistsError(f"instance '{data.name}' already exists")
-    _check_kind(data)
+    _check_kind(session, data)
     instance = Instance(**data.model_dump(), bindings=[])
     session.add(instance)
     session.flush()
@@ -77,7 +114,7 @@ def create_instance(session: Session, data: InstanceIn) -> Instance:
 
 def update_instance(session: Session, data: InstanceIn) -> Instance:
     instance = get_instance(session, data.name)
-    _check_kind(data)
+    _check_kind(session, data, instance)
     if instance.shared and not data.shared:
         others = sorted(
             b.project.name for b in instance.bindings

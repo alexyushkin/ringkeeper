@@ -15,6 +15,11 @@ publishes it as the release notes and the app shows it with the update.
   before.
 - **Sharp installer images** at any display scale (125%, 150% and up), instead
   of a stretched, blurry icon.
+- **All projects, except…** A shared tool for all projects can leave out
+  clients (all their projects, new ones too) and single projects. The
+  connection says so plainly: "All projects except Acme (client),
+  seaside-messages". Left-out projects don't see it, and the gateway refuses
+  their calls to it. Turning "All projects" off drops the exceptions.
 - **Light or dark, your choice.** Settings › Appearance has a Theme: System
   (as before, it follows Windows' light or dark setting), Light or Dark. It's
   kept for this computer, or per browser on a server install.

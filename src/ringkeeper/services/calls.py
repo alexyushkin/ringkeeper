@@ -51,6 +51,7 @@ from ringkeeper.services import (
     decisions,
     google_oauth,
     holds,
+    instances,
     mcp_oauth,
     mcp_tools,
     revocations,
@@ -141,6 +142,10 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
     if binding is None:
         raise RefusalError(
             unavailable, f"instance '{name}' is not bound to project '{project.name}'"
+        )
+    if instances.excluded(instance, project):  # never linked; refused even if it were
+        raise RefusalError(
+            unavailable, f"instance '{name}' is for all projects except '{project.name}'"
         )
     if instance.type != call.service:
         raise RefusalError(

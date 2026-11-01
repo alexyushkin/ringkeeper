@@ -153,13 +153,17 @@ function LinkToProject({ connection, projects, onChange }: { connection: Library
   );
 }
 
-/** A shared tool for every project, new ones too (or only the ones it's linked to). */
+/** A shared tool for every project, new ones too (or only the ones it's linked to),
+ * maybe except some clients (their projects, new ones too) and some projects. */
 function AllProjects({ connection, onChange }: { connection: LibraryConnection; onChange: () => void }) {
   const [error, setError] = useState<string | null>(null);
-  async function set(on: boolean) {
+  const all = Boolean(connection.all_projects);
+  const clients = connection.except_clients ?? [];
+  const projects = connection.except_projects ?? [];
+  async function patch(json: Record<string, unknown>) {
     setError(null);
     try {
-      await api(`connections/${connection.name}`, { method: "PATCH", json: { all_projects: on } });
+      await api(`connections/${connection.name}`, { method: "PATCH", json });
       onChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -169,12 +173,73 @@ function AllProjects({ connection, onChange }: { connection: LibraryConnection; 
     <>
       <Toggle
         label="All projects"
-        checked={Boolean(connection.all_projects)}
-        onChange={set}
-        hint={connection.all_projects ? "Every project has it, and new projects get it too." : "Only the projects below. Turn on to give it to every project, new ones too."}
+        checked={all}
+        onChange={(on) => patch({ all_projects: on })}
+        hint={
+          !all
+            ? "Only the projects below. Turn on to give it to every project, new ones too."
+            : clients.length || projects.length
+              ? `${connection.reach}. New projects get it too, unless their client is left out.`
+              : "Every project has it, and new projects get it too."
+        }
       />
+      {all ? <Exceptions clients={clients} projects={projects} onSave={patch} /> : null}
       {error ? <Alert>{error}</Alert> : null}
     </>
+  );
+}
+
+/** "All projects except…": clients (their projects, new ones too) and projects. */
+function Exceptions({ clients, projects, onSave }: { clients: string[]; projects: string[]; onSave: (json: Record<string, unknown>) => void }) {
+  const known = useApi<{ name: string; owner: string }[]>("projects");
+  const [pick, setPick] = useState("");
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const allClients = [...new Map((known.data ?? []).map((p) => [p.owner.trim().toLowerCase(), p.owner])).values()].sort((a, b) => a.localeCompare(b));
+  const clientChoices = allClients.filter((c) => !clients.some((x) => same(x, c)));
+  // A project of a client already left out is left out anyway.
+  const projectChoices = (known.data ?? []).filter((p) => !projects.includes(p.name) && !clients.some((c) => same(c, p.owner))).map((p) => p.name);
+  function add(value: string) {
+    setPick("");
+    if (value.startsWith("client:")) onSave({ except_clients: [...clients, value.slice(7)] });
+    else if (value.startsWith("project:")) onSave({ except_projects: [...projects, value.slice(8)] });
+  }
+  const left = [...clients.map((c) => ({ key: `client:${c}`, label: `${c} (client)` })), ...projects.map((p) => ({ key: `project:${p}`, label: p }))];
+  return (
+    <div className="space-y-2">
+      {left.length ? (
+        <ul className="flex flex-wrap gap-2" aria-label="Left out">
+          {left.map((item) => (
+            <li key={item.key} className="flex items-center gap-1 rounded-full border border-line px-3 py-1 text-sm">
+              {item.label}
+              <button
+                type="button"
+                className="ml-1 text-muted hover:text-ink"
+                aria-label={`Give it back to ${item.label}`}
+                onClick={() =>
+                  item.key.startsWith("client:")
+                    ? onSave({ except_clients: clients.filter((c) => `client:${c}` !== item.key) })
+                    : onSave({ except_projects: projects.filter((p) => `project:${p}` !== item.key) })
+                }
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {clientChoices.length || projectChoices.length ? (
+        <Select
+          label="Except…"
+          value={pick}
+          onChange={add}
+          options={[
+            ["", left.length ? "Leave out another client or project…" : "Leave out a client or a project…"],
+            ...clientChoices.map((c): [string, string] => [`client:${c}`, `${c} (client: all their projects, new ones too)`]),
+            ...projectChoices.map((p): [string, string] => [`project:${p}`, p]),
+          ]}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -222,7 +287,7 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
       {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
       {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
       {compact ? (
-        <span className="ml-auto text-xs text-muted">{connection.all_projects ? "all projects" : links.length === 1 ? "1 project" : `${links.length} projects`}</span>
+        <span className="ml-auto text-xs text-muted">{connection.all_projects ? (connection.reach || "All projects") : links.length === 1 ? "1 project" : `${links.length} projects`}</span>
       ) : connection.last_test_at ? (
         <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span>
       ) : null}
@@ -238,7 +303,8 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
         ))}
         {!(connection.links ?? []).length ? <li className="text-sm text-muted">Not linked to a project yet.</li> : null}
       </ul>
-      <LinkToProject connection={connection} projects={projects} onChange={onChange} />
+      {/* For all projects, the only ones it isn't linked to are the ones left out. */}
+      {connection.all_projects ? null : <LinkToProject connection={connection} projects={projects} onChange={onChange} />}
       {connection.config.package ? <LocalUpdate connection={connection.name} client={connection.owner} onDone={onChange} /> : null}
       <TestButton name={connection.name} onDone={() => onChange()} />
       {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from ringkeeper.errors import AlreadyExistsError, NotFoundError
 from ringkeeper.models import Instance, Project, ProjectInstance
 from ringkeeper.schemas import ProjectIn
+from ringkeeper.services.instances import excluded
 
 
 def find_project(session: Session, name: str) -> Project | None:
@@ -32,9 +33,11 @@ def create_project(session: Session, data: ProjectIn) -> Project:
         raise AlreadyExistsError(f"project '{data.name}' already exists")
     project = Project(**data.model_dump(), bindings=[])
     session.add(project)
-    # Shared tools for all projects come with every new one.
+    # Shared tools for all projects come with every new one, unless they leave out
+    # its client.
     for tool in session.scalars(select(Instance).where(Instance.all_projects)):
-        session.add(ProjectInstance(project=project, instance=tool))
+        if not excluded(tool, project):
+            session.add(ProjectInstance(project=project, instance=tool))
     session.flush()
     return project
 
@@ -51,6 +54,10 @@ def remove_project(session: Session, name: str) -> int:
     """Remove a project and its bindings. Returns how many bindings went with it."""
     project = get_project(session, name)
     removed_bindings = len(project.bindings)
+    # A shared tool that left it out forgets it (a new project may take the name).
+    for tool in session.scalars(select(Instance).where(Instance.all_projects)):
+        if name in tool.except_projects:
+            tool.except_projects = [p for p in tool.except_projects if p != name]
     session.delete(project)
     session.flush()
     return removed_bindings

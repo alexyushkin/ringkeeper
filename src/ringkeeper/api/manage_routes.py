@@ -433,6 +433,9 @@ class ConnectionPatch(Input):
     owner: NonEmpty | None = None
     shared: bool | None = None  # yours (a shared tool), or a client's connection
     all_projects: bool | None = None  # a shared tool every project gets
+    # ...except these clients' projects and these projects (only with all_projects)
+    except_clients: CleanList | None = None
+    except_projects: CleanList | None = None
     base_url: str | None = None
     # Required with a new base_url: the key goes wherever the address points, so
     # an address can't be changed to send the stored key somewhere else.
@@ -450,6 +453,10 @@ class ConnectionOut(BaseModel):
     owner: str
     shared: bool = False  # a shared tool: any client's projects can use it
     all_projects: bool = False  # ...and every project gets it, new ones too
+    except_clients: list[str] = []  # ...except these clients' projects
+    except_projects: list[str] = []  # ...and these projects
+    # "All projects except Acme (client), seaside-messages" ("" if not for all projects)
+    reach: str = ""
     config: dict[str, Any]  # never secret (for an MCP server: a masked preview, read-only tools)
     base_url: str | None
     secret_stored: bool
@@ -478,6 +485,9 @@ def _connection_out(instance: Instance) -> ConnectionOut:
     return ConnectionOut(
         name=instance.name, type=instance.type, env=instance.env, owner=instance.owner,
         shared=instance.shared, all_projects=instance.all_projects,
+        except_clients=list(instance.except_clients),
+        except_projects=list(instance.except_projects),
+        reach=instances.describe_reach(instance),
         config=dict(instance.config or {}), base_url=instance.base_url,
         secret_stored=_stored(instance.secret_ref),
         projects=instances.bound_project_names(instance), links=links,
@@ -544,11 +554,17 @@ def update_connection(
         instance.last_test_at = instance.last_test_ok = instance.last_test_message = None
     shared = changes.get("shared", instance.shared)
     owner = instances.SHARED_OWNER if shared else changes.get("owner", instance.owner)
+    everywhere = shared and changes.get("all_projects", instance.all_projects)
     merged = InstanceIn(
         name=instance.name, type=instance.type, env=changes.get("env", instance.env),
         secret_ref=instance.secret_ref, owner=owner,
         base_url=base_url, config=dict(instance.config or {}), shared=shared,
-        all_projects=shared and changes.get("all_projects", instance.all_projects),
+        all_projects=everywhere,
+        # Exceptions only mean something for all projects; turning that off drops them.
+        except_clients=changes.get("except_clients", instance.except_clients) if everywhere else [],
+        except_projects=(
+            changes.get("except_projects", instance.except_projects) if everywhere else []
+        ),
     )  # fmt: skip
     try:
         instances.update_instance(session, merged)

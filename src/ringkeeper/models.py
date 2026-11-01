@@ -252,6 +252,10 @@ class Instance(TimestampMixin, Base):
     shared: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # A shared tool every project gets, including projects added later.
     all_projects: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # ...except these clients' projects (a client matched ignoring case and spaces)
+    # and these projects. Only with all_projects; their projects aren't linked.
+    except_clients: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
+    except_projects: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     # Service-specific settings that aren't secret (an MCP server: how it runs, a
     # preview of its command, which of its tools are read-only).
     config: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")

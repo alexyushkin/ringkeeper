@@ -95,6 +95,9 @@ class InstanceIn(_Input):
     config: dict[str, Any] = Field(default_factory=dict[str, Any])
     shared: bool = False  # yours: a shared tool, linkable to any client's projects
     all_projects: bool = False  # a shared tool every project gets, new ones too
+    # ...except these clients' projects and these projects (only with all_projects).
+    except_clients: CleanList = Field(default_factory=list[str])
+    except_projects: CleanList = Field(default_factory=list[str])
 
 
 # An ID a link is narrowed to (a Neon project, an Airtable base, a GitHub owner/name):

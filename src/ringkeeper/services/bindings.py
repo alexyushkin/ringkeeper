@@ -4,7 +4,7 @@ from ringkeeper import remote
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Env, Instance, Project, ProjectInstance
 from ringkeeper.schemas import BindingIn
-from ringkeeper.services.instances import find_instance
+from ringkeeper.services.instances import excluded, find_instance
 from ringkeeper.services.projects import find_project, get_project
 
 
@@ -66,6 +66,11 @@ def set_binding(session: Session, data: BindingIn) -> tuple[ProjectInstance, boo
     Returns the binding and whether it was newly created.
     """
     project, instance = _resolve(session, data.project, data.instance)
+    if excluded(instance, project):
+        raise RuleViolationError(
+            f"'{instance.name}' is for all projects except some, and '{project.name}' is one "
+            "of them. Remove that exception to give it this project."
+        )
     if data.is_default:
         check_default_allowed(project, instance)
     rules = remote.spec_for(instance.type.value, instance.config)
