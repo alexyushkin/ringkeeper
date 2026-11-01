@@ -899,7 +899,10 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
         ).stdout.split("\0")
         assert {"CLAUDE.md", "Claude project files/style.md"} <= set(listed)
     project = win.get("/bff/projects/seaside-newsletter").json()
-    assert (project["owner"], project["description"]) == ("Seaside", "Monthly email for Seaside")
+    assert (project["owner"], project["description"]) == ("seaside", "Monthly email for Seaside")
+    assert {"slug": "seaside", "name": "Seaside", "projects": 1, "connections": 0} in (
+        win.get("/bff/clients").json()
+    )
     assert (
         win.post("/bff/desktop/claude-projects/nope", json={"name": "x", "owner": "y"}).status_code
         == 404

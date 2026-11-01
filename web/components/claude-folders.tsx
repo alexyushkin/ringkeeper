@@ -69,7 +69,7 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
     const added: string[] = [];
     try {
       for (const [key, client] of ticked) {
-        const owner = slugify(client) || client.trim();
+        const owner = client.trim(); // a new client is created as typed
         const claude = key.startsWith("claude:") ? offered.find((p) => `claude:${p.id}` === key) : undefined;
         const name = freeName(claude ? claude.name : (folders.data?.find((f) => f.folder === key)?.name ?? ""), names);
         if (claude) await api(`desktop/claude-projects/${encodeURIComponent(claude.id)}`, { json: { name, owner } });

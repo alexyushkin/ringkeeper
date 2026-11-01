@@ -133,7 +133,7 @@ export function ConnectionForm({
     try {
       const saved = await api<ConnectionData>("connections", {
         json: {
-          name, type, env, owner: shared ? SHARED_OWNER : slugify(owner) || owner,
+          name, type, env, owner: shared ? SHARED_OWNER : owner.trim(),
           base_url: service.address ? address.trim() || null : null, secret: secretValue(),
           shared, all_projects: shared && all,
         },

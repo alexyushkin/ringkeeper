@@ -13,7 +13,8 @@ export function ScopeSwitcher() {
   const scope = useScope();
   const projects = useApi<ProjectRow[]>("projects");
   const rows = projects.data ?? [];
-  const clients = [...new Map(rows.map((p) => [p.owner.trim().toLowerCase(), p.owner])).values()].sort((a, b) => a.localeCompare(b));
+  // Every client, also those with only connections or nothing yet.
+  const clients = scope.clients;
   const theirs = rows.filter((p) => !scope.client || sameClient(p.owner, scope.client));
   const select = "min-h-9 rounded-lg border border-line bg-surface px-2 text-sm";
 
@@ -25,8 +26,8 @@ export function ScopeSwitcher() {
       <select id="scope-client" className={select} value={scope.client} onChange={(event) => scope.set({ client: event.target.value, project: "" })}>
         <option value="">All clients</option>
         {clients.map((client) => (
-          <option key={client} value={client}>
-            {client}
+          <option key={client.slug} value={client.slug}>
+            {client.name}
           </option>
         ))}
       </select>

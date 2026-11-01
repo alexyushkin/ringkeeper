@@ -44,7 +44,7 @@ def test_lists_narrow_to_a_client_or_a_project(
 ) -> None:
     acme = owner.get("/tasks", params={"client": "acme"}).json()  # any case
     assert sorted(t["project"] for t in acme) == ["acme-app", "acme-web"]
-    assert {t["client"] for t in acme} == {"Acme"}
+    assert {t["client"] for t in acme} == {"acme"}  # the client's slug; its name is "Acme"
     web = owner.get("/tasks", params={"project": "acme-web"}).json()
     assert [t["project"] for t in web] == ["acme-web"]
     assert len(owner.get("/tasks").json()) == 3
@@ -55,6 +55,6 @@ def test_lists_narrow_to_a_client_or_a_project(
 
     decisions = owner.get("/decisions", params={"client": "Acme"}).json()
     assert sorted(d["project"] for d in decisions) == ["acme-app", "acme-web"]
-    assert {(d["client"], d["production"]) for d in decisions} == {("Acme", False)}
+    assert {(d["client"], d["production"]) for d in decisions} == {("acme", False)}
     assert len(owner.get("/decisions").json()) == 3  # the badge counts everything
     assert owner.get("/audit", params={"client": "nobody"}).json() == []

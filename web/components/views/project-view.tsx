@@ -8,11 +8,12 @@ import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from 
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
-import { Alert, Button, ConfirmButton, Details, EnvBadge, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Details, EnvBadge, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { api, useApi } from "@/lib/client/api";
-import { clientHref } from "@/lib/client/routes";
-import { AUTONOMY, SERVICE } from "@/lib/client/words";
+import { clientHref, projectHref } from "@/lib/client/routes";
+import { clientName } from "@/lib/client/scope";
+import { AUTONOMY, SERVICE, slugify } from "@/lib/client/words";
 
 interface Bound {
   name: string;
@@ -120,7 +121,7 @@ export function ProjectView({ name }: { name: string }) {
       <p className="text-sm text-muted">
         The services this project may use: from{" "}
         <Link href={clientHref(about.owner)} className="text-accent">
-          {about.owner}&apos;s connections
+          {clientName(about.owner)}&apos;s connections
         </Link>
         , and your shared tools. A link can be narrowed to one database, base or project. A default is used when a request doesn&apos;t name one; production can never be the default, so live data is always named on purpose.
       </p>
@@ -177,7 +178,7 @@ export function ProjectView({ name }: { name: string }) {
       {available.length ? (
         <div className="space-y-2 rounded-xl border border-line p-3">
           <Select
-            label={`Or link one of ${about.owner}'s connections, or a shared tool`}
+            label={`Or link one of ${clientName(about.owner)}'s connections, or a shared tool`}
             value={adding}
             onChange={(next) => {
               setAdding(next);
@@ -251,6 +252,9 @@ export function ProjectView({ name }: { name: string }) {
           <Section id="project-settings" title="About this project" summary={about.description || undefined}>
             <ProjectForm existing={about} onSaved={() => project.reload()} />
           </Section>
+          <Section id="project-name" title="Name" summary={name} defaultOpen={false}>
+            <RenameProject name={name} />
+          </Section>
           <ConfirmButton question={`Remove ${name}? Its connections stay; only the link to them goes.`} confirm={`Remove ${name}`} onConfirm={remove}>
             Remove project
           </ConfirmButton>
@@ -266,10 +270,43 @@ export function ProjectView({ name }: { name: string }) {
       </Link>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{name}</h1>
       <p className="mb-4 text-sm text-muted">
-        {about.owner}&apos;s project · {connectionSummary} connection{instances.length === 1 ? "" : "s"}
+        {clientName(about.owner)}&apos;s project · {connectionSummary} connection{instances.length === 1 ? "" : "s"}
         {tasksSummary.running ? ` · ${tasksSummary.running} running` : ""}
       </p>
       <Tabs id={`project-${name}`} tabs={tabs} />
     </>
+  );
+}
+
+/** A new name everywhere the project is named; the old one stays as another name,
+ * so asking by it still finds the project. */
+function RenameProject({ name }: { name: string }) {
+  const router = useRouter();
+  const [typed, setTyped] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const next = slugify(typed);
+
+  async function rename() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`projects/${name}/rename`, { json: { name: next } });
+      router.replace(projectHref(next));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Field label="Name" value={typed} onChange={setTyped} hint={next && next !== typed ? `Saved as ${next}. Its tasks, approvals and links follow; the old name stays as another name.` : "Its tasks, approvals and links follow; the old name stays as another name."} />
+      <Button kind="primary" busy={busy} disabled={!next || next === name} onClick={rename}>
+        Rename
+      </Button>
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }

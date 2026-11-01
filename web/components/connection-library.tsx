@@ -10,6 +10,7 @@ import { McpTools } from "@/components/mcp-tools";
 import { Alert, Badge, Button, CompactRow, ConfirmButton, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
+import { clientName, sameClient, useScope } from "@/lib/client/scope";
 import { ENVS, SERVICE, slugify } from "@/lib/client/words";
 
 /** A connection library: one client's connections, each linked to some of their
@@ -192,9 +193,10 @@ function AllProjects({ connection, onChange }: { connection: LibraryConnection; 
 /** "All projects except…": clients (their projects, new ones too) and projects. */
 function Exceptions({ clients, projects, onSave }: { clients: string[]; projects: string[]; onSave: (json: Record<string, unknown>) => void }) {
   const known = useApi<{ name: string; owner: string }[]>("projects");
+  const scope = useScope();
   const [pick, setPick] = useState("");
-  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-  const allClients = [...new Map((known.data ?? []).map((p) => [p.owner.trim().toLowerCase(), p.owner])).values()].sort((a, b) => a.localeCompare(b));
+  const same = sameClient;
+  const allClients = scope.clients.map((c) => c.slug);
   const clientChoices = allClients.filter((c) => !clients.some((x) => same(x, c)));
   // A project of a client already left out is left out anyway.
   const projectChoices = (known.data ?? []).filter((p) => !projects.includes(p.name) && !clients.some((c) => same(c, p.owner))).map((p) => p.name);
@@ -203,7 +205,7 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
     if (value.startsWith("client:")) onSave({ except_clients: [...clients, value.slice(7)] });
     else if (value.startsWith("project:")) onSave({ except_projects: [...projects, value.slice(8)] });
   }
-  const left = [...clients.map((c) => ({ key: `client:${c}`, label: `${c} (client)` })), ...projects.map((p) => ({ key: `project:${p}`, label: p }))];
+  const left = [...clients.map((c) => ({ key: `client:${c}`, label: `${clientName(c)} (client)` })), ...projects.map((p) => ({ key: `project:${p}`, label: p }))];
   return (
     <div className="space-y-2">
       {left.length ? (
@@ -234,7 +236,7 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
           onChange={add}
           options={[
             ["", left.length ? "Leave out another client or project…" : "Leave out a client or a project…"],
-            ...clientChoices.map((c): [string, string] => [`client:${c}`, `${c} (client: all their projects, new ones too)`]),
+            ...clientChoices.map((c): [string, string] => [`client:${c}`, `${clientName(c)} (client: all their projects, new ones too)`]),
             ...projectChoices.map((p): [string, string] => [`project:${p}`, p]),
           ]}
         />

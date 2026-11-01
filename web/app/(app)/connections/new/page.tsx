@@ -9,10 +9,8 @@ import { ConnectionForm } from "@/components/forms";
 import { GoogleConnect } from "@/components/google";
 import { SHARED_OWNER, type Kind } from "@/components/shared-tools";
 import { Button, Card, Details, Field, PageHeader, Select } from "@/components/ui";
-import { useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
-import { useScope } from "@/lib/client/scope";
-import { slugify } from "@/lib/client/words";
+import { clientKey, clientName, useScope } from "@/lib/client/scope";
 
 const NEW = "__new__";
 
@@ -41,14 +39,13 @@ function NewConnection() {
   const search = useSearchParams();
   const asked = search.get("kind");
   const google = search.get("google") === "1"; // from Settings › Google app
-  const projects = useApi<{ owner: string }[]>("projects");
-  const clients = [...new Set((projects.data ?? []).map((p) => p.owner))].sort((a, b) => a.localeCompare(b));
+  const clients = scope.clients;
   const [kind, setKind] = useState<Kind | null>(asked === "shared" || asked === "client" ? asked : null);
   const [picked, setPicked] = useState(scope.client);
   const [typed, setTyped] = useState("");
   const [client, setClient] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
-  const chosen = picked === NEW ? slugify(typed) || typed.trim() : picked;
+  const chosen = picked === NEW ? typed.trim() : picked; // a new client, named as typed
 
   if (kind === null) {
     return (
@@ -73,7 +70,7 @@ function NewConnection() {
       <>
         <PageHeader title="Add a client's connection" subtitle="Whose is it? Only that client's projects can use it." />
         <Card className="space-y-3">
-          <Select label="Client" value={picked} onChange={setPicked} options={[["", "Choose…"], ...clients.map((c): [string, string] => [c, c]), [NEW, "A new client…"]]} />
+          <Select label="Client" value={picked} onChange={setPicked} options={[["", "Choose…"], ...clients.map((c): [string, string] => [c.slug, c.name]), [NEW, "A new client…"]]} />
           {picked === NEW ? <Field label="Client's name" value={typed} onChange={setTyped} placeholder="Acme Inc." /> : null}
           <div className="flex flex-wrap gap-2">
             <Button kind="primary" disabled={!chosen} onClick={() => setClient(chosen)}>
@@ -89,7 +86,7 @@ function NewConnection() {
   }
   const shared = kind === "shared";
   const owner = shared ? SHARED_OWNER : (client ?? "");
-  const title = shared ? "Add a shared tool" : `Add a connection for ${owner}`;
+  const title = shared ? "Add a shared tool" : `Add a connection for ${clientName(owner)}`;
   if (added) {
     return (
       <>
@@ -97,13 +94,16 @@ function NewConnection() {
         <ConnectionAdded
           name={added}
           onAnother={() => setAdded(null)}
-          onDone={() => router.push(shared ? "/connections" : clientHref(owner))}
-          doneLabel={shared ? "Open your shared tools" : `Open ${owner}'s connections`}
+          onDone={() => router.push(shared ? "/connections" : clientHref(clientKey(owner)))}
+          doneLabel={shared ? "Open your shared tools" : `Open ${clientName(owner)}'s connections`}
         />
       </>
     );
   }
-  const done = (name: string) => setAdded(name);
+  const done = (name: string) => {
+    setAdded(name);
+    scope.reloadClients(); // a new client is one now
+  };
   return (
     <>
       <PageHeader title={title} subtitle={shared ? "Yours, for any client's projects. Anything not marked read-only waits for your approval." : undefined} />

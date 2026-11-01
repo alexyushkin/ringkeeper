@@ -8,13 +8,17 @@ import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm } from "@/components/forms";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
-import { Alert, Button, Details, Empty, Loading, Section, Tabs, type Tab } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Details, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
+import { api } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
+import { clientName, useScope } from "@/lib/client/scope";
+import { useRouter } from "next/navigation";
 
 /** One client: their projects and their connection library. A connection is added
  * once and linked to any of their projects, each link narrowed if it needs to be. */
 export function ClientView({ name }: { name: string }) {
   const library = useLibrary(name);
+  const display = clientName(name);
   const tasks = useTaskSummary({ client: name });
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState<string | null>(null);
@@ -41,7 +45,7 @@ export function ClientView({ name }: { name: string }) {
                   <Link href={projectHref(p)} className="text-accent">
                     {p}
                   </Link>
-                  <span className="ml-2 text-xs text-muted">{library.connections.filter((c) => c.projects.includes(p)).length} of {name}&apos;s connections</span>
+                  <span className="ml-2 text-xs text-muted">{library.connections.filter((c) => c.projects.includes(p)).length} of {display}&apos;s connections</span>
                 </li>
               ))}
             </ul>
@@ -69,7 +73,7 @@ export function ClientView({ name }: { name: string }) {
           }
         >
           <p className="text-sm text-muted">
-            {name}&apos;s services. Connect each one once, then link it to any of {name}&apos;s projects; a link can be narrowed to one database, base or project. Other clients&apos; projects can&apos;t use these.
+            {display}&apos;s services. Connect each one once, then link it to any of {display}&apos;s projects; a link can be narrowed to one database, base or project. Other clients&apos; projects can&apos;t use these.
           </p>
           {added ? (
             <ConnectionAdded
@@ -98,7 +102,7 @@ export function ClientView({ name }: { name: string }) {
           ) : null}
           {library.error ? <Alert>{library.error}</Alert> : null}
           {library.loading && !library.connections.length ? <Loading /> : null}
-          {!library.loading && !library.connections.length ? <Empty>No connections for {name} yet.</Empty> : null}
+          {!library.loading && !library.connections.length ? <Empty>No connections for {display} yet.</Empty> : null}
           <div className="space-y-2">
             {library.connections.map((connection) => (
               <LibraryCard key={connection.name} connection={connection} projects={library.projects} services={library.services} onChange={library.reload} compact />
@@ -112,9 +116,14 @@ export function ClientView({ name }: { name: string }) {
       key: "settings",
       label: "Settings",
       content: () => (
-        <Section id="new-project" title={`Add a project for ${name}`} defaultOpen={!library.projects.length}>
-          <ProjectForm client={name} onSaved={() => library.reload()} />
-        </Section>
+        <>
+          <Section id="new-project" title={`Add a project for ${display}`} defaultOpen={!library.projects.length}>
+            <ProjectForm client={name} onSaved={() => library.reload()} />
+          </Section>
+          <Section id="client-name" title="Name" summary={display} defaultOpen={false}>
+            <ClientSettings slug={name} name={display} hasWork={Boolean(library.projects.length || library.connections.length)} />
+          </Section>
+        </>
       ),
     },
   ];
@@ -124,12 +133,76 @@ export function ClientView({ name }: { name: string }) {
       <Link href="/projects" className="text-sm text-accent">
         ‹ Clients & projects
       </Link>
-      <h1 className="mt-2 mb-1 text-xl font-semibold">{name}</h1>
+      <h1 className="mt-2 mb-1 text-xl font-semibold">{display}</h1>
       <p className="mb-4 text-sm text-muted">
         {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {summary} connection{library.connections.length === 1 ? "" : "s"}
         {tasks.running ? ` · ${tasks.running} running` : ""}
       </p>
       <Tabs id={`client-${name}`} tabs={tabs} />
     </>
+  );
+}
+
+/** A client's name as shown (its slug, in URLs and IDs, stays), and removing it: at
+ * once when it has no projects or connections, else after moving them to another. */
+function ClientSettings({ slug, name, hasWork }: { slug: string; name: string; hasWork: boolean }) {
+  const scope = useScope();
+  const router = useRouter();
+  const [typed, setTyped] = useState(name);
+  const [to, setTo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const others = scope.clients.filter((c) => c.slug !== slug);
+
+  async function run(action: () => Promise<unknown>, after?: () => void) {
+    setError(null);
+    setSaved(false);
+    try {
+      await action();
+      scope.reloadClients();
+      after?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Field label="Name" value={typed} onChange={setTyped} hint="As it should show, like “Seaside Windows & Doors”. Links stay the same." />
+      <Button kind="primary" disabled={!typed.trim() || typed.trim() === name} onClick={() => run(() => api(`clients/${slug}`, { method: "PATCH", json: { name: typed.trim() } }), () => setSaved(true))}>
+        Rename
+      </Button>
+      {saved ? <Alert tone="good">Renamed.</Alert> : null}
+      {hasWork ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted">To remove {name}, first move its projects and connections to another client (or remove them on their pages).</p>
+          {others.length ? (
+            <>
+              <Select label="Move them to" value={to} onChange={setTo} options={[["", "Choose…"], ...others.map((c): [string, string] => [c.slug, c.name])]} />
+              <ConfirmButton
+                kind="secondary"
+                question={`Move all of ${name}'s projects and connections to ${others.find((c) => c.slug === to)?.name ?? "that client"}, then remove ${name}?`}
+                confirm="Move and remove"
+                onConfirm={() =>
+                  to
+                    ? run(async () => {
+                        await api(`clients/${slug}/move`, { json: { to } });
+                        await api(`clients/${slug}`, { method: "DELETE" });
+                      }, () => router.push("/projects"))
+                    : setError("Choose the client to move them to.")
+                }
+              >
+                Move them and remove {name}
+              </ConfirmButton>
+            </>
+          ) : null}
+        </div>
+      ) : (
+        <ConfirmButton question={`Remove ${name}? It has no projects or connections.`} confirm={`Remove ${name}`} onConfirm={() => run(() => api(`clients/${slug}`, { method: "DELETE" }), () => router.push("/projects"))}>
+          Remove client
+        </ConfirmButton>
+      )}
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }

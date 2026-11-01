@@ -7,6 +7,7 @@ import { TestButton } from "@/components/forms";
 import { useProjects } from "@/components/shared-tools";
 import { Alert, Button } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { clientName } from "@/lib/client/scope";
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -77,7 +78,7 @@ export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }:
                   className="size-4 accent-[var(--color-accent)]"
                 />
                 {p.name}
-                {connection?.shared ? <span className="text-xs text-muted">{p.owner}</span> : null}
+                {connection?.shared ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
               </label>
               {p.name in picked && fields.length ? (
                 <div className="ml-6">

@@ -6,6 +6,7 @@ import { Alert, Button, Details, Field, Select, TextArea } from "@/components/ui
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { canPickFolder, pickFolder } from "@/lib/client/shell";
+import { clientName } from "@/lib/client/scope";
 import { AUTONOMY, slugify } from "@/lib/client/words";
 
 export interface ProjectData {
@@ -32,7 +33,7 @@ const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boo
 
 /** Create (no `existing`) or edit a project. */
 export function ProjectForm({ existing, client: forClient, onSaved }: { existing?: ProjectData; client?: string; onSaved: (name: string, saved?: ProjectSaved) => void }) {
-  const [client, setClient] = useState(existing?.owner ?? forClient ?? "");
+  const [client, setClient] = useState(clientName(existing?.owner ?? forClient ?? ""));
   const [title, setTitle] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [aliases, setAliases] = useState((existing?.aliases ?? []).join(", "));
@@ -69,7 +70,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
     setBusy(true);
     setError(null);
     const body = {
-      owner: slugify(client) || client,
+      owner: client.trim(), // the client's name (or slug); a new one is created as typed
       description,
       aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean),
       workspace_path: folder.trim() || null,

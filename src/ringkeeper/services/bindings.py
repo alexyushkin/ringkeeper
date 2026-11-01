@@ -4,6 +4,7 @@ from ringkeeper import remote
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Env, Instance, Project, ProjectInstance
 from ringkeeper.schemas import BindingIn
+from ringkeeper.services import clients
 from ringkeeper.services.instances import excluded, find_instance
 from ringkeeper.services.projects import find_project, get_project
 
@@ -23,7 +24,8 @@ def _resolve(session: Session, project_name: str, instance_name: str) -> tuple[P
 
 
 def same_client(a: str, b: str) -> bool:
-    return a.strip().casefold() == b.strip().casefold()
+    """Owners name one client when their slugs match ("Acme" and "acme")."""
+    return clients.key(a) == clients.key(b)
 
 
 def check_same_client(session: Session, project_name: str, instance_name: str) -> None:

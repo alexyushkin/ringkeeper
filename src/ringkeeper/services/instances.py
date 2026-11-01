@@ -1,11 +1,12 @@
 from collections.abc import Sequence
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, object_session, selectinload
 
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType, Project, ProjectInstance
 from ringkeeper.schemas import InstanceIn
+from ringkeeper.services import clients
 
 # The owner shown for a shared tool: yours, not a client's (Instance.shared decides).
 SHARED_OWNER = "you"
@@ -66,9 +67,9 @@ def excluded(instance: Instance, project: Project) -> bool:
     by its name or its client (matched ignoring case and spaces)."""
     if not instance.all_projects:
         return False
-    client = project.owner.strip().casefold()
+    client = clients.key(project.owner)
     return project.name in instance.except_projects or any(
-        c.strip().casefold() == client for c in instance.except_clients
+        clients.key(c) == client for c in instance.except_clients
     )
 
 
@@ -77,7 +78,11 @@ def describe_reach(instance: Instance) -> str:
     ("" if not for all projects)."""
     if not instance.all_projects:
         return ""
-    left_out = [f"{c} (client)" for c in instance.except_clients] + list(instance.except_projects)
+    session = object_session(instance)
+    names = clients.names(session) if session is not None else {}
+    left_out = [f"{names.get(clients.key(c), c)} (client)" for c in instance.except_clients] + list(
+        instance.except_projects
+    )
     return "All projects" + (f" except {', '.join(left_out)}" if left_out else "")
 
 
@@ -104,6 +109,8 @@ def create_instance(session: Session, data: InstanceIn) -> Instance:
     if find_instance(session, data.name) is not None:
         raise AlreadyExistsError(f"instance '{data.name}' already exists")
     _check_kind(session, data)
+    if not data.shared:
+        data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     instance = Instance(**data.model_dump(), bindings=[])
     session.add(instance)
     session.flush()
@@ -115,10 +122,12 @@ def create_instance(session: Session, data: InstanceIn) -> Instance:
 def update_instance(session: Session, data: InstanceIn) -> Instance:
     instance = get_instance(session, data.name)
     _check_kind(session, data, instance)
+    if not data.shared:
+        data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     if instance.shared and not data.shared:
         others = sorted(
             b.project.name for b in instance.bindings
-            if b.project.owner.strip().casefold() != data.owner.strip().casefold()
+            if clients.key(b.project.owner) != clients.key(data.owner)
         )  # fmt: skip
         if others:
             raise RuleViolationError(

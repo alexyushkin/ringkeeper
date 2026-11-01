@@ -226,6 +226,17 @@ class Project(TimestampMixin, Base):
     )
 
 
+class Client(Base):
+    """A client: its slug (URLs, IDs, and the owner of its projects and connections)
+    and its name as typed. See services.clients."""
+
+    __tablename__ = "clients"
+
+    slug: Mapped[str] = mapped_column(String(63), primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+
+
 class Instance(TimestampMixin, Base):
     __tablename__ = "instances"
     __table_args__ = (

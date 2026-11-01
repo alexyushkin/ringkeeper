@@ -3,6 +3,20 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Clients of their own.** A client is kept with its name as you typed it
+  ("Seaside Windows & Doors"); the short form is only for links. Typing a new
+  client anywhere creates it, and a client with only connections, or nothing
+  yet, shows in the switcher, Clients & projects ("No projects yet", with Add
+  project and its connections count) and every client picker. Clients from
+  earlier versions keep their short names until you give them full ones:
+  Clients & projects offers to. Rename a client in its Settings, or remove it
+  (moving its projects and connections to another client first).
+- **Rename a project** in its Settings. Its tasks, approvals and links follow,
+  and the old name stays as one of its other names, so asking by it still
+  finds the project.
+
 ## 0.1.0-beta.8 (2026-11-01)
 
 - **Subscription mode reaches every task.** A task created by answering "which

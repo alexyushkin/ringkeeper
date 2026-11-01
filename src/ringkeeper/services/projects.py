@@ -1,11 +1,22 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from ringkeeper.errors import AlreadyExistsError, NotFoundError
-from ringkeeper.models import Instance, Project, ProjectInstance
+from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
+from ringkeeper.models import (
+    Decision,
+    DecisionKind,
+    DecisionStatus,
+    Instance,
+    Project,
+    ProjectInstance,
+    RoutingExample,
+    Task,
+    TaskStatus,
+)
 from ringkeeper.schemas import ProjectIn
+from ringkeeper.services import clients
 from ringkeeper.services.instances import excluded
 
 
@@ -31,6 +42,7 @@ def list_projects(session: Session) -> Sequence[Project]:
 def create_project(session: Session, data: ProjectIn) -> Project:
     if find_project(session, data.name) is not None:
         raise AlreadyExistsError(f"project '{data.name}' already exists")
+    data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     project = Project(**data.model_dump(), bindings=[])
     session.add(project)
     # Shared tools for all projects come with every new one, unless they leave out
@@ -44,8 +56,54 @@ def create_project(session: Session, data: ProjectIn) -> Project:
 
 def update_project(session: Session, data: ProjectIn) -> Project:
     project = get_project(session, data.name)
+    data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     for field, value in data.model_dump(exclude={"name"}).items():
         setattr(project, field, value)
+    session.flush()
+    return project
+
+
+# A task in one of these still works under the project's name (its token names it).
+BUSY = (TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.WAITING)
+
+
+def rename_project(session: Session, name: str, new: str) -> Project:
+    """Give a project another name, everywhere it is named: its tasks, decisions,
+    routing examples and shared tools' exceptions. The old name becomes one of its
+    other names, so asking by it still finds the project. The audit log keeps old
+    entries as they were (it is append-only). Not while a task of it is at work."""
+    project = get_project(session, name)
+    if new == name:
+        return project
+    if find_project(session, new) is not None:
+        raise AlreadyExistsError(f"There's already a project named '{new}'.")
+    busy = session.scalar(
+        select(func.count()).select_from(Task).where(Task.project == name, Task.status.in_(BUSY))
+    )
+    if busy:
+        raise RuleViolationError(
+            f"'{name}' has {busy} task(s) running or waiting to start. Rename it once "
+            "they're done or stopped."
+        )
+    project.name = new
+    project.aliases = [*(a for a in project.aliases if a != new), name]
+    for model in (Task, Decision, RoutingExample):
+        session.execute(update(model).where(model.project == name).values(project=new))
+    for decision in session.scalars(
+        select(Decision).where(
+            Decision.kind == DecisionKind.ROUTE, Decision.status == DecisionStatus.PENDING
+        )
+    ):
+        payload = dict(decision.payload or {})
+        candidates = [
+            {**c, "project": new} if c.get("project") == name else c
+            for c in payload.get("candidates", [])
+        ]
+        if candidates != payload.get("candidates", []):
+            decision.payload = {**payload, "candidates": candidates}
+    for tool in session.scalars(select(Instance).where(Instance.all_projects)):
+        if name in tool.except_projects:
+            tool.except_projects = [new if p == name else p for p in tool.except_projects]
     session.flush()
     return project
 

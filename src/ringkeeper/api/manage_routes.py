@@ -24,6 +24,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy, remote
 from ringkeeper.adapters import mcp
@@ -60,6 +61,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import (
     admin_audit,
     bindings,
+    clients,
     google_oauth,
     instances,
     local_servers,
@@ -375,6 +377,91 @@ def delete_project(name: str, session: WriteSessionDep) -> None:
         session, "project.delete", f"removed project {name} ({removed} connections unbound)",
         by=OWNER, project=name,
     )  # fmt: skip
+
+
+class RenameIn(Input):
+    name: Slug
+
+
+@router.post("/projects/{name}/rename")
+def rename_project(name: str, data: RenameIn, session: WriteSessionDep) -> dict[str, str]:
+    """A new name everywhere the project is named; the old one stays as another name."""
+    projects.rename_project(session, name, data.name)
+    admin_audit.record(
+        session, "project.rename", f"renamed project {name} to {data.name}", by=OWNER,
+        project=data.name,
+    )  # fmt: skip
+    return {"name": data.name}
+
+
+# --- Clients ---
+
+
+class ClientIn(Input):
+    name: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class ClientOut(BaseModel):
+    slug: str
+    name: str
+    projects: int = 0
+    connections: int = 0
+
+
+class MoveIn(Input):
+    to: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+def _client_out(session: Session, slug: str) -> ClientOut:
+    found = next((c for c in clients.list_clients(session) if c.slug == slug), None)
+    if found is None:
+        raise HTTPException(404, detail=f"no client '{slug}'")
+    return ClientOut(**found.__dict__)
+
+
+@router.get("/clients")
+def list_clients(session: SessionDep) -> list[ClientOut]:
+    """Every client, with or without projects and connections."""
+    return [ClientOut(**c.__dict__) for c in clients.list_clients(session)]
+
+
+@router.post("/clients", status_code=201)
+def create_client(data: ClientIn, session: WriteSessionDep) -> ClientOut:
+    """A client named as typed (or the existing one with that name)."""
+    slug = clients.ensure(session, data.name)
+    if slug == clients.SHARED_OWNER:
+        raise HTTPException(422, detail="'you' stands for your own tools; pick another name.")
+    admin_audit.record(session, "client.create", f"added client {data.name}", by=OWNER)
+    return _client_out(session, slug)
+
+
+@router.patch("/clients/{slug}")
+def rename_client(slug: str, data: ClientIn, session: WriteSessionDep) -> ClientOut:
+    """Change the name shown; the slug in URLs and IDs stays."""
+    client = clients.rename(session, slug, data.name)
+    admin_audit.record(
+        session, "client.rename", f"renamed client {client.slug} to {client.name}", by=OWNER
+    )
+    return _client_out(session, client.slug)
+
+
+@router.post("/clients/{slug}/move", dependencies=[RecentAuth])
+def move_client(slug: str, data: MoveIn, session: WriteSessionDep) -> ClientOut:
+    """Give a client's projects and connections to another client."""
+    target = clients.get(session, data.to)
+    moved = clients.move(session, slug, target.slug)
+    admin_audit.record(
+        session, "client.move", f"moved {moved} projects and connections from {slug} to "
+        f"{target.slug}", by=OWNER,
+    )  # fmt: skip
+    return _client_out(session, target.slug)
+
+
+@router.delete("/clients/{slug}", status_code=204, dependencies=[RecentAuth])
+def delete_client(slug: str, session: WriteSessionDep) -> None:
+    """Only a client with no projects and no connections (move or remove them first)."""
+    clients.delete(session, slug)
+    admin_audit.record(session, "client.delete", f"removed client {slug}", by=OWNER)
 
 
 @router.put("/projects/{name}/connections/{instance}")

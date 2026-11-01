@@ -8,7 +8,7 @@ import { SharedTools } from "@/components/shared-tools";
 import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
-import { sameClient, useScope } from "@/lib/client/scope";
+import { clientName, sameClient, useScope } from "@/lib/client/scope";
 import { ENVS } from "@/lib/client/words";
 
 /** Every client's connections at a glance. Each client's page holds their library. */
@@ -59,7 +59,7 @@ export default function ConnectionsPage() {
         <Section
           key={client}
           id={`client-${client}`}
-          title={client}
+          title={clientName(client)}
           summary={clientSummary(client)}
           action={
             <Link href={clientHref(client)} className="text-sm text-accent">
