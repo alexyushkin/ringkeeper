@@ -27,7 +27,7 @@ from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
 from ringkeeper.desktop.update import updates
 from ringkeeper.models import AuthMode, DecisionKind, InstanceType, TaskStatus
-from ringkeeper.services import claude_desktop, inbox, instances, subscription, tasks
+from ringkeeper.services import claude_desktop, claude_work, inbox, instances, subscription, tasks
 from ringkeeper.services.calls import RefusalError, run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
@@ -436,6 +436,7 @@ def test_claude_code_folders_are_offered_as_projects(
     config.mkdir()
     (config / ".claude.json").write_text(json.dumps({"projects": listed}), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    monkeypatch.setattr(claude_work, "config_paths", lambda: [tmp_path / "no-claude-app" / "x"])
 
     win = window(desktop)
     made = win.post(
@@ -445,8 +446,8 @@ def test_claude_code_folders_are_offered_as_projects(
     assert made.status_code == 201, made.text
     offered = win.get("/bff/desktop/claude-code-folders").json()
     assert offered == [
-        {"folder": str(code / "acme-site"), "name": "acme-site"},
-        {"folder": str(code / "beta-app"), "name": "beta-app"},
+        {"folder": str(code / "acme-site"), "name": "acme-site", "from": ["Claude Code"]},
+        {"folder": str(code / "beta-app"), "name": "beta-app", "from": ["Claude Code"]},
     ]
 
     (config / ".claude.json").write_text("not json", encoding="utf-8")
@@ -810,3 +811,94 @@ def test_voice_downloads_its_engine_and_model_on_first_use(
     assert win.delete("/bff/desktop/voice").status_code == 204
     assert win.get("/bff/desktop/voice").json()["state"] == "absent"
     sys.modules.pop("fakevoice", None)
+
+
+def claude_app(tmp_path: Path, code: Path) -> Path:
+    """The Claude app's folder: Cowork sessions with folders picked, Code tab sessions,
+    and its copy of two Claude projects (one with instructions and files)."""
+    base = tmp_path / "Claude"
+    org = base / "local-agent-mode-sessions" / "account" / "org"
+    sessions: dict[Path, dict[str, Any]] = {
+        org / "local_1.json": {"userSelectedFolders": [str(code / "seaside-copy")]},
+        org / "local_2.json": {
+            "userSelectedFolders": [str(code / "acme-site"), str(code / "gone")]
+        },
+        org / "agent" / "local_3.json": {"userSelectedFolders": [], "cwd": "/sessions/x"},
+        base / "claude-code-sessions" / "account" / "org" / "local_4.json": {
+            "originCwd": str(code / "globex-api"),
+            "cwd": str(code / "globex-api" / ".claude" / "worktrees" / "w1"),
+        },
+    }
+    for path, data in sessions.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
+    (org / "local_broken.json").write_text("{", encoding="utf-8")
+    cache = org / ".project-cache"
+    newsletter = cache / "p1"
+    (newsletter / "docs").mkdir(parents=True)
+    (newsletter / "metadata.json").write_text(json.dumps({
+        "uuid": "p1", "name": "Seaside newsletter", "description": "Monthly email for Seaside",
+        "prompt_template": "Write in a warm, plain voice.",
+    }), encoding="utf-8")  # fmt: skip
+    (newsletter / "docs" / "style.md").write_text("Short sentences.", encoding="utf-8")
+    (cache / "p2").mkdir()
+    (cache / "p2" / "metadata.json").write_text(json.dumps({"uuid": "p2", "name": "Ideas"}))
+    (base / "claude_desktop_config.json").write_text("{}", encoding="utf-8")
+    return base
+
+
+def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
+    desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = tmp_path / "code"
+    for name in ("acme-site", "seaside-copy", "globex-api"):
+        (code / name).mkdir(parents=True)
+    config = tmp_path / "claude-config"
+    config.mkdir()
+    (config / ".claude.json").write_text(
+        json.dumps({"projects": {str(code / "acme-site"): {}}}), encoding="utf-8"
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    base = claude_app(tmp_path, code)
+    monkeypatch.setattr(claude_work, "config_paths", lambda: [base / "claude_desktop_config.json"])
+
+    win = window(desktop)
+    assert win.get("/bff/desktop/claude-code-folders").json() == [
+        {"folder": str(code / "acme-site"), "name": "acme-site", "from": ["Claude Code", "Cowork"]},
+        {"folder": str(code / "globex-api"), "name": "globex-api", "from": ["Claude Code"]},
+        {"folder": str(code / "seaside-copy"), "name": "seaside-copy", "from": ["Cowork"]},
+    ]
+
+    assert win.get("/bff/desktop/claude-projects").json() == [
+        {"id": "p2", "name": "Ideas", "description": "", "instructions": False, "files": 0},
+        {
+            "id": "p1", "name": "Seaside newsletter", "description": "Monthly email for Seaside",
+            "instructions": True, "files": 1,
+        },
+    ]  # fmt: skip
+    made = win.post(
+        "/bff/desktop/claude-projects/p1", json={"name": "seaside-newsletter", "owner": "Seaside"}
+    )
+    assert made.status_code == 201, made.text
+    body = made.json()
+    assert (body["name"], body["instructions"], body["files"]) == ("seaside-newsletter", True, 1)
+    folder = Path(body["folder"])
+    assert (folder / "CLAUDE.md").read_text(encoding="utf-8") == (
+        "# Seaside newsletter\n\nMonthly email for Seaside\n\nWrite in a warm, plain voice.\n"
+    )
+    assert (folder / "Claude project files" / "style.md").read_text() == "Short sentences."
+    if (folder / ".git").exists():  # committed, so a task's branch has them
+        listed = subprocess.run(
+            ["git", "ls-files", "-z"],  # noqa: S607
+            cwd=folder,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split("\0")
+        assert {"CLAUDE.md", "Claude project files/style.md"} <= set(listed)
+    project = win.get("/bff/projects/seaside-newsletter").json()
+    assert (project["owner"], project["description"]) == ("Seaside", "Monthly email for Seaside")
+    assert (
+        win.post("/bff/desktop/claude-projects/nope", json={"name": "x", "owner": "y"}).status_code
+        == 404
+    )

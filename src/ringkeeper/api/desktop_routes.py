@@ -1,6 +1,7 @@
 """Desktop-only API: the tray's state for the app shell, and what this computer
-can offer the window: Claude Code's folders as ready-made projects, and Claude
-Desktop's MCP servers as connections.
+can offer the window: the folders you worked in with Claude (Claude Code, Cowork)
+and your Claude projects as ready-made projects, and Claude Desktop's MCP
+servers as connections.
 
 Mounted only in desktop mode. The shell reaches it through the front door
 with the launch secret (/desktop/api/..., see desktop/server.py); the window
@@ -8,6 +9,7 @@ through /bff like the rest of the API.
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,14 +17,15 @@ from pydantic import Field
 from sqlalchemy import func, select
 
 from ringkeeper import voice_local
+from ringkeeper.api import manage_routes
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
 from ringkeeper.desktop.update import State, updates
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Project, Task, TaskStatus
-from ringkeeper.schemas import Input, Slug
-from ringkeeper.services import claude_desktop, inbox, runtime, workspaces
+from ringkeeper.schemas import Input, ProjectIn, Slug
+from ringkeeper.services import claude_desktop, claude_work, inbox, runtime, workspaces
 from ringkeeper.telegram.text import summary
 from ringkeeper.voice import VoiceError
 
@@ -131,16 +134,51 @@ def update_restart(session: SessionDep) -> dict[str, Any]:
 
 
 @router.get("/claude-code-folders")
-def claude_code_folders(session: SessionDep) -> list[dict[str, str]]:
-    """Folders the user opened Claude Code in that aren't projects here yet.
-    Only paths and names: nothing inside the folders is read."""
+def claude_code_folders(session: SessionDep) -> list[dict[str, Any]]:
+    """Folders the user worked in with Claude (Claude Code, and the Claude app's Cowork
+    and Code tab) that aren't projects here yet, and where each was used. Only paths
+    and names: nothing inside the folders is read."""
     settings = get_settings()
     paths = session.scalars(select(Project.workspace_path)).all()
     used = [str(workspaces.root(settings) / path) for path in paths if path]
+    found = workspaces.claude_code_folders(settings, used, claude_work.opened_folders())
+    return [{"folder": str(path), "name": path.name, "from": where} for path, where in found]
+
+
+@router.get("/claude-projects")
+def claude_projects(session: SessionDep) -> list[dict[str, Any]]:
+    """The Claude projects (Chat and Cowork) the Claude app keeps a copy of, and what
+    each brings: its description, whether it has instructions, how many files."""
     return [
-        {"folder": str(path), "name": path.name}
-        for path in workspaces.claude_code_folders(settings, used)
-    ]
+        {
+            "id": p.id, "name": p.name, "description": p.description,
+            "instructions": bool(p.instructions), "files": len(p.files()),
+        }
+        for p in claude_work.claude_projects()
+    ]  # fmt: skip
+
+
+class ClaudeProjectIn(Input):
+    name: Slug
+    owner: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+@router.post("/claude-projects/{project_id}", status_code=201, dependencies=[RecentAuth])
+def import_claude_project(
+    project_id: Annotated[str, Field(max_length=100)],
+    data: ClaudeProjectIn,
+    session: WriteSessionDep,
+) -> dict[str, Any]:
+    """A Claude project as a project here: a new folder, its instructions as CLAUDE.md,
+    and a copy of its files."""
+    found = claude_work.find_project(project_id)
+    if found is None:
+        raise HTTPException(404, "That Claude project isn't on this computer any more.")
+    made = manage_routes.create_project(
+        ProjectIn(name=data.name, owner=data.owner, description=found.description), session
+    )
+    wrote, copied = claude_work.bring_in(get_settings(), found, Path(made["folder"]))
+    return {**made, "instructions": wrote, "files": copied}
 
 
 @router.get("/claude-desktop-servers")

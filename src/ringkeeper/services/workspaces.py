@@ -85,13 +85,29 @@ def prepare(settings: Settings, path: Path) -> Folder:
 def _start_repository(settings: Settings, path: Path) -> bool:
     """git init plus an empty first commit. False if git isn't there or fails:
     tasks still work, they list changed files instead of committing them."""
+    return _git(
+        settings, path,
+        ("-c", "init.defaultBranch=main", "init", "-q"),
+        (*GIT_IDENTITY, "commit", "-q", "--allow-empty", "--no-verify", "-m", "Start"),
+    )  # fmt: skip
+
+
+def commit(settings: Settings, path: Path, files: list[str], message: str) -> bool:
+    """Commit these files in a project's repository (a task's branch starts from main, so
+    what an agent should find there must be committed). False without git."""
+    if not (path / ".git").exists() or not files:
+        return False
+    return _git(
+        settings, path, ("add", "--", *files),
+        (*GIT_IDENTITY, "commit", "-q", "--no-verify", "-m", message),
+    )  # fmt: skip
+
+
+def _git(settings: Settings, path: Path, *commands: tuple[str, ...]) -> bool:
     search = os.pathsep.join([*settings.worker_tools_path, os.environ.get("PATH", "")])
     env = {**os.environ, "PATH": search}
     try:
-        for args in (
-            ("-c", "init.defaultBranch=main", "init", "-q"),
-            (*GIT_IDENTITY, "commit", "-q", "--allow-empty", "--no-verify", "-m", "Start"),
-        ):
+        for args in commands:
             subprocess.run(  # noqa: S603
                 ["git", *args],  # noqa: S607 (the bundled git is first on PATH)
                 cwd=path, env=env, check=True, capture_output=True, timeout=30,
@@ -108,26 +124,36 @@ def claude_code_config() -> Path:
     return Path(base) / ".claude.json" if base else Path.home() / ".claude.json"
 
 
-def claude_code_folders(settings: Settings, used: Iterable[str]) -> list[Path]:
-    """Folders the user opened Claude Code in, to offer as projects: each once,
-    still on disk, not a worktree copy, not Ringkeeper's own data folder, a
-    whole drive or the home folder, and not already a Ringkeeper project's."""
+def _claude_code_listed() -> list[str]:
+    """The folders in Claude Code's settings file."""
     try:
         config: object = json.loads(claude_code_config().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     listed = cast(dict[str, Any], config).get("projects") if isinstance(config, dict) else None
-    if not isinstance(listed, dict):
-        return []
+    return list(cast(dict[str, Any], listed)) if isinstance(listed, dict) else []
+
+
+def claude_code_folders(
+    settings: Settings, used: Iterable[str], elsewhere: Iterable[tuple[str, str]] = ()
+) -> list[tuple[Path, list[str]]]:
+    """Folders the user worked in with Claude, to offer as projects, with where (Claude
+    Code, and `elsewhere`: the desktop app's Cowork and Code tab): each once, still on
+    disk, not a worktree copy, not Ringkeeper's own data folder, a whole drive or the
+    home folder, and not already a Ringkeeper project's."""
+    candidates = [(text, "Claude Code") for text in _claude_code_listed()] + list(elsewhere)
     data_dir = _key(settings.data_dir.absolute())
-    seen = {_key(Path(p)) for p in used}
-    found: list[Path] = []
-    for text in cast(dict[str, Any], listed):
+    taken = {_key(Path(p)) for p in used}
+    found: dict[str, tuple[Path, list[str]]] = {}
+    for text, where in candidates:
         path = Path(os.path.normpath(text))
         key = _key(path)
-        if key in seen or not path.is_absolute():
+        if key in found:
+            if where not in found[key][1]:
+                found[key][1].append(where)
             continue
-        seen.add(key)
+        if key in taken or not path.is_absolute():
+            continue
         parts = {part.lower() for part in path.parts}
         if ".claude" in parts and "worktrees" in parts:
             continue
@@ -136,8 +162,10 @@ def claude_code_folders(settings: Settings, used: Iterable[str]) -> list[Path]:
         if key == data_dir or key.startswith(data_dir + os.sep):
             continue
         if path.is_dir():
-            found.append(path)
-    return sorted(found, key=lambda p: (p.name.lower(), str(p).lower()))
+            found[key] = (path, [where])
+        else:
+            taken.add(key)  # gone: not checked again
+    return sorted(found.values(), key=lambda f: (f[0].name.lower(), str(f[0]).lower()))
 
 
 def _key(path: Path) -> str:
