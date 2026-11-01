@@ -119,7 +119,12 @@ def resolve(vault: Vault, settings: Settings, mode: AuthMode | None = None) -> C
         secret = vault.resolve(ref)
     except RingkeeperError as error:
         if settings.mode == "desktop":  # the app shows this; no CLI there
-            raise ClaudeAuthError("No Anthropic API key is stored. Add one in Settings.") from None
+            missing = (
+                "No Claude subscription token is stored. Add it in Settings > Claude."
+                if mode is AuthMode.SUBSCRIPTION
+                else "No Anthropic API key is stored. Add one in Settings."
+            )
+            raise ClaudeAuthError(missing) from None
         raise ClaudeAuthError(
             f"no Claude credential for {mode} mode ({error}); run `ringkeeper auth login"
             f"{' --subscription' if mode is AuthMode.SUBSCRIPTION else ''}`"

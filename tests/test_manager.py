@@ -15,6 +15,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.model_choice import session_effort
 from ringkeeper.models import (
+    AuthMode,
     Complexity,
     Decision,
     DecisionKind,
@@ -25,11 +26,12 @@ from ringkeeper.models import (
     TokenRevocation,
     WorkerSession,
 )
-from ringkeeper.services import inbox, revocations, tasks
+from ringkeeper.services import inbox, revocations, runtime, tasks
 from ringkeeper.vault import get_vault
 from ringkeeper.workers.manager import Manager, resolve_workspace
 from ringkeeper.workers.runtime import WorkerSpec, daemon_path
 from tests.conftest import CLAUDE_API_KEY as API_KEY
+from tests.conftest import CLAUDE_OAUTH_TOKEN
 from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
 from tests.helpers import bind, make_instance
 
@@ -182,6 +184,53 @@ def test_subscription_mode_never_includes_an_api_key(monkeypatch: pytest.MonkeyP
     env = runtime.started[0].env
     assert [name for name in BILLING_ENV_VARS if name in env] == ["CLAUDE_CODE_OAUTH_TOKEN"]
     assert "ANTHROPIC_API_KEY" not in env
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_subscription_chosen_in_settings_runs_a_routed_task_without_an_api_key() -> None:
+    """The bug from real use: the router used the subscription, then the task failed with
+    "No Anthropic API key is stored". Subscription mode is chosen on the Settings screen
+    (not in .env), only its token is stored, and the task comes from answering "which
+    project?" in the app, which creates it with .env's settings."""
+    settings = get_settings()
+    assert settings.claude_auth_mode is AuthMode.API_KEY  # .env says API key
+    get_vault().delete(settings.claude_api_key_ref)  # and there is none
+    with session_scope() as session:
+        runtime.update(session, {"claude_auth_mode": "subscription"}, by="owner")
+        asked = inbox.create(
+            session, settings, DecisionKind.ROUTE,
+            {"message": "fix the footer", "candidates": [], "task": {"prompt": "fix the footer"}},
+        )  # fmt: skip
+        decision_id = str(asked.id)
+    with session_scope() as session:
+        answered = inbox.answer(
+            session, settings, decision_id, inbox.Answer(choice="acme-web"), by="owner",
+            via=inbox.Via.API,
+        )  # fmt: skip
+        assert answered.task is not None
+        task_id = str(answered.task.id)
+        assert answered.task.auth_mode is AuthMode.SUBSCRIPTION
+    m, fake = manager()
+    m.tick()
+    m.wait_idle()
+    assert task(task_id).status is TaskStatus.SUCCEEDED, task(task_id).error
+    env = fake.started[0].env
+    assert [name for name in BILLING_ENV_VARS if name in env] == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_OAUTH_TOKEN
+    assert task_env(fake.started[0])["max_budget_usd"] is None  # no USD cap on a subscription
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_the_mode_configured_when_it_starts_is_the_one_used() -> None:
+    task_id = run_task()  # queued in API key mode
+    with session_scope() as session:
+        runtime.update(session, {"claude_auth_mode": "subscription"}, by="owner")
+    m, fake = manager()
+    m.tick()
+    m.wait_idle()
+    assert task(task_id).status is TaskStatus.SUCCEEDED
+    env = fake.started[0].env
+    assert [name for name in BILLING_ENV_VARS if name in env] == ["CLAUDE_CODE_OAUTH_TOKEN"]
 
 
 @pytest.mark.usefixtures("task_registry")

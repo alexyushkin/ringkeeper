@@ -384,7 +384,9 @@ class Manager:
             endpoints = sorted(agent_name(service) for service in served)
         architect_role = job.role is SessionRole.ARCHITECT
         subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
-        credential = resolve_credential(self.vault, settings, job.auth_mode)
+        # Whichever is configured now (the Settings screen's mode), not what was set
+        # when the task was queued.
+        credential = resolve_credential(self.vault, settings)
         token, claims = issue_token(
             job.project,
             timedelta(seconds=job.max_runtime_s),
@@ -410,7 +412,7 @@ class Manager:
             ),
             "role": job.role.value,
             "checks": checks if job.feature and not architect_role else [],
-            "max_budget_usd": job.budget_usd if job.auth_mode is AuthMode.API_KEY else None,
+            "max_budget_usd": job.budget_usd if credential.mode is AuthMode.API_KEY else None,
             "resume": job.sdk_session_id,
             "model": job.model,
             "effort": session_effort(settings, job.role, job.complexity),

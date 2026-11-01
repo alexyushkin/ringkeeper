@@ -35,6 +35,7 @@ from ringkeeper.models import (
 from ringkeeper.services import projects, revocations
 from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, TASKS_CHANNEL, current_user
+from ringkeeper.services.runtime import effective as effective_settings
 from ringkeeper.storage import events as storage_events
 
 NOTIFY_CHANNEL = TASKS_CHANNEL
@@ -99,6 +100,9 @@ def create_task(
 ) -> Task:
     """Queue a task. A feature starts with the architect (plan first), unless it's
     small and clear (see `planned`); anything else starts with a worker."""
+    # The Settings screen's choices (subscription mode, the spending cap), whoever
+    # creates the task: the router, an answer in the app or Telegram, the CLI.
+    settings = effective_settings(session, settings)
     record = projects.get_project(session, project)
     if not prompt.strip():
         raise RuleViolationError("the prompt is empty")
