@@ -52,6 +52,7 @@ from ringkeeper.adapters.base import (
 from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import get_settings
 from ringkeeper.models import InstanceType
+from ringkeeper.sql_text import reads_only, sql_of
 
 TIMEOUT_SECONDS = 120  # npx may download the server the first time
 # What a local server may see of the gateway's environment: enough for npx, uvx
@@ -171,6 +172,36 @@ BY_SERVICE = "service"  # what Ringkeeper knows of a Recommended service's tools
 READ_ENDPOINT = re.compile(r"^(get|list|retrieve|search|fetch)([_A-Z]|$)")
 # A tool whose name says it deletes or resets something, when its server doesn't say.
 DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
+# When its server doesn't say: a name that only reads (list_issues, getPage, search) runs
+# without asking, unless a word in it changes something or may cost money (an Apollo
+# enrichment, a paid lookup or check), which still waits for approval.
+READ_WORDS = frozenset({
+    "get", "list", "search", "find", "fetch", "read", "query", "describe", "count", "show",
+    "lookup", "view", "retrieve", "explain", "preview", "status", "whoami", "info", "schema",
+})  # fmt: skip
+CHANGE_WORDS = frozenset({
+    "create", "update", "delete", "send", "post", "put", "patch", "set", "add", "remove",
+    "write", "insert", "upload", "publish", "deploy", "run", "execute", "exec", "trigger",
+    "start", "stop", "cancel", "merge", "push", "move", "rename", "archive", "invite",
+    "share", "assign", "apply", "submit", "save", "edit", "replace", "import", "sync",
+    "restore", "reset", "drop", "approve", "reject", "close", "open", "enable", "disable",
+    # may cost money
+    "enrich", "enrichment", "reveal", "unlock", "purchase", "buy", "charge", "pay",
+    "validate", "validation", "verify", "verification", "credit", "credits",
+})  # fmt: skip
+
+
+def name_words(tool: str) -> list[str]:
+    """list_issues, getPage, apollo.people-search: its words, lowercase."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", tool)
+    return [w for w in re.split(r"[^A-Za-z0-9]+", spaced.lower()) if w]
+
+
+def reads_by_name(tool: str) -> bool:
+    words = set(name_words(tool))
+    return bool(words & READ_WORDS) and not words & CHANGE_WORDS
+
+
 RUNS = {
     READ: "without asking",
     APPROVE: "after the user approves",
@@ -195,6 +226,8 @@ def default_rule(hints: JSON | None, tool: str) -> Rule:
         return Rule(APPROVE, BY_ANNOTATIONS)
     if DESTRUCTIVE_NAME.search(tool):
         return Rule(CONFIRM, BY_NAME)
+    if hints.get("read_only") is None and hints.get("destructive") is None and reads_by_name(tool):
+        return Rule(READ, BY_NAME)
     return Rule(APPROVE, BY_DEFAULT)
 
 
@@ -219,6 +252,9 @@ def call_rule(config: Mapping[str, Any], tool: str, arguments: Mapping[str, Any]
     """What this call needs: the tool's rule, or, for a tool that calls any endpoint of the
     service's API, the endpoint's (unless the user chose a rule for the tool)."""
     found = rule(config, tool)
+    if found.source == BY_SQL:  # a statement shown to only read runs; the rest waits
+        sql = sql_of(arguments)
+        return Rule(READ, BY_SQL) if sql and reads_only(sql) else found
     service = remote.BY_KEY.get(str(config.get("remote") or ""))
     if found.source != BY_SERVICE or service is None or tool not in service.endpoint_tools:
         return found

@@ -650,7 +650,9 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
     with session_scope() as session:
         found = instances.get_instance(session, "notes")
         found.config = {k: v for k, v in found.config.items() if k != "annotations"}
-    assert run("read_notes")["status"] == "held_for_approval"  # no hints: it waits
+    # No hints: a name that only reads runs; any other name waits.
+    assert run("read_notes")["structured"] == {"result": ["first note"]}
+    assert run("what_i_got")["status"] == "held_for_approval"
     listing = ToolCall(caller, InstanceType.MCP, "list_tools", "notes", {})
     assert len(asyncio.run(run_call(listing, vault))["tools"]) == 4
     assert run("read_notes")["structured"] == {"result": ["first note"]}

@@ -60,6 +60,14 @@ HINTS = {
         ("remove_tag", mcp.APPROVE, mcp.BY_ANNOTATIONS),  # its hints beat its name
         ("purge_cache", mcp.CONFIRM, mcp.BY_NAME),  # no hints: its name decides
         ("what_i_got", mcp.APPROVE, mcp.BY_DEFAULT),
+        # A name that only reads runs without asking...
+        ("list_issues", mcp.READ, mcp.BY_NAME),
+        ("getPage", mcp.READ, mcp.BY_NAME),
+        ("notion-search", mcp.READ, mcp.BY_NAME),
+        # ...unless a word in it changes something or may cost money.
+        ("get_and_update", mcp.APPROVE, mcp.BY_DEFAULT),
+        ("apollo_people_enrichment", mcp.APPROVE, mcp.BY_DEFAULT),
+        ("apollo_email_validation_validate", mcp.APPROVE, mcp.BY_DEFAULT),
     ],
 )
 def test_defaults_come_from_annotations_then_names(tool: str, level: str, source: str) -> None:

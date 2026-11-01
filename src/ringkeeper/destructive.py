@@ -13,11 +13,21 @@ so `UPDATE notes SET body = 'drop table'` is ordinary and
 """
 
 import re
-import unicodedata
 from typing import Any, cast
 
 from ringkeeper.adapters import github, google, mcp
 from ringkeeper.models import InstanceType
+from ringkeeper.sql_text import (
+    CALL,
+    COMMENTS,
+    DOLLAR_QUOTE,
+    ESCAPE_STRING,
+    HARMLESS,
+    IDENTIFIERS,
+    QUOTED,
+    normalized,
+    sql_of,
+)
 
 # Writes through these tools change nothing irreversibly; any other write tool
 # needs confirmation. (supabase `execute` is checked statement by statement.)
@@ -50,15 +60,6 @@ MCP_REASONS = {
     mcp.BY_SERVICE: "calls an endpoint that deletes (or doesn't say which)",
 }
 
-_COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
-_ESCAPE_STRING = re.compile(r"(?<![\w'])[eE]'")
-_DOLLAR_QUOTE = re.compile(r"\$[A-Za-z_]?\w*\$")
-_QUOTED = re.compile(r"'(?:[^']|'')*'")
-_IDENTIFIERS = re.compile(r'"(?:[^"]|"")*"')
-# Zero-width and soft-hyphen characters, which can split a keyword invisibly.
-_INVISIBLE_CHARS = (0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x2060, 0xFEFF, 0xAD)
-_INVISIBLE = re.compile("[" + "".join(map(chr, _INVISIBLE_CHARS)) + "]")
-
 _FIRST_WORD = {
     "delete": "deletes rows",
     "truncate": "empties a table",
@@ -80,42 +81,14 @@ _KEYWORDS = re.compile(
     r"vacuum|reindex|cluster|lock|comment|security|refresh|reset|discard|"
     r"listen|notify|prepare|deallocate|import|load|reassign|owned)\b"
 )
-_CALL = re.compile(r"\b([a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*)?)\s*\(")
-# Not function calls, or functions without side effects.
-_HARMLESS = {
-    # SQL syntax followed by a parenthesis
-    "values", "in", "exists", "any", "all", "some", "row", "array", "as", "on",
-    "and", "or", "not", "where", "set", "from", "join", "using", "into", "over",
-    "filter", "within", "select", "returning", "conflict", "when", "then", "else",
-    "case", "is", "like", "ilike", "between", "do", "update", "with", "lateral",
-    # types with sizes
-    "numeric", "decimal", "varchar", "char", "character", "timestamp", "time",
-    "interval", "bit", "float", "cast",
-    # plain functions
-    "coalesce", "nullif", "greatest", "least", "lower", "upper", "trim", "ltrim",
-    "rtrim", "btrim", "length", "char_length", "concat", "concat_ws", "substring",
-    "substr", "replace", "left", "right", "position", "split_part", "format",
-    "now", "date_trunc", "date_part", "extract", "to_char", "to_date",
-    "to_timestamp", "to_number", "age", "make_date", "make_interval", "round",
-    "abs", "floor", "ceil", "ceiling", "trunc", "mod", "power", "sqrt", "random",
-    "count", "sum", "max", "min", "avg", "string_agg", "array_agg", "jsonb_agg",
-    "json_agg", "jsonb_build_object", "json_build_object", "jsonb_build_array",
-    "json_build_array", "jsonb_set", "jsonb_insert", "to_jsonb", "to_json",
-    "jsonb_strip_nulls", "array_append", "array_remove", "array_length",
-    "unnest", "gen_random_uuid", "uuid_generate_v4", "md5", "encode", "decode",
-}  # fmt: skip
-
-
-def _normalized(sql: str) -> str:
-    return _INVISIBLE.sub("", unicodedata.normalize("NFKC", sql))
 
 
 def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
     """Why a statement needs confirmation, or None if it is shown to be ordinary."""
-    text = _COMMENTS.sub(" ", _normalized(sql))
-    if _DOLLAR_QUOTE.search(text) or _ESCAPE_STRING.search(text):
+    text = COMMENTS.sub(" ", normalized(sql))
+    if DOLLAR_QUOTE.search(text) or ESCAPE_STRING.search(text):
         return "uses quoting that hides what it does ($$ or E'')"
-    bare = _IDENTIFIERS.sub('"x"', _QUOTED.sub("''", text)).lower()
+    bare = IDENTIFIERS.sub('"x"', QUOTED.sub("''", text)).lower()
     words = re.findall(r"[a-z_]+", bare)
     if not words:
         return "isn't a statement that can be checked"
@@ -127,29 +100,12 @@ def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
     if match := _KEYWORDS.search(bare):
         return _FIRST_WORD.get(match.group(1), f"contains {match.group(1).upper()}")
     target = re.search(r"\binsert\s+into\s+([a-z_][a-z0-9_$.]*|\"x\")\s*\(", bare)
-    for call in _CALL.finditer(bare):
+    for call in CALL.finditer(bare):
         if target is not None and call.start() == target.start(1):
             continue
         name = call.group(1).rsplit(".", 1)[-1]
-        if name not in _HARMLESS:
+        if name not in HARMLESS:
             return f"calls {call.group(1)}(), whose effects can't be checked"
-    return None
-
-
-SQL_ARGUMENTS = ("sql", "query", "sqlStatements", "sql_statements", "statements")
-
-
-def _sql_of(arguments: object) -> str | None:
-    """The SQL a remote service's SQL tool was given (one statement, or a list)."""
-    if not isinstance(arguments, dict):
-        return None
-    given = cast(dict[str, Any], arguments)
-    for key in SQL_ARGUMENTS:
-        value = given.get(key)
-        if isinstance(value, str):
-            return value
-        if isinstance(value, list) and value:
-            return ";\n".join(str(v) for v in cast(list[Any], value))
     return None
 
 
@@ -179,7 +135,7 @@ def reason(
             cast(dict[str, Any], arguments) if isinstance(arguments, dict) else None,
         )
         if found.source == mcp.BY_SQL:
-            sql = _sql_of(args.get("arguments"))
+            sql = sql_of(args.get("arguments"))
             return sql_reason(sql) if sql else "has no SQL to check"
         return (
             f"runs '{name}', which {MCP_REASONS[found.source]}"

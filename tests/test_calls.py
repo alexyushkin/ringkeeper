@@ -184,6 +184,17 @@ async def test_prod_read_runs_without_approval(registry: None, vault: Vault) -> 
     assert result["rows"] == [[1]]
 
 
+async def test_prod_select_through_execute_runs_without_approval(
+    registry: None, target_dsn: str, vault: Vault
+) -> None:
+    """Reading never waits: execute with a SELECT runs at once, in a read-only transaction."""
+    result = await run_call(
+        call("execute", "acme-supabase-prod", sql="SELECT count(*) FROM notes"), vault
+    )
+    assert result["rows"] == [[1]]
+    assert [e.outcome for e in audit_rows()] == []  # a read, like query's
+
+
 async def test_prod_write_is_held(registry: None, target_dsn: str, vault: Vault) -> None:
     result = await run_call(call("execute", "acme-supabase-prod", sql=INSERT), vault)
     assert result["status"] == "held_for_approval"

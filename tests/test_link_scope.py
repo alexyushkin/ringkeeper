@@ -117,6 +117,16 @@ def test_sql_is_held_with_the_ids_pinned_and_checked_by_its_statement() -> None:
 
 
 @pytest.mark.usefixtures("shared")
+def test_sql_that_only_reads_runs_without_asking() -> None:
+    """Reading never waits, even on production: a SELECT through Neon's run_sql runs."""
+    for sql in ("SELECT count(*) FROM notes", "select * from notes; select 1"):
+        answer = call("acme-web", "run_sql", sql=sql)
+        assert "decision_id" not in answer, (sql, answer)
+    for sql in ("SELECT nextval('s')", "WITH d AS (DELETE FROM notes RETURNING *) SELECT 1"):
+        assert "decision_id" in call("acme-web", "run_sql", sql=sql), sql
+
+
+@pytest.mark.usefixtures("shared")
 def test_a_held_call_outside_a_changed_scope_is_not_run() -> None:
     held = call("acme-web", "run_sql", sql="INSERT INTO notes (body) VALUES ('x')")
     bind("acme-web", "acme-neon", scope={"project": "p-gamma"})

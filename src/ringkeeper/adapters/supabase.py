@@ -13,6 +13,7 @@ import base64
 import datetime
 import decimal
 import uuid
+from dataclasses import replace
 from functools import partial
 from typing import Annotated, Any, LiteralString, cast
 from urllib.parse import quote
@@ -24,8 +25,9 @@ from psycopg.conninfo import conninfo_to_dict
 from pydantic import Field
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, read, write
+from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, ToolKind, read, write
 from ringkeeper.models import InstanceType
+from ringkeeper.sql_text import reads_only
 
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = "15s"
@@ -222,7 +224,18 @@ async def query(target: Target, sql: Sql, params: Params = None, max_rows: MaxRo
 @write
 async def execute(target: Target, sql: Sql, params: Params = None, max_rows: MaxRows = 200) -> JSON:
     """Run one statement that may write (INSERT/UPDATE/DELETE/DDL) and commit it."""
-    return await _run(target, sql, params, read_only=False, max_rows=max_rows)
+    # A statement shown to only read runs at once (see _reads), and in a READ ONLY
+    # transaction, so a misjudged one still can't write.
+    return await _run(target, sql, params, read_only=reads_only(sql), max_rows=max_rows)
+
+
+def _reads(_target: Target, args: JSON) -> ToolKind:
+    """Reading never waits for approval, even through execute on production."""
+    sql = args.get("sql")
+    return ToolKind.READ if isinstance(sql, str) and reads_only(sql) else ToolKind.WRITE
+
+
+execute = replace(execute, classify=_reads)
 
 
 ADAPTER = Adapter(
