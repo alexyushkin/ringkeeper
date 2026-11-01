@@ -14,8 +14,8 @@ developer:
   Anthropic and is left as it is.
 
 Two kinds of signing are supported: **Azure Artifact Signing** (preferred) and,
-as a fallback, **any other certificate signtool can use**, such as an
-individual code-signing certificate from a certificate authority.
+as a fallback, **any other certificate signtool can use**, such as an OV
+certificate.
 
 Updates are signed separately, with the updater key (see "The updater key"
 below). That signing is always on, and it is what installed apps check before
@@ -83,11 +83,11 @@ The next tag builds a signed installer. The workflow's **Signed?** step prints
 the installer's signature; it should say `Valid` and name Alexey Yushkin. The client secret expires (at most two years): renew it in the app
 registration before then and update `AZURE_CLIENT_SECRET`.
 
-## Fallback: a certificate from a certificate authority
+## Fallback: an OV certificate
 
-If Artifact Signing isn't available, buy an **individual-validated
-code-signing certificate** in your own name from a certificate authority
-(Sectigo, SSL.com, Certum and others sell them to individual developers). Since 2023 their
+If Artifact Signing isn't available, buy an **OV (organization validated)
+code-signing certificate** from a certificate authority (DigiCert, Sectigo,
+SSL.com, Certum and others). Since 2023 their
 private keys must stay in hardware: the CA delivers either a USB token or,
 more practical for CI, a **cloud key service** (DigiCert KeyLocker, SSL.com
 eSigner, Certum SimplySign) that signtool reaches through the CA's key
@@ -107,7 +107,7 @@ storage provider.
 `sign.ps1` then signs with `signtool sign /fd SHA256 /td SHA256 /tr
 <timestamp> <your arguments> <files>`. Azure settings win when both are set.
 
-A new certificate starts with no reputation, so SmartScreen can still warn
+A new OV certificate starts with no reputation, so SmartScreen can still warn
 for a while after signing begins; the warning stops as the signed installer is
 downloaded and run without problems.
 

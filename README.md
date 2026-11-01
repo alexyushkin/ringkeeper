@@ -710,6 +710,11 @@ Then open http://localhost:3000 and follow the setup wizard. The guide also
 covers using it from your phone, a cloud server, updates, backups and
 restore, a forgotten password, and troubleshooting.
 
+## Need help setting it up?
+
+I can help you install and connect Ringkeeper for your clients. Contact:
+<https://yushkin.us> or LinkedIn: <https://www.linkedin.com/in/alexey-yushkin>.
+
 ## The web app
 
 The `web` service is a phone-first app for running Ringkeeper without a
