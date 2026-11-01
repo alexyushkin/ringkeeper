@@ -153,7 +153,7 @@ jobs:
   macos:
     # Unsigned and not advertised; built on tags, or by hand when asked.
     if: startsWith(github.ref, 'refs/tags/v') || inputs.macos
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
