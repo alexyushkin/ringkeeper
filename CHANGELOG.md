@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.7 (2026-11-01)
 
 - **Updates no longer wait for an unrelated ringkeeper.exe.** The installer
   only waits for programs running from Ringkeeper's own folder, not for any
@@ -15,9 +15,10 @@ publishes it as the release notes and the app shows it with the update.
   before.
 - **Sharp installer images** at any display scale (125%, 150% and up), instead
   of a stretched, blurry icon.
-- **Published by Alexey Yushkin.** Windows' list of installed apps names him
-  as Ringkeeper's publisher. An update from an earlier version still installs
-  into the folder that version was installed in.
+- **A personal project, by Alexey Yushkin.** Settings › About, the license and
+  the notices say "Alexey Yushkin and contributors", and Windows' list of
+  installed apps names him as the publisher. An update from an earlier version
+  still installs into the folder that version was installed in.
 - **All projects, except…** A shared tool for all projects can leave out
   clients (all their projects, new ones too) and single projects. The
   connection says so plainly: "All projects except Acme (client),
