@@ -188,6 +188,28 @@ with session_scope() as session:
     await expect(dialog).toBeHidden();
   });
 
+  await test.step("the theme: light, dark or the system's, kept on reload", async () => {
+    const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/settings#appearance");
+    const theme = page.getByLabel("Theme");
+    await theme.selectOption("dark");
+    await expect.poll(background).toBe("rgb(18, 18, 17)");
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect.poll(background).toBe("rgb(18, 18, 17)");
+
+    await page.emulateMedia({ colorScheme: "dark" });
+    await theme.selectOption("light");
+    await expect.poll(background).toBe("rgb(247, 247, 245)");
+    await theme.selectOption("system");
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
+    await expect.poll(background).toBe("rgb(18, 18, 17)");
+    await page.reload();
+    await expect.poll(background).toBe("rgb(18, 18, 17)");
+    await page.emulateMedia({ colorScheme: "light" });
+  });
+
   await test.step("other host names and oversized bodies are refused", async () => {
     const rebound = await page.request.get("/login", { headers: { Host: "attacker.example:13000" } });
     expect(rebound.status()).toBe(421);

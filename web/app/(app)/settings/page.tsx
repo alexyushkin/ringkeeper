@@ -9,6 +9,8 @@ import { TelegramPairing } from "@/components/telegram";
 import { Alert, Button, Card, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
+import { applyTheme, readTheme } from "@/lib/client/theme";
+import type { Theme } from "@/lib/theme";
 import { AboutCard } from "@/components/about";
 import { GoogleSettings } from "@/components/google";
 import { AUTO, VoiceSettings } from "@/components/voice";
@@ -178,6 +180,7 @@ export default function SettingsPage() {
         </>
       ),
     },
+    { key: "appearance", label: "Appearance", content: () => <Appearance /> },
     { key: "about", label: "About", content: () => <AboutCard /> },
   ];
 
@@ -336,6 +339,32 @@ function ThisComputer({ startAtLogin, onChange }: { startAtLogin: boolean; onCha
         checked={startAtLogin}
         onChange={onChange}
         hint="It waits in the tray, so requests and approvals keep coming in. Closing the window keeps it running; to stop it, right-click the tray icon and choose Quit."
+      />
+    </Section>
+  );
+}
+
+const THEMES: [Theme, string][] = [
+  ["system", "System"],
+  ["light", "Light"],
+  ["dark", "Dark"],
+];
+
+function Appearance() {
+  const [theme, setTheme] = useState<Theme>("system");
+  useEffect(() => setTheme(readTheme()), []);
+  const where = DESKTOP ? "this computer's" : "this device's";
+  return (
+    <Section id="appearance" title="Appearance" summary={THEMES.find(([key]) => key === theme)?.[1]}>
+      <Select
+        label="Theme"
+        value={theme}
+        options={THEMES}
+        onChange={(next) => {
+          setTheme(next as Theme);
+          applyTheme(next as Theme);
+        }}
+        hint={`System follows ${where} light or dark setting.${DESKTOP ? "" : " Saved in this browser."}`}
       />
     </Section>
   );

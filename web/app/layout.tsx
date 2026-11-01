@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { ConfirmPassword } from "@/components/confirm-password";
 import { ServiceWorker } from "@/components/service-worker";
+import { WindowTheme } from "@/lib/client/theme";
+import { THEME_COOKIE, THEME_SCRIPT, chosenTheme } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -35,13 +37,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Reading a request header makes every page dynamic, which the CSP nonce needs
   // (Next.js adds the nonce from the request's CSP header to its own scripts).
   // The desktop app's pages are exported as files instead: no request, no nonce.
-  if (process.env.NEXT_PUBLIC_RINGKEEPER_TARGET !== "desktop") await headers();
+  // The theme choice (lib/theme.ts) is set before the page draws: here from the
+  // cookie, or for the exported desktop pages by a script that reads it.
+  const desktop = process.env.NEXT_PUBLIC_RINGKEEPER_TARGET === "desktop";
+  let theme: string | undefined;
+  if (!desktop) {
+    await headers();
+    theme = chosenTheme((await cookies()).get(THEME_COOKIE)?.value);
+  }
   return (
-    <html lang="en">
+    <html lang="en" data-theme={theme} suppressHydrationWarning>
+      <head>{desktop ? <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} /> : null}</head>
       <body className="min-h-dvh antialiased">
         {children}
         <ConfirmPassword />
         <ServiceWorker />
+        <WindowTheme />
       </body>
     </html>
   );

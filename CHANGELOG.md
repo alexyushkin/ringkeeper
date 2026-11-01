@@ -15,6 +15,9 @@ publishes it as the release notes and the app shows it with the update.
   before.
 - **Sharp installer images** at any display scale (125%, 150% and up), instead
   of a stretched, blurry icon.
+- **Light or dark, your choice.** Settings › Appearance has a Theme: System
+  (as before, it follows Windows' light or dark setting), Light or Dark. It's
+  kept for this computer, or per browser on a server install.
 
 ## 0.1.0-beta.6 (2026-10-31)
 

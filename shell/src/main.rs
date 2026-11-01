@@ -336,20 +336,21 @@ fn open_window(app: &AppHandle, path: Option<&'static str>) {
 
 /// The app's pages come from the backend, a remote origin to Tauri, so they get
 /// no access to the shell by default. They may open the folder picker (the
-/// project form's Browse button), and nothing else, and only from this
-/// backend's own address.
-fn allow_folder_picker(app: &AppHandle, runtime: &Runtime) {
+/// project form's Browse button) and set the window's theme (Settings ›
+/// Appearance), nothing else, and only from this backend's own address.
+fn allow_pages(app: &AppHandle, runtime: &Runtime) {
     let Ok(url) = Url::parse(&runtime.url) else {
         return;
     };
-    let capability = CapabilityBuilder::new(format!("folder-picker-{}", url.port().unwrap_or(0)))
+    let capability = CapabilityBuilder::new(format!("pages-{}", url.port().unwrap_or(0)))
         .remote(format!("{}/*", url.origin().ascii_serialization()))
         .local(false)
         .window(WINDOW)
-        .permission("dialog:allow-open");
+        .permission("dialog:allow-open")
+        .permission("core:window:allow-set-theme");
     if let Err(error) = app.add_capability(capability) {
         let shell = app.state::<Shell>();
-        backend::log(&shell.data_dir, &format!("no folder picker: {error}"));
+        backend::log(&shell.data_dir, &format!("no access for the pages: {error}"));
     }
 }
 
@@ -602,7 +603,7 @@ fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: boo
         if let Ok(mut runtime) = shell.runtime.lock() {
             *runtime = Some(current.runtime.clone());
         }
-        allow_folder_picker(app, &current.runtime);
+        allow_pages(app, &current.runtime);
         set_starting(app, false);
         refresh_status(app, &current.runtime);
         let visible = app

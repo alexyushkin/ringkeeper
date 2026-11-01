@@ -4,8 +4,8 @@ import { DESKTOP } from "@/lib/client/routes";
 
 /**
  * The desktop app's shell (Tauri), when this page is in its window. The shell
- * lets these pages open the folder picker and nothing else (see
- * allow_folder_picker in shell/src/main.rs). In a browser it isn't there.
+ * lets these pages open the folder picker and set the window's theme, nothing
+ * else (see allow_pages in shell/src/main.rs). In a browser it isn't there.
  */
 
 interface Internals {
@@ -30,4 +30,15 @@ export async function pickFolder(title: string, start?: string): Promise<string 
     options: { title, directory: true, defaultPath: start || undefined },
   });
   return typeof picked === "string" ? picked : null;
+}
+
+/** The window's title bar: light, dark, or null for the system's setting. */
+export async function setWindowTheme(theme: "light" | "dark" | null): Promise<void> {
+  const shell = internals();
+  if (!shell) return;
+  try {
+    await shell.invoke("plugin:window|set_theme", { label: "main", value: theme });
+  } catch {
+    // an older shell without the permission: the title bar keeps the system's
+  }
 }
