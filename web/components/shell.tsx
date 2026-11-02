@@ -4,7 +4,9 @@ import Link from "@/components/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { CommandPalette, openPalette } from "@/components/command-palette";
 import { ScopeSwitcher } from "@/components/scope-switcher";
+import { Tour } from "@/components/tour";
 import { UpdateBanner } from "@/components/update-banner";
 import { Loading, Logo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -25,7 +27,11 @@ const MORE = [
   { href: "/routines", label: "Routines" },
   { href: "/activity", label: "Activity" },
   { href: "/settings", label: "Settings" },
+  { href: "/help", label: "Help" },
 ];
+
+// What the first-run tour points at (components/tour), wherever it's on screen.
+const TOUR: Record<string, string> = { "/approvals": "approvals", "/connections": "connections" };
 
 function Icon({ d }: { d: string }) {
   return (
@@ -59,6 +65,7 @@ export function Shell({ children }: { children: ReactNode }) {
   // Approvals only: a question waits in its conversation, not in this count.
   const approvals = useApi<Pending[]>("decisions", { status: "pending", category: "approval", limit: 200 });
   const settings = useApi<{ values: { paused: boolean } }>("settings");
+  const start = useApi<{ tour_seen: boolean }>(ready ? "start" : null);
   useLive((event) => {
     if (event.type === "approval") approvals.reload();
   });
@@ -81,10 +88,19 @@ export function Shell({ children }: { children: ReactNode }) {
           <Logo />
           Ringkeeper
         </Link>
+        <button
+          type="button"
+          onClick={openPalette}
+          className="mb-2 flex min-h-10 items-center gap-2 rounded-xl border border-line px-3 text-left text-sm text-muted hover:border-accent"
+        >
+          <span className="flex-1">Search or jump to…</span>
+          <kbd className="rounded border border-line px-1 text-xs">Ctrl K</kbd>
+        </button>
         {[...MAIN, ...MORE].map((item) => (
           <Link
             key={item.href}
             href={item.href}
+            data-tour={TOUR[item.href]}
             className={`flex items-center rounded-xl px-3 py-2 text-sm ${active(path, item.href) ? "bg-accent-soft font-medium text-accent" : "text-ink hover:bg-sunken"}`}
           >
             {item.label}
@@ -116,6 +132,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <Link
             key={item.href}
             href={item.href}
+            data-tour={TOUR[item.href]}
             className={`relative flex flex-col items-center gap-0.5 pt-2 text-xs ${active(path, item.href) ? "text-accent" : "text-muted"}`}
           >
             <Icon d={item.icon} />
@@ -127,6 +144,7 @@ export function Shell({ children }: { children: ReactNode }) {
         ))}
         <button
           type="button"
+          data-tour="connections"
           onClick={() => setMoreOpen(!moreOpen)}
           className={`flex flex-col items-center gap-0.5 pt-2 text-xs ${MORE.some((m) => active(path, m.href)) ? "text-accent" : "text-muted"}`}
           aria-expanded={moreOpen}
@@ -138,6 +156,9 @@ export function Shell({ children }: { children: ReactNode }) {
       {moreOpen ? (
         <div className="fixed inset-0 z-10 bg-black/30 md:hidden" onClick={() => setMoreOpen(false)}>
           <div className="pb-safe absolute inset-x-0 bottom-16 rounded-t-2xl bg-surface p-2" onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => { setMoreOpen(false); openPalette(); }} className="block w-full rounded-xl px-4 py-3 text-left text-base hover:bg-sunken">
+              Search or jump to…
+            </button>
             {MORE.map((item) => (
               <Link key={item.href} href={item.href} onClick={() => setMoreOpen(false)} className="block rounded-xl px-4 py-3 text-base hover:bg-sunken">
                 {item.label}
@@ -146,6 +167,8 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </div>
       ) : null}
+      <CommandPalette />
+      {start.data ? <Tour auto={!start.data.tour_seen && path === "/"} /> : null}
     </div>
     </ScopeProvider>
   );

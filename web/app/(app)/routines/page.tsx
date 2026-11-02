@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AGENTS_AND_ROUTINES } from "@/components/agents";
+import { HelpHint } from "@/components/help-hint";
 import { NewRoutineAnywhere, RoutineList } from "@/components/routines";
 import { Alert, Button, Card, PageHeader, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -17,12 +18,15 @@ export default function RoutinesPage() {
   const scope = useScope();
   const settings = useApi<{ values: { routines_paused: boolean; paused: boolean } }>("settings");
   const paused = settings.data?.values.routines_paused ?? false;
+  // ?new=1: the command palette's New routine.
   const [adding, setAdding] = useState(false);
+  useEffect(() => setAdding(new URLSearchParams(window.location.search).has("new")), []);
   return (
     <>
       <PageHeader
         title="Routines"
         subtitle={`Run an agent on a schedule, when something happens, or when you say. ${AGENTS_AND_ROUTINES}`}
+        help={<HelpHint doc="agents-and-routines">A routine starts one of a project&apos;s agents: on a schedule, when something happens (a new email, a file, a webhook), or when you press Run. Each run is a task; changes still wait for your approval.</HelpHint>}
         action={
           adding ? null : (
             <Button kind="primary" onClick={() => setAdding(true)}>

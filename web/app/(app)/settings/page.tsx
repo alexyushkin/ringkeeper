@@ -14,6 +14,7 @@ import { applyTheme, readTheme } from "@/lib/client/theme";
 import type { Theme } from "@/lib/theme";
 import { AboutCard } from "@/components/about";
 import { GoogleSettings } from "@/components/google";
+import { HelpHint } from "@/components/help-hint";
 import { AUTO, VoiceSettings } from "@/components/voice";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
@@ -121,12 +122,32 @@ export default function SettingsPage() {
           },
         ]
       : []),
-    ...(DESKTOP ? [{ key: "google", label: "Google app", content: () => <GoogleSettings /> }] : []),
+    ...(DESKTOP
+      ? [
+          {
+            key: "google",
+            label: "Google app",
+            content: () => (
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  Your own Google app lets clients&apos; Google accounts sign in to Ringkeeper (Gmail, Calendar, Drive, Sheets).
+                  <HelpHint doc="services/google">Google needs an app of yours to let accounts sign in. You make it once in Google Cloud (free), paste its ID and secret here, and then add each client&apos;s Google account under Connections.</HelpHint>
+                </p>
+                <GoogleSettings />
+              </div>
+            ),
+          },
+        ]
+      : []),
     {
       key: "notifications",
       label: "Notifications",
       content: () => (
         <div className="space-y-4">
+        <p className="text-sm text-muted">
+          Where Ringkeeper tells you about approvals, finished tasks and routine results when you&apos;re away from the app.
+          <HelpHint doc="notifications">Each channel (Telegram, Slack, Discord) has its own choice of what it sends, quiet hours, and which clients. You can approve safe changes from Slack and Discord; anything risky says Open in Ringkeeper.</HelpHint>
+        </p>
         <Section id="telegram" title="Telegram" summary={telegramSummary}>
           {DESKTOP && !settings.data!.telegram.token ? (
             <>

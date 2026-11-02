@@ -148,11 +148,14 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <section className={`rounded-2xl border border-line bg-surface p-4 ${className}`}>{children}</section>;
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+export function PageHeader({ title, subtitle, action, help }: { title: string; subtitle?: string; action?: ReactNode; help?: ReactNode }) {
   return (
     <header className="mb-4 flex items-start justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <h1 className="text-xl font-semibold">
+          {title}
+          {help}
+        </h1>
         {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
       </div>
       {action}

@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useState } from "react";
 
 import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
+import { HelpHint } from "@/components/help-hint";
 import { SharedTools } from "@/components/shared-tools";
 import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
@@ -43,7 +44,12 @@ export default function ConnectionsPage() {
 
   return (
     <>
-      <PageHeader title="Connections" subtitle="Every client's services. Open a client to add, link or narrow theirs." action={<LinkButton href="/connections/new" kind="primary">Add</LinkButton>} />
+      <PageHeader
+        title="Connections"
+        subtitle="Every client's services. Open a client to add, link or narrow theirs."
+        action={<LinkButton href="/connections/new" kind="primary">Add</LinkButton>}
+        help={<HelpHint doc="connections">A connection is a client&apos;s service (a database, Airtable, GitHub…) that their projects can use. A shared tool is yours, holds no client&apos;s data, and can go to any project. Ringkeeper keeps every key; the AI never sees one.</HelpHint>}
+      />
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Select label="Service" value={service} onChange={setService} options={[["", "Any service"], ...kinds.map((k): [string, string] => [k, k])]} />
         <Select label="Kind of data" value={env} onChange={setEnv} options={[["", "Any"], ...ENVS]} />

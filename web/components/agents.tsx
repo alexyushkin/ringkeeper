@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Link from "@/components/link";
 import { Alert, Badge, Button, CompactRow, ConfirmButton, Empty, Field, Loading, Select, TextArea } from "@/components/ui";
@@ -141,7 +141,9 @@ export function NewAgent({ onSaved, onCancel }: { onSaved: () => void; onCancel:
 export function AgentDirectory() {
   const scope = useScope();
   const list = useApi<AgentData[]>("agents", scope.query);
+  // ?new=1: the command palette's New agent.
   const [adding, setAdding] = useState(false);
+  useEffect(() => setAdding(new URLSearchParams(window.location.search).has("new")), []);
   return (
     <div className="space-y-3">
       {adding ? (

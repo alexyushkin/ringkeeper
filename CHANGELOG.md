@@ -14,6 +14,17 @@ publishes it as the release notes and the app shows it with the update.
   a small shop database, set up as production so a change waits for your
   approval. Try tasks and see a hold before connecting anything real. Remove
   the demo removes all of it, its tasks and conversations too.
+- **Ctrl+K.** A command palette from anywhere (or "Search or jump to" in the
+  sidebar): switch client or project, start a request, add a connection or a
+  shared tool, a new agent or routine, open pending approvals, any page or
+  setting. Type a few letters of what you want.
+- **Help.** A Help page in the sidebar: the seven ideas (client, project,
+  connection, shared tool, agent, routine, hold) in plain words with a picture
+  of how they fit, the user guide, and Report a problem. A three-step tour
+  after the first run shows the request box, Approvals and Connections; skip
+  it, or see it again from Help. A "?" beside Connections, Agents, Routines,
+  Settings › Google app and Notifications says what each is for and links to
+  the guide.
 - **Agents in the sidebar.** An Agents page lists every project's agents,
   narrowed by the client and project switcher, with New agent (it asks which
   project first). The Routines page has New routine: pick the project, then
