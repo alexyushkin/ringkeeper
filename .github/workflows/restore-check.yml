@@ -1,0 +1,77 @@
+name: Restore check
+
+# Back up, wipe, restore, end to end in the installed app, on a clean Windows
+# runner (never on a developer's PC: it installs the app for the current user and
+# deletes its data and its master key). This commit's installer is built; then
+# shell/scripts/restore_check.py makes data through the app, exports a backup,
+# uninstalls and wipes everything, installs again, restores through the app and
+# checks that the backend restarts by itself (the shell starts it again) with
+# the projects, connection, its key and agent back. Nothing is published.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - src/ringkeeper/services/backup.py
+      - src/ringkeeper/desktop/**
+      - shell/scripts/restore_check.py
+      - .github/workflows/restore-check.yml
+
+permissions:
+  contents: read
+
+env:
+  TAURI_CLI: "@tauri-apps/cli@2.12.2"
+
+jobs:
+  restore:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shell/target
+          key: updater-${{ runner.os }}-${{ hashFiles('shell/Cargo.lock') }}
+      - run: uv sync --locked
+      - run: npm ci --no-fund
+        working-directory: web
+      - name: Lay out Python, the web app, MinGit and the notices
+        run: python shell/scripts/bundle.py
+
+      - name: Build the installer
+        working-directory: shell
+        shell: bash
+        run: |
+          rm -rf target/release/bundle
+          echo '{"version": "99.0.0", "bundle": {"createUpdaterArtifacts": false}}' > "$RUNNER_TEMP/check.json"
+          npx --yes "$TAURI_CLI" build --ci --config bundle/windows.json --config "$RUNNER_TEMP/check.json"
+          cp target/release/bundle/nsis/*-setup.exe "$RUNNER_TEMP/setup.exe"
+
+      - name: Back up, wipe, restore
+        shell: bash
+        run: >
+          uv run python shell/scripts/restore_check.py
+          --installer "$RUNNER_TEMP/setup.exe"
+          --scratch "$RUNNER_TEMP/restore-check"
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: restore-check-logs
+          path: ~/AppData/Local/Ringkeeper/logs
+          if-no-files-found: ignore
