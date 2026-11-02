@@ -388,8 +388,9 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
     <div>
       {/* The line is a shadow under the tabs, not a border they overlap: overlapping
           it overflowed the row by a pixel, which showed a scroll bar. Too many tabs
-          for the width still scroll sideways, without a bar. */}
-      <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-line)] [scrollbar-width:none]">
+          for the width go on a second row: scrolling sideways hid the last ones
+          with nothing to say they were there. */}
+      <div role="tablist" className="mb-4 flex flex-wrap gap-x-1 shadow-[inset_0_-1px_0_var(--color-line)]">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -397,7 +398,7 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
             role="tab"
             aria-selected={t.key === active.key}
             onClick={() => open(t.key)}
-            className={`min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium ${t.key === active.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"}`}
+            className={`min-h-11 shrink-0 border-b-2 px-2 text-sm font-medium ${t.key === active.key ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"}`}
           >
             {t.label}
             {t.count !== undefined ? <span className="ml-1.5 rounded-full bg-sunken px-1.5 text-xs text-muted">{t.count}</span> : null}
