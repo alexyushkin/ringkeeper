@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.10 (2026-11-02)
 
 - **Get started on Home.** A checklist (Claude connected, a first project, a
   first connection, a first task) links to each step and goes away when it's
