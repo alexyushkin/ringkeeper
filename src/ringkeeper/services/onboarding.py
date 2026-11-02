@@ -74,6 +74,40 @@ def dismiss(session: Session) -> None:
     _mark(session, DISMISSED_KEY)
 
 
+WHATS_NEW_KEY = "onboarding.whats_new"
+
+
+def keep_notes(session: Session, version: str, notes: str) -> None:
+    """An update was downloaded: its notes show on Home once it's running."""
+    row = session.get(Setting, WHATS_NEW_KEY)
+    value = {"version": version, "notes": notes, "seen": False}
+    if row is None:
+        session.add(Setting(key=WHATS_NEW_KEY, value=value))
+    elif row.value.get("version") != version or row.value.get("notes") != notes:
+        row.value = value
+    session.flush()
+
+
+def whats_new(session: Session, running: str | None) -> dict[str, str] | None:
+    """The notes of the version now running, until they're dismissed."""
+    row = session.get(Setting, WHATS_NEW_KEY)
+    if (
+        running is None
+        or row is None
+        or row.value.get("seen")
+        or row.value.get("version") != running
+    ):
+        return None
+    return {"version": str(row.value["version"]), "notes": str(row.value.get("notes") or "")}
+
+
+def whats_new_seen(session: Session) -> None:
+    row = session.get(Setting, WHATS_NEW_KEY)
+    if row is not None:
+        row.value = {**row.value, "seen": True}
+        session.flush()
+
+
 def tour_seen(session: Session) -> bool:
     return session.get(Setting, TOUR_KEY) is not None
 

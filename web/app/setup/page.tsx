@@ -180,6 +180,7 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
           }}
         />
       )}
+      {names.length ? null : <RestoreInstead />}
       <ClaudeCodeFolders
         onAdded={(added) => {
           setLast({ name: added.join(", ") });
@@ -211,6 +212,30 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
         </Card>
       ) : null}
     </div>
+  );
+}
+
+/** Moving from another computer: skip the rest of setup and restore a backup. */
+function RestoreInstead() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  return (
+    <p className="text-sm text-muted">
+      Moving from another computer?{" "}
+      <button
+        type="button"
+        className="text-accent underline"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await api("setup/done", { method: "POST" }).catch(() => undefined);
+          router.replace("/settings#backup");
+        }}
+      >
+        Restore a backup instead
+      </button>
+      : it brings your projects and connections.
+    </p>
   );
 }
 

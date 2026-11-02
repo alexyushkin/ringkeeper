@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import Field
 from sqlalchemy import func, select
 
@@ -21,13 +21,22 @@ from ringkeeper.api import manage_routes
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
-from ringkeeper.desktop import opener
+from ringkeeper.desktop import lifecycle, opener
 from ringkeeper.desktop.update import State, updates
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Project, Task, TaskStatus
 from ringkeeper.schemas import Input, ProjectIn, Slug
-from ringkeeper.services import claude_desktop, claude_work, inbox, runtime, workspaces
+from ringkeeper.services import (
+    backup,
+    claude_desktop,
+    claude_work,
+    inbox,
+    onboarding,
+    runtime,
+    workspaces,
+)
 from ringkeeper.telegram.text import summary
+from ringkeeper.vault import get_vault
 from ringkeeper.voice import VoiceError
 
 # Same length rule as Telegram: a notification is a pointer to the app.
@@ -76,10 +85,12 @@ class UpdateIn(Input):
 
 
 @router.post("/update", status_code=204)
-def update_ready(data: UpdateIn) -> None:
+def update_ready(data: UpdateIn, session: WriteSessionDep) -> None:
     """The shell downloaded an update (signature checked); it waits for the user.
-    Only the shell can install it: it holds the download, not the backend."""
+    Only the shell can install it: it holds the download, not the backend. Its notes
+    are kept for Home's "What's new" once it runs."""
     updates.offer(data.version, data.notes)
+    onboarding.keep_notes(session, data.version, data.notes)
 
 
 @router.get("/update")
@@ -294,3 +305,86 @@ def voice_choose(body: VoiceChoiceIn) -> dict[str, Any]:
 @router.delete("/voice", status_code=204)
 def voice_remove() -> None:
     voice_local.model(get_settings()).remove()
+
+
+# --- Backup (services.backup) ---
+
+
+def _backup_folder() -> Path:
+    return Path.home() / "Documents" / "Ringkeeper backups"
+
+
+class ExportIn(Input):
+    password: Annotated[str, Field(max_length=1000)]
+    folder: Annotated[str, Field(max_length=1000)] | None = None
+
+
+@router.post("/backup/export", dependencies=[RecentAuth])
+def backup_export(data: ExportIn) -> dict[str, Any]:
+    """Write a backup file into a folder (Documents\\Ringkeeper backups unless chosen)."""
+    folder = Path(data.folder.strip()) if data.folder and data.folder.strip() else _backup_folder()
+    if not folder.is_absolute():
+        raise HTTPException(422, detail="Choose a full folder path for the backup, or Browse.")
+    blob = backup.export(get_settings(), data.password)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"Ringkeeper-backup-{datetime.now(UTC):%Y-%m-%d-%H%M}{backup.SUFFIX}"
+        path.write_bytes(blob)
+    except OSError as error:
+        raise HTTPException(
+            422,
+            detail=f"Couldn't write the backup there ({error.strerror}). Choose another folder.",
+        ) from None
+    return {"path": str(path), "bytes": len(blob), "default_folder": str(_backup_folder())}
+
+
+@router.get("/backup")
+def backup_info(session: SessionDep) -> dict[str, Any]:
+    auto = backup.auto(session)
+    return {"default_folder": str(_backup_folder()), "auto": auto.__dict__}
+
+
+async def _upload(request: Request) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > backup.MAX_BYTES:
+        raise HTTPException(413, detail="That file is too big to be a Ringkeeper backup.")
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > backup.MAX_BYTES:
+            raise HTTPException(413, detail="That file is too big to be a Ringkeeper backup.")
+    return body
+
+
+Password = Annotated[str, Header(alias="x-backup-password", max_length=1000)]
+
+
+@router.post("/backup/preview")
+async def backup_preview(request: Request, password: Password) -> dict[str, Any]:
+    """What restoring this file brings in (the password opens it; nothing changes)."""
+    return backup.preview(await _upload(request), password)
+
+
+@router.post("/backup/restore", dependencies=[RecentAuth])
+async def backup_restore(request: Request, password: Password) -> dict[str, Any]:
+    """Bring a backup in: its secrets now, its database at the restart that follows."""
+    found = backup.restore(get_settings(), get_vault(), await _upload(request), password)
+    found["restarting"] = lifecycle.restart_soon()
+    return found
+
+
+class AutoIn(Input):
+    enabled: bool
+    folder: Annotated[str, Field(max_length=1000)] = ""
+    keep: int = 4
+    password: Annotated[str, Field(max_length=1000)] | None = None
+
+
+@router.put("/backup/auto", dependencies=[RecentAuth])
+def backup_auto(data: AutoIn, session: WriteSessionDep) -> dict[str, Any]:
+    folder = data.folder.strip() or str(_backup_folder())
+    auto = backup.set_auto(
+        session, get_vault(), enabled=data.enabled, folder=folder, keep=data.keep,
+        password=data.password or None,
+    )  # fmt: skip
+    return auto.__dict__

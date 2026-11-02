@@ -75,6 +75,10 @@ class FileBackend:
             ) from None
         return plain.decode()
 
+    def refs(self) -> list[str]:
+        """Every secret's name (for a backup); never the values."""
+        return list(self._read())
+
     def put(self, ref: str, value: str) -> None:
         with self._locked():
             entries = self._read()

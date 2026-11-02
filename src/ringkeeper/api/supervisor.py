@@ -27,7 +27,7 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
-from ringkeeper.services import retention
+from ringkeeper.services import backup, retention, undo
 from ringkeeper.services.runtime import SETTINGS_CHANNEL, current_settings
 from ringkeeper.vault import get_vault
 
@@ -91,6 +91,7 @@ class Supervisor:
         settings = current_settings(self.base)
         self._sync_web_token(settings)
         self._retention(settings)
+        self._backup(settings)
         if settings.router:
             # The router creates the tasks, so the model map and auth mode travel with it.
             key = (
@@ -201,11 +202,28 @@ class Supervisor:
         with session_scope() as session:
             if retention.due(session):
                 deleted = retention.purge(session, settings.retention_days)
+                expired = undo.expire()  # kept changes past their 7 days
+                if expired:
+                    logger.info("undo: deleted %d kept changes older than 7 days", expired)
                 if deleted:
                     logger.info(
                         "retention: deleted %d transcript lines older than %d days",
                         deleted, settings.retention_days,
                     )  # fmt: skip
+
+    @staticmethod
+    def _backup(settings: Settings) -> None:
+        """The weekly automatic backup (desktop), when it's on and due."""
+        if settings.mode != "desktop":
+            return
+        try:
+            with session_scope() as session:
+                written = backup.run_auto(session, settings, get_vault())
+        except Exception:
+            logger.exception("the weekly backup failed")
+            return
+        if written is not None:
+            logger.info("weekly backup written: %s", written)
 
     # --- The web app's token ---
 

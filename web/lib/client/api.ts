@@ -69,6 +69,7 @@ export interface Options {
   json?: unknown;
   body?: BodyInit;
   contentType?: string;
+  headers?: Record<string, string>;
   query?: Record<string, string | number | boolean | undefined | null>;
 }
 
@@ -92,7 +93,7 @@ export async function api<T = unknown>(path: string, options: Options = {}): Pro
 
 async function send(path: string, options: Options): Promise<Response> {
   const method = options.method ?? (options.json !== undefined || options.body ? "POST" : "GET");
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(options.headers ?? {}) };
   if (method !== "GET") headers["x-csrf-token"] = csrfToken();
   let body: BodyInit | undefined = options.body;
   if (options.json !== undefined) {

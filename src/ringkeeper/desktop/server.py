@@ -46,6 +46,7 @@ from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Re
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ringkeeper.api.auth import DESKTOP_MARK
+from ringkeeper.desktop import lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -373,7 +374,17 @@ def prepare_environment(data_dir: Path, gateway_url: str) -> None:
     }
 
 
-def run(
+def _restore_pending(data_dir: Path, database_url: str) -> None:
+    """A backup restored last time replaces the database now, before it's opened."""
+    from ringkeeper.services import backup  # noqa: PLC0415 (after the environment is set)
+
+    if database_url.startswith("sqlite:///") and backup.apply_pending(
+        data_dir, Path(database_url.removeprefix("sqlite:///"))
+    ):
+        logger.info("restored a backup: the database it replaced is %s", backup.REPLACED)
+
+
+def run(  # noqa: PLR0915 (the whole start-up, in order)
     data_dir: Path,
     *,
     web_dir: Path | None = None,
@@ -392,10 +403,12 @@ def run(
         from ringkeeper.gateway.app import create_app as create_gateway  # noqa: PLC0415
 
         settings = get_settings()
+        _restore_pending(data_dir, settings.database_url)
         migrate.upgrade(settings.database_url)
         bootstrap.run(settings)  # the keychain's master key, before the gateway needs it
         launch = Launch()
         stopping = stop or threading.Event()  # set by the caller or the shell
+        lifecycle.on_stop(stopping.set)  # a restored backup restarts the backend
         hooks_sock = _listen_fixed(settings.hooks_port)
         front = FrontDoor(
             create_app(), launch, api_port, web_dir, shutdown=stopping.set,

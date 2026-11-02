@@ -13,6 +13,7 @@ import { DESKTOP } from "@/lib/client/routes";
 import { applyTheme, readTheme } from "@/lib/client/theme";
 import type { Theme } from "@/lib/theme";
 import { AboutCard } from "@/components/about";
+import { BackupSettings } from "@/components/backup";
 import { GoogleSettings } from "@/components/google";
 import { HelpHint } from "@/components/help-hint";
 import { AUTO, VoiceSettings } from "@/components/voice";
@@ -217,6 +218,7 @@ export default function SettingsPage() {
         </>
       ),
     },
+    ...(DESKTOP ? [{ key: "backup", label: "Backup", content: () => <BackupSettings /> }] : []),
     { key: "appearance", label: "Appearance", content: () => <Appearance /> },
     { key: "about", label: "About", content: () => <AboutCard /> },
   ];
