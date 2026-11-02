@@ -426,8 +426,17 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
             )
             raise
 
+    can_undo: JSON | None = None
+    if call.tool != undo.REVERT_TOOL:
+        try:
+            can_undo = await undo.check(call.service, spec, target, call.args)
+        except Exception:
+            logger.exception("couldn't check whether %s can be undone", call.tool)
+
     def hold(session: Session) -> tuple[str, str, str]:
         decision = decisions.hold(session, call, target.name, precondition=precondition)
+        if can_undo is not None:
+            decision.payload = {**(decision.payload or {}), "undo": can_undo}
         audit.record(session, call, AuditOutcome.HELD, decision_id=decision.id)
         return str(decision.id), decision.expires_at.isoformat(), holds.label(decision)
 

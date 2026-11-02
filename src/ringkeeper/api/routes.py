@@ -119,9 +119,7 @@ def _decision_out(decision: Decision, owners: dict[str, str] | None = None) -> D
             "heading": inbox.heading(decision),
             "options": inbox.options(decision),
             "approval": inbox.is_approval(decision),
-            "undo": undo.note(decision.service, decision.tool, decision.args)
-            if decision.kind is DecisionKind.APPROVE
-            else None,
+            "undo": undo.note_for(decision) if decision.kind is DecisionKind.APPROVE else None,
         }
     )
 

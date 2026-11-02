@@ -16,7 +16,7 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import DecisionStatus, Env, InstanceType
-from ringkeeper.services import demo, undo
+from ringkeeper.services import decisions, demo, undo
 from ringkeeper.services.calls import approve, request_revert, run_call
 from ringkeeper.vault import Secret, Vault, get_vault
 from tests.fake_n8n import API_KEY as N8N_KEY
@@ -266,3 +266,40 @@ async def test_a_change_is_listed_on_the_task_that_made_it(
         [listed] = undo.for_tasks(session, [task_id])
     assert listed["what"] == sql
     assert listed["can_revert"] is True
+
+
+async def test_the_card_never_promises_an_undo_for_a_table_without_a_primary_key(
+    registry: None, target_dsn: str, vault: Vault
+) -> None:
+    with psycopg.connect(target_dsn, autocommit=True) as conn:
+        conn.execute("CREATE TABLE loose (body text)")  # no primary key
+        conn.execute("INSERT INTO loose VALUES ('a')")
+    loose = await run_call(
+        call("execute", "acme-supabase-prod", sql="UPDATE loose SET body = 'b'"), vault
+    )
+    keyed = await run_call(
+        call("execute", "acme-supabase-prod", sql="UPDATE notes SET body = 'b'"), vault
+    )
+    with session_scope() as session:
+        no = undo.note_for(decisions.get_decision(session, str(loose["decision_id"])))
+        yes = undo.note_for(decisions.get_decision(session, str(keyed["decision_id"])))
+    assert no is not None
+    assert no["possible"] is False
+    assert "no primary key" in str(no["why"])
+    assert yes == {"possible": True, "why": None, "days": 7}
+
+
+async def test_the_card_checks_the_airtable_records_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    http = FakeHttp()
+    monkeypatch.setattr(airtable, "transport", http.transport())
+    args = {
+        "base_id": BASE,
+        "table": "Leads",
+        "records": [{"id": RECORD, "fields": {"Stage": "won"}}],
+    }
+    gone = await undo.check(InstanceType.AIRTABLE, airtable.update_records, at_target(), args)
+    assert gone is not None
+    assert gone["possible"] is False  # the record can't be read, so no promise
+    http.routes[("GET", f"/v0/{BASE}/Leads/{RECORD}")] = {"id": RECORD, "fields": {"Stage": "new"}}
+    there = await undo.check(InstanceType.AIRTABLE, airtable.update_records, at_target(), args)
+    assert there == {"possible": True, "why": None, "days": 7}

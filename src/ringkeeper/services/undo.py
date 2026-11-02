@@ -23,7 +23,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -77,6 +77,35 @@ def note(service: InstanceType | None, tool: str | None, args: JSON | None) -> J
         return None
     why = why_not(service, spec, args or {})
     return {"possible": why is None, "why": why, "days": KEEP.days}
+
+
+async def check(service: InstanceType, spec: ToolSpec, target: Target, args: JSON) -> JSON | None:
+    """For a held call, before its approval card is shown: can it really be undone?
+    Reads what it would change, as the write itself will (a table's primary key and
+    rows, the Airtable records, the n8n workflow), and throws that away: the card then
+    never promises an undo the write can't have."""
+    if spec.kind is ToolKind.READ:
+        return None
+    why = why_not(service, spec, args)
+    if why is None and spec.undo is not None:
+        try:
+            await spec.undo.before(target, args)
+        except CantUndoError as error:
+            why = f"It can't be undone: {error}."
+        except ToolError as error:
+            why = (
+                "Ringkeeper couldn't read what it would change, so it can't be undone "
+                f"({scrub(str(error))})."
+            )
+    return {"possible": why is None, "why": why, "days": KEEP.days}
+
+
+def note_for(decision: Decision) -> JSON | None:
+    """The approval card's undo line: what was checked when it was held, else the rule."""
+    checked = (decision.payload or {}).get("undo")
+    if isinstance(checked, dict):
+        return cast(JSON, checked)
+    return note(decision.service, decision.tool, decision.args)
 
 
 # --- What's kept ---
