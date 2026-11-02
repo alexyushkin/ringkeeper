@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.11 (2026-11-02)
 
 - **Undo for data changes.** Before an approved or auto-run change to a
   database (a plain UPDATE or DELETE), Airtable records or an n8n workflow,
