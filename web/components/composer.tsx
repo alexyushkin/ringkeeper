@@ -181,7 +181,7 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
           rows={2}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder={threadId ? "Add to this conversation…" : "Ask for something, e.g. “Add a line to acme-web's notes”"}
+          placeholder={threadId ? "Add to this conversation…" : "Ask for something, e.g. “Add a line to geninfos-web's notes”"}
           className="min-h-11 flex-1 resize-none bg-transparent px-2 py-1 text-base outline-none"
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && text.trim()) void send(text.trim(), "text");

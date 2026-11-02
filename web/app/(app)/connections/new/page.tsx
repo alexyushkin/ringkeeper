@@ -71,7 +71,7 @@ function NewConnection() {
         <PageHeader title="Add a client's connection" subtitle="Whose is it? Only that client's projects can use it." />
         <Card className="space-y-3">
           <Select label="Client" value={picked} onChange={setPicked} options={[["", "Choose…"], ...clients.map((c): [string, string] => [c.slug, c.name]), [NEW, "A new client…"]]} />
-          {picked === NEW ? <Field label="Client's name" value={typed} onChange={setTyped} placeholder="Acme Inc." /> : null}
+          {picked === NEW ? <Field label="Client's name" value={typed} onChange={setTyped} placeholder="General Informatics LLC" /> : null}
           <div className="flex flex-wrap gap-2">
             <Button kind="primary" disabled={!chosen} onClick={() => setClient(chosen)}>
               Next

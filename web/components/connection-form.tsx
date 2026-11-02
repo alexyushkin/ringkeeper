@@ -23,7 +23,7 @@ interface ServiceInfo {
 export const SERVICES: Record<string, ServiceInfo> = {
   supabase: {
     label: "Database (Supabase, Neon or any Postgres)",
-    example: "Acme database",
+    example: "General Informatics database",
     get: [
       ["Supabase", "https://supabase.com/dashboard/projects"],
       ["Neon", "https://console.neon.tech/app/projects"],
@@ -33,22 +33,22 @@ export const SERVICES: Record<string, ServiceInfo> = {
   },
   n8n: {
     label: "n8n (automations)",
-    example: "Acme automations",
+    example: "General Informatics automations",
     get: [["n8n's API settings", "https://docs.n8n.io/api/authentication/"]],
     steps: "In n8n, open Settings › n8n API and create an API key. (n8n Cloud's free trial has no API.)",
-    address: { label: "n8n address", placeholder: "https://n8n.acme.example" },
+    address: { label: "n8n address", placeholder: "https://n8n.geninfos.com" },
     secret: [{ key: "", label: "API key", hidden: true }],
   },
   airtable: {
     label: "Airtable",
-    example: "Acme CRM",
+    example: "General Informatics CRM",
     get: [["Airtable tokens", "https://airtable.com/create/tokens"]],
     steps: "Create a personal access token with the data.records and schema.bases scopes you want (read only, or read and write), and add only this client's bases. It starts with pat.",
     secret: [{ key: "", label: "Personal access token", placeholder: "pat…", hidden: true }],
   },
   vercel: {
     label: "Vercel (deployments)",
-    example: "Acme site hosting",
+    example: "geninfos.com hosting",
     get: [["Vercel tokens", "https://vercel.com/account/tokens"]],
     steps: "Create a token scoped to this client's team (or one project), with an expiry date.",
     secret: [{ key: "", label: "Access token", hidden: true }],
@@ -56,7 +56,7 @@ export const SERVICES: Record<string, ServiceInfo> = {
   },
   twilio: {
     label: "Twilio (texts and calls)",
-    example: "Acme texting",
+    example: "General Informatics texting",
     get: [["Twilio console", "https://console.twilio.com/"]],
     steps: "Copy the Account SID from the console's home page. Then Account › API keys & tokens › Create API key (Standard), and copy its SID and secret.",
     secret: [
@@ -68,20 +68,20 @@ export const SERVICES: Record<string, ServiceInfo> = {
   },
   github: {
     label: "GitHub",
-    example: "Acme code",
+    example: "General Informatics code",
     get: [
       ["a fine-grained token", "https://github.com/settings/personal-access-tokens/new"],
       ["a classic token", "https://github.com/settings/tokens/new"],
     ],
     steps:
       "Fine-grained (best): Resource owner = the client's organization (or you), Repository access = Only select repositories (this client's), then Repository permissions: Contents, Issues, Pull requests and Metadata (read and write to let Ringkeeper push and open issues and PRs; read-only to only read). Leave everything else, settings above all, at No access. Set an expiry. A classic token (scope: repo) only if the organization doesn't allow fine-grained ones.",
-    address: { label: "GitHub Enterprise Server address", placeholder: "empty for github.com, or https://github.acme.example", optional: true },
+    address: { label: "GitHub Enterprise Server address", placeholder: "empty for github.com, or https://github.geninfos.com", optional: true },
     secret: [{ key: "", label: "Token", placeholder: "github_pat_… or ghp_…", hidden: true }],
     note: "Reading runs. Issues, comments, pull requests, merges and pushes wait for your approval; a merge needs the name typed. Pin a repository per project to keep each project on its own repo.",
   },
   gmail: {
     label: "Gmail",
-    example: "Acme inbox",
+    example: "General Informatics inbox",
     get: [["Google app passwords", "https://myaccount.google.com/apppasswords"]],
     steps: "Create an app password (Google needs 2-Step Verification on). A work admin may have turned them off, and accounts with Advanced Protection or security-key-only sign-in can't use them.",
     secret: [
@@ -177,7 +177,7 @@ export function ConnectionForm({
         <p className="text-muted">{service.steps}</p>
       </div>
       <Field label="Name" value={title} onChange={setTitle} placeholder={service.example} hint={name ? `Short name: ${name}` : undefined} required />
-      {client || shared ? null : <Field label="Client" value={owner} onChange={setOwner} placeholder="Acme Inc." required />}
+      {client || shared ? null : <Field label="Client" value={owner} onChange={setOwner} placeholder="General Informatics LLC" required />}
       {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}
       <Select
         label="Kind of data"

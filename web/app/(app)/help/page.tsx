@@ -9,7 +9,7 @@ import { Button, Card, PageHeader } from "@/components/ui";
 import { DOCS, docUrl } from "@/lib/client/docs";
 
 const CONCEPTS: [string, string, string][] = [
-  ["Client", "Someone you do work for, like Acme Inc. Their projects and connections are kept apart from every other client's.", "concepts"],
+  ["Client", "Someone you do work for, like General Informatics LLC Their projects and connections are kept apart from every other client's.", "concepts"],
   ["Project", "One piece of a client's work: a website, an app, a set of automations. A request goes to one project, and works in its folder.", "concepts"],
   ["Connection", "A client's service a project can use: a database, Airtable, GitHub, a Google account. Ringkeeper keeps the key; the AI never sees it.", "connections"],
   ["Shared tool", "A tool of yours that holds no client's data, like a web browser or files on this computer. You can give it to any client's projects.", "connections"],
@@ -125,9 +125,9 @@ function Diagram() {
           <path d="M0 0L10 5L0 10z" fill="var(--color-muted)" />
         </marker>
       </defs>
-      <Box x={10} y={14} w={180} title="Client" text="Acme Inc." />
-      <Box x={10} y={104} w={180} title="Project" text="acme-web" tone="accent" />
-      <Box x={250} y={60} w={180} title="Connections" text="Acme's database, Airtable" />
+      <Box x={10} y={14} w={180} title="Client" text="General Informatics LLC" />
+      <Box x={10} y={104} w={180} title="Project" text="geninfos-web" tone="accent" />
+      <Box x={250} y={60} w={180} title="Connections" text="their database, Airtable" />
       <Box x={450} y={60} w={180} title="Shared tools" text="your browser, your files" />
       <Box x={10} y={200} w={180} title="Agent" text="follow-up: who does it" />
       <Box x={250} y={200} w={180} title="Routine" text="weekdays at 9: when" />

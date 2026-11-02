@@ -103,7 +103,7 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
         </label>
         {on ? (
           <div className="mt-2 pl-8">
-            <Field label="Client" value={clients[key] ?? ""} onChange={(v) => setClient(key, v)} placeholder="Acme Inc." required />
+            <Field label="Client" value={clients[key] ?? ""} onChange={(v) => setClient(key, v)} placeholder="General Informatics LLC" required />
           </div>
         ) : null}
       </li>

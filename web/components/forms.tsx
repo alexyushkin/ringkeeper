@@ -96,18 +96,18 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
   return (
     <form onSubmit={save} className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Client" value={client} onChange={setClient} placeholder="Acme Inc." hint="Who this work is for. Projects of different clients never share a task." required />
+      <Field label="Client" value={client} onChange={setClient} placeholder="General Informatics LLC" hint="Who this work is for. Projects of different clients never share a task." required />
       {existing ? null : (
         <Field
           label="Project name"
           value={title}
           onChange={setTitle}
-          placeholder="Acme website"
+          placeholder="geninfos.com website"
           hint={name ? `Short name: ${name}` : "Lowercase letters, numbers and dashes are used as its short name."}
           required
         />
       )}
-      <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="acme site, the portal" hint="Separate with commas." />
+      <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="geninfos site, the company site" hint="Separate with commas." />
       </div>
       <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />
       <div className="grid gap-4 md:grid-cols-2">
@@ -124,7 +124,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
           </p>
         </div>
       ) : (
-        <Field label="Folder" value={folder} onChange={setFolder} placeholder="acme-web" hint="Where the project's files are, inside Ringkeeper's workspaces folder." />
+        <Field label="Folder" value={folder} onChange={setFolder} placeholder="geninfos-web" hint="Where the project's files are, inside Ringkeeper's workspaces folder." />
       )}
       <Select
         label="How independently it works"
@@ -135,7 +135,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
       </div>
       <Details>
         <div className="space-y-4">
-          <Field label="Repository (optional)" value={repo} onChange={setRepo} placeholder="https://github.com/acme/web" />
+          <Field label="Repository (optional)" value={repo} onChange={setRepo} placeholder="https://github.com/geninfos/website" />
           <TextArea label="Checks to run after each change" value={checks} onChange={setChecks} hint="For code projects: a command that checks the work, one per line, like python -m pytest -q" />
           <TextArea label="Model overrides" value={models} onChange={setModels} hint="One per line: architect=…, worker=…, low=…, medium=…, high=…" />
         </div>

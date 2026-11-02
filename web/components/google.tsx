@@ -163,7 +163,7 @@ function AppCredentials({ named = false, saveLabel, onSave, onCancel }: { named?
 
   return (
     <div className="space-y-3">
-      {named ? <Field label="Name" value={name} onChange={setName} placeholder="Acme's Google Cloud" hint="Whose Google Cloud project it's in, say." /> : null}
+      {named ? <Field label="Name" value={name} onChange={setName} placeholder="General Informatics' Google Cloud" hint="Whose Google Cloud project it's in, say." /> : null}
       <Field label="Client ID" value={clientId} onChange={setClientId} placeholder="…apps.googleusercontent.com" />
       <Field label="Client secret" type="password" value={secret} onChange={setSecret} />
       <div className="flex flex-wrap gap-2">
@@ -402,7 +402,7 @@ export function GoogleConnect({
       </fieldset>
       {replace ? null : (
         <>
-          <Field label="Name (optional)" value={name} onChange={setName} placeholder="from the address, like acme-info" />
+          <Field label="Name (optional)" value={name} onChange={setName} placeholder="from the address, like geninfos-info" />
           {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}
         </>
       )}

@@ -320,7 +320,7 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
           {source === "gmail" ? (
             <>
               <Select label="Google account" value={watch.connection ?? ""} onChange={(v) => setWatch((w) => ({ ...w, connection: v }))} options={[["", "Choose…"], ...ofType("google")]} />
-              <Field label="Which emails (Gmail search)" value={watch.query ?? ""} onChange={(v) => setWatch((w) => ({ ...w, query: v }))} placeholder="from:@acme.example subject:quote" />
+              <Field label="Which emails (Gmail search)" value={watch.query ?? ""} onChange={(v) => setWatch((w) => ({ ...w, query: v }))} placeholder="from:@geninfos.com subject:quote" />
             </>
           ) : null}
           <p className="text-xs text-muted">
