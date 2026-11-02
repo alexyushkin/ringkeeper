@@ -7,6 +7,9 @@ publishes it as the release notes and the app shows it with the update.
 
 - **Formatted replies.** Ringkeeper's replies, task transcripts and questions
   show their bold, lists, tables, code and links instead of the raw `**` marks.
+- **Room to work.** Pages use the window's width (up to a comfortable limit)
+  instead of a narrow column. The menu can shrink to icons only: Icons only at
+  its foot, and it stays that way.
 
 ## 0.1.0-beta.12 (2026-11-02)
 
