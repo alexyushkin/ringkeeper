@@ -28,5 +28,5 @@ Into Ringkeeper's vault, encrypted with a key kept in Windows' credential store
 (or your server's key file). Keys never go to the AI, never appear in logs, and
 aren't shown again after you save them. To change one, paste the new key.
 
-Every service has its own page: [services](services/) (where to get the token,
-what's held for approval, how to narrow it).
+Every service has its own page: [services](services/README.md) (where to get
+the token, what's held for approval, how to narrow it, what can be undone).

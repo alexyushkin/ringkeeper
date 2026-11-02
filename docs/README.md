@@ -1,11 +1,27 @@
 # Ringkeeper user guide
 
-- [Concepts](concepts.md): clients, projects, connections, shared tools,
-  agents, routines and holds
-- [Connections and shared tools](connections.md)
-- [Google](services/google.md)
+**Start here**
+
+- [Concepts](concepts.md): clients, projects, connections, shared tools, agents,
+  routines and holds, and how a request goes from start to finish
+- [Install on Windows](install-desktop.md)
+- [Install on a server (Docker)](install-server.md)
+
+**Using it**
+
+- [Connections and shared tools](connections.md), and
+  [each service](services/README.md): where to get its key, what's held
 - [Agents and routines](agents-and-routines.md)
 - [Approvals and safety](approvals.md)
-- [Notifications](notifications.md)
+- [Undo](undo.md)
+- [Notifications](notifications.md): Telegram, Slack, Discord
+- [Backup and moving computers](backup.md)
+
+**When you need it**
+
+- [Security: what's stored where, and what leaves your computer](security.md)
 - [Troubleshooting](troubleshooting.md)
-- [Install with Docker](INSTALL.md)
+- [FAQ](faq.md)
+
+**Developers:** [How Ringkeeper works](developers.md) ·
+[Contributing](../CONTRIBUTING.md) · [Releasing](RELEASING.md)

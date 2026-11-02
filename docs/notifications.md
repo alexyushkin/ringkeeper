@@ -14,6 +14,14 @@ from the tray.
 - **Which clients and projects:** all by default.
 - **Send test** checks it works, and that your button presses count.
 
+## Telegram
+
+In Telegram, message **@BotFather**, send `/newbot`, and paste the token it
+gives you into **Settings › Notifications › Telegram**. Then send your new bot a
+message and choose your chat in Settings. Only that chat gets messages, and only
+it can answer. You can also turn on requests from Telegram: type or send a voice
+note, and you see what Ringkeeper heard before anything is sent.
+
 ## Slack and Discord
 
 Both are your own app (Slack, in Socket Mode) or bot (Discord). They connect

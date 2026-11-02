@@ -1,0 +1,25 @@
+# n8n (automations)
+
+## Where to get the key
+
+In n8n, open **Settings › n8n API** and create an API key
+([n8n's guide](https://docs.n8n.io/api/authentication/)). Add your n8n's
+address too, like `https://n8n.acme.example`. n8n Cloud's free trial has no API.
+
+## What it can do
+
+- **Read:** list workflows and their runs (executions), get one of each.
+- **Change:** turn a workflow on or off, replace a workflow, run a past
+  execution again, stop a running one.
+
+## What's held
+
+**Every change waits for your approval**, on any connection. Replacing a
+workflow needs the connection's name typed. A replaced workflow stays a draft
+unless the agent asks to put it live; approval is refused if someone edited the
+workflow after it was held.
+
+## Undo
+
+Replacing a workflow, and turning one on or off, can be reverted for 7 days
+([Undo](../undo.md)). Re-running or stopping a run can't.

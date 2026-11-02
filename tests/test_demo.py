@@ -173,3 +173,13 @@ def test_the_start_endpoint(owner: TestClient) -> None:
     assert client.get("/start").json()["tour_seen"] is True
     # Server installs have no demo (it's a desktop app thing).
     assert client.post("/demo").status_code == 404
+
+
+def test_whats_new_shows_once_on_the_version_it_came_with() -> None:
+    with session_scope() as session:
+        onboarding.keep_notes(session, "0.1.0-beta.11", "- **Undo.** Revert a change.")
+        assert onboarding.whats_new(session, "0.1.0-beta.10") is None  # not updated yet
+        shown = onboarding.whats_new(session, "0.1.0-beta.11")
+        assert shown == {"version": "0.1.0-beta.11", "notes": "- **Undo.** Revert a change."}
+        onboarding.whats_new_seen(session)
+        assert onboarding.whats_new(session, "0.1.0-beta.11") is None

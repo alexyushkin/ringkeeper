@@ -20,6 +20,7 @@ interface Start {
   suggestions: string[];
   demo: DemoInfo | null;
   demo_offered: boolean;
+  whats_new: { version: string; notes: string } | null;
 }
 
 /** Home's first steps: the checklist (until done or dismissed), the demo, and
@@ -30,15 +31,50 @@ export function FirstSteps() {
     if (["task", "message_routed"].includes(event.type)) start.reload();
   });
   if (!start.data) return null;
-  const { checklist, suggestions, demo, demo_offered } = start.data;
+  const { checklist, suggestions, demo, demo_offered, whats_new } = start.data;
   const showList = !checklist.done && !checklist.dismissed;
   const tries = demo ? suggestions.filter((s) => !demo.try.includes(s)) : suggestions;
   return (
     <div className="mb-6 space-y-3">
+      {whats_new ? <WhatsNew {...whats_new} onSeen={start.reload} /> : null}
       {showList ? <Checklist steps={checklist} demoOffered={demo_offered && !demo} onChange={start.reload} /> : null}
       {demo ? <DemoCard demo={demo} onRemoved={start.reload} /> : null}
       {tries.length ? <Suggestions items={tries} /> : null}
     </div>
+  );
+}
+
+/** After an update: what came with it (its CHANGELOG section), once. */
+function WhatsNew({ version, notes, onSeen }: { version: string; notes: string; onSeen: () => void }) {
+  const items = notes
+    .split(/\n(?=- )/)
+    .map((item) => item.replace(/^- /, "").replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean);
+  return (
+    <Card className="space-y-3 border-accent">
+      <div className="flex items-start gap-2">
+        <h2 className="flex-1 font-semibold">What&apos;s new in {version}</h2>
+        <Button kind="ghost" onClick={() => void api("start/whats-new", { method: "POST" }).then(onSeen)}>
+          Got it
+        </Button>
+      </div>
+      <ul className="max-h-72 list-disc space-y-2 overflow-y-auto pl-5 text-sm">
+        {items.map((item) => {
+          const bold = item.match(/^\*\*(.+?)\*\*\s*(.*)$/s);
+          return (
+            <li key={item.slice(0, 40)}>
+              {bold ? (
+                <>
+                  <strong>{bold[1]}</strong> {bold[2]?.replace(/`([^`]+)`/g, "$1")}
+                </>
+              ) : (
+                item.replace(/\*\*/g, "")
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 

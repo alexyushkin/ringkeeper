@@ -3,6 +3,34 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Undo for data changes.** Before an approved or auto-run change to a
+  database (a plain UPDATE or DELETE), Airtable records or an n8n workflow,
+  Ringkeeper keeps what it's about to change (only that) in the data folder.
+  For 7 days, the task page and its conversation show Revert with what it puts
+  back; reverting waits for approval like any change, and stops if the data
+  changed again meanwhile. Approvals say beforehand when something can't be
+  undone (a sent email, a text, a deploy, an INSERT). Kept changes expire after
+  7 days; each project has 50 MB for them.
+- **Backup and move.** Settings › Backup saves everything (clients, projects,
+  connections and their keys, agents, routines, settings, history) into one
+  file locked with a password you choose. Restore it on another computer: see
+  what comes in first (and which project folders aren't there yet), then
+  restore and restart; what was there is kept beside it. Project folders are
+  referenced, not copied. Optional weekly backups to a folder you choose,
+  keeping the last few.
+- **Report a problem.** Help › Report a problem (or Ctrl+K) gathers the
+  version, your system, a few counts and the end of the logs, removes keys,
+  tokens, passwords and email addresses, and shows you all of it, editable.
+  Then open a prefilled GitHub issue, or save it as a zip. Nothing is sent by
+  Ringkeeper itself.
+- **What's new.** After an update, Home shows what came with it, once.
+- **A user guide.** docs/ has a page per idea and per service (where to get
+  its key, what waits for approval, what can be undone), installing on Windows
+  or a server, backups, security (what's stored where, and what leaves your
+  computer), troubleshooting and a FAQ. The README is one screen.
+
 ## 0.1.0-beta.10 (2026-11-02)
 
 - **Get started on Home.** A checklist (Claude connected, a first project, a
