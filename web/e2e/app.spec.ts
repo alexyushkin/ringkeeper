@@ -85,6 +85,10 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await page.getByRole("link", { name: "Ask for something" }).click();
     await expect(page.getByRole("heading", { name: "What do you need?" })).toBeVisible();
     expect(await page.content()).not.toContain("demo-local-only");
+    // The first-run tour shows once; skipping it is remembered.
+    await page.getByRole("button", { name: "Skip the tour" }).click();
+    await expect(page.getByRole("dialog", { name: "Ask here" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Get started" })).toBeVisible();
   });
 
   await test.step("sending a message", async () => {
