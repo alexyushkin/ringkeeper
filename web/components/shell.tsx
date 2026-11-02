@@ -168,7 +168,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       ) : null}
       <CommandPalette />
-      {start.data ? <Tour auto={!start.data.tour_seen && path === "/"} /> : null}
+      {start.data ? <Tour auto={!start.data.tour_seen && path === "/"} onSeen={start.reload} /> : null}
     </div>
     </ScopeProvider>
   );

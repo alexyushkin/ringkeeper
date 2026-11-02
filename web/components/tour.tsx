@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui";
 import { api } from "@/lib/client/api";
@@ -37,12 +37,16 @@ function visible(name: string): HTMLElement | null {
 
 /** Three steps after the first run: the request box, Approvals, Connections. Once
  * seen or skipped it doesn't come back by itself; Help can show it again. */
-export function Tour({ auto }: { auto: boolean }) {
+export function Tour({ auto, onSeen }: { auto: boolean; onSeen: () => void }) {
   const [step, setStep] = useState<number | null>(null);
   const [box, setBox] = useState<DOMRect | null>(null);
+  // At most once while the app is open: `auto` turns on again each time Home opens.
+  const shown = useRef(false);
 
   useEffect(() => {
-    if (auto) setStep(0);
+    if (!auto || shown.current) return;
+    shown.current = true;
+    setStep(0);
   }, [auto]);
   useEffect(() => {
     const start = () => setStep(0);
@@ -72,8 +76,8 @@ export function Tour({ auto }: { auto: boolean }) {
 
   const finish = useCallback(() => {
     setStep(null);
-    void api("start/tour", { method: "POST" }).catch(() => undefined);
-  }, []);
+    void api("start/tour", { method: "POST" }).then(onSeen, () => undefined);
+  }, [onSeen]);
 
   useEffect(() => {
     if (step === null) return;

@@ -89,6 +89,13 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await page.getByRole("button", { name: "Skip the tour" }).click();
     await expect(page.getByRole("dialog", { name: "Ask here" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Get started" })).toBeVisible();
+    // Back to Home within the app: it stays skipped.
+    await page.getByRole("link", { name: /^Approvals/ }).first().click();
+    await expect(page).toHaveURL(/\/approvals$/);
+    await page.getByRole("link", { name: "Home", exact: true }).first().click();
+    await expect(page.getByRole("heading", { name: "What do you need?" })).toBeVisible();
+    await page.waitForTimeout(1000); // the tour would open just after the page does
+    await expect(page.getByRole("dialog", { name: "Ask here" })).toHaveCount(0);
   });
 
   await test.step("sending a message", async () => {
