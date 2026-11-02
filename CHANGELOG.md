@@ -3,6 +3,11 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Formatted replies.** Ringkeeper's replies, task transcripts and questions
+  show their bold, lists, tables, code and links instead of the raw `**` marks.
+
 ## 0.1.0-beta.12 (2026-11-02)
 
 - **The tour stays skipped.** Skipping or finishing the tour no longer starts

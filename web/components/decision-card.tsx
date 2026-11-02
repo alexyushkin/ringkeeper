@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/link";
+import { Markdown } from "@/components/markdown";
 import { useState } from "react";
 
 import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, timeAgo } from "@/components/ui";
@@ -140,7 +141,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
 
       {decision.kind === "question" ? (
         <div className="mt-3 space-y-3">
-          <p className="whitespace-pre-wrap">{String(payload.question ?? decision.summary)}</p>
+          <Markdown text={String(payload.question ?? decision.summary)} />
           {typeof payload.budget === "number" ? (
             <div className="flex flex-wrap gap-2">
               <Button kind="primary" busy={busy === "answer"} onClick={() => answer(null, "continue")}>

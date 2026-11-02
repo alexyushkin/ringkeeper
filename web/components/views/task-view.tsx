@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { Changes } from "@/components/changes";
 import { DecisionCard, type Decision } from "@/components/decision-card";
+import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -82,9 +83,7 @@ function EventView({ event }: { event: Event }) {
         <>
           {blocks(p).map((block, index) =>
             block._kind === "TextBlock" && block.text?.trim() ? (
-              <p key={index} className="text-sm whitespace-pre-wrap">
-                {block.text}
-              </p>
+              <Markdown key={index} text={block.text} className="text-sm" />
             ) : block._kind === "ToolUseBlock" ? (
               <div key={index} className="rounded-xl bg-sunken p-2 text-sm">
                 <span className="font-medium">Used {block.name}</span>

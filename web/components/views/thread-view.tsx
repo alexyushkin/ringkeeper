@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
 import { DecisionCard, type Decision } from "@/components/decision-card";
+import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Badge, Card, Details, Loading, timeAgo } from "@/components/ui";
@@ -74,7 +75,7 @@ export function ThreadView({ id }: { id: string }) {
             ) : (
               <Card>
                 <p className="text-xs font-medium text-muted">Ringkeeper</p>
-                <p className="mt-1 text-sm whitespace-pre-wrap">{message.body}</p>
+                <Markdown text={message.body} className="mt-1 text-sm" />
               </Card>
             )}
             {message.role === "user" && message.routing?.output?.tasks?.length ? (
