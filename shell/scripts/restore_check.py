@@ -153,8 +153,12 @@ def wipe(installer: Path) -> App:
         "print(keyring.get_password('Ringkeeper', 'master-key'))\n"
     )
     expect(out == "None", f"the master key is still there: {out}")
-    subprocess.run([str(INSTALL / "uninstall.exe"), "/S"], check=True, timeout=600)  # noqa: S603
-    wait_for("the uninstall", lambda: not (INSTALL / "ringkeeper.exe").exists(), 120)
+    # In place (_?=): an NSIS uninstaller otherwise copies itself to a temp folder and
+    # returns at once, while it's still removing files; installing then would collide.
+    uninstaller = INSTALL / "uninstall.exe"
+    subprocess.run([str(uninstaller), "/S", f"_?={INSTALL}"], check=True, timeout=600)  # noqa: S603
+    expect(not (INSTALL / "ringkeeper.exe").exists(), "the uninstall left the app")
+    shutil.rmtree(INSTALL, ignore_errors=True)  # what an in-place uninstall leaves: itself
     shutil.rmtree(DATA, ignore_errors=True)
     expect(not DATA.exists(), f"{DATA} is still there")
     step("install again")
