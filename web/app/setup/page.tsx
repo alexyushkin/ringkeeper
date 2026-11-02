@@ -8,6 +8,7 @@ import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { Catalog } from "@/components/catalog";
+import { TryDemo } from "@/components/first-steps";
 import { ConnectionAdded } from "@/components/connection-added";
 import { ConnectionForm, ProjectForm, type ConnectionData, type ProjectSaved } from "@/components/forms";
 import { TelegramPairing } from "@/components/telegram";
@@ -160,6 +161,14 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
   const names = (projects.data ?? []).map((p) => p.name);
   return (
     <div className="space-y-4">
+      {names.includes("demo-shop") ? null : (
+        <TryDemo
+          onAdded={(demo) => {
+            projects.reload();
+            onDone(demo.project);
+          }}
+        />
+      )}
       <ClaudeCodeFolders
         onAdded={(added) => {
           setLast({ name: added.join(", ") });

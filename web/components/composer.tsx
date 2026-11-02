@@ -1,12 +1,26 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Alert, Button, Spinner } from "@/components/ui";
 import { VoiceSetup, useLocalVoice } from "@/components/voice";
 import { api } from "@/lib/client/api";
 
 type Phase = "idle" | "recording" | "transcribing" | "heard";
+
+const FILL = "rk-fill";
+
+/** Put a request in Home's box, ready to send (from a suggestion or the command
+ * palette, maybe before Home is open: it waits until the box is there). Empty text
+ * just puts the cursor in it. */
+export function fillRequest(text: string): void {
+  try {
+    sessionStorage.setItem(FILL, text);
+  } catch {
+    // nothing to do: the event below still reaches an open box
+  }
+  window.dispatchEvent(new CustomEvent(FILL, { detail: text }));
+}
 
 /**
  * Type a request, or hold the mic to speak one. A recording is sent to be
@@ -24,6 +38,31 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const started = useRef(0);
+  const box = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (threadId) return; // only Home's box takes requests from elsewhere
+    const take = (value: string | null) => {
+      if (value === null) return;
+      try {
+        sessionStorage.removeItem(FILL);
+      } catch {
+        // nothing to do
+      }
+      if (value) setText(value);
+      box.current?.focus();
+    };
+    let waiting: string | null = null;
+    try {
+      waiting = sessionStorage.getItem(FILL);
+    } catch {
+      // nothing to do
+    }
+    take(waiting);
+    const listen = (event: Event) => take((event as CustomEvent<string>).detail);
+    window.addEventListener(FILL, listen);
+    return () => window.removeEventListener(FILL, listen);
+  }, [threadId]);
 
   async function send(body: string, input: "text" | "voice") {
     setBusy(true);
@@ -126,6 +165,7 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
   return (
     <form
       className="space-y-2"
+      data-tour={threadId ? undefined : "ask"}
       onSubmit={(event) => {
         event.preventDefault();
         if (text.trim()) void send(text.trim(), "text");
@@ -137,6 +177,7 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
         </label>
         <textarea
           id="composer"
+          ref={box}
           rows={2}
           value={text}
           onChange={(event) => setText(event.target.value)}

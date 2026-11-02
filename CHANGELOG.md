@@ -5,6 +5,15 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Get started on Home.** A checklist (Claude connected, a first project, a
+  first connection, a first task) links to each step and goes away when it's
+  done, or when you hide it. Below it, three requests to try, built from your
+  own projects and connections, that only read.
+- **Demo data.** "Try it with demo data", in the first run and on Home, adds a
+  made-up client, Demo Co, with a shop project: sample files in its folder and
+  a small shop database, set up as production so a change waits for your
+  approval. Try tasks and see a hold before connecting anything real. Remove
+  the demo removes all of it, its tasks and conversations too.
 - **Agents in the sidebar.** An Agents page lists every project's agents,
   narrowed by the client and project switcher, with New agent (it asks which
   project first). The Routines page has New routine: pick the project, then

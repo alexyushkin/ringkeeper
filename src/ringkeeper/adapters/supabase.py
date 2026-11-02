@@ -25,6 +25,7 @@ from psycopg.conninfo import conninfo_to_dict
 from pydantic import Field
 
 from ringkeeper import netpolicy
+from ringkeeper.adapters import sqlite_file
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, ToolKind, read, write
 from ringkeeper.models import InstanceType
 from ringkeeper.sql_text import reads_only
@@ -131,6 +132,13 @@ def _run_blocking(
 async def _run(
     target: Target, statement: str, params: list[Any] | None, *, read_only: bool, max_rows: int
 ) -> JSON:
+    demo = sqlite_file.path_of(target)
+    if demo is not None:
+        return await anyio.to_thread.run_sync(
+            partial(
+                sqlite_file.run, demo, statement, params, read_only=read_only, max_rows=max_rows
+            )
+        )
     return await anyio.to_thread.run_sync(
         partial(_run_blocking, target, statement, params, read_only, max_rows)
     )
@@ -144,6 +152,9 @@ async def list_tables(
     ] = "public",
 ) -> JSON:
     """List tables and views."""
+    demo = sqlite_file.path_of(target)
+    if demo is not None:
+        return await anyio.to_thread.run_sync(sqlite_file.list_tables, demo)
     statement = (
         "SELECT table_schema, table_name, table_type FROM information_schema.tables "
         "WHERE table_schema <> ALL(%s) AND (%s::text IS NULL OR table_schema = %s) "
@@ -170,6 +181,9 @@ async def describe_table(
     schema: str = "public",
 ) -> JSON:
     """Columns, primary key, foreign keys and indexes of one table."""
+    demo = sqlite_file.path_of(target)
+    if demo is not None:
+        return await anyio.to_thread.run_sync(sqlite_file.describe_table, demo, table)
     columns = await _run(
         target,
         "SELECT column_name, data_type, is_nullable = 'YES', column_default "

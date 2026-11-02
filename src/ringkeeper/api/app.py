@@ -19,6 +19,7 @@ from ringkeeper.api import (
     owner_routes,
     remote_routes,
     routines_routes,
+    start_routes,
     work_routes,
 )
 from ringkeeper.api.routes import public, router
@@ -174,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(routines_routes.hooks)
     app.include_router(channels_routes.router)
     app.include_router(channels_routes.opener)
+    app.include_router(start_routes.router)
     if get_settings().mode == "desktop":
         app.include_router(desktop_routes.router)
     app.add_middleware(BodyLimit)
