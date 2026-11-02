@@ -68,7 +68,11 @@ def _architect_ended(session: Session, settings: Settings, row: WorkerSession, t
                 ArchitectPhase.BUILDING: "dispatch_worker",
                 ArchitectPhase.REVIEWING: "approve_work or continue_worker",
             }.get(task.phase or ArchitectPhase.PLANNING, "an architect tool")
-            _fail(task, f"the architect ended its turn without calling {expected}")
+            _fail(
+                task,
+                f"The planning step stopped early (it didn't call {expected}). Send a follow-up "
+                "to continue, or start the task again.",
+            )
 
 
 def _worker_ended(

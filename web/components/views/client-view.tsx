@@ -50,7 +50,7 @@ export function ClientView({ name }: { name: string }) {
               ))}
             </ul>
           ) : (
-            <Empty>No projects for {name} yet (Settings tab).</Empty>
+            <Empty>No projects for {display} yet. Add one in the Settings tab above.</Empty>
           )}
         </Section>
       ),
@@ -102,7 +102,7 @@ export function ClientView({ name }: { name: string }) {
           ) : null}
           {library.error ? <Alert>{library.error}</Alert> : null}
           {library.loading && !library.connections.length ? <Loading /> : null}
-          {!library.loading && !library.connections.length ? <Empty>No connections for {display} yet.</Empty> : null}
+          {!library.loading && !library.connections.length ? <Empty>No connections for {display} yet. Add one with Add a connection above.</Empty> : null}
           <div className="space-y-2">
             {library.connections.map((connection) => (
               <LibraryCard key={connection.name} connection={connection} projects={library.projects} services={library.services} onChange={library.reload} compact />

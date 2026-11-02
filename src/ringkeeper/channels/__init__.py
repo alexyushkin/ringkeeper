@@ -77,7 +77,7 @@ def get_channel(session: Session, ident: str | uuid.UUID) -> Channel:
     except ValueError:
         channel = None
     if channel is None:
-        raise NotFoundError("No such channel.")
+        raise NotFoundError("That channel isn't here any more. Refresh the page.")
     return channel
 
 

@@ -34,6 +34,7 @@ export function AboutCard() {
     setBusy(true);
     api<{ text: string }>("about/notices")
       .then((result) => setText(result.text))
+      .catch(() => setText("Couldn't load the notices. Try again in a moment."))
       .finally(() => setBusy(false));
   };
   return (

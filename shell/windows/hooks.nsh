@@ -224,7 +224,7 @@ Var RkPrevious
     ClearErrors
     Rename "$INSTDIR\${part}" "$RkPrevious\${part}"
     ${If} ${Errors}
-      Abort "Couldn't replace $INSTDIR\${part}: is it open in another program?"
+      Abort "Couldn't replace Ringkeeper's files. Quit Ringkeeper from its tray icon and close any File Explorer or terminal window open in its folder, then run the installer again."
     ${EndIf}
   ${EndIf}
 !macroend

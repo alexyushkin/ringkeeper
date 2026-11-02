@@ -48,7 +48,7 @@ async def transcribe(
     settings = current_settings()
     limit = settings.stt_max_bytes
     if not content_type.lower().startswith(AUDIO_TYPES):
-        raise HTTPException(415, detail="send the recording as audio")
+        raise HTTPException(415, detail="That recording couldn't be read. Try recording again.")
     if content_length is not None and content_length > limit:
         raise HTTPException(
             413, detail=f"That recording is too big; the limit is {megabytes(limit)}."

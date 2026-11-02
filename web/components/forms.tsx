@@ -136,7 +136,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
       <Details>
         <div className="space-y-4">
           <Field label="Repository (optional)" value={repo} onChange={setRepo} placeholder="https://github.com/acme/web" />
-          <TextArea label="Checks to run after each change" value={checks} onChange={setChecks} hint="One shell command per line, e.g. python -m pytest -q" />
+          <TextArea label="Checks to run after each change" value={checks} onChange={setChecks} hint="For code projects: a command that checks the work, one per line, like python -m pytest -q" />
           <TextArea label="Model overrides" value={models} onChange={setModels} hint="One per line: architect=…, worker=…, low=…, medium=…, high=…" />
         </div>
       </Details>

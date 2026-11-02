@@ -141,7 +141,7 @@ def test_a_held_call_outside_a_changed_scope_is_not_run() -> None:
 @pytest.mark.usefixtures("shared")
 def test_a_connection_is_shared_only_among_one_client_s_projects() -> None:
     with session_scope() as session:
-        with pytest.raises(RuleViolationError, match="one client's projects"):
+        with pytest.raises(RuleViolationError, match="only be used by that client's projects"):
             bindings.check_same_client(session, "globex-portal", "acme-neon")
         bindings.check_same_client(session, "acme-ops", "acme-neon")
 

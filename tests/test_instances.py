@@ -25,10 +25,10 @@ def test_removing_a_bound_instance_fails(session: Session) -> None:
     bind(session, "acme-admin", "acme-supabase-dev")
 
     with pytest.raises(
-        RuleViolationError, match=r"still bound to: acme-admin, acme-web.*--force"
+        RuleViolationError, match=r"still linked to acme-admin, acme-web"
     ) as excinfo:
         instances.remove_instance(session, "acme-supabase-dev")
-    assert "Unbind it first" in str(excinfo.value)
+    assert "Unlink it from those projects first" in str(excinfo.value)
     assert instances.find_instance(session, "acme-supabase-dev") is not None
 
 
@@ -64,7 +64,7 @@ def test_database_restricts_deleting_a_bound_instance(session: Session) -> None:
 
 
 def test_removing_a_missing_instance(session: Session) -> None:
-    with pytest.raises(NotFoundError, match="instance 'ghost' does not exist"):
+    with pytest.raises(NotFoundError, match="no connection named ghost"):
         instances.remove_instance(session, "ghost")
 
 
@@ -73,7 +73,7 @@ def test_removing_a_missing_instance(session: Session) -> None:
 
 def test_duplicate_instance_name(session: Session) -> None:
     make_instance(session, "acme-supabase-dev")
-    with pytest.raises(AlreadyExistsError, match="already exists"):
+    with pytest.raises(AlreadyExistsError, match="already a connection named"):
         make_instance(session, "acme-supabase-dev")
 
 
@@ -88,7 +88,7 @@ def test_type_cannot_change_while_bound(session: Session) -> None:
         secret_ref="aws-sm://ringkeeper/acme-x",
         owner="acme",
     )
-    with pytest.raises(RuleViolationError, match="cannot change the type"):
+    with pytest.raises(RuleViolationError, match="can't change what kind of connection"):
         instances.update_instance(session, data)
 
 
@@ -119,7 +119,7 @@ def test_removing_a_project_removes_its_bindings_only(session: Session) -> None:
 
 def test_duplicate_project_name(session: Session) -> None:
     make_project(session)
-    with pytest.raises(AlreadyExistsError, match="project 'acme-web' already exists"):
+    with pytest.raises(AlreadyExistsError, match="already a project named acme-web"):
         make_project(session)
 
 

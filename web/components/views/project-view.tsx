@@ -101,8 +101,13 @@ export function ProjectView({ name }: { name: string }) {
   }
 
   async function remove() {
-    await run(() => api(`projects/${name}`, { method: "DELETE" }));
-    router.push("/projects");
+    setError(null);
+    try {
+      await api(`projects/${name}`, { method: "DELETE" });
+      router.push("/projects");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   if (project.error) return <Alert>{project.error}</Alert>;
@@ -238,7 +243,7 @@ export function ProjectView({ name }: { name: string }) {
               </>
             ) : null}
             <dt className="text-muted">Connections</dt>
-            <dd>{instances.length ? instances.map((i) => i.name).join(", ") : "None yet"}{production ? ` (${production} production)` : ""}</dd>
+            <dd>{instances.length ? instances.map((i) => i.name).join(", ") : "None yet. Add one in the Connections tab."}{production ? ` (${production} production)` : ""}</dd>
             <dt className="text-muted">Works</dt>
             <dd>{autonomy}</dd>
           </dl>
@@ -326,12 +331,14 @@ function ProjectRoutines({ project, paused, onPaused }: { project: string; pause
   const router = useRouter();
   const agents = useApi<AgentData[]>(`projects/${project}/agents`);
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <div className="space-y-4">
+      {error ? <Alert>{error}</Alert> : null}
       <Toggle
         label={`Pause ${project}'s routines`}
         checked={paused}
-        onChange={(on) => void api(`projects/${project}/routines/paused`, { json: { paused: on } }).then(onPaused)}
+        onChange={(on) => void api(`projects/${project}/routines/paused`, { json: { paused: on } }).then(onPaused, () => setError("Couldn't change that. Try again in a moment."))}
         hint="None of this project's routines runs on its own while paused."
       />
       <RoutineList project={project} />

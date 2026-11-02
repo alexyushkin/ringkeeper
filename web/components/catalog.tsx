@@ -141,14 +141,14 @@ async function installed(name: string): Promise<void> {
     await new Promise((r) => setTimeout(r, 1500));
     const job = await api<{ state: string; error: string | null }>(`connections/local/${name}`);
     if (job.state === "done") return;
-    if (job.state === "failed") throw new Error(job.error ?? "The install failed.");
-    if (Date.now() > deadline) throw new Error("The install is taking too long. Check back later.");
+    if (job.state === "failed") throw new Error(job.error ?? "The install didn't finish. Try again; if it fails again, check the internet connection or pick another tool.");
+    if (Date.now() > deadline) throw new Error("The install is still running after 15 minutes. Look for it on the Connections page later; if it isn't there, try again.");
   }
 }
 
 export function Verified({ server }: { server: { publisher: string; verified: string } }) {
   return (
-    <span className="text-xs text-muted" title={server.verified === "domain" ? "The registry checked that the publisher controls this domain." : "The registry checked that the publisher signed in as this GitHub account."}>
+    <span className="text-xs text-muted" title={server.verified === "domain" ? "The tool catalog checked that the publisher controls this domain." : "The tool catalog checked that the publisher signed in as this GitHub account."}>
       by {server.publisher} ✓ {server.verified === "domain" ? "domain verified" : "GitHub account"}
     </span>
   );
@@ -228,8 +228,8 @@ function CatalogSearch(target: Target) {
   const last = pages[pages.length - 1];
   return (
     <div className="space-y-2">
-      <h3 className="font-medium">All MCP servers</h3>
-      <Field label="Search the MCP Registry" value={typed} onChange={setTyped} placeholder="notion, postgres, weather…" />
+      <h3 className="font-medium">More tools</h3>
+      <Field label="Search tools" value={typed} onChange={setTyped} placeholder="notion, postgres, weather…" />
       {last?.offline ? <Alert tone="warn">Offline: showing servers seen before{last.cached_at ? ` (as of ${new Date(last.cached_at * 1000).toLocaleDateString()})` : ""}.</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
       <ul className="space-y-2">
@@ -437,7 +437,7 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
           {named.length ? (
             named.map((h) => <Field key={h.name} label={h.name} type={h.secret ? "password" : "text"} value={values[h.name] ?? ""} onChange={(v) => setValues({ ...values, [h.name]: v })} hint={h.description || undefined} />)
           ) : (
-            <Field label="Token (sent as Authorization: Bearer)" type="password" value={token} onChange={setToken} />
+            <Field label="Access token or API key" type="password" value={token} onChange={setToken} />
           )}
           <div className="flex flex-wrap gap-2">
             <Button kind="primary" busy={busy} disabled={!name || (named.length ? named.some((h) => h.required && !values[h.name]?.trim()) : !token.trim())} onClick={connect}>
@@ -705,7 +705,7 @@ function AddByUrl(target: Target) {
 
   return (
     <div className="space-y-2">
-      <Field label="The server's address" value={url} onChange={setUrl} placeholder="https://mcp.example.com/mcp" hint="For a remote MCP server that isn't in the registry." />
+      <Field label="The server's address" value={url} onChange={setUrl} placeholder="https://mcp.example.com/mcp" hint="For a tool that isn't in the list above, by its web address." />
       <Button busy={busy} disabled={!url.trim()} onClick={look}>
         Look it up
       </Button>
@@ -723,14 +723,16 @@ export function LocalUpdate({ connection, client, onDone }: { connection: string
   const updates = useApi<{ connection: string; server: string; installed: string; latest: string }[]>("catalog/updates");
   const found = updates.data?.find((u) => u.connection === connection);
   const [server, setServer] = useState<CatalogServer | null>(null);
+  const [failed, setFailed] = useState(false);
   if (!found) return null;
   if (!server) {
     return (
       <Alert tone="warn">
         Version {found.latest} is available (installed: {found.installed}).{" "}
-        <button type="button" className="underline" onClick={() => api<CatalogServer>(`catalog/servers/${found.server}`).then(setServer).catch(() => undefined)}>
+        <button type="button" className="underline" onClick={() => api<CatalogServer>(`catalog/servers/${found.server}`).then(setServer, () => setFailed(true))}>
           Review the update
         </button>
+        {failed ? " Couldn't load it; check this computer is online and try again." : null}
       </Alert>
     );
   }

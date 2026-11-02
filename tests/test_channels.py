@@ -179,7 +179,7 @@ def test_slack_tokens_are_checked_and_kept_in_the_vault_only(slack: FakeSlack) -
 
 
 def test_slack_needs_both_tokens_to_work(slack: FakeSlack) -> None:
-    with session_scope() as session, pytest.raises(Exception, match="invalid_auth"):
+    with session_scope() as session, pytest.raises(Exception, match="didn't accept the bot token"):
         channels.create_channel(
             session, get_settings(), "slack", name="Ops", target="C1", approver=ME_SLACK,
             tokens={"bot_token": SLACK_BOT, "app_token": "xapp-wrong-token-value"},
@@ -279,7 +279,7 @@ def test_scope_and_events_choose_what_is_sent(slack: FakeSlack) -> None:
     rk = runner(ident)
     assert rk.send_due() == 1
     [message] = slack.posted()
-    assert message["text"].startswith(f"✖ globex-portal · task {failed[:8]} failed")
+    assert message["text"].startswith("✖ globex-portal: failed")
     assert buttons(message)[0]["url"] == f"https://rk.example/tasks/{failed}"
     with session_scope(commit=False) as session:
         note = session.scalars(
@@ -391,10 +391,10 @@ def test_telegram_follows_its_prefs(monkeypatch: pytest.MonkeyPatch) -> None:
     with session_scope() as session:
         channels.set_telegram_prefs(session, {"events": ["failures"]})
     held_write()
-    failed = ended_task("acme-web", TaskStatus.FAILED)
+    ended_task("acme-web", TaskStatus.FAILED)
     assert bridge.send_new() == 1
     [sent] = fake.sent
-    assert sent["text"].startswith(f"✖ acme-web · task {failed[:8]} failed")
+    assert sent["text"].startswith("✖ acme-web: failed")
     assert bridge.send_new() == 0
 
 

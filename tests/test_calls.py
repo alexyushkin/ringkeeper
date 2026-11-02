@@ -261,7 +261,7 @@ async def test_expired_decision_cannot_be_approved(registry: None, vault: Vault)
     decision_id = await held(vault)
     with session_scope() as session:
         age_decisions(session)
-    with pytest.raises(RuleViolationError, match=r"expired at .* can no longer be approved"):
+    with pytest.raises(RuleViolationError, match=r"ran out of time"):
         await approve(decision_id, vault=vault)
     with session_scope() as session:
         assert decisions.get_decision(session, decision_id).status is DecisionStatus.EXPIRED

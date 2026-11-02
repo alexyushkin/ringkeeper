@@ -117,6 +117,12 @@ def hold(
     return decision
 
 
+EXPIRED = (
+    "This approval ran out of time, so the change didn't happen. Ask the agent to try again "
+    "from its task."
+)
+
+
 def get_decision(session: Session, ident: str, *, lock: bool = False) -> Decision:
     """By full id, or by a unique prefix of at least 8 characters."""
     ident = ident.strip().lower()
@@ -133,7 +139,7 @@ def get_decision(session: Session, ident: str, *, lock: bool = False) -> Decisio
         query = query.with_for_update()
     matches = session.scalars(query.limit(2)).all()
     if not matches:
-        raise NotFoundError(f"decision '{ident}' not found")
+        raise NotFoundError("That approval isn't here any more. Refresh Approvals.")
     if len(matches) > 1:
         raise NotFoundError(f"decision prefix '{ident}' is ambiguous; use more characters")
     return matches[0]
@@ -177,17 +183,14 @@ def expire_stale(session: Session) -> int:
 
 def _require_pending(decision: Decision) -> None:
     if decision.status == DecisionStatus.EXPIRED:
-        raise RuleViolationError(
-            f"decision {decision.id} expired at {decision.expires_at.isoformat()} and can no "
-            "longer be approved; ask the agent to retry the call"
-        )
+        raise RuleViolationError(EXPIRED)
     if decision.status != DecisionStatus.PENDING:
-        raise RuleViolationError(f"decision {decision.id} is already {decision.status}")
-    if decision.expires_at <= datetime.now(UTC):
         raise RuleViolationError(
-            f"decision {decision.id} expired at {decision.expires_at.isoformat()} and can no "
-            "longer be approved; ask the agent to retry the call"
+            f"This was already {decision.status}, maybe from Telegram or another window. "
+            "Refresh to see it."
         )
+    if decision.expires_at <= datetime.now(UTC):
+        raise RuleViolationError(EXPIRED)
 
 
 def held_call(decision: Decision) -> ToolCall:
@@ -198,9 +201,7 @@ def held_call(decision: Decision) -> ToolCall:
         or decision.tool is None
         or decision.args is None
     ):
-        raise RuleViolationError(
-            f"decision {decision.id} is a {decision.kind} decision, not a held write"
-        )
+        raise RuleViolationError("This isn't an approval. Answer it in its conversation.")
     caller = Caller(decision.project, decision.session_id, decision.token_id)
     return ToolCall(caller, decision.service, decision.tool, decision.instance, decision.args)
 
@@ -224,11 +225,11 @@ def check_confirmation(decision: Decision, confirm: str | None, via: str) -> Non
         return
     if via == "telegram":
         raise RuleViolationError(
-            f"This write {why}. Approve it in the Ringkeeper app, where you can see all of it."
+            f"This change {why}. Approve it in the Ringkeeper app, where you can see all of it."
         )
     if (confirm or "").strip() != decision.instance:
         raise RuleViolationError(
-            f"This write {why}. To approve it, type the connection's name "
+            f"This change {why}. To approve it, type the connection's name "
             f"({decision.instance}) to confirm."
         )
 
@@ -244,7 +245,8 @@ def claim_for_approval(
     _require_pending(decision)
     if args_hash(decision.args or {}) != decision.args_hash:
         raise RuleViolationError(
-            f"decision {decision.id}'s arguments changed after it was held; it can't run"
+            "This change was altered after it was held, so Ringkeeper won't run it. Ask the "
+            "agent to try again."
         )
     answer = decision.answer or {}
     if answer:
@@ -274,7 +276,7 @@ def finish(
     session: Session, decision: Decision, *, result: object = None, error: str | None = None
 ) -> Decision:
     if decision.status != DecisionStatus.APPROVED:
-        raise RuleViolationError(f"decision {decision.id} is {decision.status}, not approved")
+        raise RuleViolationError("This wasn't approved, so it can't run.")
     decision.status = DecisionStatus.FAILED if error is not None else DecisionStatus.EXECUTED
     decision.executed_at = datetime.now(UTC)
     decision.result = None if result is None else safe_text(result)

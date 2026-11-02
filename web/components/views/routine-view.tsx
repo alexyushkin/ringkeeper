@@ -119,7 +119,7 @@ export function RoutineView({ id }: { id: string }) {
       ) : null}
 
       <Section id="runs" title="Runs" summary={runs.data ? String(runs.data.length) : undefined}>
-        {runs.data && !runs.data.length ? <Empty>No runs yet.</Empty> : null}
+        {runs.data && !runs.data.length ? <Empty>No runs yet. Press Test run to try it once.</Empty> : null}
         <ul className="space-y-2">
           {(runs.data ?? []).map((run) => (
             <li key={run.id} className="rounded-xl border border-line p-3 text-sm">

@@ -313,7 +313,7 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
         {(connection.links ?? []).map((link) => (
           <LinkRow key={link.project} connection={connection} link={link} onChange={onChange} />
         ))}
-        {!(connection.links ?? []).length ? <li className="text-sm text-muted">Not linked to a project yet.</li> : null}
+        {!(connection.links ?? []).length ? <li className="text-sm text-muted">Not linked to a project yet. Pick one under Link to another project below.</li> : null}
       </ul>
       {/* For all projects, the only ones it isn't linked to are the ones left out. */}
       {connection.all_projects ? null : <LinkToProject connection={connection} projects={projects} onChange={onChange} />}

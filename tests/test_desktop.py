@@ -504,7 +504,7 @@ def test_a_shared_tool_works_for_every_client_and_a_client_connection_does_not(
     # ...nor linked to another client's project later.
     crossing = win.put("/bff/projects/globex-app/connections/crm", json={"is_default": False})
     assert crossing.status_code == 409
-    assert "only among one client's projects" in crossing.json()["detail"]
+    assert "can only be used by that client's projects" in crossing.json()["detail"]
 
     connections = {c["name"]: c for c in win.get("/bff/connections").json()}
     assert (connections["files"]["shared"], connections["files"]["all_projects"]) == (True, True)

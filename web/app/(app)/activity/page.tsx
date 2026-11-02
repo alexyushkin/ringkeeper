@@ -58,7 +58,7 @@ export default function ActivityPage() {
       </a>
       {rows.error ? <Alert>{rows.error}</Alert> : null}
       {rows.loading && !rows.data ? <Loading /> : null}
-      {rows.data?.length === 0 ? <Empty>Nothing matches.</Empty> : null}
+      {rows.data?.length === 0 ? <Empty>Nothing here yet. Changes, refusals and your answers are listed here as they happen; if you set a filter, clear it.</Empty> : null}
       <ol className="space-y-2">
         {rows.data?.map((row) => (
           <li key={row.id}>
@@ -71,7 +71,7 @@ export default function ActivityPage() {
               </div>
               {row.reason ? <p className="text-sm">{row.reason}</p> : null}
               <Details>
-                <p className="mb-1 text-xs text-muted">Action: {row.tool}</p>
+                <p className="mb-1 text-xs text-muted">Exactly what was sent ({row.tool?.replace(/_/g, " ")})</p>
                 {row.args ? <Code>{JSON.stringify(row.args, null, 2)}</Code> : null}
                 {row.result ? <Code>{row.result}</Code> : null}
               </Details>

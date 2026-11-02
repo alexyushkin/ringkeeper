@@ -109,7 +109,7 @@ def test_a_confirmed_voice_reply_answers_like_a_typed_one(
     bridge.poll_once(0)
 
     sent = telegram.sent[-1]
-    assert sent["text"] == (f"I heard: {HEARD}\n\nAnswer question {question_id[:8]} with this?")
+    assert sent["text"] == (f"I heard: {HEARD}\n\nSend this as your answer?")
     assert list(buttons(sent)) == ["✅ Confirm", "🔁 Redo"]
     assert decision(question_id).status is DecisionStatus.PENDING  # nothing until Confirm
     [pending] = confirmations()
@@ -122,7 +122,7 @@ def test_a_confirmed_voice_reply_answers_like_a_typed_one(
     assert answered.status is DecisionStatus.ANSWERED
     assert answered.answer == {"text": HEARD, "input": "voice"}
     assert answered.answered_via == "telegram"
-    assert telegram.callbacks[-1]["text"] == "Done: question answered"
+    assert telegram.callbacks[-1]["text"] == "Done: answered."
     [edit] = [e for e in telegram.edits if e["message_id"] == sent["message_id"]]
     assert edit["text"] == f"I heard: {HEARD}\n✔ Confirmed"
     [done] = confirmations()
@@ -139,7 +139,7 @@ def test_a_confirmed_voice_reply_answers_like_a_typed_one(
 
     telegram.press(buttons(sent)["✅ Confirm"])  # each confirmation works once
     bridge.poll_once(0)
-    assert telegram.callbacks[-1]["text"] == "Already confirmed"
+    assert telegram.callbacks[-1]["text"] == "That was already handled."
 
 
 def test_redo_discards_the_transcript_and_a_new_voice_note_can_be_confirmed(
@@ -174,7 +174,7 @@ def test_after_redo_the_next_voice_note_answers_the_same_question_without_a_repl
     telegram.voice("v2")  # not a Telegram reply
     bridge.poll_once(0)
     sent = telegram.sent[-1]
-    assert sent["text"].endswith(f"Answer question {question_id[:8]} with this?")
+    assert sent["text"].endswith("Send this as your answer?")
     telegram.press(buttons(sent)["✅ Confirm"])
     bridge.poll_once(0)
     assert decision(question_id).status is DecisionStatus.ANSWERED
@@ -213,7 +213,7 @@ def test_a_redo_follow_up_is_the_senders_and_works_once(
     assert decision(question_id).status is DecisionStatus.PENDING
     telegram.voice("v2")  # the sender's follow-up uses the Redo
     bridge.poll_once(0)
-    assert telegram.sent[-1]["text"].endswith(f"Answer question {question_id[:8]} with this?")
+    assert telegram.sent[-1]["text"].endswith("Send this as your answer?")
     assert [c.status for c in confirmations()] == ["used", "pending"]
     telegram.press(buttons(telegram.sent[-1])["🔁 Redo"])
     bridge.poll_once(0)
@@ -308,7 +308,7 @@ def test_a_voice_reply_to_an_answered_question_is_not_transcribed(
                      by="alice", via=inbox.Via.CLI)  # fmt: skip
     telegram.voice("v1", reply_to=message_id)
     bridge.poll_once(0)
-    assert telegram.sent[-1]["text"] == "Not done: that question is already answered"
+    assert telegram.sent[-1]["text"] == "That question was already answered."
     assert (telegram.downloads, stt.received) == ([], [])
 
 

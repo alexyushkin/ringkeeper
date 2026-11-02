@@ -16,7 +16,7 @@ const NEW = "__new__";
 
 const KINDS: [Kind, string, string][] = [
   ["client", "A client's account", "Their database, their n8n, their Gmail. It lands in that client's library, and only their projects can use it."],
-  ["shared", "Your own tool", "A browser, files on this computer, a fetcher, a public docs server. It holds no client's data, so any client's projects can use it, or all of them."],
+  ["shared", "Your own tool", "A browser, files on this computer, a web-page reader, public documentation. It holds no client's data, so any client's projects can use it, or all of them."],
 ];
 
 export default function NewConnectionPage() {

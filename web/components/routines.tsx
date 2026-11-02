@@ -76,7 +76,7 @@ export function RoutineList({ project, client }: { project?: string; client?: st
   const list = useApi<RoutineData[]>("routines", project ? { project } : client ? { client } : undefined);
   if (list.error) return <Alert>{list.error}</Alert>;
   if (!list.data) return null;
-  if (!list.data.length) return <Empty>No routines yet. {AGENTS_AND_ROUTINES}</Empty>;
+  if (!list.data.length) return <Empty>No routines yet. {AGENTS_AND_ROUTINES} Add one with New routine.</Empty>;
   return (
     <ul className="space-y-2">
       {list.data.map((routine) => (
@@ -134,7 +134,7 @@ function RoutineRow({ routine, showProject, onChange }: { routine: RoutineData; 
 export function NewRoutine({ project, agents, onCreated }: { project: string; agents: AgentData[]; onCreated: (id: string) => void }) {
   const templates = useApi<Record<string, Template>>("routine-templates");
   const [start, setStart] = useState<Template | null>(null);
-  if (!agents.length) return <p className="text-sm text-muted">Add an agent first: a routine runs one. {AGENTS_AND_ROUTINES}</p>;
+  if (!agents.length) return <p className="text-sm text-muted">Add an agent first on the project&apos;s Agents tab: a routine runs one. {AGENTS_AND_ROUTINES}</p>;
   if (!start) {
     return (
       <div className="space-y-2">
@@ -148,7 +148,7 @@ export function NewRoutine({ project, agents, onCreated }: { project: string; ag
           ))}
           <button type="button" onClick={() => setStart({ name: "", prompt: "", trigger: "manual" })} className="rounded-xl border border-dashed border-line p-3 text-left hover:border-accent">
             <span className="block font-medium">Blank</span>
-            <span className="mt-1 block text-sm text-muted">Your own prompt and trigger.</span>
+            <span className="mt-1 block text-sm text-muted">Your own instructions and timing.</span>
           </button>
         </div>
       </div>
@@ -304,7 +304,7 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
             value={source}
             onChange={setSource}
             options={[
-              ["webhook", "Its webhook is called (n8n or anything on this computer)"],
+              ["webhook", "Another app on this computer calls its address (n8n, for example)"],
               ["folder", "A file is added to the project's folder"],
               ["airtable", "A record is added to an Airtable table"],
               ["gmail", "A matching email arrives (Google account)"],
@@ -325,7 +325,7 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
           ) : null}
           <p className="text-xs text-muted">
             {source === "webhook"
-              ? "The address appears once it's saved. It answers only on this computer; outside webhooks come with the cloud hub."
+              ? "The address appears once it's saved. It answers only on this computer; calls from the internet aren't supported yet."
               : source === "folder"
                 ? "Files already there don't count; each new file starts one run, with {{event.file}}."
                 : "Checked every 5 minutes, reading only. What's there now doesn't count; each new one starts one run, with its fields as {{event...}}."}
@@ -336,7 +336,7 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
         <Field label="Steps per run" type="number" value={steps} onChange={setSteps} />
         <Field label="Minutes per run" type="number" value={minutes} onChange={setMinutes} />
         <Field label="Runs a day, at most" type="number" value={perDay} onChange={setPerDay} />
-        <Field label="$ cap per run" type="number" value={budget} onChange={setBudget} placeholder="default" hint="API key mode only." />
+        <Field label="$ cap per run" type="number" value={budget} onChange={setBudget} placeholder="default" hint="Only applies when Claude is connected with an API key (Settings › Claude)." />
       </div>
       <Select
         label="When a run finishes"

@@ -4,6 +4,7 @@ import typer
 
 from ringkeeper.cli.common import echo_table, handle_errors, join
 from ringkeeper.db import session_scope
+from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import InstanceIn
 from ringkeeper.services import instances
@@ -73,6 +74,9 @@ def remove(
 ) -> None:
     """Remove an instance. Fails while it is bound, unless --force."""
     with handle_errors(), session_scope() as session:
-        unbound = instances.remove_instance(session, name, force=force)
+        try:
+            unbound = instances.remove_instance(session, name, force=force)
+        except RuleViolationError as error:
+            raise RuleViolationError(f"{error} Or add --force to unlink and remove it.") from None
     suffix = f" (unbound from {', '.join(unbound)})" if unbound else ""
     typer.echo(f"removed instance {name}{suffix}")

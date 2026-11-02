@@ -409,7 +409,7 @@ function Appearance() {
 
 function ImportFromClaudeDesktop() {
   return (
-    <Section id="claude-desktop" title="From Claude Desktop" summary="import its MCP servers" defaultOpen={false}>
+    <Section id="claude-desktop" title="From Claude Desktop" summary="import its tools" defaultOpen={false}>
       <ClaudeDesktopImport bare />
     </Section>
   );
@@ -470,13 +470,13 @@ function Passkeys() {
         {passkeys.data?.map((p) => (
           <li key={p.id} className="flex items-center gap-2">
             {p.name}
-            <Button kind="ghost" onClick={() => api(`auth/passkeys/${p.id}`, { method: "DELETE" }).then(passkeys.reload)}>
+            <Button kind="ghost" onClick={() => api(`auth/passkeys/${p.id}`, { method: "DELETE" }).then(passkeys.reload, (err: unknown) => setError(err instanceof Error ? err.message : String(err)))}>
               Remove
             </Button>
           </li>
         ))}
       </ul>
-      {supported ? <Button onClick={add}>Add a passkey</Button> : <p className="text-sm text-muted">Passkeys need the app's https:// address.</p>}
+      {supported ? <Button onClick={add}>Add a passkey</Button> : <p className="text-sm text-muted">Passkeys only work when Ringkeeper is opened at its https:// address. Ask whoever set up the server, or sign in with your password.</p>}
       {error ? <Alert>{error}</Alert> : null}
     </Card>
   );
@@ -512,7 +512,8 @@ function SignOut() {
   return (
     <Button
       onClick={async () => {
-        await api("auth/logout", { method: "POST" });
+        // Signed out or not, the next page asks for the password again.
+        await api("auth/logout", { method: "POST" }).catch(() => undefined);
         window.location.href = "/login";
       }}
     >

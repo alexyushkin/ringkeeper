@@ -136,16 +136,21 @@ class Collected:
     diff: str | None = None
 
 
+REPORT = "Try again; if it happens again, use Report a problem on the Help page."
+NO_RESULT = "The task stopped without finishing. Send a follow-up to continue, or try again."
+
+
 def resolve_workspace(path: str | None, root: str | None) -> str:
     if not path:
-        raise RingkeeperError("the project has no workspace_path; set one in the registry")
+        raise RingkeeperError("This project has no folder. Set one on the project's page.")
     if ".." in PurePosixPath(path).parts or ".." in PureWindowsPath(path).parts:
-        raise RingkeeperError(f"workspace_path '{path}' can't contain '..'")
+        raise RingkeeperError(f"The project's folder {path} can't contain '..'. Pick another.")
     if PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute():
         return path
     if not root:
         raise RingkeeperError(
-            f"workspace_path '{path}' is relative but RINGKEEPER_WORKSPACES_ROOT isn't set"
+            f"The project's folder {path} isn't a full path, and there's no workspaces folder "
+            "to put it in. Set the project's folder to a full path."
         )
     separator = "\\" if PureWindowsPath(root).drive else "/"
     return root.rstrip("/\\") + separator + path.replace("/", separator)
@@ -162,9 +167,13 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
     job: Job, collected: Collected, killed: TaskStatus | None
 ) -> tuple[TaskStatus, str | None]:
     if killed is TaskStatus.TIMED_OUT:
-        return killed, f"exceeded the max runtime of {job.max_runtime_s}s; the worker was killed"
+        minutes = max(1, round(job.max_runtime_s / 60))
+        return killed, (
+            f"Stopped at its time limit ({minutes} min). Send a follow-up to continue, or "
+            "ask for a smaller piece of the work."
+        )
     if killed is TaskStatus.STOPPED:
-        return killed, "stopped on request"
+        return killed, "Stopped, as you asked."
     if collected.question:
         return TaskStatus.NEEDS_INPUT, None
     result = collected.result
@@ -172,7 +181,7 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
     if result is None:
         return (
             TaskStatus.FAILED,
-            errors or f"the worker exited ({collected.exit_code}) without a result",
+            errors or NO_RESULT,
         )
     subtype = str(result.get("subtype", ""))
     cost = result.get("total_cost_usd")
@@ -180,12 +189,20 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
         job.budget_usd is not None and isinstance(cost, int | float) and cost > job.budget_usd
     )
     if subtype == "error_max_budget_usd" or over_budget:
-        return TaskStatus.BUDGET_EXCEEDED, f"reached the budget of ${job.budget_usd}"
+        return TaskStatus.BUDGET_EXCEEDED, (
+            f"Stopped at its spending cap (${job.budget_usd:.2f}). Send a follow-up to continue."
+        )
     if subtype == "success" and not result.get("is_error") and collected.exit_code == 0:
         return TaskStatus.SUCCEEDED, None
     if subtype == "error_max_turns":
-        return TaskStatus.FAILED, f"reached the max of {job.max_turns} turns"
-    return TaskStatus.FAILED, errors or f"the agent ended with {subtype or 'an error'}"
+        return TaskStatus.FAILED, (
+            f"Stopped at the step limit ({job.max_turns} steps). Raise it in Settings > "
+            "Advanced, or send a follow-up to continue."
+        )
+    return (
+        TaskStatus.FAILED,
+        errors or f"The task ended with an error. {REPORT}",
+    )
 
 
 class Manager:
@@ -324,7 +341,12 @@ class Manager:
                 row = session.get(WorkerSession, job.session_id)
                 jti = row.token_jti if row else None
             self._finalize(
-                job, jti, Collected(errors=["the session manager restarted during this run"]), None
+                job,
+                jti,
+                Collected(
+                    errors=["Ringkeeper restarted during this task. Send a follow-up to continue."]
+                ),
+                None,
             )
 
     def wait_idle(self, timeout: float = 30.0) -> None:
@@ -358,7 +380,9 @@ class Manager:
             cast(list[str], collected.errors).append(str(error))
         except Exception as error:
             logger.exception("worker session %s failed", job.session_id)
-            cast(list[str], collected.errors).append(f"internal error: {type(error).__name__}")
+            cast(list[str], collected.errors).append(
+                f"Something went wrong inside Ringkeeper ({type(error).__name__}). {REPORT}"
+            )
         finally:
             with self._lock:
                 killed = self._killed.pop(job.session_id, None)

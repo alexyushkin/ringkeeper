@@ -7,6 +7,7 @@ from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationEr
 from ringkeeper.models import Env, Instance, InstanceType, Project, ProjectInstance
 from ringkeeper.schemas import InstanceIn
 from ringkeeper.services import clients
+from ringkeeper.wording import service
 
 # The owner shown for a shared tool: yours, not a client's (Instance.shared decides).
 SHARED_OWNER = "you"
@@ -23,7 +24,9 @@ def find_instance(session: Session, name: str) -> Instance | None:
 def get_instance(session: Session, name: str) -> Instance:
     instance = find_instance(session, name)
     if instance is None:
-        raise NotFoundError(f"instance '{name}' does not exist")
+        raise NotFoundError(
+            f"There's no connection named {name}. It may have been removed: refresh the page."
+        )
     return instance
 
 
@@ -59,7 +62,9 @@ def _check_kind(session: Session, data: InstanceIn, before: Instance | None = No
     names = set(session.scalars(select(Project.name)))
     missing = [p for p in data.except_projects if p not in known and p not in names]
     if missing:
-        raise RuleViolationError(f"no project named {', '.join(missing)}")
+        raise RuleViolationError(
+            f"There's no project named {', '.join(missing)}. Check the spelling."
+        )
 
 
 def excluded(instance: Instance, project: Project) -> bool:
@@ -107,7 +112,9 @@ def link_everywhere(session: Session, instance: Instance) -> list[str]:
 
 def create_instance(session: Session, data: InstanceIn) -> Instance:
     if find_instance(session, data.name) is not None:
-        raise AlreadyExistsError(f"instance '{data.name}' already exists")
+        raise AlreadyExistsError(
+            f"There's already a connection named {data.name}. Pick another name."
+        )
     _check_kind(session, data)
     if not data.shared:
         data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
@@ -130,22 +137,24 @@ def update_instance(session: Session, data: InstanceIn) -> Instance:
             if clients.key(b.project.owner) != clients.key(data.owner)
         )  # fmt: skip
         if others:
+            name = clients.names(session).get(data.owner, data.owner)
             raise RuleViolationError(
-                f"'{instance.name}' can't become {data.owner}'s connection while other "
-                f"clients' projects use it: {', '.join(others)}. Unlink those first."
+                f"{instance.name} can't become {name}'s connection while other clients' "
+                f"projects use it ({', '.join(others)}). Unlink it from those projects first."
             )
     if data.type != instance.type and instance.bindings:
         raise RuleViolationError(
-            f"cannot change the type of instance '{instance.name}' while it is bound to: "
-            f"{', '.join(bound_project_names(instance))}. Unbind it first."
+            f"You can't change what kind of connection {instance.name} is while projects use "
+            f"it ({', '.join(bound_project_names(instance))}). Unlink it from those projects "
+            "first, or add a new connection."
         )
     if data.env == Env.PROD and instance.env != Env.PROD:
         defaults = sorted(b.project.name for b in instance.bindings if b.is_default)
         if defaults:
             raise RuleViolationError(
-                f"cannot make instance '{instance.name}' prod: it is the default "
-                f"{instance.type} instance for {', '.join(defaults)}, and a prod instance "
-                "can never be a default. Rebind it without --default first."
+                f"{instance.name} is the default {service(instance.type)} connection for "
+                f"{', '.join(defaults)}, and a production connection can't be a default. "
+                "Turn off Default for it on those projects, then mark it production."
             )
     for field, value in data.model_dump(exclude={"name"}).items():
         setattr(instance, field, value)
@@ -164,8 +173,8 @@ def remove_instance(session: Session, name: str, *, force: bool = False) -> list
     projects = bound_project_names(instance)
     if projects and not force:
         raise RuleViolationError(
-            f"instance '{name}' is still bound to: {', '.join(projects)}. "
-            "Unbind it first, or remove it with --force to drop those bindings too."
+            f"{name} is still linked to {', '.join(projects)}. Unlink it from those projects "
+            "first, then remove it."
         )
     if projects:
         session.execute(delete(ProjectInstance).where(ProjectInstance.instance_id == instance.id))

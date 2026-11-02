@@ -79,7 +79,7 @@ def test_expired_cannot_be_approved(vault: Vault) -> None:
         age_decisions(session)
     result = cli("decision", "approve", decision_id)
     assert result.exit_code == 1
-    assert "can no longer be approved" in result.stderr
+    assert "ran out of time" in result.stderr
     assert decision_id[:8] in cli("decision", "list", "--status", "expired").stdout
 
 
@@ -125,4 +125,4 @@ def test_audit_list_and_filters(vault: Vault) -> None:
 def test_decision_show_missing(database_url: str) -> None:
     result = cli("decision", "show", "deadbeef")
     assert result.exit_code == 1
-    assert "decision 'deadbeef' not found" in result.stderr
+    assert "That approval isn't here any more" in result.stderr

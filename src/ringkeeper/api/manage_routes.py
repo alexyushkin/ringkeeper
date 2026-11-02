@@ -415,7 +415,9 @@ class MoveIn(Input):
 def _client_out(session: Session, slug: str) -> ClientOut:
     found = next((c for c in clients.list_clients(session) if c.slug == slug), None)
     if found is None:
-        raise HTTPException(404, detail=f"no client '{slug}'")
+        raise HTTPException(
+            404, detail="That client isn't here any more. Go back to Clients & projects."
+        )
     return ClientOut(**found.__dict__)
 
 
@@ -593,10 +595,12 @@ def list_connections(session: SessionDep) -> list[ConnectionOut]:
 @router.post("/connections", status_code=201, dependencies=[RecentAuth])
 def create_connection(data: ConnectionIn, session: WriteSessionDep) -> ConnectionOut:
     if data.type is InstanceType.N8N and not data.base_url:
-        raise HTTPException(422, detail="n8n needs its address (base URL)")
+        raise HTTPException(422, detail="Add your n8n address, like https://n8n.example.com.")
     base_url = _checked_url(data.base_url)
     if instances.find_instance(session, data.name) is not None:
-        raise HTTPException(409, detail=f"a connection named '{data.name}' already exists")
+        raise HTTPException(
+            409, detail=f"There's already a connection named {data.name}. Pick another name."
+        )
     try:
         ref = secrets_in.store_connection(
             session, get_settings(), data.name, data.type, data.secret
@@ -631,7 +635,7 @@ def update_connection(
     if moved:
         if not data.secret:
             raise HTTPException(
-                422, detail="Changing the address needs the secret again, in the same request."
+                422, detail="To change the address, paste the key or password again too."
             )
         base_url = _checked_url(changes["base_url"])
         try:

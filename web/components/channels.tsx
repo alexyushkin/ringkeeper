@@ -215,7 +215,7 @@ export function ChannelCard({ channel, onChanged }: { channel: Channel; onChange
           Send test
         </Button>
         <ConfirmButton
-          question={`Remove ${channel.name}? Its tokens are deleted from the vault; the ${KINDS[channel.kind]} app itself stays until you delete it there.`}
+          question={`Remove ${channel.name}? Its saved tokens are deleted from Ringkeeper; the ${KINDS[channel.kind]} app itself stays until you delete it there.`}
           confirm="Remove"
           onConfirm={async () => {
             await api(`channels/${channel.id}`, { method: "DELETE" });

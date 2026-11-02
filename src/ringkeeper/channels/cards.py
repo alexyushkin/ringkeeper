@@ -24,6 +24,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import inbox
 from ringkeeper.telegram import text as shown_text
 from ringkeeper.telegram.api import defang
+from ringkeeper.wording import decision_status, person, task_status
 
 PREFIX = "rk"
 TEST_ACTION = "rk:test"
@@ -80,7 +81,7 @@ def decision_card(decision: Decision, open_url: str | None) -> Card:
     head = [KIND_LABELS[decision.kind]]
     head += [part for part in (decision.project, decision.instance) if part]
     shown = shown_text.body(decision, SUMMARY_CHARS, QUESTION_CHARS)
-    lines = [" · ".join(head), shown.text, f"id {str(decision.id)[:8]}"]
+    lines = [" · ".join(head), shown.text]
     if shown.cut:
         lines.append(SHORTENED)
     buttons: list[Button] = []
@@ -113,17 +114,19 @@ def _action(decision: Decision, options: list[str], choice: str) -> str:
 
 
 def outcome_line(decision: Decision) -> str:
-    who = decision.decided_by or (decision.answer or {}).get("by") or "someone"
+    who = person(decision.decided_by or (decision.answer or {}).get("by"))
     choice = (decision.answer or {}).get("choice")
     match decision.status:
         case DecisionStatus.PENDING:
-            return f"Approved by {who}; running."
+            return f"Approved by {who}. Running now."
         case DecisionStatus.EXPIRED:
-            return "Expired."
+            return "Ran out of time, so nothing was changed."
+        case DecisionStatus.FAILED:
+            return f"Approved by {who}, but it failed. Open it in Ringkeeper to see why."
         case DecisionStatus.ANSWERED if choice:
-            return f"Answered: {choice} (by {who})."
+            return f"Answered by {who}: {CHOICE_LABELS.get(choice, choice)}."
         case _:
-            return f"{str(decision.status).capitalize()} (by {who})."
+            return f"{decision_status(decision.status).capitalize()} by {who}."
 
 
 def closed_card(decision: Decision, open_url: str | None) -> Card:
@@ -134,7 +137,7 @@ def closed_card(decision: Decision, open_url: str | None) -> Card:
 
 def task_card(task: Task, open_url: str | None) -> Card:
     mark = "✖" if task.status in FAILED else "✔"
-    head = f"{mark} {task.project} · task {str(task.id)[:8]} {task.status}"
+    head = f"{mark} {task.project}: {task_status(task.status)}"
     said = (task.error if task.status in FAILED else task.summary) or ""
     summary, cut = _clip(said, TASK_CHARS)
     lines = [head] + ([summary] if summary else []) + ([SHORTENED] if cut else [])
@@ -143,7 +146,7 @@ def task_card(task: Task, open_url: str | None) -> Card:
 
 def routine_card(routine: Routine, task: Task, open_url: str | None) -> Card:
     mark = "✖" if task.status in FAILED else "✔"
-    head = f"{mark} Routine {routine.name} · {task.project} · {task.status}"
+    head = f"{mark} Routine {routine.name} · {task.project}: {task_status(task.status)}"
     summary, cut = _clip(task.summary or task.error or "", TASK_CHARS)
     lines = [head] + ([summary] if summary else []) + ([SHORTENED] if cut else [])
     return Card(_clean("\n".join(lines)), _open(open_url))
@@ -163,13 +166,13 @@ def press(  # noqa: PLR0911 (one answer per way a press can go)
         return "That's you: answers from you here are accepted."
     parts = action.split(":")
     if len(parts) != 3 or parts[0] != PREFIX:
-        return "Unknown button."
+        return "This button no longer works. Open Ringkeeper to answer."
     try:
         uuid.UUID(parts[1])
         with session_scope() as session:
             decision = session.get(Decision, parts[1])
             if decision is None:
-                return "This is gone."
+                return "This was removed, so there's nothing to answer."
             choice = inbox.options(decision)[int(parts[2])]
             if choice == "approve" and not inbox.quick_approval(decision):
                 # The button isn't offered for these; a forged press gets nowhere.
@@ -178,8 +181,8 @@ def press(  # noqa: PLR0911 (one answer per way a press can go)
                 session, settings, str(decision.id), inbox.Answer(choice=choice), by=who, via=via
             )
             label = CHOICE_LABELS.get(choice, choice).lower()
-            return f"Done: {label} ({answered.decision.status})."
+            return f"Done: {label}. It's {decision_status(answered.decision.status)}."
     except (ValueError, IndexError):
-        return "This button is out of date."
+        return "This button no longer works. Open Ringkeeper to answer."
     except RingkeeperError as error:
         return f"Not done: {error}"

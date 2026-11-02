@@ -274,7 +274,7 @@ def test_max_runtime_kills_the_worker() -> None:
     drive(m, lambda: task(task_id).status is TaskStatus.TIMED_OUT)
     done = task(task_id)
     assert done.error is not None
-    assert "max runtime of 1s" in done.error
+    assert "Stopped at its time limit" in done.error
     assert runtime.killed
     assert revoked(session_of(task_id).token_jti)
 
@@ -384,7 +384,9 @@ def test_effort_follows_the_task_size_up_to_the_setting(monkeypatch: pytest.Monk
 @pytest.mark.usefixtures("task_registry")
 def test_budget_needs_api_key_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_CLAUDE_AUTH_MODE", "subscription")
-    with pytest.raises(RuleViolationError, match="only applies in api_key mode"):
+    with pytest.raises(
+        RuleViolationError, match="only applies when Claude is connected with an API key"
+    ):
         run_task(budget_usd=1.0)
 
 
@@ -396,14 +398,17 @@ def test_max_turns_is_reported() -> None:
     m.wait_idle()
     done = task(task_id)
     assert done.status is TaskStatus.FAILED
-    assert done.error == "reached the max of 5 turns"
+    assert (
+        done.error
+        == "Stopped at the step limit (5 steps). Raise it in Settings > Advanced, or send a follow-up to continue."  # noqa: E501
+    )
 
 
 @pytest.mark.usefixtures("task_registry")
 def test_limits_are_validated() -> None:
     with pytest.raises(RuleViolationError, match="max runtime"):
         run_task(max_runtime_s=10 * 24 * 3600)
-    with pytest.raises(RuleViolationError, match="prompt is empty"):
+    with pytest.raises(RuleViolationError, match="Type what the task should do first"):
         run_task(prompt="  ")
 
 
@@ -437,7 +442,7 @@ def test_resume_needs_a_finished_task() -> None:
     task_id = run_task()
     with (
         session_scope() as session,
-        pytest.raises(RuleViolationError, match="wait for it to finish"),
+        pytest.raises(RuleViolationError, match="Send your follow-up once it's finished"),
     ):
         tasks.resume_task(session, get_settings(), task_id, "more")
 
@@ -505,7 +510,7 @@ def test_recover_marks_orphaned_sessions_failed() -> None:
     m.recover()
     done = task(task_id)
     assert done.status is TaskStatus.FAILED
-    assert done.error == "the session manager restarted during this run"
+    assert done.error == "Ringkeeper restarted during this task. Send a follow-up to continue."
     assert revoked("orphan-jti")
     with session_scope() as session:
         assert session.get(TokenRevocation, "orphan-jti") is not None
@@ -528,7 +533,7 @@ def test_resolve_workspace(path: str, root: str | None, expected: str) -> None:
 
 
 def test_relative_workspace_without_root_is_an_error() -> None:
-    with pytest.raises(Exception, match="RINGKEEPER_WORKSPACES_ROOT"):
+    with pytest.raises(Exception, match="isn't a full path"):
         resolve_workspace("acme-web", None)
 
 

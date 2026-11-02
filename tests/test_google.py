@@ -220,7 +220,7 @@ def test_accounts_side_by_side_never_cross(accounts: TestClient, fake: FakeGoogl
     # A client's account stays with that client; yours goes anywhere (it's in all already).
     crossed = owner.put("/projects/globex-app/connections/acme-info", json={})
     assert crossed.status_code == 409
-    assert "one client's projects" in crossed.text
+    assert "only be used by that client's projects" in crossed.text
     assert owner.put("/projects/acme-blog/connections/acme-info", json={}).status_code == 200
     wrong_project = owner.post(
         "/google/signin", json={"access": ["mail_read"], "owner": "acme", "project": "globex-app"}

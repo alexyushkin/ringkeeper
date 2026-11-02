@@ -146,7 +146,9 @@ def test_get_project_includes_bound_instances_without_secrets(
 def test_get_missing_project(client: TestClient, database_url: str) -> None:
     response = client.get("/projects/ghost")
     assert response.status_code == 404
-    assert response.json() == {"detail": "project 'ghost' does not exist"}
+    assert response.json() == {
+        "detail": "There's no project named ghost. It may have been renamed or removed: go back to Clients & projects."  # noqa: E501
+    }
 
 
 def test_list_instances_without_secrets(client: TestClient, loaded: None) -> None:

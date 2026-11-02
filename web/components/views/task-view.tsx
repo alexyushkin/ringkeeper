@@ -133,7 +133,7 @@ function EventView({ event }: { event: Event }) {
       return <Alert>{String(p.message ?? "")}</Alert>;
     case "sdk.result": {
       const message = (p.message as { subtype?: string; num_turns?: number } | undefined) ?? {};
-      return <p className="text-xs text-muted">Session ended: {message.subtype} after {message.num_turns} steps</p>;
+      return <p className="text-xs text-muted">{message.subtype === "error_max_turns" ? `Stopped at the step limit after ${message.num_turns} steps (Settings › Advanced)` : `Finished after ${message.num_turns} steps`}</p>;
     }
     default:
       return null;
@@ -284,7 +284,7 @@ export function TaskView({ id }: { id: string }) {
 
       {tab === "transcript" ? (
         <ol className="mt-3 space-y-3">
-          {events.length === 0 ? <p className="text-sm text-muted">No transcript yet. Transcripts are kept {retention} days.</p> : null}
+          {events.length === 0 ? <p className="text-sm text-muted">No transcript yet: it fills in as the task runs. Transcripts older than {retention} days are deleted (Settings › Advanced).</p> : null}
           {events.map((event) => (
             <li key={event.id} className={event.role === "architect" ? "border-l-2 border-accent pl-3" : ""}>
               <EventView event={event} />
@@ -300,7 +300,7 @@ export function TaskView({ id }: { id: string }) {
               </li>
             ))}
           </ul>
-          {t.diff ? <Code>{t.diff}</Code> : <p className="text-sm text-muted">No diff recorded.</p>}
+          {t.diff ? <Code>{t.diff}</Code> : <p className="text-sm text-muted">No file changes recorded for this task.</p>}
         </div>
       )}
     </>

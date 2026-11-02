@@ -31,14 +31,18 @@ def _clock(value: object) -> time:
         hours, minutes = str(value).split(":")
         return time(int(hours), int(minutes))
     except ValueError:
-        raise RuleViolationError(f"Quiet hours are HH:MM, not {value!r}.") from None
+        raise RuleViolationError(
+            f"Enter quiet hours as a time, like 22:00 (not {value!r})."
+        ) from None
 
 
 def _zone(name: str) -> ZoneInfo:
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
-        raise RuleViolationError(f"Unknown time zone {name!r}.") from None
+        raise RuleViolationError(
+            f"Choose a time zone from the list ({name!r} isn't one)."
+        ) from None
 
 
 @dataclass(frozen=True)
@@ -55,8 +59,10 @@ class Prefs:
         """From a stored or posted doc; checks it (RuleViolationError)."""
         doc = doc or {}
         events = frozenset(str(e) for e in cast(list[Any], doc.get("events", DEFAULT_EVENTS)))
-        if unknown := events - set(EVENTS):
-            raise RuleViolationError(f"Unknown events: {', '.join(sorted(unknown))}.")
+        if events - set(EVENTS):
+            raise RuleViolationError(
+                "Some choices weren't recognised. Refresh the page and try again."
+            )
         quiet = cast(dict[str, Any] | None, doc.get("quiet") or None)
         tz = str((quiet or {}).get("tz") or doc.get("tz") or "UTC")
         _zone(tz)

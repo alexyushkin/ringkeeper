@@ -31,7 +31,10 @@ def find_project(session: Session, name: str) -> Project | None:
 def get_project(session: Session, name: str) -> Project:
     project = find_project(session, name)
     if project is None:
-        raise NotFoundError(f"project '{name}' does not exist")
+        raise NotFoundError(
+            f"There's no project named {name}. It may have been renamed or removed: go back to "
+            "Clients & projects."
+        )
     return project
 
 
@@ -41,7 +44,7 @@ def list_projects(session: Session) -> Sequence[Project]:
 
 def create_project(session: Session, data: ProjectIn) -> Project:
     if find_project(session, data.name) is not None:
-        raise AlreadyExistsError(f"project '{data.name}' already exists")
+        raise AlreadyExistsError(f"There's already a project named {data.name}. Pick another name.")
     data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     project = Project(**data.model_dump(), bindings=[])
     session.add(project)

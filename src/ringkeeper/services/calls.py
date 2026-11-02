@@ -238,7 +238,8 @@ def _target(vault: Vault, adapter: Adapter, auth: Authorized, project: str | Non
         )
     except VaultError as error:
         raise ToolError(
-            f"the secret for instance '{auth.instance}' is unavailable: {error}"
+            f"the key for connection '{auth.instance}' can't be read ({error}); the user can "
+            "paste it again on the connection's page"
         ) from None
     except mcp_oauth.SignInError as error:
         raise ToolError(
@@ -256,7 +257,10 @@ async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], 
         raise ToolError(scrub(str(error))) from None
     except Exception:
         logger.exception("tool %s failed unexpectedly", tool)  # records are scrubbed
-        raise ToolError(f"'{tool}' failed unexpectedly; see the gateway log") from None
+        raise ToolError(
+            f"'{tool}' failed unexpectedly. Try again; if it keeps failing, the user can report "
+            "a problem from Ringkeeper's Help page."
+        ) from None
 
 
 def runs_without_asking(config: JSON, tool: str) -> bool:

@@ -153,7 +153,7 @@ def test_telegram_shows_only_deny_and_refuses_a_forged_approve(
         forged = callback_data(decision, 0)  # index 0 is "approve"
     fake.press(forged)
     bridge.poll_once(0)
-    assert fake.callbacks[-1]["text"].startswith("Not done: This write deletes rows.")
+    assert fake.callbacks[-1]["text"].startswith("Not done: This change deletes rows.")
     with session_scope() as session:
         assert decisions.get_decision(session, held).answer is None
 
@@ -197,7 +197,10 @@ def test_changed_arguments_never_run(database_url: str) -> None:
     with session_scope() as session:
         decision = decisions.get_decision(session, ident)
         decision.args = {"sql": "UPDATE customers SET plan = 'gold'"}  # the WHERE is gone
-    with session_scope() as session, pytest.raises(RuleViolationError, match="changed after"):
+    with (
+        session_scope() as session,
+        pytest.raises(RuleViolationError, match="altered after it was held"),
+    ):
         decisions.claim_for_approval(session, ident, "cli")
 
 

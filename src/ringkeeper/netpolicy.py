@@ -72,13 +72,20 @@ def check_host(host: str) -> None:
     """Refuse a host that is Ringkeeper itself, or a local or link-local address."""
     name = host.strip().strip("[]").rstrip(".").lower()
     if not name:
-        raise AddressNotAllowedError("the address has no host")
+        raise AddressNotAllowedError(
+            "that address is missing the site name; it should look like https://example.com"
+        )
     if name in OWN_SERVICES:
-        raise AddressNotAllowedError(f"'{host}' is one of Ringkeeper's own services")
+        raise AddressNotAllowedError(
+            f"{host} is Ringkeeper itself; enter the service's own address"
+        )
     local_name = name == "localhost" or name.endswith((".localhost", ".internal"))
     if local_name and not _allow_local():
         # host.docker.internal is the machine Ringkeeper runs on.
-        raise AddressNotAllowedError(f"connections can't point at '{host}' (this machine)")
+        raise AddressNotAllowedError(
+            f"connections can't use an address on this computer ({host}); use the service's "
+            "internet address"
+        )
     own = _own_addresses()
     for address in _addresses(name) or {name}:
         try:
@@ -86,11 +93,18 @@ def check_host(host: str) -> None:
         except ValueError:
             continue  # an unresolvable name: the connection will just fail
         if address in own:
-            raise AddressNotAllowedError(f"'{host}' is one of Ringkeeper's own services")
+            raise AddressNotAllowedError(
+                f"{host} is Ringkeeper itself; enter the service's own address"
+            )
         if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
-            raise AddressNotAllowedError(f"'{host}' is a link-local or special address")
+            raise AddressNotAllowedError(
+                f"{host} is a local network address Ringkeeper can't use; use the service's "
+                "internet address"
+            )
         if ip.is_loopback and not _allow_local():
-            raise AddressNotAllowedError(f"'{host}' is a loopback address")
+            raise AddressNotAllowedError(
+                f"{host} is an address on this computer; use the service's internet address"
+            )
 
 
 def check_url(url: str) -> str:
@@ -99,7 +113,9 @@ def check_url(url: str) -> str:
     try:
         parts = urlsplit(url)
     except ValueError:
-        raise AddressNotAllowedError("that isn't a valid address") from None
+        raise AddressNotAllowedError(
+            "that address doesn't look right; it should start with https://"
+        ) from None
     if parts.scheme not in ("http", "https"):
         raise AddressNotAllowedError("the address must start with https:// (or http://)")
     if parts.username or parts.password or "@" in parts.netloc:
@@ -107,7 +123,7 @@ def check_url(url: str) -> str:
             "put no username or password in the address; the API key goes in its own field"
         )
     if parts.query or parts.fragment:
-        raise AddressNotAllowedError("the address can't have a ?query or #fragment")
+        raise AddressNotAllowedError("remove everything after ? or # in the address")
     check_host(parts.hostname or "")
     return url
 
@@ -117,12 +133,20 @@ def check_dsn(dsn: str) -> None:
     try:
         params = conninfo_to_dict(dsn)
     except psycopg.ProgrammingError:
-        raise AddressNotAllowedError("that isn't a valid connection string") from None
+        raise AddressNotAllowedError(
+            "that doesn't look like a database connection string; copy it again from your "
+            "database's Connect page (Neon, Supabase)"
+        ) from None
     hosts = [h for h in str(params.get("host") or "").split(",") if h]
     hostaddrs = [h for h in str(params.get("hostaddr") or "").split(",") if h]
     if not hosts and not hostaddrs:
-        raise AddressNotAllowedError("the connection string has no host")
+        raise AddressNotAllowedError(
+            "the connection string has no server address; copy it again from your database's "
+            "Connect page"
+        )
     for host in [*hosts, *hostaddrs]:
         if host.startswith("/"):
-            raise AddressNotAllowedError("connections over a local socket aren't allowed")
+            raise AddressNotAllowedError(
+                "use the database's internet connection string, not a local one"
+            )
         check_host(host)

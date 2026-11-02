@@ -21,7 +21,7 @@ const ROLES: { model: string; effort?: string; label: string; hint?: string }[] 
   { model: "model_low", label: "Small tasks" },
   { model: "model_medium", label: "Normal tasks" },
   { model: "model_high", label: "Big tasks" },
-  { model: "model_worker", effort: "effort_worker", label: "Tasks without a size", hint: "Its effort is also the most any task's worker uses." },
+  { model: "model_worker", effort: "effort_worker", label: "Tasks without a size", hint: "Its effort is also the most any task uses." },
 ];
 const EFFORTS: [string, string][] = [
   ["low", "Low effort"],
@@ -74,7 +74,7 @@ function RoleRow({ role, values, models, onChange }: { role: (typeof ROLES)[numb
       {custom ? (
         <div className="flex items-end gap-2">
           <div className="flex-1">
-            <Field label="Model id" value={typed} onChange={setTyped} placeholder="claude-…" />
+            <Field label="Model name (like claude-sonnet-5-5)" value={typed} onChange={setTyped} placeholder="claude-…" />
           </div>
           <Button disabled={!typed.trim() || typed.trim() === current} onClick={() => onChange({ [role.model]: typed.trim() })}>
             Save

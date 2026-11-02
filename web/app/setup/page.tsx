@@ -41,6 +41,7 @@ export default function SetupPage() {
   const [step, setStep] = useState<number | null>(null);
   const [project, setProject] = useState<string | null>(null);
   const [saved, setSaved] = useState<ProjectSaved | null>(null);
+  const [unreachable, setUnreachable] = useState(false);
 
   const refresh = useCallback(async () => {
     const next = await api<Status>("setup/status");
@@ -73,9 +74,19 @@ export default function SetupPage() {
           : 5,
         );
       })
-      .catch(() => setStep(0));
+      .catch(() => setUnreachable(true));
   }, [refresh, router]);
 
+  if (unreachable) {
+    return (
+      <main className="mx-auto max-w-lg space-y-3 px-4 py-6">
+        <Alert>Ringkeeper isn&apos;t responding yet. Wait a few seconds and press Try again.</Alert>
+        <Button kind="primary" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
+      </main>
+    );
+  }
   if (step === null || status === null) return <Loading />;
 
   const next = () => setStep((n) => Math.min((n ?? 0) + 1, STEPS.length - 1));
@@ -218,7 +229,7 @@ function BrowseCatalog({ projects: list }: { projects: { name: string; owner: st
           {open ? "Close the catalog" : "Browse the catalog"}
         </Button>
       </div>
-      <p className="text-sm text-muted">{project ? "Services and MCP servers that aren't in Claude Desktop: sign in, paste a key, or install one on this computer." : "Add a project below first, then browse the catalog for it."}</p>
+      <p className="text-sm text-muted">{project ? "Services and add-on tools that aren't in Claude Desktop: sign in, paste a key, or install one on this computer." : "Add a project below first, then browse the catalog for it."}</p>
       {open && project ? (
         added ? (
           <ConnectionAdded name={added} onAnother={() => setAdded(null)} onDone={() => { setAdded(null); setOpen(false); }} />
@@ -327,8 +338,8 @@ function DesktopDone({ project, saved }: { project: string | null; saved: Projec
           </p>
           <p className="text-muted">
             {saved.git
-              ? "Each task's changes go on a branch of their own, for you to review."
-              : "It isn't a git repository, so tasks change its files directly and list what they changed."}
+              ? "Each task's changes are kept apart, for you to review before they're merged."
+              : "This folder doesn't use git, so tasks change its files directly and list what they changed."}
           </p>
         </div>
       ) : project ? (
@@ -399,8 +410,13 @@ function OwnerStep({ status, onDone }: { status: Status; onDone: () => void }) {
   }
 
   async function finish() {
-    await api("setup/recovery-key/saved", { method: "POST" });
-    onDone();
+    setError(null);
+    try {
+      await api("setup/recovery-key/saved", { method: "POST" });
+      onDone();
+    } catch (err) {
+      setError(`Couldn't save that step: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   if (!created) {

@@ -62,8 +62,10 @@ class DiscordApi:
     def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         try:
             response = self._http.request(method, path, json=body)
-        except httpx2.HTTPError as error:
-            raise ChannelError(f"Couldn't reach Discord ({type(error).__name__}).") from None
+        except httpx2.HTTPError:
+            raise ChannelError(
+                "Couldn't reach Discord. Check this computer is online, then try again."
+            ) from None
         if response.status_code == 204:
             return None
         try:
@@ -72,7 +74,13 @@ class DiscordApi:
             data = None
         if response.status_code >= 400:
             said = cast(dict[str, Any], data).get("message") if isinstance(data, dict) else None
-            raise ChannelError(f"Discord said: {said or response.status_code}")
+            raise ChannelError(
+                "Discord didn't accept the bot token. Copy it again from the Bot page."
+                if response.status_code == 401
+                else "The bot can't post there. Invite it to the server with the link in Settings."
+                if response.status_code == 403
+                else f"Discord said: {said or response.status_code}. Check the bot, then try again."
+            )
         return data
 
     # --- Setup ---

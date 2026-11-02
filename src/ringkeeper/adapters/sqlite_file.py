@@ -132,4 +132,3 @@ def describe_table(path: Path, table: str) -> JSON:
             {"name": i[1], "definition": f"unique={bool(i[2])}"} for i in pragma("index_list")
         ],
     }
-

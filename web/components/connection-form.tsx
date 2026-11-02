@@ -52,7 +52,7 @@ export const SERVICES: Record<string, ServiceInfo> = {
     get: [["Vercel tokens", "https://vercel.com/account/tokens"]],
     steps: "Create a token scoped to this client's team (or one project), with an expiry date.",
     secret: [{ key: "", label: "Access token", hidden: true }],
-    note: "Ringkeeper can read deployments and build logs, and redeploy or roll back. It never sees env variable values.",
+    note: "Ringkeeper can read deployments and build logs, and redeploy or roll back. It never sees your project's secret settings.",
   },
   twilio: {
     label: "Twilio (texts and calls)",

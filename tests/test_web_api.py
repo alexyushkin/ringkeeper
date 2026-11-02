@@ -842,7 +842,7 @@ def test_a_connection_address_can_only_change_with_its_secret(owner: TestClient)
     assert owner.post("/connections", json=n8n).status_code == 201
     moved = owner.patch("/connections/acme-flows", json={"base_url": "https://evil.example"})
     assert moved.status_code == 422
-    assert "needs the secret again" in moved.json()["detail"]
+    assert "paste the key or password again" in moved.json()["detail"]
     with_key = owner.patch(
         "/connections/acme-flows",
         json={"base_url": "https://n8n2.example.com", "secret": "n8n-key-5678"},
@@ -899,7 +899,7 @@ def test_a_connection_is_attached_only_to_its_own_client_s_projects(
     assert owner.post("/connections", json=connection).status_code == 201
     refused = owner.put("/projects/test-site/connections/alexey-db", json={})
     assert refused.status_code == 409
-    assert "one client's projects" in refused.json()["detail"]
+    assert "only be used by that client's projects" in refused.json()["detail"]
     assert owner.put("/projects/alexey-site/connections/alexey-db", json={}).status_code == 200
 
 

@@ -56,9 +56,15 @@ def test_two_clients_never_cross_and_yours_works_in_both(
     bind("globex-app", "mine-conn")
 
     # A client's connection can't be linked to another client's project...
-    with session_scope() as session, pytest.raises(RuleViolationError, match="one client's"):
+    with (
+        session_scope() as session,
+        pytest.raises(RuleViolationError, match="only be used by that client's projects"),
+    ):
         bindings.check_same_client(session, "globex-app", "acme-conn")
-    with session_scope() as session, pytest.raises(RuleViolationError, match="one client's"):
+    with (
+        session_scope() as session,
+        pytest.raises(RuleViolationError, match="only be used by that client's projects"),
+    ):
         bindings.check_same_client(session, "acme-web", "globex-conn")
     # ...nor called from it: refused before any secret is read.
     with pytest.raises(RefusalError, match="not available to project 'globex-app'"):

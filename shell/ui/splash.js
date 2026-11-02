@@ -5,7 +5,7 @@ const STATES = {
   restarting: ["Ringkeeper stopped unexpectedly", "Starting it again…", false],
   failed: [
     "Ringkeeper couldn't start",
-    "Its background service keeps stopping. Try again, or look at the log in the Ringkeeper data folder (logs\\backend.log).",
+    "It keeps stopping. Press Try again. If it still fails, report the problem and include logs\\backend.log from Ringkeeper's data folder (%LOCALAPPDATA%\\Ringkeeper).",
     true,
   ],
   stopping: ["Stopping Ringkeeper…", "Finishing up. This window closes when it's done.", false],

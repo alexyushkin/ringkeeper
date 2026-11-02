@@ -209,7 +209,7 @@ function Palette({ onClose }: { onClose: () => void }) {
               {command.hint ? <span className="hidden truncate text-xs text-muted sm:inline">{command.hint}</span> : null}
             </li>
           ))}
-          {!shown.length ? <li className="px-3 py-4 text-sm text-muted">Nothing matches “{query}”.</li> : null}
+          {!shown.length ? <li className="px-3 py-4 text-sm text-muted">Nothing matches “{query}”. Try a client, project or page name.</li> : null}
         </ul>
         <p className="border-t border-line px-4 py-2 text-xs text-muted">↑ ↓ to choose · Enter to open · Esc to close · Ctrl+K any time</p>
       </div>

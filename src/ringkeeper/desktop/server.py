@@ -243,17 +243,19 @@ class FrontDoor:
     def _refuse_bff(self, method: str, headers: dict[bytes, bytes]) -> Response | None:
         cookies = _cookies(headers)
         if not _same(cookies.get(SESSION_COOKIE), self.launch.session):
-            return JSONResponse({"detail": "open Ringkeeper from its app window"}, 401)
+            return JSONResponse({"detail": "Open Ringkeeper from its own window."}, 401)
         if method in SAFE_METHODS:
             return None
         origin = headers.get(b"origin", b"").decode("latin-1")
         if origin and origin not in self.origins:
-            return JSONResponse({"detail": "not from Ringkeeper's window"}, 403)
+            return JSONResponse({"detail": "Open this from Ringkeeper's own window."}, 403)
         csrf = headers.get(CSRF_HEADER, b"").decode("latin-1")
         if not (
             _same(cookies.get(CSRF_COOKIE), self.launch.csrf) and _same(csrf, self.launch.csrf)
         ):
-            return JSONResponse({"detail": "missing or wrong CSRF token"}, 403)
+            return JSONResponse(
+                {"detail": "This page is out of date. Reload it (Ctrl+R) and try again."}, 403
+            )
         return None
 
     @staticmethod

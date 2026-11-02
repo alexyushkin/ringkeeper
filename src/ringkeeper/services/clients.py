@@ -41,7 +41,9 @@ def find(session: Session, text: str) -> Client | None:
 def get(session: Session, text: str) -> Client:
     found = find(session, text)
     if found is None:
-        raise NotFoundError(f"no client '{text}'")
+        raise NotFoundError(
+            f"There's no client named {text}. Check the spelling, or add the client first."
+        )
     return found
 
 

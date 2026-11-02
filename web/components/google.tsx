@@ -275,7 +275,7 @@ export function GoogleSettings() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted">None yet.</p>
+              <p className="text-sm text-muted">No Google accounts yet. Add one under Connections › Add › Google.</p>
             )}
           </div>
           <Details label="Add another Google app">

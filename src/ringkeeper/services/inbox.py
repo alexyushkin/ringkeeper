@@ -43,11 +43,12 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import decisions, examples, holds, projects, tasks
+from ringkeeper.services import decisions, examples, projects, tasks
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
 from ringkeeper.storage import events
+from ringkeeper.wording import action, task_status
 
 APPROVALS_CHANNEL = "ringkeeper_approvals"
 NO_PROJECT = "none"
@@ -193,11 +194,17 @@ def _audit(session: Session, decision: Decision, answer: Answer, by: str, via: V
 
 def _require_open(decision: Decision) -> None:
     if decision.status is not DecisionStatus.PENDING:
-        raise RuleViolationError(f"decision {decision.id} is already {decision.status}")
+        raise RuleViolationError(
+            f"This was already {decision.status}, maybe from Telegram or another window. "
+            "Refresh to see it."
+        )
     if decision.expires_at <= datetime.now(UTC):
-        raise RuleViolationError(f"decision {decision.id} expired; it can't be answered")
+        raise RuleViolationError("This ran out of time, so it can't be answered. Ask again.")
     if decision.answer is not None:
-        raise RuleViolationError(f"decision {decision.id} is already answered; it's running")
+        raise RuleViolationError("This was already approved. It's running now.")
+
+
+CANT_CONTINUE = "This task can't continue from here. Start a new task with the same request."
 
 
 def _close(decision: Decision, status: DecisionStatus, by: str, via: Via, answer: Answer) -> None:
@@ -217,17 +224,19 @@ def _close(decision: Decision, status: DecisionStatus, by: str, via: Via, answer
 
 def _task_of(session: Session, decision: Decision) -> Task:
     if decision.task_id is None:
-        raise RuleViolationError(f"decision {decision.id} isn't linked to a task")
+        raise RuleViolationError("This question's task is gone, so there's nothing to answer.")
     task = tasks.get_task(session, str(decision.task_id), lock=True)
     if task.status not in (TaskStatus.NEEDS_INPUT, TaskStatus.WAITING):
-        raise RuleViolationError(f"task {task.id} is {task.status}; nothing is waiting on this")
+        raise RuleViolationError(
+            f"That task is already {task_status(task.status)}, so this answer isn't needed."
+        )
     return task
 
 
 def _choice(answer: Answer, allowed: list[str]) -> str:
     choice = (answer.choice or "").strip().lower()
     if choice not in allowed:
-        raise RuleViolationError(f"answer with one of: {', '.join(allowed)}")
+        raise RuleViolationError(f"Choose one of: {', '.join(allowed)}.")
     return choice
 
 
@@ -261,7 +270,7 @@ def _answer_plan(
     task = _task_of(session, decision)
     architect = tasks.last_sdk_session(task, SessionRole.ARCHITECT)
     if architect is None:
-        raise RuleViolationError(f"task {task.id} has no architect session to resume")
+        raise RuleViolationError(CANT_CONTINUE)
     if choice == "approve":
         _close(decision, DecisionStatus.APPROVED, by, via, answer)
         task.phase = ArchitectPhase.BUILDING
@@ -295,7 +304,7 @@ def _answer_question(
 ) -> None:
     reply = (answer.text or answer.choice or "").strip()
     if not reply:
-        raise RuleViolationError("a question needs a text answer")
+        raise RuleViolationError("Type an answer first.")
     answer = Answer(text=reply, voice=answer.voice)
     _close(decision, DecisionStatus.ANSWERED, by, via, answer)
     task = _task_of(session, decision)
@@ -312,7 +321,7 @@ def _answer_question(
         role = SessionRole(payload.get("role", SessionRole.WORKER.value))
     sdk_session = tasks.last_sdk_session(task, role)
     if sdk_session is None:
-        raise RuleViolationError(f"task {task.id} has no {role} session to resume")
+        raise RuleViolationError(CANT_CONTINUE)
     prompt = (
         f"The user answered your question.\n\nQuestion: {payload.get('question', '')}\n"
         f"Answer: {reply}\n\nContinue the task."
@@ -336,7 +345,7 @@ def _answer_cap(
     role = SessionRole(payload.get("role", SessionRole.WORKER.value))
     sdk_session = tasks.last_sdk_session(task, role)
     if sdk_session is None:
-        raise RuleViolationError(f"task {task.id} has no {role} session to resume")
+        raise RuleViolationError(CANT_CONTINUE)
     prompt = (
         f"You were paused at the spending cap; the user allowed ${payload['budget']:.2f} more. "
         "Continue the task from where you were, and keep it lean."
@@ -405,7 +414,7 @@ def answer(
     expire_stale(session)
     decision = get_decision(session, ident, lock=True)
     if expected_kind is not None and decision.kind is not expected_kind:
-        raise RuleViolationError(f"decision {decision.id} is a {decision.kind} decision")
+        raise RuleViolationError("This can't be answered here. Refresh the page.")
     _require_open(decision)
     run_now = False
     created: Task | None = None
@@ -487,7 +496,7 @@ def heading(decision: Decision) -> str | None:
     )
     if decision.service in DATA_SERVICES and env is Env.PROD:
         return "A change to live client data"
-    return holds.label(decision)
+    return f"{action(decision.service, decision.tool, decision.args)} on {decision.instance}"
 
 
 def summary(decision: Decision, limit: int = 160) -> str:
@@ -498,7 +507,8 @@ def summary(decision: Decision, limit: int = 160) -> str:
     payload = decision.payload or {}
     match decision.kind:
         case DecisionKind.APPROVE:
-            text = f"{holds.label(decision)}: waits for your OK"
+            what = action(decision.service, decision.tool, decision.args)
+            text = f"{what} on {decision.instance}: waits for your OK"
         case DecisionKind.ROUTE:
             names = " or ".join(c["project"] for c in payload.get("candidates", []))
             text = f"Which project ({names})? {payload.get('task', {}).get('outcome', '')}"

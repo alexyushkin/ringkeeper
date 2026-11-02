@@ -47,7 +47,7 @@ def get_thread(session: Session, ident: str) -> Thread:
         query = query.where(cast(Thread.id, String).startswith(ident))
     matches = session.scalars(query.limit(2)).all()
     if not matches:
-        raise NotFoundError(f"thread '{ident}' not found")
+        raise NotFoundError("That conversation isn't here any more. Go back to Home.")
     if len(matches) > 1:
         raise NotFoundError(f"thread prefix '{ident}' is ambiguous; use more characters")
     return matches[0]
@@ -72,9 +72,11 @@ def post_message(
     `origin_chat_id`: the Telegram chat it came from; its news goes only there."""
     body = body.strip()
     if not body:
-        raise RuleViolationError("the message is empty")
+        raise RuleViolationError("Type a message first.")
     if len(body) > MAX_MESSAGE_CHARS:
-        raise RuleViolationError(f"the message is longer than {MAX_MESSAGE_CHARS} characters")
+        raise RuleViolationError(
+            f"That message is too long. Keep it under {MAX_MESSAGE_CHARS:,} characters."
+        )
     if source not in SOURCES:
         raise RuleViolationError(f"unknown message source '{source}'")
     if input_kind not in INPUTS:

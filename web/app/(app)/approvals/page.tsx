@@ -12,7 +12,7 @@ import { useScope } from "@/lib/client/scope";
  * asked in their conversation instead. Telegram only gets summaries. */
 const KINDS: [string, string][] = [
   ["", "Everything"],
-  ["approve", "Held calls"],
+  ["approve", "Live changes"],
   ["plan", "Plans"],
   ["question", "Spending caps"],
 ];
@@ -35,7 +35,7 @@ export default function ApprovalsPage() {
       </div>
       {decisions.error ? <Alert>{decisions.error}</Alert> : null}
       {decisions.loading && !decisions.data ? <Loading /> : null}
-      {decisions.data?.length === 0 ? <Empty>Nothing is waiting for you.</Empty> : null}
+      {decisions.data?.length === 0 ? <Empty>Nothing is waiting for you. When an agent wants to change live client data, or send something to real people, it asks here first.</Empty> : null}
       <div className="space-y-4">
         {ordered.map((decision) => (
           <DecisionCard key={decision.id} decision={decision} onDone={decisions.reload} />

@@ -196,8 +196,8 @@ def test_a_hold_decided_before_the_turn_ends_resumes_at_once() -> None:
     ("kind", "heading"),
     [
         ("sql", "A change to live client data"),  # a production database
-        ("mcp", "'what_i_got' on notes"),  # a local tool: no talk of client data
-        ("service", "'activate_workflow' on acme-n8n"),
+        ("mcp", "Running what i got on notes"),  # a local tool: no talk of client data
+        ("service", "Turning on an n8n workflow on acme-n8n"),
     ],
 )
 def test_approvals_say_what_a_held_call_is(kind: str, heading: str) -> None:

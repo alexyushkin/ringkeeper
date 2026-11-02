@@ -81,7 +81,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
           </p>
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
           <Details>
-            <p className="mb-1 text-xs text-muted">Tool: {decision.tool}</p>
+            <p className="mb-1 text-xs text-muted">Exactly what it will send ({decision.tool?.replace(/_/g, " ")})</p>
             <Code>{JSON.stringify(decision.args, null, 2)}</Code>
           </Details>
           {destructive ? (
@@ -106,7 +106,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
         <div className="mt-3 space-y-3">
           <h3 className="font-medium">{String(payload.title ?? "A plan")}</h3>
           <Code>{String(payload.plan ?? "")}</Code>
-          <Details label="Show the worker's instructions">
+          <Details label="Show the agent's instructions">
             <Code>{String(payload.worker_prompt ?? "")}</Code>
           </Details>
           <TextArea label="Note (optional)" value={text} onChange={setText} rows={2} hint="Sent with your answer, e.g. what to change." />

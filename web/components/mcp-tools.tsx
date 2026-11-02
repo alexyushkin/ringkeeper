@@ -23,9 +23,9 @@ const RUNS: Record<Level, string> = {
   confirm: "Waits; approving needs the name typed",
 };
 const FROM: Record<McpTool["default_from"], string> = {
-  annotations: "from the server's annotations",
+  annotations: "from what the tool says about itself",
   name: "from its name",
-  default: "no annotations",
+  default: "nothing declared",
   sql: "deleting or changing tables needs the name typed",
   service: "known for this service: by what each call does",
 };
@@ -74,7 +74,7 @@ export function McpTools({ name, onChange }: { name: string; onChange: () => voi
   return (
     <div className="space-y-3 rounded-xl border border-line p-3">
       <p className="text-sm text-muted">
-        Each tool starts from what its server says about it (its MCP annotations): read-only tools run without asking, destructive ones need the connection's name typed to approve, and the rest wait for your approval. With no annotations, a tool whose name sounds like deleting needs the name typed. Change any of them here.
+        Each tool starts from what its server says about it (its MCP annotations): read-only tools run without asking, destructive ones need the connection's name typed to approve, and the rest wait for your approval. With nothing declared, a tool whose name sounds like deleting needs the name typed. Change any of them here.
       </p>
       {tools.loading ? <Loading /> : null}
       {tools.error ? <Alert>{tools.error}</Alert> : null}

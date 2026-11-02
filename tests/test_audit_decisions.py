@@ -104,14 +104,14 @@ def test_hold_and_approve_lifecycle(session: Session) -> None:
 def test_cannot_approve_twice(session: Session) -> None:
     held = decisions.hold(session, call(sql="UPDATE t SET x = 1"), "acme-supabase-prod")
     decisions.claim_for_approval(session, str(held.id))
-    with pytest.raises(RuleViolationError, match="is already approved"):
+    with pytest.raises(RuleViolationError, match="already approved"):
         decisions.claim_for_approval(session, str(held.id))
 
 
 def test_denied_cannot_be_approved(session: Session) -> None:
     held = decisions.hold(session, call(), "acme-supabase-prod")
     decisions.deny(session, str(held.id), reason="too risky")
-    with pytest.raises(RuleViolationError, match="is already denied"):
+    with pytest.raises(RuleViolationError, match="already denied"):
         decisions.claim_for_approval(session, str(held.id))
 
 
@@ -123,7 +123,7 @@ def _age(session: Session, decision_id: object) -> None:
 def test_expired_decision_cannot_be_approved(session: Session) -> None:
     held = decisions.hold(session, call(), "acme-supabase-prod")
     _age(session, held.id)
-    with pytest.raises(RuleViolationError, match=r"expired at .* can no longer be approved"):
+    with pytest.raises(RuleViolationError, match=r"ran out of time"):
         decisions.claim_for_approval(session, str(held.id))
 
 
@@ -147,7 +147,7 @@ def test_lookup_by_prefix(session: Session) -> None:
     assert decisions.get_decision(session, str(held.id)[:8]).id == held.id
     with pytest.raises(NotFoundError, match="8\\+ characters"):
         decisions.get_decision(session, "abc")
-    with pytest.raises(NotFoundError, match="not found"):
+    with pytest.raises(NotFoundError, match="isn't here any more"):
         decisions.get_decision(session, "00000000")
 
 

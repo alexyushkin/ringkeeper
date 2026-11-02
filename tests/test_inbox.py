@@ -102,7 +102,7 @@ def test_question_answer_resumes_the_same_sdk_session() -> None:
 def test_a_question_needs_text_and_a_waiting_task() -> None:
     task_id = task_waiting()
     decision_id = decide(DecisionKind.QUESTION, {"question": "?"}, task_id)
-    with pytest.raises(RuleViolationError, match="text answer"):
+    with pytest.raises(RuleViolationError, match="Type an answer first"):
         answer(decision_id, text="  ")
     with session_scope() as session:
         tasks.request_stop(session, task_id)
@@ -277,7 +277,7 @@ def test_messages_go_into_threads() -> None:
             "hello\nworld",
             "again",
         ]
-        with pytest.raises(RuleViolationError, match="empty"):
+        with pytest.raises(RuleViolationError, match="Type a message first"):
             threads.post_message(session, "  ", author="alice", source="cli")
 
 

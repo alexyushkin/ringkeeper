@@ -38,14 +38,16 @@ def _ids(values: Iterable[str]) -> list[uuid.UUID]:
     try:
         return [uuid.UUID(str(v)) for v in values]
     except ValueError:
-        raise NotFoundError("one of those ids isn't a valid id") from None
+        raise NotFoundError(
+            "Some of those items couldn't be found. Refresh the list and try again."
+        ) from None
 
 
 def _tasks(session: Session, ids: Iterable[str]) -> Sequence[Task]:
     wanted = _ids(ids)
     found = session.scalars(select(Task).where(Task.id.in_(wanted))).all()
     if len(found) != len(set(wanted)):
-        raise NotFoundError("some of those tasks don't exist (any more)")
+        raise NotFoundError("Some of those tasks aren't here any more. Refresh the list.")
     return found
 
 
@@ -53,7 +55,7 @@ def _threads(session: Session, ids: Iterable[str]) -> Sequence[Thread]:
     wanted = _ids(ids)
     found = session.scalars(select(Thread).where(Thread.id.in_(wanted))).all()
     if len(found) != len(set(wanted)):
-        raise NotFoundError("some of those conversations don't exist (any more)")
+        raise NotFoundError("Some of those conversations aren't here any more. Refresh the list.")
     return found
 
 

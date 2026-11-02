@@ -50,7 +50,7 @@ export function Agents({ project, linked }: { project: string; linked: Linked[] 
         An agent works only with the connections you give it, follows its instructions every time, and can run on a routine. In a conversation, ask it by name: “ask the follow-up agent to…”.
       </p>
       {agents.error ? <Alert>{agents.error}</Alert> : null}
-      {agents.data && !agents.data.length && !adding ? <Empty>No agents yet. {AGENTS_AND_ROUTINES}</Empty> : null}
+      {agents.data && !agents.data.length && !adding ? <Empty>No agents yet. {AGENTS_AND_ROUTINES} Add one with the button above.</Empty> : null}
       <div className="space-y-2">
         {(agents.data ?? []).map((agent) => (
           <CompactRow
@@ -160,7 +160,7 @@ export function AgentDirectory() {
         </Button>
       )}
       {list.error ? <Alert>{list.error}</Alert> : null}
-      {list.data && !list.data.length ? <Empty>No agents yet. {AGENTS_AND_ROUTINES}</Empty> : null}
+      {list.data && !list.data.length ? <Empty>No agents yet. {AGENTS_AND_ROUTINES} Add one with the button above.</Empty> : null}
       <div className="space-y-2">
         {(list.data ?? []).map((agent) => (
           <CompactRow
@@ -235,9 +235,9 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
             </label>
           ))
         ) : (
-          <p className="text-sm text-muted">Link connections to the project first; then give some to the agent.</p>
+          <p className="text-sm text-muted">Link connections on the project&apos;s Connections tab first; then give some to the agent.</p>
         )}
-        <p className="text-xs text-muted">Only these: the gateway refuses the project&apos;s other connections to this agent. Shared tools only when ticked.</p>
+        <p className="text-xs text-muted">Only these: Ringkeeper blocks this agent from the project&apos;s other connections. Shared tools only when ticked.</p>
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Model (optional)" value={model} onChange={setModel} placeholder="The project's default" />

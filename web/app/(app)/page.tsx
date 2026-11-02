@@ -24,7 +24,7 @@ interface Thread {
   places: string[];
 }
 
-const SOURCE: Record<string, string> = { web: "app", api: "API", cli: "terminal", telegram: "Telegram" };
+const SOURCE: Record<string, string> = { web: "the app", api: "another app", cli: "the command line", telegram: "Telegram" };
 
 export default function Home() {
   const router = useRouter();
@@ -49,7 +49,7 @@ export default function Home() {
       <BulkBar kind="thread" ids={[...pick.selected]} archivedView={archived} onDone={threads.reload} onClear={pick.clear} />
       {threads.error ? <Alert>{threads.error}</Alert> : null}
       {threads.loading && !threads.data ? <Loading /> : null}
-      {threads.data?.length === 0 ? <Empty>{query || archived ? "Nothing matches." : "Nothing yet. Your requests and their results show up here."}</Empty> : null}
+      {threads.data?.length === 0 ? <Empty>{query || archived ? "Nothing matches. Clear the search, or switch Archived off." : "Nothing yet. Type or say what you need above, and the conversation shows up here."}</Empty> : null}
       <ul className="space-y-2">
         {threads.data?.map((thread) => {
           const running = (thread.tasks.running ?? 0) + (thread.tasks.queued ?? 0);
@@ -71,7 +71,7 @@ export default function Home() {
                   {running ? <Badge tone="accent">{running} working</Badge> : null}
                   {done ? <Badge tone="good">{done} done</Badge> : null}
                   {failed ? <Badge tone="bad">{failed} failed</Badge> : null}
-                  <Badge>from {SOURCE[thread.source] ?? thread.source}</Badge>
+                  <Badge>from {SOURCE[thread.source] ?? "another app"}</Badge>
                   {thread.archived ? <Badge>archived</Badge> : null}
                 </div>
               </Link>

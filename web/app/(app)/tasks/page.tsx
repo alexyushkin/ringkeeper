@@ -40,7 +40,7 @@ export default function TasksPage() {
       <BulkBar kind="task" ids={[...pick.selected]} archivedView={archived} onDone={tasks.reload} onClear={pick.clear} />
       {tasks.error ? <Alert>{tasks.error}</Alert> : null}
       {tasks.loading && !tasks.data ? <Loading /> : null}
-      {tasks.data?.length === 0 ? <Empty>No tasks match.</Empty> : null}
+      {tasks.data?.length === 0 ? <Empty>{query || archived || status ? "No tasks match. Change the status or clear the search." : "No tasks yet. Ask for something on Home and the work shows up here."}</Empty> : null}
       <div className="space-y-2">
         {tasks.data?.map((task) => (
           <div key={task.id} className="flex items-start gap-3">

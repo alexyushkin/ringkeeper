@@ -14,7 +14,35 @@ export class ApiError extends Error {
   }
 }
 
-export const BACKEND_DOWN = "Can't reach Ringkeeper's backend. If it doesn't come back in a few seconds, restart the app.";
+export const BACKEND_DOWN =
+  "Ringkeeper isn't responding. Wait a few seconds. If it doesn't come back, right-click the tray icon, choose Quit, and open Ringkeeper again.";
+
+// A form field's name as the form calls it, for "Address can't be empty".
+const FIELDS: Record<string, string> = {
+  base_url: "The address",
+  name: "The name",
+  secret: "The key",
+  owner: "The client",
+  workspace_path: "The folder",
+  instructions: "The instructions",
+  prompt: "The instructions",
+  body: "The message",
+  password: "The password",
+};
+
+function field(loc: unknown[] | undefined): string {
+  const key = String(loc?.filter((p) => p !== "body" && typeof p === "string").at(-1) ?? "");
+  if (!key) return "Something you entered";
+  return FIELDS[key] ?? `The ${key.replace(/_/g, " ")}`;
+}
+
+function problem(msg: string): string {
+  if (/at least 1 (character|item)/i.test(msg) || /field required/i.test(msg)) return "can't be empty";
+  if (/should match pattern/i.test(msg)) return "has characters that aren't allowed (use letters, digits and dashes)";
+  if (/at most \d+/i.test(msg)) return "is too long";
+  if (/valid (url|integer|number)/i.test(msg)) return "doesn't look right";
+  return `isn't right (${msg.toLowerCase()})`;
+}
 
 function csrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)rk_csrf=([^;]+)/);
@@ -26,16 +54,14 @@ function detail(body: unknown, status: number): string {
     const value = (body as { detail: unknown }).detail;
     if (typeof value === "string") return value;
     if (Array.isArray(value)) {
-      // FastAPI validation errors: "field: message"
-      return value
-        .map((item: { loc?: unknown[]; msg?: string }) =>
-          [item.loc?.filter((p) => p !== "body").join("."), item.msg].filter(Boolean).join(": "),
-        )
-        .join("; ");
+      // FastAPI validation errors: "The address can't be empty."
+      return value.map((item: { loc?: unknown[]; msg?: string }) => `${field(item.loc)} ${problem(item.msg ?? "")}.`).join(" ");
     }
   }
   if (status === 502 || status === 504) return BACKEND_DOWN;
-  return status >= 500 ? "Something went wrong on the server. Try again." : `Request failed (${status})`;
+  if (status >= 500) return "Something went wrong inside Ringkeeper. Try again; if it keeps happening, use Report a problem on the Help page.";
+  console.warn(`Ringkeeper answered ${status}`);
+  return "That didn't work. Refresh the page and try again.";
 }
 
 export interface Options {
@@ -59,7 +85,7 @@ export async function api<T = unknown>(path: string, options: Options = {}): Pro
   // A sensitive change after a while: confirm the password, then try once more.
   if (response.status === 403 && response.headers.get("x-ringkeeper-confirm") === "password" && confirmHandler) {
     if (await confirmHandler()) return read<T>(path, await send(path, options));
-    throw new ApiError(403, "Cancelled: the change needs your password.");
+    throw new ApiError(403, "Cancelled: this change needs your password. Try again and enter it.");
   }
   return read<T>(path, response);
 }

@@ -114,13 +114,16 @@ def test_dry_run_reports_rule_violations(database_url: str, tmp_path: Path) -> N
         },
     )
     error = apply(path, "--dry-run", exit_code=1)
-    assert "binding acme-web -> acme-supabase-prod: instance 'acme-supabase-prod' is prod" in error
+    assert (
+        "binding acme-web -> acme-supabase-prod: acme-supabase-prod is a production connection"
+        in error
+    )
 
 
 def test_binding_unknown_instance(database_url: str, tmp_path: Path) -> None:
     path = write(tmp_path, {"projects": [project("acme-web", {"instance": "ghost"})]})
     error = apply(path, exit_code=1)
-    assert "binding acme-web -> ghost: cannot bind: instance 'ghost' does not exist" in error
+    assert "binding acme-web -> ghost: Couldn't link them: there's no connection ghost" in error
 
 
 def test_failed_apply_writes_nothing(database_url: str, tmp_path: Path, engine: Engine) -> None:

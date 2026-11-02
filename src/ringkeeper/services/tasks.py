@@ -37,6 +37,7 @@ from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, TASKS_CHANNEL, current_user
 from ringkeeper.services.runtime import effective as effective_settings
 from ringkeeper.storage import events as storage_events
+from ringkeeper.wording import task_status
 
 NOTIFY_CHANNEL = TASKS_CHANNEL
 # Not finished, but no container running: stopping just marks them stopped.
@@ -106,14 +107,15 @@ def create_task(
     settings = effective_settings(session, settings)
     record = projects.get_project(session, project)
     if not prompt.strip():
-        raise RuleViolationError("the prompt is empty")
+        raise RuleViolationError("Type what the task should do first.")
     mode = settings.claude_auth_mode
     if budget_usd is not None and mode is not AuthMode.API_KEY:
         raise RuleViolationError(
-            "a USD budget only applies in api_key mode (subscription usage isn't billed per task)"
+            "A spending cap only applies when Claude is connected with an API key "
+            "(Settings > Claude): a subscription isn't billed per task."
         )
     if budget_usd is not None and budget_usd <= 0:
-        raise RuleViolationError("the budget must be more than 0")
+        raise RuleViolationError("The spending cap must be more than $0.")
     if budget_usd is None and mode is AuthMode.API_KEY:
         budget_usd = settings.task_budget_usd  # paused and asked at the cap
     turns = max_turns or settings.default_max_turns
@@ -183,7 +185,7 @@ def get_task(session: Session, ident: str, *, lock: bool = False) -> Task:
         query = query.with_for_update()
     matches = session.scalars(query.limit(2)).all()
     if not matches:
-        raise NotFoundError(f"task '{ident}' not found")
+        raise NotFoundError("That task isn't here any more. Go back to Tasks.")
     if len(matches) > 1:
         raise NotFoundError(f"task prefix '{ident}' is ambiguous; use more characters")
     return matches[0]
@@ -288,15 +290,17 @@ def resume_task(session: Session, settings: Settings, ident: str, prompt: str) -
     """Continue the latest session's SDK conversation with a follow-up prompt."""
     task = get_task(session, ident, lock=True)
     if task.status not in RESUMABLE_STATUSES:
-        raise RuleViolationError(f"task {task.id} is {task.status}; wait for it to finish first")
+        raise RuleViolationError(
+            f"This task is {task_status(task.status)}. Send your follow-up once it's finished."
+        )
     role = latest_session(task).role
     sdk_session = last_sdk_session(task, role)
     if sdk_session is None:
         raise RuleViolationError(
-            f"task {task.id} never started an SDK session, so there's nothing to resume"
+            "This task never got started, so it can't be continued. Start a new task instead."
         )
     if not prompt.strip():
-        raise RuleViolationError("the follow-up prompt is empty")
+        raise RuleViolationError("Type your follow-up first.")
     return add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)
 
 
@@ -331,7 +335,7 @@ def _stop(session: Session, task: Task, by: str) -> bool:
 def request_stop(session: Session, ident: str, by: str | None = None) -> Task:
     task = get_task(session, ident, lock=True)
     if not _stop(session, task, by or current_user()):
-        raise RuleViolationError(f"task {task.id} is already {task.status}")
+        raise RuleViolationError(f"This task is already {task_status(task.status)}.")
     session.flush()
     notify(session)
     return task

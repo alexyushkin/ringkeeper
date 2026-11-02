@@ -114,4 +114,4 @@ def test_cli_issue(database_url: str) -> None:
 def test_cli_issue_unknown_project(database_url: str) -> None:
     result = runner.invoke(app, ["token", "issue", "--project", "ghost"])
     assert result.exit_code == 1
-    assert "project 'ghost' does not exist" in result.stderr
+    assert "There's no project named ghost" in result.stderr

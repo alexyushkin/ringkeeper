@@ -42,6 +42,24 @@ MANIFEST: dict[str, Any] = {
 TEXT_LIMIT = 2900  # a section's text is at most 3000 characters
 
 
+SAID = {
+    "invalid_auth": "Slack didn't accept the bot token. Copy it again from OAuth & Permissions.",
+    "not_authed": "Slack didn't get a token. Paste the bot token again.",
+    "token_revoked": "That Slack token was revoked. Make a new one and paste it again.",
+    "channel_not_found": "Slack can't find that channel. Invite the bot to it, then try again.",
+    "not_in_channel": "The bot isn't in that channel. Invite it there, then try again.",
+    "missing_scope": (
+        "The Slack app is missing a permission. Paste the manifest from Settings again and "
+        "reinstall the app."
+    ),
+}
+
+
+def said(code: str) -> str:
+    """Slack's error code, as what to do."""
+    return SAID.get(code, f"Slack said: {code}. Check the app's tokens, then try again.")
+
+
 class SlackApi:
     def __init__(self, bot_token: str, app_token: str, base_url: str) -> None:
         scrub.register(bot_token)
@@ -61,10 +79,12 @@ class SlackApi:
         try:
             response = self._http.post(method, json=body, headers=headers)
             data = cast(dict[str, Any], response.json())
-        except (httpx2.HTTPError, ValueError) as error:
-            raise ChannelError(f"Couldn't reach Slack ({type(error).__name__}).") from None
+        except (httpx2.HTTPError, ValueError):
+            raise ChannelError(
+                "Couldn't reach Slack. Check this computer is online, then try again."
+            ) from None
         if not data.get("ok"):
-            raise ChannelError(f"Slack said: {data.get('error') or response.status_code}")
+            raise ChannelError(said(str(data.get("error") or response.status_code)))
         return data
 
     # --- Setup ---

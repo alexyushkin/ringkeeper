@@ -83,7 +83,7 @@ def test_rebinding_updates(seeded: None) -> None:
 def test_remove_bound_instance_needs_force(seeded: None) -> None:
     ok("bind", "acme-web", "acme-supabase-dev")
     error = fails("instance", "remove", "acme-supabase-dev")
-    assert "instance 'acme-supabase-dev' is still bound to: acme-web" in error
+    assert "acme-supabase-dev is still linked to acme-web" in error
     assert "--force" in error
     assert "unbound from acme-web" in ok("instance", "remove", "acme-supabase-dev", "--force")
     assert "acme-supabase-dev" not in ok("instance", "list")
@@ -91,7 +91,7 @@ def test_remove_bound_instance_needs_force(seeded: None) -> None:
 
 def test_prod_cannot_be_default(seeded: None) -> None:
     error = fails("bind", "acme-web", "acme-supabase-prod", "--default")
-    assert "is prod and cannot be a default" in error
+    assert "is a production connection" in error
 
 
 def test_second_default_rejected(seeded: None) -> None:
@@ -101,12 +101,12 @@ def test_second_default_rejected(seeded: None) -> None:
     )  # fmt: skip
     ok("bind", "acme-web", "acme-supabase-dev", "--default")
     error = fails("bind", "acme-web", "acme-supabase-staging", "--default")
-    assert "already has a default supabase instance: 'acme-supabase-dev'" in error
+    assert "already uses acme-supabase-dev as its default" in error
 
 
 def test_bind_missing_names(database_url: str) -> None:
     error = fails("bind", "ghost", "nope")
-    assert "error: cannot bind: project 'ghost' and instance 'nope' do not exist" in error
+    assert "there's no project ghost and no connection nope" in error
 
 
 def test_secret_value_is_rejected_and_not_echoed(database_url: str) -> None:
@@ -126,8 +126,8 @@ def test_invalid_slug(database_url: str) -> None:
 
 
 def test_show_missing(database_url: str) -> None:
-    assert "error: project 'ghost' does not exist" in fails("project", "show", "ghost")
-    assert "error: instance 'ghost' does not exist" in fails("instance", "show", "ghost")
+    assert "error: There's no project named ghost" in fails("project", "show", "ghost")
+    assert "error: There's no connection named ghost" in fails("instance", "show", "ghost")
 
 
 def test_unreachable_database_hides_password(monkeypatch: pytest.MonkeyPatch) -> None:

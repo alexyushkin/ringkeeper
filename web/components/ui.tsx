@@ -42,7 +42,7 @@ const STATUS: Record<string, [Tone, string]> = {
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  const [tone, label] = STATUS[status] ?? ["neutral", status];
+  const [tone, label] = STATUS[status] ?? ["neutral", "Other"];
   return <Badge tone={tone}>{label}</Badge>;
 }
 
@@ -96,17 +96,23 @@ export function ConfirmButton({
 }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!asking) {
     return (
-      <Button kind={kind} onClick={() => setAsking(true)}>
-        {children}
-      </Button>
+      <span className="inline-flex flex-col gap-2">
+        <Button kind={kind} onClick={() => { setError(null); setAsking(true); }}>
+          {children}
+        </Button>
+        {error ? <Alert>Couldn&apos;t do that: {error}</Alert> : null}
+      </span>
     );
   }
   async function go() {
     setBusy(true);
     try {
       await onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
       setAsking(false);

@@ -134,7 +134,10 @@ def test_two_projects_two_tokens_never_cross(
         call("globex-app", "list_issues", "acme-gh")
     with pytest.raises(RefusalError, match="whole GitHub account"):
         call("acme-web", "list_repos", "acme-gh")
-    with session_scope() as session, pytest.raises(RuleViolationError, match="one client's"):
+    with (
+        session_scope() as session,
+        pytest.raises(RuleViolationError, match="only be used by that client's projects"),
+    ):
         bindings.check_same_client(session, "globex-app", "acme-gh")
 
     # Your own token works in both clients' projects (unpinned: any repo it can reach).

@@ -48,7 +48,7 @@ class BodyLimit:
             return
         declared = dict(scope["headers"]).get(b"content-length")
         if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY_BYTES):
-            response = JSONResponse(status_code=413, content={"detail": "the request is too big"})
+            response = JSONResponse(status_code=413, content={"detail": TOO_BIG})
             await response(scope, receive, send)
             return
         seen = 0
@@ -59,10 +59,13 @@ class BodyLimit:
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
                 if seen > MAX_BODY_BYTES:
-                    raise HTTPException(413, detail="the request is too big")
+                    raise HTTPException(413, detail=TOO_BIG)
             return message
 
         await self.app(scope, limited, send)
+
+
+TOO_BIG = "That's too much to send at once. Shorten it, or send a smaller file."
 
 
 async def _invalid(_request: Request, error: Exception) -> JSONResponse:

@@ -274,7 +274,10 @@ def test_an_architect_that_ends_without_a_step_fails_the_task() -> None:
     run(manager)
     task = load(task_id)
     assert task.status is TaskStatus.FAILED
-    assert task.error == "the architect ended its turn without calling submit_plan"
+    assert (
+        task.error
+        == "The planning step stopped early (it didn't call submit_plan). Send a follow-up to continue, or start the task again."  # noqa: E501
+    )
 
 
 def test_steps_out_of_phase_are_refused() -> None:

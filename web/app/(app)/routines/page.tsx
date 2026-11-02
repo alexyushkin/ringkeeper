@@ -20,6 +20,7 @@ export default function RoutinesPage() {
   const paused = settings.data?.values.routines_paused ?? false;
   // ?new=1: the command palette's New routine.
   const [adding, setAdding] = useState(false);
+  const [failed, setFailed] = useState(false);
   useEffect(() => setAdding(new URLSearchParams(window.location.search).has("new")), []);
   return (
     <>
@@ -44,11 +45,12 @@ export default function RoutinesPage() {
         <Toggle
           label="Pause all routines"
           checked={paused}
-          onChange={(on) => void api("settings", { method: "PATCH", json: { routines_paused: on } }).then(settings.reload)}
+          onChange={(on) => void api("settings", { method: "PATCH", json: { routines_paused: on } }).then(settings.reload, () => setFailed(true))}
           hint={paused ? "No routine runs on its own until you turn this off (Test run and Run now still work)." : "Also in the tray. “Stop everything” (Settings) stops all work, not only routines."}
         />
       </Card>
-      {settings.data?.values.paused ? <Alert>Everything is stopped (Settings): routines don&apos;t run either.</Alert> : null}
+      {failed ? <Alert>Couldn&apos;t change that. Try again in a moment.</Alert> : null}
+      {settings.data?.values.paused ? <Alert>Everything is stopped, so routines don&apos;t run either. Press Resume in Settings to start again.</Alert> : null}
       <RoutineList project={scope.project || undefined} client={scope.client || undefined} />
     </>
   );

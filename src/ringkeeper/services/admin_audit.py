@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ringkeeper.models import AuditEvent, AuditOutcome
 from ringkeeper.scrub import scrub_obj
 from ringkeeper.services.audit import safe_text
+from ringkeeper.wording import person
 
 
 def record(
@@ -29,7 +30,7 @@ def record(
         instance=instance,
         tool=action,
         outcome=AuditOutcome.CHANGED,
-        reason=safe_text(f"{reason} (by {by})"),
+        reason=safe_text(f"{reason} (by {person(by)})"),
         args=scrub_obj({"by": by, **(details or {})}),
     )
     session.add(event)

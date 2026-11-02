@@ -52,8 +52,13 @@ export function TelegramPairing({ onDone, onSkip }: { onDone: () => void; onSkip
   }
 
   async function choose(chat: Chat) {
-    await api("settings", { method: "PATCH", json: { telegram: true, telegram_chat_ids: [chat.id] } });
-    onDone();
+    setError(null);
+    try {
+      await api("settings", { method: "PATCH", json: { telegram: true, telegram_chat_ids: [chat.id] } });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   return bot ? (

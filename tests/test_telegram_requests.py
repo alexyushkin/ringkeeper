@@ -72,9 +72,7 @@ def test_a_typed_request_goes_to_the_router(bridge: Bridge, telegram: FakeTelegr
     assert message.routed_at is None  # queued for the router
     with session_scope() as session:
         assert session.get_one(Thread, message.thread_id).source == "telegram"
-    assert telegram.sent[-1]["text"] == (
-        f"Got it. Routing it now (thread {str(message.thread_id)[:8]})."
-    )
+    assert telegram.sent[-1]["text"] == ("Got it. Working out which project it's for…")
 
 
 def test_a_voice_request_is_confirmed_first(
@@ -92,9 +90,7 @@ def test_a_voice_request_is_confirmed_first(
     assert (message.body, message.source, message.input) == (HEARD, "telegram", "voice")
     assert telegram.callbacks[-1]["text"] == "Sent"
     [edit] = [e for e in telegram.edits if e["message_id"] == sent["message_id"]]
-    assert edit["text"] == (
-        f"I heard: {HEARD}\n✔ Sent. Routing it now (thread {str(message.thread_id)[:8]})."
-    )
+    assert edit["text"] == (f"I heard: {HEARD}\n✔ Sent. Working out which project it's for…")
     with session_scope() as session:
         row = session.scalars(select(VoiceConfirmation)).one()
         assert (row.kind, row.status, row.transcript) == ("request", "confirmed", None)
@@ -157,13 +153,10 @@ def test_notices_say_what_the_router_did_and_when_tasks_end(
     model = FakeModel([output(routed("acme-web", kind="content", prompt=secret_prompt))])
     route_next(get_settings(), model)
     with session_scope() as session:
-        task = session.scalars(select(Task)).one()
-        task_id, thread = str(task.id), str(task.thread_id)[:8]
+        session.scalars(select(Task)).one()  # one task was made
 
     assert bridge.send_notices() == 1
-    assert telegram.sent[-1]["text"] == (
-        f"Request {thread}:\n→ acme-web: task {task_id[:8]} (content)"
-    )
+    assert telegram.sent[-1]["text"] == ("Your request:\n→ acme-web: started")
     assert "invoice" not in telegram.sent[-1]["text"]  # never the worker prompt
     assert bridge.send_notices() == 0  # once only
     with session_scope() as session:
@@ -171,7 +164,7 @@ def test_notices_say_what_the_router_did_and_when_tasks_end(
             update(Task).values(status=TaskStatus.SUCCEEDED, finished_at=datetime.now(UTC))
         )
     assert bridge.send_notices() == 1
-    assert telegram.sent[-1]["text"] == f"✔ acme-web · task {task_id[:8]} succeeded"
+    assert telegram.sent[-1]["text"] == "✔ acme-web: done"
     assert bridge.send_notices() == 0
 
 
@@ -253,6 +246,6 @@ def test_a_routine_set_to_send_a_summary_sends_it_once(
         started.task.summary = "3 new leads; nothing failed."
     assert bridge.send_new() == 1
     assert telegram.sent[-1]["text"] == (
-        "✔ Routine Morning digest · acme-web · succeeded\n3 new leads; nothing failed."
+        "✔ Routine Morning digest · acme-web: done\n3 new leads; nothing failed."
     )
     assert bridge.send_new() == 0

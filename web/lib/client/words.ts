@@ -26,7 +26,7 @@ export const SERVICE: Record<string, string> = {
   twilio: "Twilio",
   gmail: "Gmail",
   github: "GitHub",
-  mcp: "MCP server",
+  mcp: "Add-on tool (MCP)",
 };
 
 export const ENVS: [string, string][] = [

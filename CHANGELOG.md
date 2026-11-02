@@ -25,6 +25,14 @@ publishes it as the release notes and the app shows it with the update.
   it, or see it again from Help. A "?" beside Connections, Agents, Routines,
   Settings › Google app and Notifications says what each is for and links to
   the guide.
+- **Plain words everywhere.** Errors say what happened and what to do next,
+  without internal IDs, command-line flags or developer words (the
+  connection's and client's names instead). Telegram, Slack and Discord
+  messages lose their short IDs and raw statuses ("✖ acme-web: stopped at its
+  spending cap", "Approved by alex (Slack)"). Approvals name the action
+  ("Changing Airtable records on acme-crm"). Empty pages say what goes there
+  and how to add the first one. Errors that used to vanish (a failed remove,
+  a failed toggle) now show.
 - **Agents in the sidebar.** An Agents page lists every project's agents,
   narrowed by the client and project switcher, with New agent (it asks which
   project first). The Routines page has New routine: pick the project, then

@@ -7,6 +7,7 @@ from ringkeeper.schemas import BindingIn
 from ringkeeper.services import clients
 from ringkeeper.services.instances import excluded, find_instance
 from ringkeeper.services.projects import find_project, get_project
+from ringkeeper.wording import service
 
 
 def _resolve(session: Session, project_name: str, instance_name: str) -> tuple[Project, Instance]:
@@ -14,12 +15,13 @@ def _resolve(session: Session, project_name: str, instance_name: str) -> tuple[P
     instance = find_instance(session, instance_name)
     missing: list[str] = []
     if project is None:
-        missing.append(f"project '{project_name}'")
+        missing.append(f"no project {project_name}")
     if instance is None:
-        missing.append(f"instance '{instance_name}'")
+        missing.append(f"no connection {instance_name}")
     if project is None or instance is None:
-        verb = "does" if len(missing) == 1 else "do"
-        raise NotFoundError(f"cannot bind: {' and '.join(missing)} {verb} not exist")
+        raise NotFoundError(
+            f"Couldn't link them: there's {' and '.join(missing)}. Refresh the page and try again."
+        )
     return project, instance
 
 
@@ -34,9 +36,12 @@ def check_same_client(session: Session, project_name: str, instance_name: str) -
     may still link across owners, where an owner is a team.)"""
     project, instance = _resolve(session, project_name, instance_name)
     if not instance.shared and not same_client(project.owner, instance.owner):
+        names = clients.names(session)
         raise RuleViolationError(
-            f"'{instance.name}' is {instance.owner}'s connection and '{project.name}' is "
-            f"{project.owner}'s project. A connection is shared only among one client's projects."
+            f"{instance.name} belongs to {names.get(instance.owner, instance.owner)} and "
+            f"{project.name} belongs to {names.get(project.owner, project.owner)}. A client's "
+            "connection can only be used by that client's projects. To use it for several "
+            "clients, make it a shared tool (only for tools that hold no client's data)."
         )
 
 
@@ -47,8 +52,8 @@ def find_binding(project: Project, instance: Instance) -> ProjectInstance | None
 def check_default_allowed(project: Project, instance: Instance) -> None:
     if instance.env == Env.PROD:
         raise RuleViolationError(
-            f"instance '{instance.name}' is prod and cannot be a default for '{project.name}': "
-            "prod writes must name the instance explicitly. Bind it without --default."
+            f"{instance.name} is a production connection, so it can't be {project.name}'s "
+            "default: each change to it must name it. Link it without Default."
         )
     for binding in project.bindings:
         if (
@@ -57,8 +62,9 @@ def check_default_allowed(project: Project, instance: Instance) -> None:
             and binding.instance_id != instance.id
         ):
             raise RuleViolationError(
-                f"project '{project.name}' already has a default {instance.type} instance: "
-                f"'{binding.instance.name}'. Rebind it without --default first."
+                f"{project.name} already uses {binding.instance.name} as its default "
+                f"{service(instance.type)} connection. Turn off Default on "
+                f"{binding.instance.name} first, or link this one without it."
             )
 
 
@@ -100,7 +106,9 @@ def remove_binding(session: Session, project_name: str, instance_name: str) -> N
     instance = find_instance(session, instance_name)
     binding = None if instance is None else find_binding(project, instance)
     if binding is None:
-        raise NotFoundError(f"instance '{instance_name}' is not bound to project '{project_name}'")
+        raise NotFoundError(
+            f"{instance_name} isn't linked to {project_name} any more. Refresh the page."
+        )
     project.bindings.remove(binding)
     session.flush()
 

@@ -167,13 +167,13 @@ def test_run_rejects_budget_in_subscription_mode(
     monkeypatch.setenv("RINGKEEPER_CLAUDE_AUTH_MODE", "subscription")
     result = cli("task", "run", "--project", "acme-web", "--budget", "1", "--detach", "x")
     assert result.exit_code == 1
-    assert "only applies in api_key mode" in result.stderr
+    assert "only applies when Claude is connected with an API key" in result.stderr
 
 
 def test_run_unknown_project(database_url: str) -> None:
     result = cli("task", "run", "--project", "ghost", "--detach", "x")
     assert result.exit_code == 1
-    assert "project 'ghost' does not exist" in result.stderr
+    assert "There's no project named ghost" in result.stderr
 
 
 def test_render_event_skips_noise() -> None:

@@ -116,7 +116,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <button
               type="button"
               className="rounded-lg bg-white/20 px-3 py-1 font-medium"
-              onClick={() => api("resume-all", { method: "POST" }).then(settings.reload)}
+              onClick={() => api("resume-all", { method: "POST" }).then(settings.reload, () => window.alert("Couldn't resume. Try again in a moment, or use Resume in Settings."))}
             >
               Resume
             </button>

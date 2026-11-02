@@ -77,7 +77,7 @@ export function ClaudeDesktopImport({ onImported, quiet = false, bare = false }:
       {found.data && !found.data.config ? (
         <p className="text-sm text-muted">Claude Desktop&apos;s settings aren&apos;t on this computer.</p>
       ) : servers.length === 0 ? (
-        <p className="text-sm text-muted">Claude Desktop has no MCP servers set up.</p>
+        <p className="text-sm text-muted">Claude Desktop has no tools set up, so there's nothing to import. Add one with Add a connection.</p>
       ) : (
         <>
           <p className="text-sm text-muted">

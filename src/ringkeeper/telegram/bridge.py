@@ -61,6 +61,7 @@ from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.voice import VoiceError, VoiceNote, vocabulary
 from ringkeeper.voice import transcribe as transcribe_voice
+from ringkeeper.wording import decision_status, person, task_status
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +75,8 @@ HEARD_CHARS = 3500  # Telegram caps a message at 4096 characters
 # sent -> running (an approved held write the gateway hasn't run yet) -> closed
 SENT, RUNNING, CLOSED, FAILED = "sent", "running", "closed", "failed"
 KIND_LABELS = {
-    DecisionKind.ROUTE: "Route",
-    DecisionKind.APPROVE: "Prod write",
+    DecisionKind.ROUTE: "Which project?",
+    DecisionKind.APPROVE: "Approval",
     DecisionKind.PLAN: "Plan",
     DecisionKind.QUESTION: "Question",
 }
@@ -85,8 +86,8 @@ WELCOME = (
     "press a button, or reply to a question."
 )
 REQUESTS_OFF = (
-    "Requests from Telegram are turned off on this install. Turn on "
-    "RINGKEEPER_TELEGRAM_REQUESTS to send requests here, or use the Ringkeeper app."
+    "Requests from Telegram are off. To send requests here, turn on Accept new "
+    "requests from Telegram in Ringkeeper (Settings > Notifications), or use the app."
 )
 TEXT_OR_VOICE = "Reply to the question with text or a voice note."
 TEXT_OR_VOICE_REQUEST = "Send a request as a text message or a voice note."
@@ -107,13 +108,13 @@ def render(decision: Decision, settings: Settings) -> str:
     shown = telegram_text.body(
         decision, settings.telegram_summary_chars, settings.telegram_question_chars
     )
-    lines = [" · ".join(head), shown.text, f"id {str(decision.id)[:8]}"]
+    lines = [" · ".join(head), shown.text]
     if shown.cut:
         lines.append(telegram_text.SHORTENED)
     if decision.kind is DecisionKind.QUESTION:
         lines.append("Reply to this message with your answer.")
     if why := inbox.destructive_reason(decision):
-        lines.append(f"This write {why}: approve it in the Ringkeeper app. You can deny it here.")
+        lines.append(f"This change {why}, so approve it in the Ringkeeper app. Deny works here.")
     return scrub("\n".join(lines))
 
 
@@ -131,32 +132,39 @@ def keyboard(decision: Decision) -> dict[str, Any]:
 
 
 def outcome_line(decision: Decision) -> str:
-    who = decision.decided_by or (decision.answer or {}).get("by") or "someone"
+    who = person(decision.decided_by or (decision.answer or {}).get("by"))
     choice = (decision.answer or {}).get("choice")
     match decision.status:
         case DecisionStatus.PENDING:
-            return f"⏳ approved by {who}; running"
+            return f"⏳ Approved by {who}. Running now."
         case DecisionStatus.EXPIRED:
-            return "⌛ expired"
+            return "⌛ Ran out of time, so nothing was changed."
+        case DecisionStatus.DENIED:
+            return f"✖ Denied by {who}."
+        case DecisionStatus.FAILED:
+            return f"✖ Approved by {who}, but it failed. Open Ringkeeper to see why."
         case DecisionStatus.ANSWERED if choice:
-            return f"✔ {choice} (by {who})"
+            return f"✔ Answered by {who}: {BUTTON_LABELS.get(choice, choice)}"
         case _:
-            return f"✔ {decision.status} (by {who})"
+            return f"✔ {decision_status(decision.status).capitalize()} by {who}."
 
 
 def routed_text(session: Session, message: Message, limit: int) -> str:
     """Projects, task ids and kinds only: never the worker prompt or outcome."""
-    head = f"Request {str(message.thread_id)[:8]}"
+    head = "Your request"
     if message.route_error:
-        return f"{head}: I couldn't route it."
+        return (
+            "I couldn't tell which project your request is for. Send it again and name "
+            "the project, or open Ringkeeper."
+        )
     routing = message.routing or {}
     lines: list[str] = []
     for ident in routing.get("tasks", []):
         task = session.get(Task, ident)
         if task is not None:
-            lines.append(f"→ {task.project}: task {ident[:8]} ({task.kind or 'task'})")
-    for ident in routing.get("decisions", []):
-        lines.append(f"? which project: decision {ident[:8]}, sent separately")
+            lines.append(f"→ {task.project}: started")
+    for _ident in routing.get("decisions", []):
+        lines.append("? I need to know which project. I've sent that question separately.")
     if not lines:
         # The router answered instead of making tasks: meant to be read, so it gets
         # the room a question gets, with the same rules (no SQL or code).
@@ -170,7 +178,7 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
 
 def finished_text(task: Task) -> str:
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
-    return f"{mark} {task.project} · task {str(task.id)[:8]} {task.status}"
+    return f"{mark} {task.project}: {task_status(task.status)}"
 
 
 def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
@@ -179,7 +187,7 @@ def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
     summary = (task.summary or task.error or "").strip()
     if len(summary) > limit:
         summary = summary[: limit - 1] + "…"
-    head = f"{mark} Routine {routine.name} · {task.project} · {task.status}"
+    head = f"{mark} Routine {routine.name} · {task.project}: {task_status(task.status)}"
     return f"{head}\n{summary}" if summary else head
 
 
@@ -351,7 +359,7 @@ class Bridge:
                 answered = inbox.answer(
                     session, self.settings, ident, reply, by=_who(user), via=inbox.Via.TELEGRAM
                 )
-                return f"Done: {answered.decision.kind} {answered.decision.status}"
+                return f"Done: {decision_status(answered.decision.status)}."
         except RingkeeperError as error:
             return f"Not done: {error}"
 
@@ -362,7 +370,7 @@ class Bridge:
         parts = str(callback.get("data", "")).split(":")
         user = cast(dict[str, Any], callback.get("from") or {})
         chat_id = int(cast(dict[str, Any], message["chat"])["id"])
-        feedback = "Unknown button"
+        feedback = "This button no longer works. Open Ringkeeper to answer."
         if not _person(user):
             feedback = NOT_A_PERSON
         elif len(parts) == 3 and parts[0] == CALLBACK_PREFIX:
@@ -383,7 +391,7 @@ class Bridge:
                 options = inbox.options(decision) if decision is not None else []
             choice = options[int(index)]
         except (ValueError, IndexError):
-            return "This button is out of date"
+            return "This button no longer works. Open Ringkeeper to answer."
         return self._answer(ident, inbox.Answer(choice=choice), user)
 
     def _on_message(self, message: dict[str, Any]) -> None:
@@ -470,23 +478,22 @@ class Bridge:
         with session_scope() as session:
             decision = session.get(Decision, decision_id)
             if decision is None:
-                return "Not done: that question is gone"
+                return "That question was removed, so there's nothing to answer."
             if decision.status is not DecisionStatus.PENDING:
-                return f"Not done: that question is already {decision.status}"
+                return "That question was already answered."
             return None
 
     def _request(self, body: str, user: dict[str, Any], input_kind: str, chat_id: int) -> str:
         """Post a request for the router, the same path as `ringkeeper ask`."""
         try:
             with session_scope() as session:
-                message = threads.post_message(
+                threads.post_message(
                     session, body, author=_who(user), source=CHANNEL, input_kind=input_kind,
                     origin_chat_id=chat_id,
                 )  # fmt: skip
-                thread = str(message.thread_id)[:8]
         except RingkeeperError as error:
             return f"Not sent: {error}"
-        return f"Got it. Routing it now (thread {thread})."
+        return "Got it. Working out which project it's for…"
 
     def _hear(
         self, chat_id: int, user: dict[str, Any], note: VoiceNote, decision_id: str | None
@@ -523,9 +530,7 @@ class Bridge:
             {"text": "✅ Confirm", "callback_data": f"{CONFIRM_PREFIX}:{ident}:{CONFIRM}"},
             {"text": "🔁 Redo", "callback_data": f"{CONFIRM_PREFIX}:{ident}:{REDO}"},
         ]
-        question = (
-            f"Answer question {decision_id[:8]} with this?" if decision_id else "Send this request?"
-        )
+        question = "Send this as your answer?" if decision_id else "Send this request?"
         text = heard(transcript, question)
         try:
             sent = self.api.send_message(chat_id, text, {"inline_keyboard": [buttons]})
@@ -540,16 +545,16 @@ class Bridge:
         try:
             uuid.UUID(ident)
         except ValueError:
-            return "This button is out of date"
+            return "This button no longer works. Open Ringkeeper to answer."
         try:
             with session_scope() as session:
                 row = session.get(VoiceConfirmation, ident, with_for_update=True)
                 if row is None or row.chat_id != chat_id or action not in (CONFIRM, REDO):
-                    return "This button is out of date"
+                    return "This button no longer works. Open Ringkeeper to answer."
                 if row.user_id != user.get("id"):
                     return "Only the person who sent the voice note can confirm it"
                 if row.status != "pending":
-                    return f"Already {row.status}"
+                    return "That was already handled."
                 transcript, external_id = row.transcript or "", row.external_id
                 if row.expires_at <= datetime.now(UTC):
                     _close_confirmation(row, "expired")
@@ -564,13 +569,12 @@ class Bridge:
                     )
                     feedback = "Send it again"
                 elif row.kind == REQUEST:
-                    message = threads.post_message(
+                    threads.post_message(
                         session, transcript, author=row.author, source=CHANNEL,
                         input_kind="voice", origin_chat_id=row.chat_id,
                     )  # fmt: skip
                     _close_confirmation(row, "confirmed")
-                    thread = str(message.thread_id)[:8]
-                    outcome = f"✔ Sent. Routing it now (thread {thread})."
+                    outcome = "✔ Sent. Working out which project it's for…"
                     feedback = "Sent"
                 else:
                     reply = inbox.Answer(text=transcript, voice=True)
@@ -580,7 +584,7 @@ class Bridge:
                     )  # fmt: skip
                     _close_confirmation(row, "confirmed")
                     outcome = "✔ Confirmed"
-                    feedback = f"Done: {answered.decision.kind} {answered.decision.status}"
+                    feedback = f"Done: {decision_status(answered.decision.status)}."
         except RingkeeperError as error:
             return f"Not done: {error}"
         text = EXPIRED if outcome == EXPIRED else f"{heard(transcript)}\n{outcome}"

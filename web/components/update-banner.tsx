@@ -127,7 +127,7 @@ export function UpdatesCard() {
       </div>
     );
   } else if (last?.result === "failed") {
-    result = <Alert>{last.error ?? "The update check failed."}</Alert>;
+    result = <Alert>Ringkeeper couldn&apos;t check for updates. Check your internet connection and press Check for updates again.</Alert>;
   } else if (last?.result === "current") {
     result = <Alert tone="good">You&apos;re up to date.</Alert>;
   }

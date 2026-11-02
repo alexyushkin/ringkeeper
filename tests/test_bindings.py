@@ -26,7 +26,7 @@ def test_second_default_of_same_type_is_rejected(session: Session) -> None:
     make_instance(session, "acme-supabase-staging", env=Env.STAGING)
     bind(session, "acme-web", "acme-supabase-dev", is_default=True)
 
-    with pytest.raises(RuleViolationError, match="already has a default supabase instance"):
+    with pytest.raises(RuleViolationError, match="already uses acme-supabase-dev as its default"):
         bind(session, "acme-web", "acme-supabase-staging", is_default=True)
 
 
@@ -97,7 +97,7 @@ def test_prod_instance_can_be_bound(session: Session) -> None:
 def test_prod_instance_cannot_be_default(session: Session) -> None:
     make_project(session)
     make_instance(session, "acme-supabase-prod", env=Env.PROD)
-    with pytest.raises(RuleViolationError, match="is prod and cannot be a default"):
+    with pytest.raises(RuleViolationError, match="is a production connection"):
         bind(session, "acme-web", "acme-supabase-prod", is_default=True)
 
 
@@ -114,7 +114,7 @@ def test_default_instance_cannot_be_changed_to_prod(session: Session) -> None:
             "owner": "acme",
         }
     )
-    with pytest.raises(RuleViolationError, match="cannot make instance 'acme-supabase-dev' prod"):
+    with pytest.raises(RuleViolationError, match="a production connection can't be a default"):
         instances.update_instance(session, data)
 
 
@@ -157,19 +157,20 @@ def test_database_rejects_promoting_a_default_to_prod(session: Session) -> None:
 
 def test_binding_missing_project(session: Session) -> None:
     make_instance(session, "acme-supabase-dev")
-    with pytest.raises(NotFoundError, match=r"^cannot bind: project 'nope' does not exist$"):
+    with pytest.raises(NotFoundError, match=r"^Couldn't link them: there's no project nope\."):
         bind(session, "nope", "acme-supabase-dev")
 
 
 def test_binding_missing_instance(session: Session) -> None:
     make_project(session)
-    with pytest.raises(NotFoundError, match=r"^cannot bind: instance 'nope' does not exist$"):
+    with pytest.raises(NotFoundError, match=r"^Couldn't link them: there's no connection nope\."):
         bind(session, "acme-web", "nope")
 
 
 def test_binding_both_missing(session: Session) -> None:
     with pytest.raises(
-        NotFoundError, match=r"^cannot bind: project 'ghost' and instance 'nope' do not exist$"
+        NotFoundError,
+        match=r"^Couldn't link them: there's no project ghost and no connection nope\.",
     ):
         bind(session, "ghost", "nope")
 
@@ -204,5 +205,5 @@ def test_unbind(session: Session) -> None:
 def test_unbind_when_not_bound(session: Session) -> None:
     make_project(session)
     make_instance(session, "acme-supabase-dev")
-    with pytest.raises(NotFoundError, match="is not bound to project 'acme-web'"):
+    with pytest.raises(NotFoundError, match="isn't linked to acme-web"):
         bindings.remove_binding(session, "acme-web", "acme-supabase-dev")

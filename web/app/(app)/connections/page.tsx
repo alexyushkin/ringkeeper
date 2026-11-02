@@ -60,7 +60,19 @@ export default function ConnectionsPage() {
       <Section id="shared" title="Your shared tools" summary={sharedSummary} action={<LinkButton href="/connections/new?kind=shared">Add a shared tool</LinkButton>}>
         <SharedTools />
       </Section>
-      {connections.data && !shown.length ? <Empty>{all.some((c) => !c.shared) ? "Nothing matches." : "No client connections yet."}</Empty> : null}
+      {connections.data && !shown.length ? <Empty>
+          {all.some((c) => !c.shared) ? (
+            "Nothing matches. Set the filters back to Any."
+          ) : (
+            <>
+              No client connections yet. A connection is a client&apos;s service, like their database or Airtable.{" "}
+              <Link href="/connections/new" className="text-accent underline">
+                Add one
+              </Link>
+              .
+            </>
+          )}
+        </Empty> : null}
       {clients.map((client) => (
         <Section
           key={client}

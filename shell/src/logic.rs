@@ -164,7 +164,8 @@ pub fn failure_words(failure: &UpdateFailure) -> String {
         UpdateFailure::Unreadable => {
             "The update server's answer couldn't be read. Try again later.".into()
         }
-        UpdateFailure::Other(error) => format!("The update check failed: {error}"),
+        // The details go to the log (main.rs), not to the window.
+        UpdateFailure::Other(_) => "Ringkeeper couldn't check for updates. Try again later from Settings › About.".into(),
     }
 }
 
@@ -454,10 +455,9 @@ mod tests {
     fn a_failed_check_says_what_to_do() {
         assert!(failure_words(&UpdateFailure::Offline).contains("online"));
         assert!(failure_words(&UpdateFailure::Signature).contains("signature couldn't be verified"));
-        assert_eq!(
-            failure_words(&UpdateFailure::Other("disk full".into())),
-            "The update check failed: disk full"
-        );
+        let other = failure_words(&UpdateFailure::Other("disk full".into()));
+        assert!(other.contains("Try again later"));
+        assert!(!other.contains("disk full"));
     }
 
     #[test]
