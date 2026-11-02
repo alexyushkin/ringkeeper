@@ -3,6 +3,16 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Undo you can count on.** An approval says "you can revert this" only after
+  checking: the table has a primary key, the Airtable records and the n8n
+  workflow can be read. Otherwise it says why it can't be undone, before you
+  approve.
+- **Mac (Apple Silicon), experimental.** The install guide now covers the Mac
+  build: unsigned and not yet tested on a real Mac, so macOS asks you to allow
+  it once (System Settings › Privacy & Security › Open Anyway). Reports welcome.
+
 ## 0.1.0-beta.11 (2026-11-02)
 
 - **Undo for data changes.** Before an approved or auto-run change to a

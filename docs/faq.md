@@ -7,8 +7,10 @@
 no account and no server of ours. See [Security](security.md) for what leaves
 your computer, and where it goes.
 
-**Mac or Linux?** The desktop app is Windows 10 and 11 for now. On other
-systems, the [server install](install-server.md) runs in Docker.
+**Mac or Linux?** The desktop app is made for Windows 10 and 11. For Apple
+Silicon Macs there's an experimental build: unsigned, not yet tested on a real
+Mac, reports welcome ([how to install it](install-desktop.md#mac-apple-silicon-experimental)).
+On Linux, the [server install](install-server.md) runs in Docker.
 
 **Why does Windows warn about the installer?** The beta isn't code-signed yet.
 Click **More info › Run anyway**.
