@@ -1,7 +1,10 @@
 # Troubleshooting
 
-If something here doesn't fix it, use **Report a problem** on the app's Help
-page.
+If something here doesn't fix it, use **Help › Report a problem** in the app
+(or Ctrl+K, "report"). It gathers the version and the end of the logs, removes
+keys, tokens, passwords and email addresses, and shows you exactly what's in it
+(you can edit it) before you open a GitHub issue or save it as a zip. Nothing
+is sent by Ringkeeper itself.
 
 ## Windows says "Windows protected your PC"
 

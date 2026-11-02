@@ -1,14 +1,18 @@
 """Home's first steps (services.onboarding) and the demo client (services.demo)."""
 
-from typing import Any
+from pathlib import Path
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse, Response
+from pydantic import Field
 
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OWNER, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.claude_auth import credential_ref
 from ringkeeper.errors import RingkeeperError
-from ringkeeper.services import admin_audit, demo, onboarding
+from ringkeeper.schemas import Input
+from ringkeeper.services import admin_audit, demo, onboarding, report
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -42,12 +46,18 @@ def start(session: SessionDep) -> dict[str, Any]:
         "demo": demo.summary(demo.current(session)),
         "demo_offered": settings.mode == "desktop",
         "tour_seen": onboarding.tour_seen(session),
+        "whats_new": onboarding.whats_new(session, settings.app_version),
     }
 
 
 @router.post("/start/dismiss", status_code=204)
 def dismiss(session: WriteSessionDep) -> None:
     onboarding.dismiss(session)
+
+
+@router.post("/start/whats-new", status_code=204)
+def whats_new_seen(session: WriteSessionDep) -> None:
+    onboarding.whats_new_seen(session)
 
 
 @router.post("/start/tour", status_code=204)
@@ -76,3 +86,40 @@ def add_demo(session: WriteSessionDep) -> dict[str, Any]:
 def remove_demo(session: WriteSessionDep) -> None:
     demo.remove(session, get_vault())
     admin_audit.record(session, "demo.remove", "removed the demo client and its data", by=OWNER)
+
+
+# --- Report a problem (services.report) ---
+
+
+@router.get("/report")
+def report_preview(session: SessionDep) -> dict[str, Any]:
+    """Exactly what a bug report would include, already cleaned of secrets."""
+    parts = report.collect(session, current_settings())
+    return {**parts, "text": report.as_text(parts)}
+
+
+class ZipIn(Input):
+    text: Annotated[str, Field(max_length=200_000)]
+    what: Annotated[str, Field(max_length=20_000)] = ""
+
+
+@router.post("/report/zip")
+def report_zip(data: ZipIn) -> Response:
+    """The report as a zip: saved into Documents (desktop), or downloaded (server)."""
+    blob = report.zipped(data.text, data.what)
+    name = report.file_name()
+    if current_settings().mode == "desktop":
+        folder = Path.home() / "Documents" / "Ringkeeper reports"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / name).write_bytes(blob)
+        except OSError as error:
+            raise HTTPException(
+                422, detail=f"Couldn't save the report ({error.strerror}). Try again."
+            ) from None
+        return JSONResponse({"path": str(folder / name)})
+    return Response(
+        blob,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )

@@ -3,6 +3,12 @@
 Thanks for your interest! The project is at an early stage, so this guide is
 short and will grow.
 
+- **Found a bug?** Use Help › Report a problem in the app, or open an issue
+  with the "Something isn't working" form.
+- **A security problem?** Don't open an issue: see [SECURITY.md](SECURITY.md).
+- **An idea?** Open an issue with the "Idea or request" form: describe the job
+  you're trying to do.
+
 ## Setup
 
 1. Install [uv](https://docs.astral.sh/uv/) and Docker (the tests start a real
@@ -16,8 +22,14 @@ short and will grow.
 uv run ruff check .
 uv run ruff format --check .
 uv run pyright
-uv run pytest
+uv run pytest                              # against Postgres (Docker)
+RINGKEEPER_TEST_DB=sqlite uv run pytest    # against SQLite, as the desktop app runs
+cd web && npx tsc --noEmit                 # the web app's types
 ```
+
+The desktop shell (`shell/`) has its own: `cargo fmt --check`, `cargo clippy
+--all-targets -- -D warnings` and `cargo test`. Docs on running the desktop app
+from source are in [docs/developers.md](docs/developers.md).
 
 CI runs the same checks plus a gitleaks scan of the full history.
 
@@ -47,3 +59,7 @@ CI runs the same checks plus a gitleaks scan of the full history.
   `# pyright: ignore[rule]` on the line, not a global relaxation.
 - Small, focused commits with clear messages.
 - Never commit `.ringkeeper/` (the vault and master key) or a real `.env`.
+- **Words are part of the product.** Whatever a user reads (pages, errors,
+  notifications, the tray) uses names, not IDs or slugs, and no developer words
+  (gateway, worker, instance, endpoint). An error says what happened and what
+  to do next; an empty page says what goes there and how to add the first one.

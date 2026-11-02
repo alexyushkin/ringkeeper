@@ -1,0 +1,44 @@
+name: Something isn't working
+description: A bug, a crash, or something that does the wrong thing.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The quickest way is **Help › Report a problem** in the app:
+        it fills this in with your version and logs (secrets removed), and shows you
+        everything first. Never paste API keys, tokens or client data here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+  - type: input
+    id: version
+    attributes:
+      label: Ringkeeper version
+      description: Settings › About shows it.
+      placeholder: 0.1.0-beta.10
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Desktop app (Windows)
+        - Server (Docker)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or details
+      description: From Report a problem, or %LOCALAPPDATA%\Ringkeeper\logs. Check there are no secrets in it.
+      render: text

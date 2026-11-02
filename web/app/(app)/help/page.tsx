@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { openPalette } from "@/components/command-palette";
+import { ReportProblem } from "@/components/report-problem";
 import { startTour } from "@/components/tour";
 import { Button, Card, PageHeader } from "@/components/ui";
-import { DOCS, NEW_ISSUE, docUrl } from "@/lib/client/docs";
+import { DOCS, docUrl } from "@/lib/client/docs";
 
 const CONCEPTS: [string, string, string][] = [
   ["Client", "Someone you do work for, like Acme Inc. Their projects and connections are kept apart from every other client's.", "concepts"],
@@ -18,8 +21,16 @@ const CONCEPTS: [string, string, string][] = [
 /** Help: the seven ideas in plain words, a picture of how they fit, the guide, and
  * where to report a problem. */
 export default function HelpPage() {
+  const [reporting, setReporting] = useState(false);
+  // ?report=1: the command palette's Report a problem.
+  useEffect(() => setReporting(new URLSearchParams(window.location.search).has("report")), []);
   return (
     <>
+      {reporting ? (
+        <div className="mb-4">
+          <ReportProblem onClose={() => setReporting(false)} />
+        </div>
+      ) : null}
       <PageHeader title="Help" subtitle="How Ringkeeper fits together, in seven ideas." />
       <Card className="mb-4">
         <Diagram />
@@ -59,9 +70,14 @@ export default function HelpPage() {
         <div className="flex flex-wrap gap-2">
           <Button onClick={startTour}>Show the tour again</Button>
           <Button onClick={openPalette}>Open the command palette</Button>
-          <a href={NEW_ISSUE} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-xl border border-line px-4 text-sm font-medium hover:border-accent">
+          <Button
+            onClick={() => {
+              setReporting(true);
+              window.scrollTo({ top: 0 });
+            }}
+          >
             Report a problem
-          </a>
+          </Button>
         </div>
       </Card>
     </>
