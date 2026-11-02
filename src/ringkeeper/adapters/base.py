@@ -53,6 +53,37 @@ Classifier = Callable[["Target", JSON], "ToolKind"]
 Precondition = Callable[..., Awaitable[JSON]]
 
 
+class Undoer:
+    """How one kind of write is taken back (services.undo keeps what's needed).
+
+    `before` reads what the write will change, as it is now, and only that: the
+    rows it updates or deletes, the fields it sets, the workflow it replaces.
+    `after` records how those are once the write ran, so a revert can tell
+    whether something changed them since. `restore` puts `before` back.
+    """
+
+    def why_not(self, args: JSON) -> str | None:
+        """None if this call can be undone; otherwise why not, in plain words."""
+        return None
+
+    async def before(self, target: "Target", args: JSON) -> JSON:
+        raise NotImplementedError
+
+    async def after(self, target: "Target", args: JSON, before: JSON, result: JSON) -> JSON:
+        """How the changed things are now (compared later with `current`)."""
+        return await self.current(target, before)
+
+    async def current(self, target: "Target", kept: JSON) -> JSON:
+        raise NotImplementedError
+
+    async def restore(self, target: "Target", kept: JSON) -> JSON:
+        raise NotImplementedError
+
+    def describe(self, kept: JSON) -> str:
+        """What reverting puts back, in a sentence."""
+        raise NotImplementedError
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -64,6 +95,8 @@ class ToolSpec:
     # Decides per call; `kind` is then the most careful answer (WRITE: an instance
     # must be named).
     classify: Classifier | None = None
+    # How the write is taken back; None: it can't be (services.undo says why).
+    undo: Undoer | None = None
 
 
 def _spec(

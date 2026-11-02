@@ -28,7 +28,7 @@ from ringkeeper.schemas import (
     ProjectOut,
     ThreadOut,
 )
-from ringkeeper.services import bindings, decisions, inbox, instances, projects, threads
+from ringkeeper.services import bindings, decisions, inbox, instances, projects, threads, undo
 
 public = APIRouter()
 router = APIRouter(dependencies=[AdminDep])
@@ -119,6 +119,9 @@ def _decision_out(decision: Decision, owners: dict[str, str] | None = None) -> D
             "heading": inbox.heading(decision),
             "options": inbox.options(decision),
             "approval": inbox.is_approval(decision),
+            "undo": undo.note(decision.service, decision.tool, decision.args)
+            if decision.kind is DecisionKind.APPROVE
+            else None,
         }
     )
 

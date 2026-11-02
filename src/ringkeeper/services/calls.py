@@ -34,7 +34,7 @@ from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
-from ringkeeper.errors import RingkeeperError
+from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import (
     AuditEvent,
     AuditOutcome,
@@ -56,6 +56,7 @@ from ringkeeper.services import (
     mcp_oauth,
     mcp_tools,
     revocations,
+    undo,
 )
 from ringkeeper.vault import Vault, VaultError
 
@@ -162,7 +163,9 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
             f"instance is {instance.type}, endpoint is {call.service}",
         )
 
-    if binding.allowed_tools and call.tool not in binding.allowed_tools:
+    # A revert only puts back what one of this link's own tools changed.
+    revert = call.tool == undo.REVERT_TOOL
+    if binding.allowed_tools and call.tool not in binding.allowed_tools and not revert:
         raise RefusalError(
             f"tool '{call.tool}' is not allowed on instance '{name}' for project "
             f"'{project.name}'. Allowed: {', '.join(binding.allowed_tools)}",
@@ -378,6 +381,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     if held and not runs_without_asking(auth.config, call.tool):
         return await _hold(call, spec, target)
 
+    pending = await _keep(call, spec, target)
     try:
         result = await _invoke(spec.handler, target, call.args, call.tool)
     except ToolError as error:
@@ -386,7 +390,29 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         )
         raise
     await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.EXECUTED, result=result))
+    await _kept(pending, target, call, result)
     return scrub_obj(result)
+
+
+async def _keep(call: ToolCall, spec: ToolSpec, target: Target) -> undo.Pending | None:
+    """Before a write runs: what it will change, kept for undo. Never stops the write."""
+    if spec.kind is not ToolKind.WRITE or call.tool == undo.REVERT_TOOL:
+        return None
+    try:
+        task_id = await _db(partial(undo.task_of, session_id=call.caller.session_id))
+        return await undo.prepare(task_id, call, spec, target)
+    except Exception:
+        logger.exception("couldn't keep %s for undo", call.tool)
+        return None
+
+
+async def _kept(pending: undo.Pending | None, target: Target, call: ToolCall, result: JSON) -> None:
+    if pending is None:
+        return
+    try:
+        await undo.finish(pending, target, call, result)
+    except Exception:
+        logger.exception("couldn't keep %s for undo", call.tool)
 
 
 async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
@@ -449,7 +475,7 @@ async def approve(
 
     decision_id, call, stored_precondition = await _db(claim)
     finish = partial(_finish, decision_id, call)
-    spec = ADAPTERS[call.service].tool(call.tool)
+    spec = undo.spec_for(call.service, call.tool)
 
     def recheck(session: Session) -> Authorized | RefusalError:
         try:
@@ -458,7 +484,7 @@ async def approve(
             return refusal
 
     auth = await _db(recheck)
-    if not isinstance(auth, RefusalError):
+    if not isinstance(auth, RefusalError) and call.tool != undo.REVERT_TOOL:
         try:  # the link's scope as it is now
             narrowed(call, spec, auth)
         except RefusalError as refusal:
@@ -473,18 +499,65 @@ async def approve(
             current = await _invoke(spec.precondition, target, call.args, call.tool)
             if current != stored_precondition:
                 reason = (
-                    f"stale: the target changed since the write was held ({stored_precondition} "
-                    f"-> {current}); ask the agent to redo the change"
+                    "Not reverted: something changed it since you asked to revert. Revert "
+                    "again to put back the old values over what's there now."
+                    if call.tool == undo.REVERT_TOOL
+                    else f"stale: the target changed since the write was held "
+                    f"({stored_precondition} -> {current}); ask the agent to redo the change"
                 )
                 return await anyio.to_thread.run_sync(
                     partial(finish, AuditOutcome.REFUSED, reason=reason)
                 )
+        pending = await _keep(call, spec, target)
         result = await _invoke(spec.handler, target, call.args, call.tool)
     except ToolError as error:
         return await anyio.to_thread.run_sync(
             partial(finish, AuditOutcome.FAILED, reason=str(error))
         )
+    await _kept(pending, target, call, result)
     return await anyio.to_thread.run_sync(partial(finish, AuditOutcome.EXECUTED, result=result))
+
+
+async def request_revert(change_id: str, vault: Vault) -> Decision:
+    """Revert a kept change: a held action of its own, with what it puts back. Raises
+    RuleViolationError when it can't be reverted now."""
+    change = undo.find(change_id)
+    call = undo.revert_call(change)
+
+    def check(session: Session) -> Authorized:
+        undo.check_revertible(session, change)
+        try:
+            return authorize(session, call, undo.REVERT_SPEC)
+        except RefusalError as refusal:
+            raise RuleViolationError(
+                f"It can't be reverted now: {refusal}. Link the connection to the project "
+                "again, then revert."
+            ) from None
+
+    auth = await _db(check)
+    # How things are now, to refuse the revert if they change before it's approved. A
+    # server's api may not reach the connection (the gateway does): then no check.
+    now: JSON | None = None
+    try:
+        target = _target(vault, ADAPTERS[call.service], auth, call.caller.project)
+        now = await undo.undoer(change).current(target, change.kept or {})
+    except ToolError:
+        logger.warning("couldn't read the current state of change %s", change.id)
+
+    def hold(session: Session) -> Decision:
+        decision = decisions.hold(session, call, change.instance, precondition=now)
+        decision.payload = {
+            **(decision.payload or {}),
+            "revert": change.restores, "what": change.what,
+            "changed_since": None if now is None else now != change.after,
+        }  # fmt: skip
+        audit.record(session, call, AuditOutcome.HELD, decision_id=decision.id)
+        session.flush()
+        return decision
+
+    decision = await _db(hold)
+    undo.mark(change, revert_decision=str(decision.id))
+    return decision
 
 
 def deny(ident: str, *, by: str | None = None, reason: str | None = None) -> Decision:

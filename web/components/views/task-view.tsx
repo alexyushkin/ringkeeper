@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
+import { Changes } from "@/components/changes";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
@@ -217,6 +218,7 @@ export function TaskView({ id }: { id: string }) {
           <DecisionCard decision={d} onDone={pending.reload} inline />
         </div>
       ))}
+      <Changes task={id} />
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold">{t.project}</h1>

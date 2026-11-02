@@ -215,6 +215,8 @@ class DecisionOut(_Output):
     # An action for Approvals (a held call, a plan, more money); else a question,
     # asked in the conversation.
     approval: bool = True
+    # A held call: whether it can be undone once it runs (services.undo.note).
+    undo: dict[str, Any] | None = None
     options: list[str]
     project: str | None
     instance: str | None

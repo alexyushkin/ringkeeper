@@ -36,7 +36,7 @@ from ringkeeper.models import (
     Thread,
 )
 from ringkeeper.schemas import BindingIn, InstanceIn, ProjectIn
-from ringkeeper.services import bindings, clients, instances, projects, workspaces
+from ringkeeper.services import bindings, clients, instances, projects, undo, workspaces
 from ringkeeper.services.secrets_in import CONNECTION_REF
 from ringkeeper.vault import Vault
 
@@ -168,6 +168,7 @@ def remove(session: Session, vault: Vault) -> None:
     session.execute(delete(Setting).where(Setting.key == KEY))
     session.flush()
     _delete_folder(Path(demo.folder))
+    undo.remove_project(demo.project)
     Path(demo.database).unlink(missing_ok=True)
 
 

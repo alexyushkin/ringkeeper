@@ -34,8 +34,9 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.schemas import Input, NonEmpty
-from ringkeeper.services import cleanup, projects, tasks
+from ringkeeper.services import calls, cleanup, projects, tasks, undo
 from ringkeeper.services.runtime import current_settings
+from ringkeeper.vault import get_vault
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
@@ -421,3 +422,26 @@ def _csv_safe(value: object) -> str:
     """Spreadsheets run cells starting with = + - @ as formulas; prefix those with '."""
     text = "" if value is None else str(value)
     return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+# --- Undo (services.undo) ---
+
+
+@router.get("/tasks/{task_id}/changes")
+def task_changes(task_id: str, session: SessionDep) -> list[dict[str, Any]]:
+    """What the task changed: each with Revert (for 7 days) or why it can't be undone."""
+    task = tasks.get_task(session, task_id)
+    return undo.for_tasks(session, [str(task.id)])
+
+
+@router.get("/threads/{thread_id}/changes")
+def thread_changes(thread_id: uuid.UUID, session: SessionDep) -> list[dict[str, Any]]:
+    ids = session.scalars(select(Task.id).where(Task.thread_id == thread_id)).all()
+    return undo.for_tasks(session, [str(i) for i in ids])
+
+
+@router.post("/changes/{change_id}/revert", status_code=201)
+async def revert_change(change_id: str) -> dict[str, str]:
+    """Ask to put a change back: it waits for approval like any held action."""
+    decision = await calls.request_revert(change_id, get_vault())
+    return {"decision_id": str(decision.id)}

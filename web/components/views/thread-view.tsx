@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 
 import { Composer } from "@/components/composer";
+import { Changes } from "@/components/changes";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
@@ -117,6 +118,8 @@ export function ThreadView({ id }: { id: string }) {
           </div>
         </>
       ) : null}
+
+      <Changes thread={id} />
 
       <div className="mt-6">
         <Composer threadId={id} onSent={() => thread.reload()} />

@@ -478,10 +478,12 @@ def production_hold(decision: Decision) -> bool:
     return env is Env.PROD
 
 
-def heading(decision: Decision) -> str | None:
+def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)
     """What a held call is, in a few words: live client data only when it is."""
     if decision.kind is not DecisionKind.APPROVE:
         return None
+    if decision.tool == "revert_change":
+        return "Undoing a change"
     if decision.service in SENDS:
         return "A message to real people"
     if decision.service is InstanceType.GOOGLE and decision.tool in GOOGLE_REACHES_PEOPLE:
@@ -508,6 +510,8 @@ def summary(decision: Decision, limit: int = 160) -> str:
     match decision.kind:
         case DecisionKind.APPROVE:
             what = action(decision.service, decision.tool, decision.args)
+            if decision.tool == "revert_change":
+                what = "Undoing a change"
             text = f"{what} on {decision.instance}: waits for your OK"
         case DecisionKind.ROUTE:
             names = " or ".join(c["project"] for c in payload.get("candidates", []))

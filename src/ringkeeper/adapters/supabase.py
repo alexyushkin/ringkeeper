@@ -27,6 +27,7 @@ from pydantic import Field
 from ringkeeper import netpolicy
 from ringkeeper.adapters import sqlite_file
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, ToolKind, read, write
+from ringkeeper.adapters.undo_sql import SqlUndo
 from ringkeeper.models import InstanceType
 from ringkeeper.sql_text import reads_only
 
@@ -249,7 +250,10 @@ def _reads(_target: Target, args: JSON) -> ToolKind:
     return ToolKind.READ if isinstance(sql, str) and reads_only(sql) else ToolKind.WRITE
 
 
-execute = replace(execute, classify=_reads)
+execute = replace(execute, classify=_reads, undo=SqlUndo())
+
+# Undo (adapters.undo_sql) reads and puts back rows the same way.
+run_sql = _run
 
 
 ADAPTER = Adapter(

@@ -11,12 +11,14 @@ there and are the only option on older self-hosted versions, so we use them.
 """
 
 import re
+from dataclasses import replace
 from typing import Annotated, Any, cast
 
 import httpx2
 from pydantic import Field
 
 from ringkeeper import netpolicy
+from ringkeeper.adapters import undo_services
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -254,6 +256,11 @@ async def stop_execution(target: Target, execution_id: NumericExecutionId) -> JS
     """Stop an execution that's running or waiting."""
     return await _call(target, "POST", f"/executions/{_execution(execution_id)}/stop")
 
+
+# What each change replaced is kept for 7 days, to put back (services.undo).
+update_workflow = replace(update_workflow, undo=undo_services.N8nWorkflowUndo())
+activate_workflow = replace(activate_workflow, undo=undo_services.N8nActiveUndo())
+deactivate_workflow = replace(deactivate_workflow, undo=undo_services.N8nActiveUndo())
 
 ADAPTER = Adapter(
     service=InstanceType.N8N,

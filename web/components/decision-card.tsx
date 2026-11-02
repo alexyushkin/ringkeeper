@@ -24,6 +24,7 @@ export interface Decision {
   tool: string | null;
   args: Record<string, unknown> | null;
   payload: Record<string, unknown> | null;
+  undo?: { possible: boolean; why: string | null; days: number } | null;
   task_id: string | null;
   thread_id: string | null;
   created_at: string;
@@ -79,14 +80,30 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
           <p className="text-sm">
             <strong>{decision.heading ?? "A change"}</strong> is waiting for your OK. Nothing has run yet.
           </p>
+          {typeof payload.revert === "string" ? (
+            <div className="space-y-2">
+              <p className="text-sm">{payload.revert}</p>
+              {typeof payload.what === "string" ? <p className="text-xs text-muted">It undoes: <span className="font-mono">{payload.what}</span></p> : null}
+              {payload.changed_since === true ? (
+                <Alert tone="warn">Something changed these since the original change. Reverting puts the old values back over what&apos;s there now.</Alert>
+              ) : null}
+            </div>
+          ) : null}
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
+          {decision.undo ? (
+            <p className="text-xs text-muted">
+              {decision.undo.possible ? `You can revert this for ${decision.undo.days} days after it runs (on its task page).` : `Can't be undone: ${decision.undo.why}`}
+            </p>
+          ) : null}
           <Details>
             <p className="mb-1 text-xs text-muted">Exactly what it will send ({decision.tool?.replace(/_/g, " ")})</p>
             <Code>{JSON.stringify(decision.args, null, 2)}</Code>
           </Details>
           {destructive ? (
             <div className="space-y-2">
-              <Alert>This change {destructive}. That can&apos;t be undone.</Alert>
+              <Alert>
+                This change {destructive}. {decision.undo?.possible ? "You can revert it for 7 days, but check it first." : "That can't be undone."}
+              </Alert>
               <Field label={`Type ${decision.instance} to approve`} value={confirm} onChange={setConfirm} autoComplete="off" />
             </div>
           ) : null}

@@ -109,7 +109,7 @@ def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
     return None
 
 
-def reason(
+def reason(  # noqa: PLR0911 (one return per kind of tool)
     service: InstanceType | None,
     tool: str | None,
     args: dict[str, Any] | None,
@@ -120,6 +120,10 @@ def reason(
     `config` is the connection's: an MCP server's tool rules live there.
     """
     args = args or {}
+    if tool == "revert_change":  # services.undo: a revert deletes only what a create added
+        from ringkeeper.services import undo  # noqa: PLC0415 (undo needs the adapters first)
+
+        return undo.destroys(args)
     if service is InstanceType.SUPABASE and tool == "execute":
         sql = args.get("sql")
         return sql_reason(sql) if isinstance(sql, str) else "has no SQL to check"

@@ -7,13 +7,14 @@ name typed to approve (see destructive.py).
 """
 
 import re
+from dataclasses import replace
 from typing import Annotated, Any, cast
 from urllib.parse import quote
 
 import httpx2
 from pydantic import Field
 
-from ringkeeper.adapters import rest
+from ringkeeper.adapters import rest, undo_services
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, read, write
 from ringkeeper.models import InstanceType
 
@@ -163,6 +164,11 @@ async def delete_records(
     params = {"records[]": ids}
     return await _call(target, "DELETE", _table_path(base_id, table), params=params)
 
+
+# What each write changed is kept for 7 days, to put back (services.undo).
+create_records = replace(create_records, undo=undo_services.AirtableCreateUndo())
+update_records = replace(update_records, undo=undo_services.AirtableUpdateUndo())
+delete_records = replace(delete_records, undo=undo_services.AirtableDeleteUndo())
 
 ADAPTER = Adapter(
     service=InstanceType.AIRTABLE,

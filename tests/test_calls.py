@@ -316,7 +316,8 @@ async def test_approval_runs_when_workflow_is_unchanged(
     decision = await approve(result["decision_id"], vault=vault, confirm="acme-n8n")
     assert decision.status is DecisionStatus.EXECUTED
     assert fake_n8n.workflows["wf1"]["name"] == "Sync leads v2"
-    assert fake_n8n.requests[-1].url.params["publishIfActive"] == "false"
+    put = [r for r in fake_n8n.requests if r.method == "PUT"][-1]  # then undo reads it back
+    assert put.url.params["publishIfActive"] == "false"
 
 
 async def test_stale_approval_is_refused(registry: None, vault: Vault, fake_n8n: FakeN8n) -> None:
