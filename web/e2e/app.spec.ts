@@ -111,7 +111,8 @@ test("the whole app on a fresh stack", async ({ page }) => {
     const destructive = hold("DELETE FROM customers WHERE name = 'Tunnel Paint Co'");
     await page.reload();
     const risky = page.locator(`[id="${destructive}"]`).locator("..");
-    await expect(risky.getByText("This change deletes rows. That can't be undone.")).toBeVisible();
+    // It deletes rows, so the name must be typed; a plain DELETE can be reverted afterwards.
+    await expect(risky.getByText("This change deletes rows. You can revert it for 7 days, but check it first.")).toBeVisible();
     const approve = risky.getByRole("button", { name: "Approve" });
     await expect(approve).toBeDisabled();
     await risky.getByLabel("Type acme-database to approve").fill("acme-database");
