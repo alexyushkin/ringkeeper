@@ -9,6 +9,8 @@ publishes it as the release notes and the app shows it with the update.
   it again each time you go back to Home.
 - **Every Settings tab in view.** About was cut off at the end of the tab row;
   the tabs now fit, and wrap onto a second row in a narrow window.
+- **New examples.** Forms and Help use General Informatics LLC and
+  geninfos.com as their examples.
 - **Undo you can count on.** An approval says "you can revert this" only after
   checking: the table has a primary key, the Airtable records and the n8n
   workflow can be read. Otherwise it says why it can't be undone, before you
