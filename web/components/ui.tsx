@@ -302,6 +302,12 @@ export function Code({ children }: { children: string }) {
   return <pre className="max-h-96 overflow-auto rounded-xl bg-sunken p-3 text-xs leading-relaxed whitespace-pre-wrap break-words">{children}</pre>;
 }
 
+/** "for 52 more minutes". */
+export function timeUntil(value: string): string {
+  const minutes = Math.max(1, Math.round((new Date(value).getTime() - Date.now()) / 60_000));
+  return `for ${minutes} more minute${minutes === 1 ? "" : "s"}`;
+}
+
 export function timeAgo(value: string | null | undefined): string {
   if (!value) return "";
   const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);

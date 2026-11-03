@@ -111,7 +111,7 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await page.goto("/approvals");
     const card = page.locator(`[id="${update}"]`).locator("..");
     await expect(card.getByText("UPDATE customers SET plan = 'enterprise'")).toBeVisible();
-    await card.getByRole("button", { name: "Approve" }).click();
+    await card.getByRole("button", { name: "Approve", exact: true }).click();
     await waitFor(() => decisionStatus(update), "executed");
     expect(demoSql("acme_prod", "SELECT plan FROM customers WHERE name = 'Coyote LLC'")).toBe("enterprise");
 
@@ -120,7 +120,7 @@ test("the whole app on a fresh stack", async ({ page }) => {
     const risky = page.locator(`[id="${destructive}"]`).locator("..");
     // It deletes rows, so the name must be typed; a plain DELETE can be reverted afterwards.
     await expect(risky.getByText("This change deletes rows. You can revert it for 7 days, but check it first.")).toBeVisible();
-    const approve = risky.getByRole("button", { name: "Approve" });
+    const approve = risky.getByRole("button", { name: "Approve", exact: true });
     await expect(approve).toBeDisabled();
     await risky.getByLabel("Type acme-database to approve").fill("acme-database");
     await approve.click();

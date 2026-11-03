@@ -51,6 +51,18 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
   const payload = decision.payload ?? {};
   const destructive = typeof payload.destructive === "string" ? payload.destructive : null;
 
+  async function trustAndApprove() {
+    setBusy("trust");
+    setError(null);
+    try {
+      await api("trusts", { json: { decision: decision.id } });
+      await answer("approve", text);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(null);
+    }
+  }
+
   async function answer(choice: string | null, answerText?: string) {
     setBusy(choice ?? "answer");
     setError(null);
@@ -112,12 +124,21 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
           ) : null}
           <TextArea label="Note (optional)" value={text} onChange={setText} rows={2} hint="Goes to the agent with your answer, e.g. why not, or what to do instead." />
           <div className="flex flex-wrap gap-2">
-            <Button kind={destructive ? "danger" : "primary"} busy={busy === "approve"} disabled={Boolean(destructive) && confirm.trim() !== decision.instance} onClick={() => answer("approve", text)}>
-              Approve
-            </Button>
-            <Button busy={busy === "deny"} onClick={() => answer("deny", text)}>
-              Deny
-            </Button>
+            <span data-approve>
+              <Button kind={destructive ? "danger" : "primary"} busy={busy === "approve"} disabled={Boolean(destructive) && confirm.trim() !== decision.instance} onClick={() => answer("approve", text)}>
+                Approve
+              </Button>
+            </span>
+            <span data-deny>
+              <Button busy={busy === "deny"} onClick={() => answer("deny", text)}>
+                Deny
+              </Button>
+            </span>
+            {destructive || decision.tool === "revert_change" ? null : (
+              <Button kind="ghost" busy={busy === "trust"} onClick={() => void trustAndApprove()}>
+                Approve, and trust this in {decision.project} for 1 hour
+              </Button>
+            )}
           </div>
         </div>
       ) : null}
@@ -131,12 +152,16 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
           </Details>
           <TextArea label="Note (optional)" value={text} onChange={setText} rows={2} hint="Sent with your answer, e.g. what to change." />
           <div className="flex flex-wrap gap-2">
-            <Button kind="primary" busy={busy === "approve"} onClick={() => answer("approve", text)}>
-              Approve plan
-            </Button>
-            <Button busy={busy === "deny"} onClick={() => answer("deny", text)}>
-              Ask for changes
-            </Button>
+            <span data-approve>
+              <Button kind="primary" busy={busy === "approve"} onClick={() => answer("approve", text)}>
+                Approve plan
+              </Button>
+            </span>
+            <span data-deny>
+              <Button busy={busy === "deny"} onClick={() => answer("deny", text)}>
+                Ask for changes
+              </Button>
+            </span>
           </div>
         </div>
       ) : null}

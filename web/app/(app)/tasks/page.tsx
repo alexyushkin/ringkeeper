@@ -37,7 +37,7 @@ export default function TasksPage() {
 
   async function archiveOld() {
     const done = await api<{ changed: number }>("cleanup/old-tasks", { json: {} });
-    setTidied(`Archived ${done.changed} task${done.changed === 1 ? "" : "s"}. They're under Show archived, and search still finds them.`);
+    setTidied(`Archived ${done.changed} task${done.changed === 1 ? "" : "s"}. They're under Archived, and search still finds them.`);
     tasks.reload();
     old.reload();
   }

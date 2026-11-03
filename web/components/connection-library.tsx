@@ -300,6 +300,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
   const [linking, setLinking] = useState(() => typeof window !== "undefined" && window.location.hash === `#connections/${encodeURIComponent(connection.name)}/link`);
   const [open, setOpen] = useState(targeted && !linking);
   const [title, setTitle] = useState(connectionTitle(connection));
+  const [expiry, setExpiry] = useState(typeof connection.config.expires_at === "string" ? connection.config.expires_at : "");
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -343,6 +344,8 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
   }
 
   const links = connection.links ?? [];
+  const expires = typeof connection.config.expires_at === "string" ? connection.config.expires_at : "";
+  const left = expires ? Math.ceil((new Date(expires).getTime() - Date.now()) / 86_400_000) : null;
   return (
     <div id={`connection-${connection.name}`} className="space-y-2 rounded-2xl border border-line bg-surface p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -354,6 +357,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         {connection.shared ? <Badge tone="accent">your tool</Badge> : null}
         {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
         {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
+        {left !== null && left <= 14 ? <Badge tone={left <= 7 ? "bad" : "warn"}>{left < 0 ? "key expired" : `key expires in ${left} day${left === 1 ? "" : "s"}`}</Badge> : null}
         {connection.last_test_at ? <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span> : null}
       </div>
       {/* Why the last test failed, without opening anything. */}
@@ -417,6 +421,10 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
               <Field label="Name" value={title} onChange={setTitle} hint={`As it shows in Ringkeeper. The AI knows it as ${connection.name}.`} />
               <Button disabled={!title.trim() || title.trim() === connectionTitle(connection)} onClick={() => patch({ title: title.trim() }, "Renamed.")}>
                 Rename
+              </Button>
+              <Field label="Its key expires on (if you know)" type="date" value={expiry} onChange={setExpiry} hint="You'll hear 7 days before. GitHub says on its own." />
+              <Button disabled={expiry === expires} onClick={() => patch({ expires_at: expiry }, "Saved.")}>
+                Save the date
               </Button>
               {imported ? <p className="text-sm text-muted">Its settings came from Claude Desktop. To change them, change them there, remove this connection, and import it again.</p> : null}
               {remote || fromCatalog ? <p className="text-sm text-muted">To sign in again or use another key, remove it and connect again.</p> : null}

@@ -184,7 +184,7 @@ function DemoCard({ demo, onRemoved }: { demo: DemoInfo; onRemoved: () => void }
       <div>
         <h2 className="font-semibold">Demo data is on</h2>
         <p className="text-sm text-muted">
-          {demo.client} is made up: the {demo.project} project has sample files and a shop database ({demo.connection}). It&apos;s set up as production, so a change to it waits for your approval. Try one:
+          {demo.client} is made up: the {demo.project} project has sample files and a shop database. It&apos;s set up as production, so a change to it waits for your approval. Try one:
         </p>
       </div>
       <Chips items={demo.try} />

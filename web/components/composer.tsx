@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Alert, Button, Spinner } from "@/components/ui";
 import { VoiceSetup, useLocalVoice } from "@/components/voice";
-import { api } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
 
 type Phase = "idle" | "recording" | "transcribing" | "heard";
 
@@ -22,13 +22,41 @@ export function fillRequest(text: string): void {
   window.dispatchEvent(new CustomEvent(FILL, { detail: text }));
 }
 
+interface Mentionable {
+  kind: "client" | "project" | "connection" | "agent";
+  token: string;
+  label: string;
+  detail: string;
+}
+
+interface Attached {
+  id: string;
+  name: string;
+}
+
+/** The `@word` being typed at the cursor, if any: where it starts and what's typed. */
+function mentionAt(text: string, caret: number): { start: number; query: string } | null {
+  const before = text.slice(0, caret);
+  const found = /(?:^|\s)@([\w.-]*)$/.exec(before);
+  return found ? { start: caret - (found[1] ?? "").length - 1, query: (found[1] ?? "").toLowerCase() } : null;
+}
+
 /**
  * Type a request, or hold the mic to speak one. A recording is sent to be
  * transcribed and shown as "I heard: ..."; nothing is sent until you press Send.
- * The recording itself only lives in memory, here and on the server.
+ * The recording itself only lives in memory, here and on the server. `@` offers
+ * clients, projects, connections and agents: a mention is a firm choice. Files dropped
+ * here (or added with the clip) go with the request, into the project its task runs in.
  */
-export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thread: string) => void }) {
+export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: { threadId?: string; onSent: (thread: string) => void; autoFocus?: boolean; prefix?: string }) {
   const [text, setText] = useState("");
+  const mentionable = useApi<Mentionable[]>("mentions");
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [choice, setChoice] = useState(0);
+  const [files, setFiles] = useState<Attached[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const picker = useRef<HTMLInputElement | null>(null);
   const [heard, setHeard] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -64,14 +92,64 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
     return () => window.removeEventListener(FILL, listen);
   }, [threadId]);
 
+  useEffect(() => {
+    if (autoFocus) box.current?.focus();
+  }, [autoFocus]);
+
+  const offers = mention
+    ? (mentionable.data ?? [])
+        .filter((m) => `${m.token} ${m.label}`.toLowerCase().includes(mention.query))
+        .slice(0, 8)
+    : [];
+
+  function typed(value: string, caret: number) {
+    setText(value);
+    setMention(mentionAt(value, caret));
+    setChoice(0);
+  }
+
+  function pickMention(offer: Mentionable | undefined) {
+    if (!offer || !mention) return;
+    const caret = box.current?.selectionStart ?? text.length;
+    const next = `${text.slice(0, mention.start)}@${offer.token} ${text.slice(caret)}`;
+    const end = mention.start + offer.token.length + 2;
+    setText(next);
+    setMention(null);
+    requestAnimationFrame(() => {
+      box.current?.focus();
+      box.current?.setSelectionRange(end, end);
+    });
+  }
+
+  async function attach(list: FileList | File[]) {
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of Array.from(list)) {
+        const saved = await api<Attached>("attachments", {
+          method: "POST",
+          body: file,
+          contentType: "application/octet-stream",
+          headers: { "x-file-name": encodeURIComponent(file.name) },
+        });
+        setFiles((all) => [...all, saved]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function send(body: string, input: "text" | "voice") {
     setBusy(true);
     setError(null);
     try {
       const result = await api<{ thread_id: string }>("messages", {
-        json: { body, source: "web", input, author: "owner", thread_id: threadId ?? null },
+        json: { body: `${prefix}${body}`, source: "web", input, author: "owner", thread_id: threadId ?? null, attachments: files.map((f) => f.id) },
       });
       setText("");
+      setFiles([]);
       setHeard(null);
       setPhase("idle");
       onSent(result.thread_id);
@@ -171,22 +249,92 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
         if (text.trim()) void send(text.trim(), "text");
       }}
     >
-      <div className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 focus-within:border-accent">
+      <div
+        className={`relative flex items-end gap-2 rounded-2xl border bg-surface p-2 focus-within:border-accent ${dragging ? "border-accent bg-accent-soft" : "border-line"}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          if (event.dataTransfer.files.length) void attach(event.dataTransfer.files);
+        }}
+      >
         <label htmlFor="composer" className="sr-only">
           Request
         </label>
+        {offers.length ? (
+          <ul role="listbox" aria-label="Mention" className="absolute top-full left-2 z-20 mt-1 w-80 max-w-[85vw] overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-lg">
+            {offers.map((offer, n) => (
+              <li
+                key={`${offer.kind}:${offer.token}`}
+                role="option"
+                aria-selected={n === choice}
+                onMouseEnter={() => setChoice(n)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pickMention(offer);
+                }}
+                className={`flex cursor-pointer items-baseline gap-2 rounded-lg px-2 py-1.5 text-sm ${n === choice ? "bg-accent-soft" : ""}`}
+              >
+                <span className="min-w-0 flex-1 truncate">{offer.label}</span>
+                <span className="shrink-0 text-xs text-muted">{offer.kind === "project" || offer.kind === "connection" ? offer.detail : offer.kind === "client" ? "client" : offer.detail}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <textarea
           id="composer"
           ref={box}
           rows={2}
           value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={threadId ? "Add to this conversation…" : "Ask for something, e.g. “Add a line to geninfos-web's notes”"}
+          onChange={(event) => typed(event.target.value, event.target.selectionStart)}
+          onBlur={() => setMention(null)}
+          placeholder={threadId ? "Add to this conversation…" : "Ask for something, e.g. “Add a line to geninfos-web's notes”. @ names a client, project or connection."}
           className="min-h-11 flex-1 resize-none bg-transparent px-2 py-1 text-base outline-none"
           onKeyDown={(event) => {
+            if (offers.length) {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                setChoice((n) => (n + (event.key === "ArrowDown" ? 1 : offers.length - 1)) % offers.length);
+                return;
+              }
+              if (event.key === "Enter" || event.key === "Tab") {
+                event.preventDefault();
+                pickMention(offers[choice]);
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setMention(null);
+                return;
+              }
+            }
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && text.trim()) void send(text.trim(), "text");
           }}
         />
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          aria-label="Attach files"
+          className="hidden"
+          onChange={(event) => {
+            if (event.target.files?.length) void attach(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <button type="button" aria-label="Attach files" title="Attach files" onClick={() => picker.current?.click()} className="grid size-11 shrink-0 place-items-center rounded-full bg-sunken text-ink">
+          {uploading ? (
+            <Spinner />
+          ) : (
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.5 3.5 0 0 1 5 5l-8.6 8.6a2 2 0 0 1-2.8-2.8l7.9-7.9" />
+            </svg>
+          )}
+        </button>
         {(
           <button
             type="button"
@@ -214,9 +362,21 @@ export function Composer({ threadId, onSent }: { threadId?: string; onSent: (thr
           Send
         </Button>
       </div>
+      {files.length ? (
+        <ul className="flex flex-wrap gap-2 px-1" aria-label="Attached files">
+          {files.map((file) => (
+            <li key={file.id} className="flex items-center gap-1 rounded-full border border-line px-3 py-1 text-sm">
+              {file.name}
+              <button type="button" className="ml-1 text-muted hover:text-ink" aria-label={`Remove ${file.name}`} onClick={() => setFiles((all) => all.filter((f) => f.id !== file.id))}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {setup && !voice.ready ? <VoiceSetup status={voice.status} error={voice.error} onDownload={() => void voice.download()} onClose={() => setSetup(false)} /> : null}
       <p className="px-1 text-xs text-muted">
-        {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : "Hold the mic to speak. You'll see what I heard before anything is sent."}
+        {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : "Hold the mic to speak, or drop files here. You'll see what I heard before anything is sent."}
       </p>
       {error ? <Alert>{error}</Alert> : null}
     </form>

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Changes } from "@/components/changes";
+import { TaskAgain } from "@/components/conveniences";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
@@ -230,6 +231,7 @@ export function TaskView({ id }: { id: string }) {
         </div>
         <Markdown text={t.summary ?? t.outcome ?? t.prompt} className="text-sm" />
         {t.error && t.status !== "succeeded" ? <Alert>{t.error}</Alert> : null}
+        {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-xs text-muted">Steps</dt>

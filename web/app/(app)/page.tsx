@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Composer } from "@/components/composer";
+import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
@@ -41,9 +42,11 @@ export default function Home() {
     <>
       <PageHeader title="What do you need?" subtitle="Say it in your own words. Ringkeeper sends it to the right client project." />
       <Composer onSent={(thread) => router.push(threadHref(thread))} />
+      <Shortcuts project={scope.project || undefined} client={scope.client || undefined} />
       <div className="mt-4">
         <FirstSteps />
       </div>
+      <DigestCard />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="conversations" />
       <BulkBar kind="thread" ids={[...pick.selected]} archivedView={archived} onDone={threads.reload} onClear={pick.clear} />
