@@ -33,6 +33,9 @@ Ringkeeper*.
 
 A held action expires after 24 hours if nobody answers.
 
+J, K, A and D work on the Approvals page, and one action can be trusted for an hour:
+see [Working faster](working-faster.md#approvals-by-keyboard).
+
 ## The record
 
 Every change attempt and every refusal is in **Activity** with the time,

@@ -3,6 +3,28 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Quick request.** Win+Shift+R opens a small box over whatever you're doing, with
+  voice and the client and project switcher. Send, and it shows a link to the
+  conversation and closes. Change the key in Settings › Advanced.
+- **@-mentions.** Type @ in a request box to name a client, project, connection or
+  agent. The request goes there, whatever else it says.
+- **Keys already in a project.** A project's .env and config files are offered as
+  connections: masked, one confirmation each, never from outside its folder.
+- **Connection health.** Every connection is tested daily, reads only. You hear if one
+  stops working, or 7 days before a key expires. Test all is on Connectors.
+- **Faster approvals.** J, K, A and D on the keyboard, Approve all N like this, and
+  trusting an action in a project for an hour. Never for deletes.
+- **Morning digest.** Home shows what ran, failed and waits, per client; Slack,
+  Telegram and Discord can get it at a set time.
+- **Run again, and saved requests.** On every task. Saved requests are on Home.
+- **Files on a request.** Drop them on the box: they go into the project.
+- **Pins and recents.** In the switcher and Ctrl+K.
+- **Help that knows the guide.** Ask how something works in the request box or in
+  Help › Ask. It answers from this version's guide and your setup, says so when
+  something doesn't exist, and ends with the next step.
+
 ## 0.1.0-beta.14 (2026-11-03)
 
 - **Connectors.** Connections is now Connectors, and Browse connectors opens the

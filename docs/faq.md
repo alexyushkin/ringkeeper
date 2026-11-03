@@ -15,7 +15,11 @@ On Linux, the [server install](install-server.md) runs in Docker.
 **Why does Windows warn about the installer?** The beta isn't code-signed yet.
 Click **More info › Run anyway**.
 
-**Can it change things without asking?** Reads always run. Changes on staging
+**Where do I see what a task changed?** Open the task from Tasks: Data it changed
+lists what it did on connections, with Revert, and Changes shows its files.
+
+**Can it change things without asking?** Live client data never changes without
+asking. Reads always run. Changes on staging
 and development connections run and are logged. Changes on production
 connections, and anything that reaches real people (emails, texts), wait for
 your approval. See [Approvals and safety](approvals.md).
@@ -35,5 +39,21 @@ can be approved there; risky ones say "Open in Ringkeeper". See
 **How do I move to a new computer?** Make a backup in Settings › Backup and
 restore it on the new one. See [Backup](backup.md).
 
+**Can I use my Claude subscription instead of an API key?** For your own work, yes.
+Turn on Settings › Claude › Personal subscription mode, run `claude setup-token` in a
+terminal and paste the token, or use your Claude Code login. Your subscription is for
+your own use: use an API key for client work.
+
+**Where are my agents?** Agents in the menu lists every project's agents; the Agents
+tab on a project lists its own. **New agent** asks for the project first.
+
 **Something's wrong. Where do I start?** [Troubleshooting](troubleshooting.md),
 then Help › Report a problem in the app.
+
+## What Ringkeeper doesn't do yet
+
+- **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles.
+- **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser.
+- **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages.
+- **Billing:** no invoices, time tracking or client billing.
+- **Exporting tasks to spreadsheets:** there's no export of tasks to Excel. The Activity page can download its log as CSV, and a backup is a whole copy, for restoring.
