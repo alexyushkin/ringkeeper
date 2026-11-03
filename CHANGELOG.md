@@ -3,6 +3,37 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## 0.1.0-beta.14 (2026-11-03)
+
+- **Connectors.** Connections is now Connectors, and Browse connectors opens the
+  directory: built-in services first, as tiles that open their form; then
+  services you sign in to; then a search of every other connector, with
+  publishers and verified badges, the service's own first and community servers
+  folded away.
+- **Is this live client data?** Asked every time you add a client's connection,
+  with no default, and it says what each answer lets run.
+- **Readable names.** Connections read like "n8n · n8n.geninfos.com" or "Google ·
+  name@gmail.com", on every page and approval. Existing ones are renamed, and you
+  can change a name under Details › Change. Task transcripts read like "Database:
+  execute".
+- **Linking in one click.** A connection's card says where it's used and has Link
+  to project…; a project's Connections tab has Link a connection. A client with
+  no projects says so, with Add project and From Claude.
+- **From Claude, tidied.** Most recent first, grouped by likely client, with a
+  search. A Claude project named like a folder shows once, and folders that only
+  hold other projects are folded away.
+- **Your subscription first.** With personal subscription mode on, first run and
+  Settings › Claude start with your subscription.
+- **Google accounts in one place.** Settings › Google app lists each account with
+  its client and projects, and Add a Google account is right there. New accounts
+  can write drafts unless you untick it.
+- **Results where you look.** A task's card and a routine's run show what it said
+  at the end. Tasks offers to archive failed tasks older than 7 days.
+- **No dead ends.** Agents and routines offer Add project when there are none, and
+  a project's new routine offers Create an agent right there.
+- **Deep folders.** A task no longer fails with "Filename too long" in a deeply
+  nested project folder on Windows.
+
 ## 0.1.0-beta.13 (2026-11-02)
 
 - **Formatted replies.** Ringkeeper's replies, task transcripts and questions
