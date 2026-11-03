@@ -40,7 +40,7 @@ projects, or to **all projects** (new ones get it too). Only MCP servers can be
 shared tools, local or remote, and anything they do that isn't marked read-only
 still waits for your approval, with the usual per-tool overrides. **Add a
 connection** asks first whether it's a client's account or your own tool, and
-Connections has **Add a shared tool**. Importing from Claude Desktop or the
+Connectors has **Add your own tool**. Importing from Claude Desktop or the
 catalog asks which kind each server is, and suggests a shared tool when it needs
 no key, token, login or address.
 
@@ -57,8 +57,8 @@ sign-in needs `RINGKEEPER_WEB_ORIGIN` (the address the service sends you back
 to). SQL run through a remote service's SQL tool is checked like a database
 connection's: deleting or changing tables needs the connection's name typed.
 
-These services are the **Recommended** shelf of the catalog, because they have
-built-in rules (narrowing, SQL checks). Below it, the catalog searches every
+These services are tiles at the top of the connectors, because they have built-in
+rules (narrowing, SQL checks). Below them, the catalog searches every
 server in the official [MCP Registry](https://registry.modelcontextprotocol.io)
 and keeps what it has seen in the data folder, so search still works offline.
 Each result shows its publisher, as the registry verified it (a domain, or a
@@ -243,7 +243,7 @@ A worker only gets the endpoints of the services its project is connected to.
   SQL tool's call (Neon, Supabase) is judged by its statement: one shown to only
   read runs at once; reading never waits, even on production. The annotations
   are remembered whenever the tools are listed (Test, Connections, or the
-  agent) and a change to them is audited. Override any tool under Connections › Tools and approvals.
+  agent) and a change to them is audited. Override any tool on its card, under Details › Tools and approvals.
 - **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
   JSON with the address and the app password. Reading never marks mail as
   read. Drafts run without asking; sending always waits for approval. The
@@ -270,7 +270,7 @@ A worker only gets the endpoints of the services its project is connected to.
   or all of them), like shared tools. A project can have several; one can be
   its default, and the agent names the one it means (`list_instances` shows
   each one's address). Every write waits for approval, even on test data; per
-  account, you can let a tool run without asking (Connections › Tools and
+  account, you can let a tool run without asking (Details › Tools and
   approvals). The tokens are refreshed before each call; when Google stops
   accepting one (a password change, six months unused), the agent is told to
   have you sign in again. Unverified, your app allows 100 accounts over its life

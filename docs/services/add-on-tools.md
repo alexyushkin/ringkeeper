@@ -6,7 +6,7 @@ Ringkeeper runs them behind its gateway, keeps their keys, and checks each call.
 
 ## Adding one
 
-- **From the catalog** (Connections › Add, or the first run): search, then sign
+- **From the catalog** (Connectors › Browse connectors, or the first run): search, then sign
   in or paste a key. Some run on this computer (Ringkeeper installs them).
 - **From Claude Desktop:** Settings › From Claude Desktop imports the tools you
   already set up there; their keys move into Ringkeeper's vault.
