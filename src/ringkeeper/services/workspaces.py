@@ -15,6 +15,7 @@ Ringkeeper lists the files a task changed instead.
 
 import json
 import os
+import re
 import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -124,6 +125,24 @@ def claude_code_config() -> Path:
     return Path(base) / ".claude.json" if base else Path.home() / ".claude.json"
 
 
+def claude_code_used(path: Path) -> float | None:
+    """When Claude Code last worked in `path`: its newest session file for that folder
+    (Claude Code keeps them under projects/, named after the path)."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR")
+    sessions = (Path(base) if base else Path.home() / ".claude") / "projects"
+    folder = sessions / re.sub(r"[^A-Za-z0-9]", "-", str(path))
+    try:
+        return max((p.stat().st_mtime for p in folder.glob("*.jsonl")), default=None)
+    except OSError:
+        return None
+
+
+def holds(path: Path, others: Iterable[Path]) -> int:
+    """How many of `others` are inside `path` (a folder of projects, not one itself)."""
+    key = _key(path) + os.sep
+    return sum(1 for other in others if _key(other).startswith(key))
+
+
 def _claude_code_listed() -> list[str]:
     """The folders in Claude Code's settings file."""
     try:
@@ -166,6 +185,11 @@ def claude_code_folders(
         else:
             taken.add(key)  # gone: not checked again
     return sorted(found.values(), key=lambda f: (f[0].name.lower(), str(f[0]).lower()))
+
+
+def folder_key(text: str) -> str:
+    """A folder's one spelling, from its path as written anywhere."""
+    return _key(Path(os.path.normpath(text)))
 
 
 def _key(path: Path) -> str:

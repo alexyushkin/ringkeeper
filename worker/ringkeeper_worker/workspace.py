@@ -28,7 +28,11 @@ GIT_IDENTITY = {
     "GIT_COMMITTER_EMAIL": "worker@ringkeeper.invalid",
 }
 MAX_SNAPSHOT_FILES = 50_000
-SAFE_GIT = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat")
+# core.longpaths: a deep project folder on Windows, where a branch's ref would pass 260.
+SAFE_GIT = (
+    "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat",
+    "-c", "core.longpaths=true",
+)  # fmt: skip
 GIT_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
 
 

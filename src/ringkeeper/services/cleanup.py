@@ -17,7 +17,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +74,38 @@ def archive(session: Session, kind: str, ids: list[str], archived: bool, *, by: 
         by=by, details={"ids": [str(r.id) for r in rows]},
     )  # fmt: skip
     return len(rows)
+
+
+# Tasks that didn't finish their work: failed, ran out of time or budget, or stopped.
+UNFINISHED = (
+    TaskStatus.FAILED,
+    TaskStatus.TIMED_OUT,
+    TaskStatus.BUDGET_EXCEEDED,
+    TaskStatus.STOPPED,
+)
+
+
+def old_unfinished(session: Session, days: int) -> list[Task]:
+    """Tasks that ended without finishing more than `days` ago and aren't archived."""
+    before = datetime.now(UTC) - timedelta(days=days)
+    return list(
+        session.scalars(
+            select(Task).where(
+                Task.status.in_(UNFINISHED),
+                Task.archived_at.is_(None),
+                Task.finished_at.is_not(None),
+                Task.finished_at < before,
+            )
+        )
+    )
+
+
+def archive_old_unfinished(session: Session, days: int, *, by: str) -> int:
+    """Archive them all (they stay searchable, and can be brought back)."""
+    found = old_unfinished(session, days)
+    if not found:
+        return 0
+    return archive(session, "task", [str(t.id) for t in found], True, by=by)
 
 
 # --- The task branch ---

@@ -85,8 +85,15 @@ class ProjectIn(_Input):
     models: dict[ModelKey, ModelId] = Field(default_factory=dict[ModelKey, ModelId])
 
 
+# A connection's name as people read it ("n8n · n8n.geninfos.com"); the slug
+# `name` is what the AI and the URLs use.
+Title = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
+
+
 class InstanceIn(_Input):
     name: Slug
+    # As shown; None on an update keeps the one it has (empty: shown by its name).
+    title: Title | None = None
     type: InstanceType
     env: Env
     secret_ref: SecretRef
@@ -142,6 +149,7 @@ class InstanceOut(_Output):
     """Public view of an instance. Deliberately has no secret_ref."""
 
     name: str
+    title: str | None = None
     type: InstanceType
     env: Env
     base_url: str | None

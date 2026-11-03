@@ -130,6 +130,7 @@ def test_get_project_includes_bound_instances_without_secrets(
     assert bound["acme-supabase-dev"]["is_default"] is True
     assert bound["acme-supabase-prod"] == {
         "name": "acme-supabase-prod",
+        "title": None,
         "type": "supabase",
         "env": "prod",
         "base_url": "https://acme-prod.supabase.example",

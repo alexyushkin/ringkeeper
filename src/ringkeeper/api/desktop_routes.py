@@ -158,7 +158,21 @@ def claude_code_folders(session: SessionDep) -> list[dict[str, Any]]:
     paths = session.scalars(select(Project.workspace_path)).all()
     used = [str(workspaces.root(settings) / path) for path in paths if path]
     found = workspaces.claude_code_folders(settings, used, claude_work.opened_folders())
-    return [{"folder": str(path), "name": path.name, "from": where} for path, where in found]
+    opened = claude_work.last_opened()
+    # A folder holding other projects (or these folders) is a folder of projects.
+    inside = [path for path, _ in found] + [Path(p) for p in used]
+    return [
+        {
+            "folder": str(path), "name": path.name, "from": where,
+            "used_at": max(
+                (t for t in (workspaces.claude_code_used(path),
+                             opened.get(workspaces.folder_key(str(path)))) if t),
+                default=None,
+            ),
+            "holds": workspaces.holds(path, inside),
+        }
+        for path, where in found
+    ]  # fmt: skip
 
 
 @router.get("/claude-projects")
@@ -169,6 +183,7 @@ def claude_projects(session: SessionDep) -> list[dict[str, Any]]:
         {
             "id": p.id, "name": p.name, "description": p.description,
             "instructions": bool(p.instructions), "files": len(p.files()),
+            "used_at": p.used_at(),
         }
         for p in claude_work.claude_projects()
     ]  # fmt: skip

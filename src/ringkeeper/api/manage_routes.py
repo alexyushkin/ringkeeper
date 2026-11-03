@@ -55,6 +55,7 @@ from ringkeeper.schemas import (
     ProjectIn,
     ScopeValue,
     Slug,
+    Title,
     WorkspaceId,
 )
 from ringkeeper.scrub import scrub
@@ -507,6 +508,7 @@ def unbind_connection(name: str, instance: str, session: WriteSessionDep) -> Non
 
 class ConnectionIn(Input):
     name: Slug
+    title: Title | None = None  # as shown ("n8n · n8n.geninfos.com")
     type: InstanceType
     env: Env
     owner: NonEmpty
@@ -518,6 +520,7 @@ class ConnectionIn(Input):
 
 
 class ConnectionPatch(Input):
+    title: Title | None = None
     env: Env | None = None
     owner: NonEmpty | None = None
     shared: bool | None = None  # yours (a shared tool), or a client's connection
@@ -537,6 +540,7 @@ class ConnectionSecretIn(Input):
 
 class ConnectionOut(BaseModel):
     name: str
+    title: str | None = None  # as shown; None: shown by its name
     type: InstanceType
     env: Env
     owner: str
@@ -572,8 +576,8 @@ def _connection_out(instance: Instance) -> ConnectionOut:
         key=lambda link: str(link["project"]),
     )  # fmt: skip
     return ConnectionOut(
-        name=instance.name, type=instance.type, env=instance.env, owner=instance.owner,
-        shared=instance.shared, all_projects=instance.all_projects,
+        name=instance.name, title=instance.title, type=instance.type, env=instance.env,
+        owner=instance.owner, shared=instance.shared, all_projects=instance.all_projects,
         except_clients=list(instance.except_clients),
         except_projects=list(instance.except_projects),
         reach=instances.describe_reach(instance),
@@ -610,7 +614,7 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
     instance = instances.create_instance(
         session,
         InstanceIn(
-            name=data.name, type=data.type, env=data.env, secret_ref=ref,
+            name=data.name, title=data.title, type=data.type, env=data.env, secret_ref=ref,
             owner=instances.SHARED_OWNER if data.shared else data.owner, base_url=base_url,
             shared=data.shared, all_projects=data.shared and data.all_projects,
         ),
@@ -647,8 +651,8 @@ def update_connection(
     owner = instances.SHARED_OWNER if shared else changes.get("owner", instance.owner)
     everywhere = shared and changes.get("all_projects", instance.all_projects)
     merged = InstanceIn(
-        name=instance.name, type=instance.type, env=changes.get("env", instance.env),
-        secret_ref=instance.secret_ref, owner=owner,
+        name=instance.name, title=changes.get("title"), type=instance.type,
+        env=changes.get("env", instance.env), secret_ref=instance.secret_ref, owner=owner,
         base_url=base_url, config=dict(instance.config or {}), shared=shared,
         all_projects=everywhere,
         # Exceptions only mean something for all projects; turning that off drops them.
@@ -764,7 +768,7 @@ def project_connections(name: str, session: SessionDep, token: OwnerToken) -> li
     project = projects.get_project(session, name)
     rows: list[ProjectInstance] = bindings.sorted_bindings(project)
     return [
-        {"instance": b.instance.name, "type": b.instance_type, "env": b.instance_env,
-         "is_default": b.is_default, "scope": dict(b.scope or {})}
+        {"instance": b.instance.name, "title": b.instance.title, "type": b.instance_type,
+         "env": b.instance_env, "is_default": b.is_default, "scope": dict(b.scope or {})}
         for b in rows
     ]  # fmt: skip

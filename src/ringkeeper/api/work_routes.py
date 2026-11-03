@@ -284,6 +284,23 @@ def archive_tasks(data: ArchiveIn, session: WriteSessionDep) -> dict[str, int]:
     return {"changed": cleanup.archive(session, "task", data.ids, data.archived, by=OWNER)}
 
 
+class ArchiveOldIn(Input):
+    days: Annotated[int, Field(ge=1, le=365)] = 7
+
+
+@router.get("/cleanup/old-tasks")
+def old_unfinished_tasks(
+    session: SessionDep, days: Annotated[int, Query(ge=1, le=365)] = 7
+) -> dict[str, int]:
+    """How many failed or stopped tasks ended more than `days` ago, not archived yet."""
+    return {"count": len(cleanup.old_unfinished(session, days)), "days": days}
+
+
+@router.post("/cleanup/old-tasks")
+def archive_old_tasks(data: ArchiveOldIn, session: WriteSessionDep) -> dict[str, int]:
+    return {"changed": cleanup.archive_old_unfinished(session, data.days, by=OWNER)}
+
+
 @router.post("/threads/archive")
 def archive_threads(data: ArchiveIn, session: WriteSessionDep) -> dict[str, int]:
     return {"changed": cleanup.archive(session, "thread", data.ids, data.archived, by=OWNER)}

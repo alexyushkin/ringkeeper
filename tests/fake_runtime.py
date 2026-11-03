@@ -27,6 +27,7 @@ def result_line(
             "_kind": "ResultMessage",
             "subtype": subtype,
             "is_error": subtype != "success",
+            "result": "All done." if subtype == "success" else "",
             "num_turns": turns,
             "session_id": session_id,
             "total_cost_usd": cost,

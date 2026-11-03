@@ -28,11 +28,16 @@ class RouterModel(Protocol):
     def complete(self, system: str, prompt: str, model: str) -> Completion: ...
 
 
-def sdk_env(credential: ClaudeCredential, config_dir: str) -> dict[str, str]:
+def sdk_env(
+    credential: ClaudeCredential, config_dir: str, base_url: str | None = None
+) -> dict[str, str]:
     """The SDK merges our env over the inherited one, so blank every other
-    billing variable: an inherited ANTHROPIC_API_KEY must not win."""
+    billing variable: an inherited ANTHROPIC_API_KEY must not win. `base_url`:
+    where model requests go, as for workers (a company proxy; tests: a fake)."""
     env: dict[str, str] = dict.fromkeys(BILLING_ENV_VARS, "")
     env.update(credential.env())
+    if base_url:
+        env["ANTHROPIC_BASE_URL"] = base_url
     env["CLAUDE_CONFIG_DIR"] = config_dir
     return env
 
@@ -71,7 +76,7 @@ class AgentSdkModel:
                 setting_sources=[],
                 strict_mcp_config=True,
                 cwd=scratch,
-                env=sdk_env(credential, scratch),
+                env=sdk_env(credential, scratch, self._settings.worker_anthropic_base_url),
             )
             texts: list[str] = []
             result: ResultMessage | None = None

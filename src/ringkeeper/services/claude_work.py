@@ -55,10 +55,8 @@ def _sessions(base: Path) -> Iterator[tuple[Path, str]]:
         yield path, "Claude Code"
 
 
-def opened_folders() -> list[tuple[str, str]]:
-    """(folder, where): the folders picked for Cowork sessions, and the folder each Code
-    tab session started in (not the worktree it may have worked in). Repeats included."""
-    found: list[tuple[str, str]] = []
+def _opened() -> Iterator[tuple[str, str, float]]:
+    """(folder, where, when): each session's folders, and when its file last changed."""
     for base in _claude_dirs():
         for path, where in _sessions(base):
             data = _read(path)
@@ -69,7 +67,27 @@ def opened_folders() -> list[tuple[str, str]]:
                 folders = cast(list[Any], picked) if isinstance(picked, list) else []
             else:
                 folders = [data.get("originCwd") or data.get("cwd")]
-            found += [(folder, where) for folder in folders if isinstance(folder, str) and folder]
+            try:
+                when = path.stat().st_mtime
+            except OSError:
+                when = 0.0
+            for folder in folders:
+                if isinstance(folder, str) and folder:
+                    yield folder, where, when
+
+
+def opened_folders() -> list[tuple[str, str]]:
+    """(folder, where): the folders picked for Cowork sessions, and the folder each Code
+    tab session started in (not the worktree it may have worked in). Repeats included."""
+    return [(folder, where) for folder, where, _ in _opened()]
+
+
+def last_opened() -> dict[str, float]:
+    """When each folder was last used in a Cowork or Code tab session, by its path."""
+    found: dict[str, float] = {}
+    for folder, _, when in _opened():
+        key = workspaces.folder_key(folder)
+        found[key] = max(found.get(key, 0.0), when)
     return found
 
 
@@ -80,6 +98,13 @@ class ClaudeProject:
     description: str
     instructions: str
     folder: Path  # the Claude app's copy: metadata.json, docs/, files/
+
+    def used_at(self) -> float | None:
+        """When the Claude app last refreshed its copy (it does when the project is used)."""
+        try:
+            return (self.folder / "metadata.json").stat().st_mtime
+        except OSError:
+            return None
 
     def files(self) -> list[Path]:
         """Its knowledge files (documents and uploads), as the Claude app keeps them."""

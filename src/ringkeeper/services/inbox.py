@@ -478,6 +478,17 @@ def production_hold(decision: Decision) -> bool:
     return env is Env.PROD
 
 
+def _shown(decision: Decision) -> str | None:
+    """The connection as people read it: its title, else its name."""
+    session = object_session(decision)
+    title = (
+        session.scalar(select(Instance.title).where(Instance.name == decision.instance))
+        if session is not None
+        else None
+    )
+    return title or decision.instance
+
+
 def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)
     """What a held call is, in a few words: live client data only when it is."""
     if decision.kind is not DecisionKind.APPROVE:
@@ -498,7 +509,7 @@ def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)
     )
     if decision.service in DATA_SERVICES and env is Env.PROD:
         return "A change to live client data"
-    return f"{action(decision.service, decision.tool, decision.args)} on {decision.instance}"
+    return f"{action(decision.service, decision.tool, decision.args)} on {_shown(decision)}"
 
 
 def summary(decision: Decision, limit: int = 160) -> str:
@@ -512,7 +523,7 @@ def summary(decision: Decision, limit: int = 160) -> str:
             what = action(decision.service, decision.tool, decision.args)
             if decision.tool == "revert_change":
                 what = "Undoing a change"
-            text = f"{what} on {decision.instance}: waits for your OK"
+            text = f"{what} on {_shown(decision)}: waits for your OK"
         case DecisionKind.ROUTE:
             names = " or ".join(c["project"] for c in payload.get("candidates", []))
             text = f"Which project ({names})? {payload.get('task', {}).get('outcome', '')}"

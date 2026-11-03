@@ -114,7 +114,7 @@ def production_connection(session: Session, task: RoutedTask) -> str | None:
     if project is None:
         return None
     live = sorted(
-        b.instance.name for b in project.bindings
+        b.instance.title or b.instance.name for b in project.bindings  # as people read it
         if b.instance.env is Env.PROD and b.instance.type is not InstanceType.GOOGLE
     )  # fmt: skip
     if not live:

@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from alembic.autogenerate import compare_metadata
@@ -40,6 +41,57 @@ def test_projects_are_workspaces_and_repo_is_optional(engine: Engine) -> None:
     assert "worktree_path" not in columns
     assert columns["workspace_path"]["nullable"] is True
     assert columns["repo_url"]["nullable"] is True
+
+
+def test_existing_connections_get_readable_titles(database_url: str) -> None:
+    """0019: a connection reads as its service and its account, host or client."""
+    migrate.downgrade(database_url, "0018")
+    dispose_engines()
+    rows = (
+        ("acme-a-yushkin", "google", None, {"email": "a@acme.example"}, "acme"),
+        ("acme-n8n", "n8n", "https://n8n.acme.example/", {}, "acme"),
+        ("acme-airtable", "airtable", None, {}, "acme"),
+        ("acme-notion", "mcp", None, {"remote": "notion"}, "acme"),
+        ("files", "mcp", None, {"source": "claude-desktop"}, "acme"),
+    )
+    probe = create_engine(database_url)
+    try:
+        with probe.begin() as connection:
+            connection.execute(text("INSERT INTO clients (slug, name) VALUES ('acme', 'Acme Inc')"))
+            for name, kind, url, config, owner in rows:
+                connection.execute(
+                    text(
+                        "INSERT INTO instances (id, name, type, env, base_url, secret_ref, owner,"
+                        " config) VALUES (:id, :name, :type, 'dev', :url, :ref, :owner, :config)"
+                        if database_url.startswith("sqlite")
+                        else "INSERT INTO instances (id, name, type, env, base_url, secret_ref,"
+                        " owner, config) VALUES (:id, :name, :type, 'dev', :url, :ref, :owner,"
+                        " CAST(:config AS jsonb))"
+                    ),
+                    {"id": str(uuid.uuid4()), "name": name, "type": kind, "url": url,
+                     "ref": f"file://{name}", "owner": owner,
+                     "config": json.dumps(config)},
+                )  # fmt: skip
+    finally:
+        probe.dispose()
+    migrate.upgrade(database_url)
+    dispose_engines()
+    probe = create_engine(database_url)
+    try:
+        with probe.connect() as connection:
+            titles = {
+                row[0]: row[1]
+                for row in connection.execute(text("SELECT name, title FROM instances"))
+            }
+    finally:
+        probe.dispose()
+    assert titles == {
+        "acme-a-yushkin": "Google · a@acme.example",
+        "acme-n8n": "n8n · n8n.acme.example",
+        "acme-airtable": "Airtable · Acme Inc",
+        "acme-notion": "Notion · Acme Inc",
+        "files": None,
+    }
 
 
 def test_owners_become_clients(database_url: str) -> None:

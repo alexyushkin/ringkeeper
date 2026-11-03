@@ -28,7 +28,7 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, InstanceType
-from ringkeeper.schemas import Input, InstanceIn, NonEmpty, ScopeValue, Slug
+from ringkeeper.schemas import Input, InstanceIn, NonEmpty, ScopeValue, Slug, Title
 from ringkeeper.services import (
     admin_audit,
     bundles,
@@ -59,6 +59,7 @@ class RemoteConnectionIn(Input):
     url: Url | None = None
     server: ServerName | None = None
     name: Slug
+    title: Title | None = None  # as shown
     owner: NonEmpty
     env: Env = Env.DEV
     project: Slug | None = None
@@ -72,7 +73,7 @@ class RemoteConnectionIn(Input):
             remote=self.remote, url=self.url, server=self.server, name=self.name,
             owner=instances.SHARED_OWNER if self.shared else self.owner, env=self.env,
             project=self.project, scope=dict(self.scope) or None, shared=self.shared,
-            all_projects=self.all_projects,
+            all_projects=self.all_projects, title=self.title,
         )  # fmt: skip
 
 
@@ -94,6 +95,7 @@ class PlanIn(Input):
 class LocalConnectionIn(PlanIn):
     fingerprint: Annotated[str, Field(min_length=8, max_length=64)]
     name: Slug
+    title: Title | None = None  # as shown
     owner: NonEmpty
     env: Env = Env.DEV
     project: Slug | None = None
@@ -201,6 +203,7 @@ def install_local(data: LocalConnectionIn, session: SessionDep) -> dict[str, Any
         name=data.replace or data.name, env=data.env, server=data.server,
         owner=instances.SHARED_OWNER if data.shared else data.owner,
         project=data.project, shared=data.shared, all_projects=data.all_projects,
+        title=data.title,
     )  # fmt: skip
     if data.replace:
         current = instances.get_instance(session, data.replace)
@@ -239,8 +242,8 @@ def _store_local(
             instances.create_instance(
                 session,
                 InstanceIn(
-                    name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref,
-                    owner=new.owner, config=config, shared=new.shared,
+                    name=new.name, title=new.title, type=InstanceType.MCP, env=new.env,
+                    secret_ref=ref, owner=new.owner, config=config, shared=new.shared,
                     all_projects=new.all_projects,
                 ),
             )  # fmt: skip
@@ -307,6 +310,8 @@ async def read_extension(
 class ExtensionIn(Input):
     fingerprint: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     name: Slug
+    title: Title | None = None  # as shown
+    env: Env = Env.DEV  # as asked; an extension's tools wait for approval either way
     owner: NonEmpty
     project: Slug | None = None
     values: Values = Field(default_factory=dict[str, str], repr=False)
@@ -325,11 +330,12 @@ def install_extension(data: ExtensionIn, session: SessionDep) -> dict[str, Any]:
     bundle = bundles.read(path, data.fingerprint)
     if bundle.problem:
         raise RuleViolationError(f"{bundle.title} can't run here: {bundle.problem}.")
-    # As an extension imported from Claude Desktop: Test data, and its calls wait for
-    # approval by the generic tool rules (adapters.mcp). It can be set to Production.
+    # The kind of data as asked (one imported from Claude Desktop: Test); its calls
+    # wait for approval by the generic tool rules (adapters.mcp).
     new = NewConnection(
         name=data.name, owner=instances.SHARED_OWNER if data.shared else data.owner,
-        env=Env.DEV, project=data.project, shared=data.shared, all_projects=data.all_projects,
+        env=data.env, project=data.project, shared=data.shared, all_projects=data.all_projects,
+        title=data.title,
     )  # fmt: skip
     remote_connections.check_new(session, new)
     values = dict(data.values)
@@ -359,8 +365,9 @@ def _store_extension(new: NewConnection, bundle: bundles.Bundle, spec: dict[str,
         instances.create_instance(
             session,
             InstanceIn(
-                name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref,
-                owner=new.owner, config=config, shared=new.shared, all_projects=new.all_projects,
+                name=new.name, title=new.title, type=InstanceType.MCP, env=new.env,
+                secret_ref=ref, owner=new.owner, config=config, shared=new.shared,
+                all_projects=new.all_projects,
             ),
         )  # fmt: skip
         admin_audit.record(

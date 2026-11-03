@@ -341,6 +341,8 @@ class Instance(TimestampMixin, Base):
         primary_key=True, server_default=text("gen_random_uuid()")
     )
     name: Mapped[str] = mapped_column(String(63), unique=True)
+    # As people read it ("n8n · n8n.geninfos.com"); the AI and URLs use `name`.
+    title: Mapped[str | None] = mapped_column(Text)
     type: Mapped[InstanceType] = mapped_column(instance_type_enum)
     env: Mapped[Env] = mapped_column(instance_env_enum)
     base_url: Mapped[str | None] = mapped_column(Text)

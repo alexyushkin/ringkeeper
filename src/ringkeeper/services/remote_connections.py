@@ -48,12 +48,14 @@ class NewConnection:
     scope: dict[str, str] | None = None
     shared: bool = False  # a shared tool (an MCP server with no client's data)
     all_projects: bool = False
+    title: str | None = None  # as shown ("Notion · General Informatics LLC")
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "remote": self.remote, "url": self.url, "server": self.server, "name": self.name,
             "owner": self.owner, "env": self.env.value, "project": self.project,
             "scope": self.scope or {}, "shared": self.shared, "all_projects": self.all_projects,
+            "title": self.title,
         }  # fmt: skip
 
     @classmethod
@@ -63,6 +65,7 @@ class NewConnection:
             name=str(data["name"]), owner=str(data["owner"]), env=Env(data["env"]),
             project=data.get("project"), scope=data.get("scope") or None,
             shared=bool(data.get("shared")), all_projects=bool(data.get("all_projects")),
+            title=data.get("title"),
         )  # fmt: skip
 
 
@@ -168,8 +171,8 @@ def create(
     instance = instances.create_instance(
         session,
         InstanceIn(
-            name=new.name, type=InstanceType.MCP, env=new.env, secret_ref=ref, owner=new.owner,
-            config=config, shared=new.shared, all_projects=new.all_projects,
+            name=new.name, title=new.title, type=InstanceType.MCP, env=new.env, secret_ref=ref,
+            owner=new.owner, config=config, shared=new.shared, all_projects=new.all_projects,
         ),
     )  # fmt: skip
     via = {"signin": "signed in", "token": "token", "headers": "headers", "open": "no key"}.get(

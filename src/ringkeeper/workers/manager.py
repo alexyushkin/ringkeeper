@@ -77,6 +77,9 @@ REVOKED_BY = "session-manager"
 VOLUME_SWEEP_SECONDS = 3600
 
 
+SUMMARY_CHARS = 4000  # a task's last message, kept as its result
+
+
 @dataclass(frozen=True)
 class Job:
     session_id: uuid.UUID
@@ -565,6 +568,11 @@ class Manager:
                     row.checks = collected.checks
                 # Held calls first: the session is resumed once the user decides them.
                 waiting = holds.session_ended(session, self.settings, row, status)
+                # What it said at the end is the task's result (a feature's comes from
+                # the architect), shown on its card, its routine run and in channels.
+                said = result.get("result")
+                if not job.feature and not waiting and isinstance(said, str) and said.strip():
+                    task.summary = said.strip()[:SUMMARY_CHARS]
                 if job.feature and not waiting:
                     review = {
                         "checks": collected.checks,

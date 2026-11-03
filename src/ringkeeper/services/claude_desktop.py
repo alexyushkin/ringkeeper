@@ -345,8 +345,8 @@ def import_server(
     instances.create_instance(
         session,
         InstanceIn(
-            name=name, type=InstanceType.MCP, env=Env.DEV, secret_ref=ref, owner=owner,
-            config=config, shared=shared, all_projects=shared and all_projects,
+            name=name, title=server.name, type=InstanceType.MCP, env=Env.DEV, secret_ref=ref,
+            owner=owner, config=config, shared=shared, all_projects=shared and all_projects,
         ),
     )  # fmt: skip
     for project in linked:

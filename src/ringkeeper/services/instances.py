@@ -156,7 +156,8 @@ def update_instance(session: Session, data: InstanceIn) -> Instance:
                 f"{', '.join(defaults)}, and a production connection can't be a default. "
                 "Turn off Default for it on those projects, then mark it production."
             )
-    for field, value in data.model_dump(exclude={"name"}).items():
+    keep = {"name", "title"} if data.title is None else {"name"}
+    for field, value in data.model_dump(exclude=keep).items():
         setattr(instance, field, value)
     session.flush()
     # The FK cascade rewrote instance_type/instance_env on the bindings.

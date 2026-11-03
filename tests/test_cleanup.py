@@ -2,6 +2,7 @@
 
 import subprocess
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,25 @@ def test_archived_tasks_and_conversations_leave_the_lists_but_not_search(
     ]
     owner.post("/threads/archive", json={"ids": [conversation], "archived": False})
     assert conversation in [t["id"] for t in owner.get("/threads").json()]
+
+
+@pytest.mark.usefixtures("project")
+def test_old_unfinished_tasks_are_archived_in_one_go(owner: TestClient) -> None:  # noqa: F811
+    old_failed = new_task("broke", status=TaskStatus.FAILED)
+    old_stopped = new_task("wrong project", status=TaskStatus.STOPPED)
+    new_failed = new_task("broke today", status=TaskStatus.FAILED)
+    old_done = new_task("fine", status=TaskStatus.SUCCEEDED)
+    with session_scope() as session:
+        for task_id, days in ((old_failed, 9), (old_stopped, 8), (new_failed, 1), (old_done, 30)):
+            tasks.get_task(session, task_id).finished_at = datetime.now(UTC) - timedelta(days=days)
+
+    assert owner.get("/cleanup/old-tasks").json() == {"count": 2, "days": 7}
+    assert owner.post("/cleanup/old-tasks", json={}).json() == {"changed": 2}
+    listed = {t["id"] for t in owner.get("/tasks").json()}
+    assert (old_failed in listed, old_stopped in listed) == (False, False)
+    assert (new_failed in listed, old_done in listed) == (True, True)
+    assert owner.get("/cleanup/old-tasks").json()["count"] == 0
+    assert owner.post("/cleanup/old-tasks", json={}).json() == {"changed": 0}
 
 
 @pytest.mark.usefixtures("project")

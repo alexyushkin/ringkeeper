@@ -330,6 +330,9 @@ def test_sdk_env_blanks_every_other_billing_variable() -> None:
     assert env["CLAUDE_CONFIG_DIR"] == "/state/router"
     blanked = {k for k, v in env.items() if v == ""}
     assert blanked == set(BILLING_ENV_VARS) - {"CLAUDE_CODE_OAUTH_TOKEN"}
+    # Sent to a company proxy (or a test's fake) only when one is set, like workers.
+    proxied = sdk_env(credential, "/state/router", "https://llm-proxy.example")
+    assert proxied["ANTHROPIC_BASE_URL"] == "https://llm-proxy.example"
 
 
 def test_only_big_features_plan_on_the_big_model() -> None:

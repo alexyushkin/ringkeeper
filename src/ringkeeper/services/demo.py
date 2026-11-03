@@ -114,6 +114,7 @@ def create(session: Session, settings: Settings, vault: Vault) -> Demo:
         session,
         InstanceIn(
             name=CONNECTION,
+            title="Demo shop database",
             type=InstanceType.SUPABASE,
             env=Env.PROD,  # so a change waits for approval, like a real client's
             secret_ref=ref,

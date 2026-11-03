@@ -6,6 +6,7 @@ worker process (the stub agent, no LLM). No Docker, no Postgres.
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -445,11 +446,24 @@ def test_claude_code_folders_are_offered_as_projects(
         json={"name": "already-here", "owner": "x", "workspace_path": str(code / "already-here")},
     )
     assert made.status_code == 201, made.text
+    # Claude Code worked in acme-site (a session file under projects/, named after it).
+    sessions = config / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(code / "acme-site"))
+    sessions.mkdir(parents=True)
+    (sessions / "one.jsonl").write_text("{}", encoding="utf-8")
+    os.utime(sessions / "one.jsonl", (1_800_000_000, 1_800_000_000))
     offered = win.get("/bff/desktop/claude-code-folders").json()
     assert offered == [
-        {"folder": str(code / "acme-site"), "name": "acme-site", "from": ["Claude Code"]},
-        {"folder": str(code / "beta-app"), "name": "beta-app", "from": ["Claude Code"]},
-    ]
+        {"folder": str(code / "acme-site"), "name": "acme-site", "from": ["Claude Code"],
+         "used_at": 1_800_000_000, "holds": 0},
+        {"folder": str(code / "beta-app"), "name": "beta-app", "from": ["Claude Code"],
+         "used_at": None, "holds": 0},
+    ]  # fmt: skip
+
+    # A folder of projects says how many it holds (so the app can fold it away).
+    listed[str(code)] = {}
+    (config / ".claude.json").write_text(json.dumps({"projects": listed}), encoding="utf-8")
+    holding = {f["name"]: f["holds"] for f in win.get("/bff/desktop/claude-code-folders").json()}
+    assert holding == {"code": 3, "acme-site": 0, "beta-app": 0}
 
     (config / ".claude.json").write_text("not json", encoding="utf-8")
     assert win.get("/bff/desktop/claude-code-folders").json() == []
@@ -866,13 +880,20 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
     monkeypatch.setattr(claude_work, "config_paths", lambda: [base / "claude_desktop_config.json"])
 
     win = window(desktop)
-    assert win.get("/bff/desktop/claude-code-folders").json() == [
+    folders = win.get("/bff/desktop/claude-code-folders").json()
+    assert [{k: f[k] for k in ("folder", "name", "from")} for f in folders] == [
         {"folder": str(code / "acme-site"), "name": "acme-site", "from": ["Claude Code", "Cowork"]},
         {"folder": str(code / "globex-api"), "name": "globex-api", "from": ["Claude Code"]},
         {"folder": str(code / "seaside-copy"), "name": "seaside-copy", "from": ["Cowork"]},
     ]
+    # Used in a Cowork or Code tab session: when its session file last changed.
+    used = {f["name"]: f["used_at"] for f in folders}
+    assert used["acme-site"]
+    assert used["seaside-copy"]
 
-    assert win.get("/bff/desktop/claude-projects").json() == [
+    projects = win.get("/bff/desktop/claude-projects").json()
+    assert all(p.pop("used_at") for p in projects)
+    assert projects == [
         {"id": "p2", "name": "Ideas", "description": "", "instructions": False, "files": 0},
         {
             "id": "p1", "name": "Seaside newsletter", "description": "Monthly email for Seaside",

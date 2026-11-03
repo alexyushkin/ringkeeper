@@ -110,6 +110,7 @@ def test_a_task_runs_and_everything_is_recorded() -> None:
 
     done = task(task_id)
     assert done.status is TaskStatus.SUCCEEDED
+    assert done.summary == "All done."  # what it said at the end
     assert done.git_branch == "ringkeeper/t"
     assert done.changed_files == ["NOTES.md"]
     worker_session = session_of(task_id)
