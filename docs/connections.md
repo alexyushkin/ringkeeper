@@ -11,13 +11,23 @@ or to all of them (new ones too), with exceptions.
 
 ## Adding one
 
-**Connections › Add** (or press Ctrl+K and type "add a connection"). Pick the
-service, then either sign in (where the service allows it) or paste a key. The
-form links to the page where the service gives you that key.
+**Connectors › Browse connectors** (or a client's Connections tab, or press Ctrl+K
+and type "add a connection"). It asks first whether it's a client's account or your
+own tool. Built-in services come first, each a tile that opens its form; then the
+services you sign in to; then **Other connectors**, a search of every MCP server,
+with the service's own first and community servers folded away. The form links to
+the page where the service gives you its key.
 
-- **Production, staging or development.** Production is for live client data:
-  every change on it waits for your approval. Staging and development run
-  changes straight away, and log them.
+Using these in Claude? Claude's connectors stay in your Claude account; connect them
+here once per client.
+
+- **Is this live client data?** Asked every time, with no default. Production is
+  live data: every change on it waits for your approval. On staging and test data,
+  a built-in service's changes run straight away, and are logged (texts and emails
+  still wait).
+- **Its name** reads like "n8n · n8n.geninfos.com". Change it under Details › Change.
+- **Link to project…** on its card links it to any of the client's projects, and
+  each project's Connections tab has **Link a connection**.
 - **Test connection** makes one read-only call and tells you what it found.
 - **Narrow it** (on the client's page): limit a link to one base, repository,
   project or folder, so a project sees only that.
