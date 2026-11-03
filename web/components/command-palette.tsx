@@ -58,7 +58,7 @@ const PAGES: [string, string][] = [
   ["/approvals", "Approvals"],
   ["/tasks", "Tasks"],
   ["/projects", "Clients & projects"],
-  ["/connections", "Connections"],
+  ["/connections", "Connectors"],
   ["/agents", "Agents"],
   ["/routines", "Routines"],
   ["/activity", "Activity"],
@@ -92,7 +92,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const scope = useScope();
   const projects = useApi<{ name: string; owner: string }[]>("projects");
-  const connections = useApi<{ name: string; owner: string; shared: boolean; type: string }[]>("connections");
+  const connections = useApi<{ name: string; title?: string | null; owner: string; shared: boolean; type: string }[]>("connections");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement | null>(null);
@@ -131,7 +131,7 @@ function Palette({ onClose }: { onClose: () => void }) {
       })),
       ...(projects.data ?? []).map((p): Command => ({ label: `${place(p.owner, p.name)} page`, group: "Open", run: go(projectHref(p.name)) })),
       ...(connections.data ?? []).map((c): Command => ({
-        label: c.shared ? c.name : `${place(c.owner, null)} › ${c.name}`,
+        label: c.shared ? (c.title || c.name) : `${place(c.owner, null)} › ${c.title || c.name}`,
         group: "Open",
         hint: c.shared ? "shared tool" : "connection",
         run: go(connectionHref(c)),

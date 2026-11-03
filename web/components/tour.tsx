@@ -20,8 +20,8 @@ const STEPS = [
   },
   {
     target: "connections",
-    title: "Connections",
-    text: "The services each client's projects work with: databases, Airtable, GitHub, Google and more. Ringkeeper keeps the keys; the AI never sees them.",
+    title: "Connectors",
+    text: "The services each client's projects work with: databases, n8n, Airtable, GitHub, Google and more. Connect each one once per client, then link it to their projects. Ringkeeper keeps the keys; the AI never sees them.",
   },
 ] as const;
 
@@ -35,7 +35,7 @@ function visible(name: string): HTMLElement | null {
   return all.find((el) => el.offsetParent !== null && el.getBoundingClientRect().width > 0) ?? null;
 }
 
-/** Three steps after the first run: the request box, Approvals, Connections. Once
+/** Three steps after the first run: the request box, Approvals, Connectors. Once
  * seen or skipped it doesn't come back by itself; Help can show it again. */
 export function Tour({ auto, onSeen }: { auto: boolean; onSeen: () => void }) {
   const [step, setStep] = useState<number | null>(null);

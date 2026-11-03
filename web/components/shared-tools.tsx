@@ -124,7 +124,7 @@ export function SharedTools() {
       </p>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
-      {connections.data && !tools.length ? <Empty>No shared tools yet. Add one, or import one from Claude Desktop and choose &quot;Your own tool&quot;.</Empty> : null}
+      {connections.data && !tools.length ? <Empty>None yet. Add your own tool (a browser like Playwright, files on this computer), or import one from Claude Desktop and choose &quot;Your own tool&quot;.</Empty> : null}
       {tools.map((tool) => (
         <LibraryCard key={tool.name} connection={tool} projects={projects.list.map((p) => p.name)} services={services.data ?? []} onChange={reload} compact />
       ))}

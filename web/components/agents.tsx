@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { NoProjects } from "@/components/connection-library";
 import Link from "@/components/link";
 import { Alert, Badge, Button, CompactRow, ConfirmButton, Empty, Field, Loading, Select, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -27,6 +28,7 @@ export interface AgentData {
 /** A connection the project is linked to: an agent can be given some of them. */
 export interface Linked {
   name: string;
+  title?: string | null;
   type: string;
   shared?: boolean;
 }
@@ -43,6 +45,7 @@ const EFFORTS: [string, string][] = [
  * run them; a conversation can ask one by name. */
 export function Agents({ project, linked }: { project: string; linked: Linked[] }) {
   const agents = useApi<AgentData[]>(`projects/${project}/agents`);
+  const titles = new Map(linked.map((c) => [c.name, c.title || c.name]));
   const [adding, setAdding] = useState(false);
   return (
     <div className="space-y-3">
@@ -58,7 +61,7 @@ export function Agents({ project, linked }: { project: string; linked: Linked[] 
             head={
               <>
                 <span className="font-medium">{agent.name}</span>
-                <span className="text-xs text-muted">{agent.connections.length ? agent.connections.join(", ") : "no connections"}</span>
+                <span className="text-xs text-muted">{agent.connections.length ? agent.connections.map((name) => titles.get(name) ?? name).join(", ") : "no connections"}</span>
                 {agent.routines ? <Badge>{agent.routines === 1 ? "1 routine" : `${agent.routines} routines`}</Badge> : null}
               </>
             }
@@ -90,11 +93,11 @@ export function Agents({ project, linked }: { project: string; linked: Linked[] 
 
 /** The connections linked to a project, for choosing an agent's. */
 function useLinked(project: string): Linked[] | null {
-  const detail = useApi<{ instances: { name: string; type: string }[] }>(`projects/${project}`);
+  const detail = useApi<{ instances: { name: string; title?: string | null; type: string }[] }>(`projects/${project}`);
   const connections = useApi<{ name: string; shared: boolean }[]>("connections");
   if (!detail.data) return null;
   const shared = new Set((connections.data ?? []).filter((c) => c.shared).map((c) => c.name));
-  return detail.data.instances.map((i) => ({ name: i.name, type: i.type, shared: shared.has(i.name) }));
+  return detail.data.instances.map((i) => ({ name: i.name, title: i.title, type: i.type, shared: shared.has(i.name) }));
 }
 
 /** An agent's form outside its project's page: loads what the project is linked to. */
@@ -109,6 +112,8 @@ export function ProjectPicker({ value, onChange, hint }: { value: string; onChan
   const scope = useScope();
   const projects = useApi<{ name: string; owner: string }[]>("projects");
   const mine = (projects.data ?? []).filter((p) => !scope.client || p.owner === scope.client);
+  // Nothing to pick: say how to get a project, rather than an empty list.
+  if (projects.data && !mine.length) return <NoProjects client={scope.client || undefined} />;
   return (
     <Select
       label="Project"
@@ -141,6 +146,8 @@ export function NewAgent({ onSaved, onCancel }: { onSaved: () => void; onCancel:
 export function AgentDirectory() {
   const scope = useScope();
   const list = useApi<AgentData[]>("agents", scope.query);
+  const connections = useApi<{ name: string; title?: string | null }[]>("connections");
+  const titles = new Map((connections.data ?? []).map((c) => [c.name, c.title || c.name]));
   // ?new=1: the command palette's New agent.
   const [adding, setAdding] = useState(false);
   useEffect(() => setAdding(new URLSearchParams(window.location.search).has("new")), []);
@@ -171,7 +178,7 @@ export function AgentDirectory() {
                 <Link href={projectHref(agent.project ?? "")} className="text-xs text-accent">
                   {place(agent.client, agent.project)}
                 </Link>
-                <span className="text-xs text-muted">{agent.connections.length ? agent.connections.join(", ") : "no connections"}</span>
+                <span className="text-xs text-muted">{agent.connections.length ? agent.connections.map((name) => titles.get(name) ?? name).join(", ") : "no connections"}</span>
                 {agent.routines ? <Badge>{agent.routines === 1 ? "1 routine" : `${agent.routines} routines`}</Badge> : null}
               </>
             }
@@ -227,7 +234,7 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
           linked.map((connection) => (
             <label key={connection.name} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={chosen.includes(connection.name)} onChange={(e) => toggle(connection.name, e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
-              <span>{connection.name}</span>
+              <span>{connection.title || connection.name}</span>
               <span className="text-xs text-muted">
                 {connection.type}
                 {connection.shared ? " · shared tool" : ""}

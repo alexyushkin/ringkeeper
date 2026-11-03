@@ -282,8 +282,9 @@ function TextSetting({ label, value, onSave }: { label: string; value: string; o
 
 function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => void }) {
   const allowed = settings.claude.subscription_allowed;
-  // Without personal subscription mode, only an API key can be set here.
-  const [mode, setMode] = useState(allowed ? settings.claude.mode : "api_key");
+  // Without personal subscription mode, only an API key can be set here. With it, the
+  // subscription comes first, unless this install already runs on a saved API key.
+  const [mode, setMode] = useState(!allowed ? "api_key" : settings.claude.mode === "api_key" && settings.claude.api_key ? "api_key" : "subscription");
   const [key, setKey] = useState("");
   const savedWorkspace = settings.values.anthropic_workspace_id ?? "";
   const [workspace, setWorkspace] = useState(savedWorkspace);
@@ -341,13 +342,16 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
           value={mode}
           onChange={setMode}
           options={[
-            ["api_key", "API key (for client work)"],
             ["subscription", "My Claude subscription (personal use on my own account)"],
+            ["api_key", "API key (for client work)"],
           ]}
         />
       )}
       {mode === "subscription" ? <p className="text-sm text-muted">{settings.claude.subscription_note}</p> : null}
-      <p className="text-sm text-muted">{stored ? "A key is saved (hidden)." : "No key saved for this option yet."}</p>
+      <p className="text-sm text-muted">
+        {stored ? (mode === "subscription" ? "Your subscription token is saved (hidden)." : "A key is saved (hidden).") : mode === "subscription" ? "No subscription token saved yet." : "No key saved for this option yet."}
+        {stored && mode === settings.claude.mode ? " Tasks, plans, routines and the router all use it." : ""}
+      </p>
       <Field
         label={mode === "subscription" ? "Token from `claude setup-token`" : stored ? "Replace the key" : "Key"}
         type="password"

@@ -261,7 +261,7 @@ function BrowseCatalog({ projects: list }: { projects: { name: string; owner: st
         ) : (
           <>
             {list.length > 1 ? <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} /> : null}
-            <Catalog key={project.name} client={project.owner} project={project.name} onAdded={setAdded} />
+            <Catalog key={project.name} client={project.owner} project={project.name} kind="client" onAdded={setAdded} />
           </>
         )
       ) : null}
@@ -305,10 +305,7 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
           {list.length > 1 ? (
             <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} />
           ) : null}
-          <h3 className="font-medium">Connect a service</h3>
-          <Catalog key={`remote-${project.name}-${added.length}`} client={project.owner} project={project.name} onAdded={add} />
-          <h3 className="font-medium">Or paste a key</h3>
-          <ConnectionForm key={`${project.name}-${added.length}`} client={project.owner} project={project.name} onSaved={(c) => add(c.name)} />
+          <Catalog key={`remote-${project.name}-${added.length}`} client={project.owner} project={project.name} kind="client" onAdded={add} />
         </>
       ) : (
         <Loading />
@@ -490,12 +487,13 @@ function OwnerStep({ status, onDone }: { status: Status; onDone: () => void }) {
 function ClaudeStep({ status, onDone }: { status: Status; onDone: () => void }) {
   const [key, setKey] = useState("");
   const [workspace, setWorkspace] = useState("");
-  const [mode, setMode] = useState<"api_key" | "subscription">("api_key");
+  // Personal subscription mode only (RINGKEEPER_ALLOW_SUBSCRIPTION or Settings#personal):
+  // then the subscription is the first choice.
+  const offered = status.claude?.subscription_offered ?? false;
+  const [mode, setMode] = useState<"api_key" | "subscription">(offered ? "subscription" : "api_key");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  // Personal subscription mode only (RINGKEEPER_ALLOW_SUBSCRIPTION or Settings#personal).
-  const offered = status.claude?.subscription_offered ?? false;
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -563,8 +561,8 @@ function ClaudeStep({ status, onDone }: { status: Status; onDone: () => void }) 
                 setError(null);
               }}
               options={[
-                ["api_key", "API key (for client work)"],
                 ["subscription", "Use my Claude subscription (personal use only)"],
+                ["api_key", "API key (for client work)"],
               ]}
             />
           ) : null}
@@ -657,14 +655,7 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
         <ConnectionAdded name={showing} onAnother={() => setShowing(null)} />
       ) : (
         <>
-          {owner ? (
-            <>
-              <h3 className="font-medium">Connect a service</h3>
-              <Catalog key={connections.length} client={owner} project={project ?? undefined} onAdded={add} />
-            </>
-          ) : null}
-          {owner ? <h3 className="font-medium">Or paste a key</h3> : null}
-          <ConnectionForm key={`form-${connections.length}`} onSaved={pasted} />
+          {owner ? <Catalog key={connections.length} client={owner} project={project ?? undefined} kind="client" onAdded={add} /> : <ConnectionForm key={`form-${connections.length}`} onSaved={pasted} />}
         </>
       )}
       {error ? <Alert>{error}</Alert> : null}

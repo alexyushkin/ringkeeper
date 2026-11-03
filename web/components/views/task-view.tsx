@@ -1,5 +1,6 @@
 "use client";
 
+import { toolLabel } from "@/components/connection-form";
 import Link from "@/components/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -86,7 +87,7 @@ function EventView({ event }: { event: Event }) {
               <Markdown key={index} text={block.text} className="text-sm" />
             ) : block._kind === "ToolUseBlock" ? (
               <div key={index} className="rounded-xl bg-sunken p-2 text-sm">
-                <span className="font-medium">Used {block.name}</span>
+                <span className="font-medium">{toolLabel(block.name ?? "")}</span>
                 <Details label="Show arguments">
                   <Code>{asText(block.input)}</Code>
                 </Details>
@@ -227,7 +228,7 @@ export function TaskView({ id }: { id: string }) {
           <span className="ml-auto" />
           <TidyButtons kind="task" id={id} archived={Boolean(t.archived)} status={t.status} onArchived={task.reload} onDeleted={() => router.push("/tasks")} />
         </div>
-        <p className="text-sm">{t.summary ?? t.outcome ?? t.prompt}</p>
+        <Markdown text={t.summary ?? t.outcome ?? t.prompt} className="text-sm" />
         {t.error && t.status !== "succeeded" ? <Alert>{t.error}</Alert> : null}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>

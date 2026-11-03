@@ -3,12 +3,12 @@
 import Link from "@/components/link";
 import { useState } from "react";
 
-import { LibraryCard, useLibrary } from "@/components/connection-library";
+import { LibraryCard, NoProjects, useLibrary } from "@/components/connection-library";
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
-import { ConnectionForm, ProjectForm } from "@/components/forms";
+import { ProjectForm } from "@/components/forms";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
-import { Alert, Button, ConfirmButton, Details, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
 import { clientName, useScope } from "@/lib/client/scope";
@@ -30,7 +30,7 @@ export function ClientView({ name }: { name: string }) {
   }
 
   const production = library.connections.filter((c) => c.env === "prod").length;
-  const summary = `${library.connections.length}${production ? ` · ${production} production` : ""}`;
+  const summary = `${library.connections.length} connection${library.connections.length === 1 ? "" : "s"}${production ? ` · ${production} production` : ""}`;
 
   const tabs: Tab[] = [
     {
@@ -50,7 +50,7 @@ export function ClientView({ name }: { name: string }) {
               ))}
             </ul>
           ) : (
-            <Empty>No projects for {display} yet. Add one in the Settings tab above.</Empty>
+            <NoProjects client={name} />
           )}
         </Section>
       ),
@@ -60,24 +60,23 @@ export function ClientView({ name }: { name: string }) {
       label: "Connections",
       count: library.connections.length,
       content: () => (
-        <Section
-          id="connections"
-          title="Connections"
-          summary={summary}
-          action={
-            !adding && !added ? (
-              <Button kind="primary" onClick={() => setAdding(true)}>
-                Add a connection
-              </Button>
-            ) : null
-          }
-        >
+        <Section id="connections" title="Connections" summary={summary}>
           <p className="text-sm text-muted">
             {display}&apos;s services. Connect each one once, then link it to any of {display}&apos;s projects; a link can be narrowed to one database, base or project. Other clients&apos; projects can&apos;t use these.
           </p>
+          {library.error ? <Alert>{library.error}</Alert> : null}
+          {library.loading && !library.connections.length ? <Loading /> : null}
+          {!library.loading && !library.projects.length ? <NoProjects client={name} /> : null}
+          <div className="space-y-2">
+            {library.connections.map((connection) => (
+              <LibraryCard key={connection.name} connection={connection} projects={library.projects} services={library.services} onChange={library.reload} />
+            ))}
+          </div>
+          {!library.loading && !library.connections.length && !adding ? <Empty>No connections for {display} yet. Connect their first service below.</Empty> : null}
           {added ? (
             <ConnectionAdded
               name={added}
+              onLinked={library.reload}
               onAnother={() => {
                 setAdded(null);
                 setAdding(true);
@@ -87,27 +86,19 @@ export function ClientView({ name }: { name: string }) {
                 library.reload();
               }}
             />
-          ) : null}
-          {adding ? (
+          ) : adding ? (
             <div className="space-y-4 rounded-xl border border-line p-3">
-              <h3 className="font-medium">Connect a service</h3>
-              <Catalog client={name} onAdded={done} />
-              <Details label="Other services (a database, n8n, Twilio, Gmail…)">
-                <ConnectionForm client={name} onSaved={(c) => done(c.name)} />
-              </Details>
+              <h3 className="font-medium">Connect a service for {display}</h3>
+              <Catalog client={name} kind="client" onAdded={done} />
               <Button kind="ghost" onClick={() => setAdding(false)}>
                 Cancel
               </Button>
             </div>
-          ) : null}
-          {library.error ? <Alert>{library.error}</Alert> : null}
-          {library.loading && !library.connections.length ? <Loading /> : null}
-          {!library.loading && !library.connections.length ? <Empty>No connections for {display} yet. Add one with Add a connection above.</Empty> : null}
-          <div className="space-y-2">
-            {library.connections.map((connection) => (
-              <LibraryCard key={connection.name} connection={connection} projects={library.projects} services={library.services} onChange={library.reload} compact />
-            ))}
-          </div>
+          ) : (
+            <Button kind={library.connections.length ? "secondary" : "primary"} onClick={() => setAdding(true)}>
+              Connect a service
+            </Button>
+          )}
         </Section>
       ),
     },
@@ -135,7 +126,8 @@ export function ClientView({ name }: { name: string }) {
       </Link>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{display}</h1>
       <p className="mb-4 text-sm text-muted">
-        {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {summary} connection{library.connections.length === 1 ? "" : "s"}
+        {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {library.connections.length} connection{library.connections.length === 1 ? "" : "s"}
+        {production ? ` (${production} production)` : ""}
         {tasks.running ? ` · ${tasks.running} running` : ""}
       </p>
       <Tabs id={`client-${name}`} tabs={tabs} />

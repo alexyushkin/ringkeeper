@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
-import { Alert, Empty, Loading, PageHeader, Select } from "@/components/ui";
-import { useApi, useLive } from "@/lib/client/api";
+import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
+import { api, useApi, useLive } from "@/lib/client/api";
 import { useScope } from "@/lib/client/scope";
 
 const STATUSES: [string, string][] = [
@@ -25,10 +25,22 @@ export default function TasksPage() {
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
   const tasks = useApi<TaskCard[]>("tasks", { ...scope.query, status, q: query.trim() || undefined, archived: archived || undefined });
+  const old = useApi<{ count: number; days: number }>("cleanup/old-tasks");
+  const [tidied, setTidied] = useState<string | null>(null);
   const pick = useSelection();
   useLive((event) => {
-    if (event.type === "task") tasks.reload();
+    if (event.type === "task") {
+      tasks.reload();
+      old.reload();
+    }
   });
+
+  async function archiveOld() {
+    const done = await api<{ changed: number }>("cleanup/old-tasks", { json: {} });
+    setTidied(`Archived ${done.changed} task${done.changed === 1 ? "" : "s"}. They're under Show archived, and search still finds them.`);
+    tasks.reload();
+    old.reload();
+  }
 
   return (
     <>
@@ -36,6 +48,15 @@ export default function TasksPage() {
       <div className="mb-4 grid grid-cols-2 gap-2">
         <Select label="Status" value={status} onChange={setStatus} options={STATUSES} />
       </div>
+      {old.data?.count && !archived ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-3 text-sm">
+          <span className="text-muted">
+            {old.data.count} failed or stopped task{old.data.count === 1 ? "" : "s"} older than {old.data.days} days.
+          </span>
+          <Button onClick={archiveOld}>Archive failed tasks older than {old.data.days} days</Button>
+        </div>
+      ) : null}
+      {tidied ? <Alert tone="good">{tidied}</Alert> : null}
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="tasks" />
       <BulkBar kind="task" ids={[...pick.selected]} archivedView={archived} onDone={tasks.reload} onClear={pick.clear} />
       {tasks.error ? <Alert>{tasks.error}</Alert> : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useConnectionTitles } from "@/components/connection-form";
 import Link from "@/components/link";
 import { Markdown } from "@/components/markdown";
 import { useState } from "react";
@@ -42,6 +43,7 @@ const NONE = "none";
  * `inline`: in a conversation or on a task page, without the link back to the task.
  */
 export function DecisionCard({ decision, onDone, inline = false }: { decision: Decision; onDone: () => void; inline?: boolean }) {
+  const title = useConnectionTitles();
   const [text, setText] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -68,11 +70,11 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
     <Card className={destructive || decision.production ? "border-bad" : "border-warn"}>
       <div id={decision.id} className="flex flex-wrap items-center gap-2">
         <Badge tone={decision.kind === "approve" ? "bad" : decision.kind === "question" ? "accent" : "warn"}>
-          {decision.kind === "route" && typeof payload.production === "string" ? "Go ahead?" : (KIND[decision.kind] ?? decision.kind)}
+          {decision.kind === "route" && typeof payload.production === "string" ? "Go ahead?" : decision.kind === "approve" && !decision.production ? "Change" : (KIND[decision.kind] ?? decision.kind)}
         </Badge>
         {decision.project ? <span className="font-medium">{place(decision.client, decision.project)}</span> : null}
         {decision.production ? <Badge tone="bad">production</Badge> : null}
-        {decision.instance ? <span className="text-sm text-muted">on {decision.instance}</span> : null}
+        {decision.instance ? <span className="text-sm text-muted">on {title(decision.instance)}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(decision.created_at)}</span>
       </div>
 

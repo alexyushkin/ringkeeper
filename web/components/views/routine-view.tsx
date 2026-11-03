@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import type { AgentData } from "@/components/agents";
 import { DecisionCard, type Decision } from "@/components/decision-card";
+import { Markdown } from "@/components/markdown";
 import { RoutineForm, RunStatus, TRIGGER, type RoutineData, type Run } from "@/components/routines";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Empty, Loading, Section, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -130,7 +131,7 @@ export function RoutineView({ id }: { id: string }) {
                 <span className="ml-auto text-xs text-muted">{timeAgo(run.created_at)}</span>
               </div>
               {run.skipped ? <p className="mt-1 text-xs text-muted">Skipped: {run.skipped}.</p> : null}
-              {run.summary ? <p className="mt-1">{run.summary}</p> : null}
+              {run.summary ? <Markdown text={run.summary} className="mt-1" /> : null}
               {run.error && run.status !== "succeeded" ? <p className="mt-1 text-xs text-bad">{run.error}</p> : null}
               {run.task_id ? (
                 <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted">

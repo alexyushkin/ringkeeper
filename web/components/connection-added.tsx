@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 
-import { ScopeInputs, type LibraryConnection } from "@/components/connection-library";
+import { connectionTitle } from "@/components/connection-form";
+import { NoProjects, ScopeInputs, type LibraryConnection } from "@/components/connection-library";
 import { TestButton } from "@/components/forms";
 import { useProjects } from "@/components/shared-tools";
 import { Alert, Button } from "@/components/ui";
@@ -16,7 +17,7 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
  * other projects too (a client's connection: that client's; a shared tool: any),
  * each narrowed where the service allows, or add another one.
  */
-export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }: { name: string; onAnother?: () => void; onDone?: () => void; doneLabel?: string }) {
+export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel = "Done" }: { name: string; onAnother?: () => void; onDone?: () => void; onLinked?: () => void; doneLabel?: string }) {
   const connections = useApi<LibraryConnection[]>("connections");
   const projects = useProjects();
   const [picked, setPicked] = useState<Record<string, Record<string, string>>>({}); // project -> scope
@@ -27,7 +28,8 @@ export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }:
   const connection = (connections.data ?? []).find((c) => c.name === name);
   const fields = connection?.scope_fields ?? [];
   const has = new Set([...(connection?.projects ?? []), ...linked]);
-  const eligible = connection ? projects.list.filter((p) => !has.has(p.name) && (connection.shared || same(p.owner, connection.owner))) : [];
+  const theirs = connection ? projects.list.filter((p) => connection.shared || same(p.owner, connection.owner)) : [];
+  const eligible = theirs.filter((p) => !has.has(p.name));
   const chosen = Object.keys(picked);
 
   async function link() {
@@ -41,6 +43,7 @@ export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }:
       }
       setPicked({});
       connections.reload();
+      onLinked?.(); // the page's own list shows the new links too
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -51,16 +54,18 @@ export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }:
   return (
     <div className="space-y-3 rounded-xl border border-line p-3">
       <Alert tone="good">
-        Added {name}
+        Added {connection ? connectionTitle(connection) : name}
         {connection?.projects.length ? `, for ${connection.projects.join(", ")}` : ""}.
         {connection?.config.source === "open" ? " It needs no key." : " Its secrets are stored encrypted and won't be shown again."}
       </Alert>
       <TestButton name={name} />
       {connection?.shared && connection.all_projects ? (
         <p className="text-sm text-muted">Every project has it, new ones too.</p>
+      ) : connection && !projects.loading && !theirs.length ? (
+        <NoProjects client={connection.shared ? undefined : connection.owner} />
       ) : eligible.length ? (
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Also use in…</legend>
+          <legend className="text-sm font-medium">{connection?.projects.length ? "Also use in…" : "Use in…"}</legend>
           {eligible.map((p) => (
             <div key={p.name} className="space-y-1">
               <label className="flex items-center gap-2 text-sm">
@@ -88,11 +93,10 @@ export function ConnectionAdded({ name, onAnother, onDone, doneLabel = "Done" }:
             </div>
           ))}
           <Button kind="primary" busy={busy} disabled={!chosen.length} onClick={link}>
-            {chosen.length > 1 ? `Use in ${chosen.length} projects` : "Use in this project too"}
+            {chosen.length > 1 ? `Link to ${chosen.length} projects` : "Link to this project"}
           </Button>
         </fieldset>
       ) : null}
-      {linked.length ? <p className="text-sm text-muted">Also in {linked.join(", ")}.</p> : null}
       {error ? <Alert>{error}</Alert> : null}
       <div className="flex flex-wrap gap-2">
         {onAnother ? (

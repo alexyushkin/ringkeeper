@@ -73,12 +73,12 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await page.getByLabel("Folder").fill("acme-web");
     await page.getByRole("button", { name: "Add project" }).click();
 
-    await page.getByLabel("Name", { exact: true }).fill("Acme database");
-    await page.getByLabel("Client", { exact: true }).fill("Acme");
-    await page.getByLabel("Kind of data").selectOption("prod");
+    await page.getByRole("button", { name: /^Database/ }).click();
     await page.getByLabel("Connection string").fill(PROD_DSN);
-    await page.getByRole("button", { name: "Add connection" }).click();
-    await expect(page.getByText(/^Added acme-database\b/)).toBeVisible(); // ", for acme-web" once it has loaded
+    await page.getByText("Yes, live client data").click();
+    await page.getByLabel("Name", { exact: true }).fill("Acme database");
+    await page.getByRole("button", { name: "Add and link to acme-web" }).click();
+    await expect(page.getByText(/^Added Acme database\b/)).toBeVisible(); // ", for acme-web" once it has loaded
     await page.getByRole("button", { name: "Test connection" }).click();
     await expect(page.getByText("Connected: read 1 table.")).toBeVisible();
     await page.getByRole("button", { name: "Finish", exact: true }).click();
@@ -247,7 +247,7 @@ with session_scope() as session:
       await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
     }
     await page.getByRole("button", { name: "More" }).click();
-    await expect(page.getByRole("link", { name: "Connections" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Connectors" })).toBeVisible();
 
     const manifest = await (await page.request.get("/manifest.webmanifest")).json();
     expect(manifest.display).toBe("standalone");

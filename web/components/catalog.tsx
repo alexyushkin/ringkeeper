@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from "react";
 
-import { RemoteServices } from "@/components/connection-library";
+import { ConnectRemote, type RemoteService } from "@/components/connection-library";
+import { ConnectionForm, defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
+import { GoogleConnect } from "@/components/google";
 import { KindChoice, type Kind } from "@/components/shared-tools";
 import { Alert, Badge, Button, Details, Field, Select, Spinner, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { ENVS, slugify } from "@/lib/client/words";
 
 /**
- * The open catalog: the Recommended shelf (services with built-in rules: scope
- * narrowing, SQL checks), then any MCP server from the MCP Registry (searchable,
- * and from a cache when offline), then any remote server by its address, then a
- * desktop extension from its file. Every connection belongs to `client`, or is a
- * shared tool (yours, for any client's projects); with `project`, it's linked to
+ * The connectors: built-in services first (Ringkeeper's own rules: undo, SQL checks,
+ * approvals), each a tile that opens its form; then services you sign in to; then
+ * any other connector from the MCP Registry (searchable, and from a cache when
+ * offline: the service's own first, community ones folded away), by its address,
+ * or a desktop extension from its file. Every connection belongs to `client`, or is
+ * a shared tool (yours, for any client's projects); with `project`, it's linked to
  * that project. With `kind`, that was asked up front; otherwise each server asks,
  * suggesting from what it needs.
  */
@@ -127,8 +129,8 @@ interface Target {
   onAdded: (name: string) => void;
 }
 
-/** A client's connection is named after the client; your own tool after itself. */
-const nameFor = (kind: Kind, client: string, title: string) => slugify(kind === "shared" ? title : `${client} ${title}`).slice(0, 60);
+/** "Notion · General Informatics LLC" for a client's; your own tool by itself. */
+const titleFor = (kind: Kind, client: string, service: string) => defaultTitle(service, "", kind === "shared" ? undefined : client);
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -147,9 +149,11 @@ async function installed(name: string): Promise<void> {
 }
 
 export function Verified({ server }: { server: { publisher: string; verified: string } }) {
+  const domain = server.verified === "domain";
   return (
-    <span className="text-xs text-muted" title={server.verified === "domain" ? "The tool catalog checked that the publisher controls this domain." : "The tool catalog checked that the publisher signed in as this GitHub account."}>
-      by {server.publisher} ✓ {server.verified === "domain" ? "domain verified" : "GitHub account"}
+    <span className="inline-flex flex-wrap items-center gap-1 text-xs text-muted" title={domain ? "The MCP Registry checked that the publisher controls this domain." : "The MCP Registry checked that the publisher signed in as this GitHub account. Anyone can have one."}>
+      by <span className="font-medium text-ink">{server.publisher}</span>
+      {domain ? <Badge tone="good">✓ verified domain</Badge> : <Badge>GitHub account</Badge>}
     </span>
   );
 }
@@ -160,31 +164,219 @@ function SignInBadge({ signin }: { signin: boolean | null }) {
   return null;
 }
 
-export function Catalog(target: Target) {
+/** A built-in service: its own form (a ConnectionForm type, Google, or a token service). */
+interface Tile {
+  key: string;
+  label: string;
+  sub: string;
+  open: "form" | "google" | "remote";
+  words: string[]; // what a search for it might say
+}
+
+const BUILT_IN: Tile[] = [
+  { key: "supabase", label: "Database", sub: "Postgres: Supabase, Neon or your own", open: "form", words: ["postgres", "postgresql", "sql", "supabase", "neon", "database", "db"] },
+  { key: "n8n", label: "n8n", sub: "Automations", open: "form", words: ["n8n", "workflow", "workflows", "automation"] },
+  { key: "airtable", label: "Airtable", sub: "Bases and records, with undo", open: "form", words: ["airtable"] },
+  { key: "vercel", label: "Vercel", sub: "Deployments", open: "form", words: ["vercel", "deploy", "hosting"] },
+  { key: "twilio", label: "Twilio", sub: "Texts and calls", open: "form", words: ["twilio", "sms", "text", "texts", "call", "calls"] },
+  { key: "gmail", label: "Gmail", sub: "With an app password", open: "form", words: ["gmail", "email", "mail"] },
+  { key: "google", label: "Google account", sub: "Gmail, Drive, Calendar, Sheets", open: "google", words: ["google", "gmail", "drive", "calendar", "sheets", "docs"] },
+  { key: "github", label: "GitHub", sub: "Code, issues, pull requests", open: "form", words: ["github", "git", "code", "repo"] },
+  { key: "retell", label: "Retell AI", sub: "Voice agents", open: "remote", words: ["retell", "voice", "phone"] },
+];
+// Sign-in services shown as built-in tiles instead (Airtable: the built-in one has undo).
+const NOT_SIGN_IN = new Set(["retell", "airtable", "github"]);
+
+// Each service's mark: its initials on its color (a database: a cylinder).
+const MARKS: Record<string, [string, string, string]> = {
+  n8n: ["n8n", "#ea4b71", "#fff"],
+  airtable: ["A", "#18bfff", "#fff"],
+  vercel: ["▲", "#000", "#fff"],
+  twilio: ["T", "#f22f46", "#fff"],
+  gmail: ["M", "#ea4335", "#fff"],
+  google: ["G", "#4285f4", "#fff"],
+  github: ["GH", "#24292f", "#fff"],
+  retell: ["R", "#6d28d9", "#fff"],
+  neon: ["N", "#00e599", "#063"],
+  supabase: ["S", "#3ecf8e", "#063"],
+  sentry: ["S", "#362d59", "#fff"],
+  notion: ["N", "#111", "#fff"],
+  linear: ["L", "#5e6ad2", "#fff"],
+  cloudflare: ["CF", "#f38020", "#fff"],
+  atlassian: ["A", "#0052cc", "#fff"],
+};
+
+export function ServiceMark({ id, database = false }: { id: string; database?: boolean }) {
+  if (database) {
+    return (
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#336791] text-white" aria-hidden>
+        <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+          <ellipse cx="12" cy="6" rx="7" ry="3" />
+          <path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" />
+        </svg>
+      </span>
+    );
+  }
+  const [text, background, color] = MARKS[id] ?? [id.slice(0, 1).toUpperCase(), "var(--color-sunken)", "var(--color-ink)"];
   return (
-    <div className="space-y-4">
-      {target.kind === "shared" ? (
-        <p className="text-sm text-muted">
-          Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
-        </p>
-      ) : null}
-      <div className="space-y-2">
-        <h3 className="font-medium">Recommended</h3>
-        <p className="text-xs text-muted">These have built-in rules: a project&apos;s link can be narrowed (to one Neon project, one Airtable base and so on), and SQL is checked before it runs.</p>
-        <RemoteServices client={target.client} project={target.project} shared={target.kind === "shared"} onAdded={target.onAdded} />
+    <span className="grid size-9 shrink-0 place-items-center rounded-lg text-xs font-bold" style={{ background, color }} aria-hidden>
+      {text}
+    </span>
+  );
+}
+
+function TileButton({ mark, label, sub, onClick, database = false }: { mark: string; label: string; sub: string; onClick: () => void; database?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3 text-left text-sm hover:border-accent">
+      <ServiceMark id={mark} database={database} />
+      <span className="min-w-0">
+        <span className="block font-medium">{label}</span>
+        <span className="block truncate text-xs text-muted">{sub}</span>
+      </span>
+    </button>
+  );
+}
+
+type Opened = { tile: Tile } | { service: RemoteService };
+
+export function Catalog(target: Target) {
+  const services = useApi<RemoteService[]>("remote-services");
+  const [opened, setOpened] = useState<Opened | null>(null);
+  const shared = target.kind === "shared";
+  const signIn = (services.data ?? []).filter((s) => !NOT_SIGN_IN.has(s.key));
+  const openKey = (key: string) => {
+    const tile = BUILT_IN.find((t) => t.key === key);
+    const service = (services.data ?? []).find((s) => s.key === key);
+    if (tile) setOpened({ tile });
+    else if (service) setOpened({ service });
+  };
+
+  if (opened) {
+    const back = (
+      <Button kind="ghost" onClick={() => setOpened(null)}>
+        ‹ All connectors
+      </Button>
+    );
+    const service = "service" in opened ? opened.service : opened.tile.open === "remote" ? (services.data ?? []).find((s) => s.key === opened.tile.key) : undefined;
+    const tile = "tile" in opened ? opened.tile : null;
+    return (
+      <div className="space-y-3">
+        {back}
+        <div className="flex items-center gap-3">
+          <ServiceMark id={tile?.key ?? service?.key ?? ""} database={tile?.key === "supabase"} />
+          <h3 className="font-semibold">Connect {tile?.label ?? service?.name}</h3>
+        </div>
+        {tile?.open === "form" ? (
+          <ConnectionForm client={shared ? undefined : target.client} project={target.project} shared={shared} type={tile.key} onSaved={(c) => target.onAdded(c.name)} />
+        ) : tile?.open === "google" ? (
+          <GoogleConnect owner={shared ? undefined : target.client} shared={shared} project={target.project} onAdded={target.onAdded} />
+        ) : service ? (
+          <ConnectRemote service={service} client={target.client} project={target.project} shared={shared} onAdded={target.onAdded} />
+        ) : (
+          <Spinner />
+        )}
       </div>
-      <CatalogSearch {...target} />
+    );
+  }
+
+  const builtIn = (
+    <section className="space-y-2">
+      <h3 className="font-medium">Built in</h3>
+      <p className="text-xs text-muted">Ringkeeper&apos;s own rules: changes wait for your approval where they should, SQL is checked before it runs, and most changes can be undone.</p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {BUILT_IN.map((tile) => (
+          <TileButton key={tile.key} mark={tile.key} database={tile.key === "supabase"} label={tile.label} sub={tile.sub} onClick={() => setOpened({ tile })} />
+        ))}
+      </div>
+    </section>
+  );
+  const signInTiles = (
+    <section className="space-y-2">
+      <h3 className="font-medium">Sign in</h3>
+      <p className="text-xs text-muted">One click opens the service&apos;s own page. A project&apos;s link can be narrowed (to one Neon project, one Notion workspace and so on).</p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {signIn.map((service) => (
+          <TileButton key={service.key} mark={service.key} label={service.name} sub={service.signin ? "Sign in" : "Paste a token"} onClick={() => setOpened({ service })} />
+        ))}
+      </div>
+      {services.error ? <Alert>{services.error}</Alert> : null}
+    </section>
+  );
+  const others = (
+    <section className="space-y-2">
+      <h3 className="font-medium">{shared ? "Find a tool" : "Other connectors"}</h3>
+      <CatalogSearch
+        {...target}
+        featured={[
+          ...BUILT_IN.map((t) => ({ key: t.key, label: t.label, sub: t.sub, words: t.words })),
+          ...signIn.map((s) => ({ key: s.key, label: s.name, sub: s.signin ? "Sign in" : "Paste a token", words: [s.key, ...s.name.toLowerCase().split(/[^a-z0-9]+/)] })),
+        ]}
+        onFeatured={openKey}
+      />
       <Details label="Add a server by its address">
         <AddByUrl {...target} />
       </Details>
       <Details label="Install extension (.mcpb file)">
         <InstallExtension {...target} />
       </Details>
+    </section>
+  );
+  return (
+    <div className="space-y-6">
+      {shared ? (
+        <>
+          <p className="text-sm text-muted">
+            Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
+          </p>
+          {others}
+          {builtIn}
+          {signInTiles}
+        </>
+      ) : (
+        <>
+          {builtIn}
+          {signInTiles}
+          {others}
+        </>
+      )}
     </div>
   );
 }
 
-function CatalogSearch(target: Target) {
+interface Featured {
+  key: string;
+  label: string;
+  sub: string;
+  words: string[];
+}
+
+const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+// Services whose own connector isn't published from a domain named after them.
+const OFFICIAL: Record<string, string[]> = {
+  playwright: ["github.com/microsoft", "microsoft.com"],
+  github: ["github.com/github"],
+};
+
+/** A server called just "mcp" reads as its publisher: stripe.com's is "Stripe". */
+function serverTitle(server: CatalogServer): string {
+  if (!/^(mcp|server|mcp[- ]server)$/i.test(server.title.trim())) return server.title;
+  const name = server.publisher.split(/[./]/).find((part) => !["www", "mcp", "api", "github"].includes(part)) ?? server.title;
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+}
+
+/** One row per server: the same title from the same publisher shows once. */
+function dedupe(servers: CatalogServer[]): CatalogServer[] {
+  const seen = new Set<string>();
+  return servers.filter((server) => {
+    const key = `${squash(server.title)}|${server.publisher.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function CatalogSearch({ featured = [], onFeatured, ...target }: Target & { featured?: Featured[]; onFeatured?: (key: string) => void }) {
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState("");
   const [pages, setPages] = useState<SearchResult[]>([]);
@@ -198,6 +390,12 @@ function CatalogSearch(target: Target) {
   }, [typed]);
 
   useEffect(() => {
+    // Nothing until there's something to look for: the catalog is thousands of servers.
+    if (!query) {
+      setPages([]);
+      setBusy(false);
+      return;
+    }
     let cancelled = false;
     setBusy(true);
     setError(null);
@@ -224,41 +422,84 @@ function CatalogSearch(target: Target) {
     }
   }
 
-  const servers = pages.flatMap((p) => p.servers);
+  // Services with built-in rules are tiles; of the rest, the service's own come first:
+  // published from a domain the search names (stripe.com for "stripe"), or known to be.
+  const servers = dedupe(pages.flatMap((p) => p.servers)).filter((server) => !server.recommended);
+  const words = query.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
+  const own = (server: CatalogServer) => {
+    const publisher = server.publisher.toLowerCase();
+    if (words.some((w) => OFFICIAL[w]?.includes(publisher))) return true;
+    if (server.verified !== "domain") return false;
+    return words.length ? words.some((w) => publisher.split(".").includes(w)) : true;
+  };
+  const official = servers.filter(own);
+  const community = servers.filter((server) => !own(server));
+  const matches = words.length ? featured.filter((f) => words.some((w) => f.words.includes(w) || squash(f.label).startsWith(w))) : [];
   const last = pages[pages.length - 1];
+  const row = (server: CatalogServer) => (
+    <li key={server.name}>
+      <button type="button" aria-expanded={chosen?.name === server.name} onClick={() => setChosen(chosen?.name === server.name ? null : server)} className={`w-full rounded-xl border px-3 py-2 text-left text-sm hover:border-accent ${chosen?.name === server.name ? "border-accent bg-accent-soft" : "border-line bg-surface"}`}>
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{serverTitle(server)}</span>
+          {server.kind.includes("remote") ? <Badge>remote</Badge> : null}
+          {server.kind.includes("local") ? <Badge>runs on this computer</Badge> : null}
+          <SignInBadge signin={server.signin} />
+          {server.status === "deprecated" ? <Badge tone="warn">deprecated</Badge> : null}
+        </span>
+        <span className="mt-0.5 block">
+          <Verified server={server} />
+        </span>
+        {chosen?.name === server.name ? (
+          <>
+            <span className="mt-1 block text-muted">{server.description}</span>
+            <span className="mt-1 block text-xs text-muted">{server.name}</span>
+          </>
+        ) : (
+          <span className="mt-0.5 block truncate text-muted">{server.description}</span>
+        )}
+      </button>
+      {chosen?.name === server.name ? <ServerConnect key={server.name} server={server} {...target} /> : null}
+    </li>
+  );
   return (
     <div className="space-y-2">
-      <h3 className="font-medium">More tools</h3>
-      <Field label="Search tools" value={typed} onChange={setTyped} placeholder="notion, postgres, weather…" />
+      <Field label="Search connectors" value={typed} onChange={setTyped} placeholder="notion, postgres, playwright…" />
+      {matches.length ? (
+        <ul className="space-y-2" aria-label="Built in">
+          {matches.map((f) => (
+            <li key={f.key}>
+              <button type="button" onClick={() => onFeatured?.(f.key)} className="flex w-full items-center gap-3 rounded-xl border border-accent bg-accent-soft px-3 py-2 text-left text-sm">
+                <ServiceMark id={f.key} database={f.key === "supabase"} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{f.label}</span>
+                    <Badge tone="good">built in</Badge>
+                  </span>
+                  <span className="block truncate text-xs text-muted">{f.sub}</span>
+                </span>
+                <span className="text-sm text-accent">Connect ›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {last?.offline ? <Alert tone="warn">Offline: showing servers seen before{last.cached_at ? ` (as of ${new Date(last.cached_at * 1000).toLocaleDateString()})` : ""}.</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
-      <ul className="space-y-2">
-        {servers.map((server) => (
-          <li key={server.name}>
-            <button type="button" aria-expanded={chosen?.name === server.name} onClick={() => setChosen(chosen?.name === server.name ? null : server)} className={`w-full rounded-xl border px-3 py-2 text-left text-sm hover:border-accent ${chosen?.name === server.name ? "border-accent bg-accent-soft" : "border-line bg-surface"}`}>
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{server.title}</span>
-                {server.kind.includes("remote") ? <Badge>remote</Badge> : null}
-                {server.kind.includes("local") ? <Badge>runs on this computer</Badge> : null}
-                <SignInBadge signin={server.signin} />
-                {server.recommended ? <Badge tone="good">built-in rules</Badge> : null}
-                {server.status === "deprecated" ? <Badge tone="warn">deprecated</Badge> : null}
-              </span>
-              {chosen?.name === server.name ? (
-                <>
-                  <span className="mt-1 block text-xs text-muted">{server.name}</span>
-                  <span className="mt-1 block text-muted">{server.description}</span>
-                  <Verified server={server} />
-                </>
-              ) : (
-                <span className="mt-0.5 block truncate text-muted">{server.description}</span>
-              )}
-            </button>
-            {chosen?.name === server.name ? <ServerConnect key={server.name} server={server} {...target} /> : null}
-          </li>
-        ))}
-        {!busy && !servers.length && !error ? <li className="text-sm text-muted">Nothing found.</li> : null}
-      </ul>
+      {official.length ? (
+        <>
+          {words.length ? <h4 className="pt-1 text-xs font-semibold text-muted uppercase">From the service</h4> : null}
+          <ul className="space-y-2">{official.map(row)}</ul>
+        </>
+      ) : null}
+      {community.length ? (
+        <div className="space-y-1 pt-1">
+          <p className="text-xs text-muted">Community servers are published by someone other than the service. Check who publishes one before you connect it.</p>
+          <Details label={`Community servers (${community.length})`} defaultOpen={!official.length && !matches.length}>
+            <ul className="space-y-2">{community.map(row)}</ul>
+          </Details>
+        </div>
+      ) : null}
+      {query && !busy && !servers.length && !matches.length && !error ? <p className="text-sm text-muted">Nothing found.</p> : null}
       {busy ? <Spinner /> : null}
       {last?.next_cursor && !busy ? (
         <Button kind="ghost" onClick={more}>
@@ -269,11 +510,12 @@ function CatalogSearch(target: Target) {
   );
 }
 
-function ConnectionBasics({ name, setName, env, setEnv }: { name: string; setName: (v: string) => void; env: string; setEnv: (v: string) => void }) {
+/** The name, and (a client's: your own tool holds no client's data) the kind of data. */
+function ConnectionBasics({ title, setTitle, env, setEnv, shared }: { title: string; setTitle: (v: string) => void; env: string; setEnv: (v: string) => void; shared: boolean }) {
   return (
     <>
-      <Field label="Name" value={name} onChange={(v) => setName(slugify(v))} hint="A short name the agent uses for it." />
-      <Select label="Kind of data" value={env} onChange={setEnv} options={ENVS} hint={env === "prod" ? "Changes to production always wait for your approval." : "Test data: tools marked read-only run without asking; everything else waits for you."} />
+      {shared ? null : <EnvChoice value={env} onChange={setEnv} tool />}
+      <Field label="Name" value={title} onChange={setTitle} hint="As it shows in Ringkeeper. Change it if you like." />
     </>
   );
 }
@@ -316,16 +558,20 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
   const [open, setOpen] = useState<boolean | null>(probed ?? (named.some((h) => h.required) ? false : null));
   const [kind, setKind] = useState<Kind>(fixed ?? (open ? "shared" : "client"));
   const [all, setAll] = useState(false);
-  const [name, setName] = useState(nameFor(kind, client, title));
-  const [env, setEnv] = useState("dev");
+  const [typed, setTyped] = useState<string | null>(null); // null: the suggested title
+  const [env, setEnv] = useState("");
   const [token, setToken] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [pasting, setPasting] = useState(signin === false && !open);
-  const [waiting, setWaiting] = useState(false);
+  const [waiting, setWaiting] = useState<string | null>(null); // the name sent, until it's there
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shared = kind === "shared";
-  const body = { url, server: server ?? null, name, owner: client, env, project: project ?? null, shared, all_projects: shared && all };
+  const taken = useTakenNames();
+  const shown = typed ?? titleFor(kind, client, title);
+  const name = nameFor(shown, shared ? undefined : client, taken);
+  const data = shared ? "dev" : env; // your own tool holds no client's data
+  const body = { url, server: server ?? null, name, title: shown.trim(), owner: client, env: data, project: project ?? null, shared, all_projects: shared && all };
 
   useEffect(() => {
     // From the catalog: ask the server whether it needs anything at all.
@@ -336,16 +582,13 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
         if (cancelled) return;
         setOpen(found.open);
         if (found.open) setPasting(false);
-        if (found.open && !fixed) {
-          setKind("shared");
-          setName(nameFor("shared", client, title));
-        }
+        if (found.open && !fixed) setKind("shared");
       })
       .catch(() => !cancelled && setOpen(false));
     return () => {
       cancelled = true;
     };
-  }, [open, url, fixed, client, title]);
+  }, [open, url, fixed]);
 
   useEffect(() => {
     if (!waiting) return;
@@ -353,15 +596,15 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
     const timer = setInterval(() => {
       api<{ name: string }[]>("connections")
         .then((all) => {
-          if (all.some((c) => c.name === name)) {
-            setWaiting(false);
-            onAdded(name);
-          } else if (Date.now() > deadline) setWaiting(false);
+          if (all.some((c) => c.name === waiting)) {
+            setWaiting(null);
+            onAdded(waiting);
+          } else if (Date.now() > deadline) setWaiting(null);
         })
         .catch(() => undefined);
     }, 2000);
     return () => clearInterval(timer);
-  }, [waiting, name, onAdded]);
+  }, [waiting, onAdded]);
 
   async function signIn() {
     setBusy(true);
@@ -369,7 +612,7 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
     try {
       const { url: page } = await api<{ url: string }>("connections/signin", { json: body });
       window.open(page, "_blank", "noopener");
-      setWaiting(true);
+      setWaiting(name);
     } catch (err) {
       setError(errorText(err));
       setPasting(true);
@@ -401,21 +644,18 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
       <SharedChoice
         fixed={fixed}
         kind={kind}
-        onKind={(next) => {
-          setKind(next);
-          setName(nameFor(next, client, title));
-        }}
+        onKind={setKind}
         all={all}
         onAll={setAll}
         project={project}
       />
-      <ConnectionBasics name={name} setName={setName} env={env} setEnv={setEnv} />
+      <ConnectionBasics title={shown} setTitle={setTyped} env={env} setEnv={setEnv} shared={shared} />
       {waiting ? <Alert tone="good">Finish signing in on the page that opened in your browser. This updates when it&apos;s done.</Alert> : null}
       {open && !pasting ? (
         <div className="space-y-2">
           <p className="text-sm text-muted">This server answers without a sign-in or a key.</p>
           <div className="flex flex-wrap gap-2">
-            <Button kind="primary" busy={busy} disabled={!name} onClick={connect}>
+            <Button kind="primary" busy={busy} disabled={!shown.trim() || !data} onClick={connect}>
               Connect
             </Button>
             <Button kind="ghost" onClick={() => setPasting(true)}>
@@ -425,7 +665,7 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
         </div>
       ) : !pasting ? (
         <div className="flex flex-wrap gap-2">
-          <Button kind="primary" busy={busy} disabled={!name} onClick={signIn}>
+          <Button kind="primary" busy={busy} disabled={!shown.trim() || !data} onClick={signIn}>
             Sign in
           </Button>
           <Button kind="ghost" onClick={() => setPasting(true)}>
@@ -440,7 +680,7 @@ function RemoteConnect({ url, server, headers, signin, open: probed, title, clie
             <Field label="Access token or API key" type="password" value={token} onChange={setToken} />
           )}
           <div className="flex flex-wrap gap-2">
-            <Button kind="primary" busy={busy} disabled={!name || (named.length ? named.some((h) => h.required && !values[h.name]?.trim()) : !token.trim())} onClick={connect}>
+            <Button kind="primary" busy={busy} disabled={!shown.trim() || !data || (named.length ? named.some((h) => h.required && !values[h.name]?.trim()) : !token.trim())} onClick={connect}>
               Connect
             </Button>
             {signin !== false ? (
@@ -461,8 +701,8 @@ function LocalInstall({ server, index, client, project, kind: fixed, onAdded, re
   const [plan, setPlan] = useState<Plan | null>(null);
   const [kind, setKind] = useState<Kind | null>(null); // asked once the plan shows what it needs
   const [all, setAll] = useState(false);
-  const [name, setName] = useState(replace ?? nameFor(fixed ?? "client", client, server.title));
-  const [env, setEnv] = useState("dev");
+  const [typed, setTyped] = useState<string | null>(null); // null: the suggested title
+  const [env, setEnv] = useState(replace ? "dev" : ""); // an update keeps its own
   const [values, setValues] = useState<Record<string, string>>({});
   const [state, setState] = useState<"idle" | "installing">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -474,18 +714,22 @@ function LocalInstall({ server, index, client, project, kind: fixed, onAdded, re
         // Nothing secret to give it: most likely your own tool, not a client's account.
         const suggested: Kind = fixed ?? ([...found.env, ...found.arguments].some((f) => f.secret) ? "client" : "shared");
         setKind(suggested);
-        if (!replace) setName(nameFor(suggested, client, server.title));
       })
       .catch((err: unknown) => setError(errorText(err)));
   }, [server.name, server.title, index, replace, fixed, client]);
+
+  const taken = useTakenNames();
+  const shared = kind === "shared";
+  const shown = typed ?? titleFor(kind ?? "client", client, server.title);
+  const name = replace ?? nameFor(shown, shared ? undefined : client, taken);
+  const data = shared ? "dev" : env; // your own tool holds no client's data
 
   async function install() {
     if (!plan) return;
     setState("installing");
     setError(null);
     try {
-      const shared = kind === "shared";
-      await api("connections/local", { json: { server: server.name, package: index, fingerprint: plan.fingerprint, name, owner: client, env, project: replace ? null : (project ?? null), values, replace: replace ?? null, shared, all_projects: shared && all } });
+      await api("connections/local", { json: { server: server.name, package: index, fingerprint: plan.fingerprint, name, title: replace ? null : shown.trim(), owner: client, env: data, project: replace ? null : (project ?? null), values, replace: replace ?? null, shared, all_projects: shared && all } });
       await installed(name);
       onAdded(name);
     } catch (err) {
@@ -523,20 +767,17 @@ function LocalInstall({ server, index, client, project, kind: fixed, onAdded, re
         <SharedChoice
           fixed={fixed}
           kind={kind}
-          onKind={(next) => {
-            setKind(next);
-            setName(nameFor(next, client, server.title));
-          }}
+          onKind={setKind}
           all={all}
           onAll={setAll}
           project={project}
         />
       ) : null}
-      {!replace ? <ConnectionBasics name={name} setName={setName} env={env} setEnv={setEnv} /> : null}
+      {!replace ? <ConnectionBasics title={shown} setTitle={setTyped} env={env} setEnv={setEnv} shared={shared} /> : null}
       {fields.map((f) => (
         <Field key={f.name} label={`${f.name}${f.required ? "" : " (optional)"}`} type={f.secret ? "password" : "text"} value={values[f.name] ?? ""} onChange={(v) => setValues({ ...values, [f.name]: v })} placeholder={f.default || undefined} hint={f.description || undefined} />
       ))}
-      <Button kind="primary" busy={state === "installing"} disabled={plan.missing || missing || !name} onClick={install}>
+      <Button kind="primary" busy={state === "installing"} disabled={plan.missing || missing || !shown.trim() || !data} onClick={install}>
         {replace ? `Update to ${plan.version}` : `Install ${plan.identifier} ${plan.version} and connect`}
       </Button>
       {state === "installing" ? <p className="text-xs text-muted">Installing… this can take a minute.</p> : null}
@@ -555,10 +796,15 @@ function InstallExtension({ client, project, kind: fixed, onAdded }: Target) {
   const [shown, setShown] = useState<Extension | null>(null);
   const [kind, setKind] = useState<Kind>("client");
   const [all, setAll] = useState(false);
-  const [name, setName] = useState("");
+  const [typed, setTyped] = useState<string | null>(null); // null: the suggested title
+  const [env, setEnv] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [state, setState] = useState<"idle" | "reading" | "installing">("idle");
   const [error, setError] = useState<string | null>(null);
+  const taken = useTakenNames();
+  const shared = kind === "shared";
+  const title = typed ?? (shown ? titleFor(kind, client, shown.title) : "");
+  const name = nameFor(title, shared ? undefined : client, taken);
 
   async function open(file: File | undefined) {
     if (!file) return;
@@ -571,7 +817,7 @@ function InstallExtension({ client, project, kind: fixed, onAdded }: Target) {
       setShown(found);
       const suggested: Kind = fixed ?? (found.settings.some((s) => s.secret) ? "client" : "shared");
       setKind(suggested);
-      setName(nameFor(suggested, client, found.title));
+      setTyped(null);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -584,8 +830,7 @@ function InstallExtension({ client, project, kind: fixed, onAdded }: Target) {
     setState("installing");
     setError(null);
     try {
-      const shared = kind === "shared";
-      await api("connections/extension", { json: { fingerprint: shown.fingerprint, name, owner: client, project: project ?? null, values, shared, all_projects: shared && all } });
+      await api("connections/extension", { json: { fingerprint: shown.fingerprint, name, title: title.trim(), env: shared ? "dev" : env, owner: client, project: project ?? null, values, shared, all_projects: shared && all } });
       await installed(name);
       onAdded(name);
     } catch (err) {
@@ -636,16 +881,12 @@ function InstallExtension({ client, project, kind: fixed, onAdded }: Target) {
           <SharedChoice
             fixed={fixed}
             kind={kind}
-            onKind={(next) => {
-              setKind(next);
-              setName(nameFor(next, client, shown.title));
-            }}
+            onKind={setKind}
             all={all}
             onAll={setAll}
             project={project}
           />
-          <Field label="Name" value={name} onChange={(v) => setName(slugify(v))} hint="A short name the agent uses for it." />
-          <p className="text-xs text-muted">Added as Test data, like an extension imported from Claude Desktop: tools marked read-only run without asking; everything else waits for you.</p>
+          <ConnectionBasics title={title} setTitle={setTyped} env={env} setEnv={setEnv} shared={shared} />
           {shown.settings.map((s) =>
             s.multiple ? (
               <TextArea key={s.key} label={`${s.title}${s.required ? "" : " (optional)"}`} value={values[s.key] ?? ""} onChange={(v) => setValues({ ...values, [s.key]: v })} hint={[s.description, "One per line.", s.default ? `Default: ${s.default}` : ""].filter(Boolean).join(" ")} />
@@ -653,7 +894,7 @@ function InstallExtension({ client, project, kind: fixed, onAdded }: Target) {
               <Field key={s.key} label={`${s.title}${s.required ? "" : " (optional)"}`} type={s.secret ? "password" : "text"} value={values[s.key] ?? ""} onChange={(v) => setValues({ ...values, [s.key]: v })} placeholder={s.default || undefined} hint={s.description || undefined} />
             ),
           )}
-          <Button kind="primary" busy={state === "installing"} disabled={Boolean(shown.problem) || missing || !name} onClick={install}>
+          <Button kind="primary" busy={state === "installing"} disabled={Boolean(shown.problem) || missing || !title.trim() || !(shared || env)} onClick={install}>
             Install {shown.title} {shown.version} and connect
           </Button>
           {state === "installing" ? <p className="text-xs text-muted">Installing…</p> : null}

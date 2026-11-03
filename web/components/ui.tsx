@@ -291,7 +291,7 @@ export function Details({ children, label = "Show details", defaultOpen = false 
   return (
     <div>
       <button type="button" onClick={() => setOpen(!open)} className="text-sm text-accent" aria-expanded={open}>
-        {open ? "Hide details" : label}
+        {open && label === "Show details" ? "Hide details" : label}
       </button>
       {open ? <div className="mt-2">{children}</div> : null}
     </div>

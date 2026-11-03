@@ -6,7 +6,7 @@ import { Alert, Button, Details, Field, Select, TextArea } from "@/components/ui
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { canPickFolder, pickFolder } from "@/lib/client/shell";
-import { clientName } from "@/lib/client/scope";
+import { clientName, useScope } from "@/lib/client/scope";
 import { AUTONOMY, slugify } from "@/lib/client/words";
 
 export interface ProjectData {
@@ -48,6 +48,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const scope = useScope();
   const name = existing ? existing.name : slugify(title);
   // Desktop: any folder on this computer; left empty, a new one in the workspaces folder.
   const root = useApi<{ workspaces_root?: string | null }>(DESKTOP && !existing ? "setup/status" : null).data?.workspaces_root;
@@ -84,7 +85,9 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
         await api(`projects/${existing.name}`, { method: "PATCH", json: body });
         onSaved(name);
       } else {
-        onSaved(name, await api<ProjectSaved>("projects", { json: { name, ...body } }));
+        const saved = await api<ProjectSaved>("projects", { json: { name, ...body } });
+        scope.reloadClients(); // a new client is one now
+        onSaved(name, saved);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

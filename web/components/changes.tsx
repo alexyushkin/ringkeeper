@@ -1,5 +1,6 @@
 "use client";
 
+import { useConnectionTitles } from "@/components/connection-form";
 import Link from "@/components/link";
 import { useState } from "react";
 
@@ -43,6 +44,7 @@ export function Changes({ task, thread }: { task?: string; thread?: string }) {
 }
 
 function ChangeRow({ change, onDone }: { change: Change; onDone: () => void }) {
+  const title = useConnectionTitles();
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,7 @@ function ChangeRow({ change, onDone }: { change: Change; onDone: () => void }) {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="min-w-0 flex-1 break-words font-mono text-xs">{change.what}</span>
         <span className="text-xs text-muted">
-          on {change.connection} · {timeAgo(change.at)}
+          on {title(change.connection)} · {timeAgo(change.at)}
         </span>
       </div>
       {change.reverted_at ? (

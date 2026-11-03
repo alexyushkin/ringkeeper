@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
-import { Catalog } from "@/components/catalog";
+import { Catalog, ServiceMark } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
-import { ConnectionForm, ProjectForm, TestButton, type ProjectData } from "@/components/forms";
+import { connectionTitle } from "@/components/connection-form";
+import { ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { Alert, Button, ConfirmButton, Details, EnvBadge, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { Agents, type AgentData } from "@/components/agents";
 import { NewRoutine, RoutineList } from "@/components/routines";
@@ -19,6 +20,7 @@ import { AUTONOMY, SERVICE, slugify } from "@/lib/client/words";
 
 interface Bound {
   name: string;
+  title?: string | null;
   type: string;
   env: string;
   is_default: boolean;
@@ -26,7 +28,7 @@ interface Bound {
 }
 
 /** One linked connection: what it's narrowed to, default or not, unlink. */
-function BoundRow({ project, instance, fields, onChange }: { project: string; instance: Bound; fields: ScopeField[]; onChange: () => void }) {
+function BoundRow({ project, instance, shared, fields, onChange }: { project: string; instance: Bound; shared: boolean; fields: ScopeField[]; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [scope, setScope] = useState(instance.scope ?? {});
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +46,8 @@ function BoundRow({ project, instance, fields, onChange }: { project: string; in
   return (
     <div className="space-y-2 rounded-xl border border-line p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{instance.name}</span>
-        {instance.type === "google" ? null : <EnvBadge env={instance.env} />}
+        <span className="font-medium">{connectionTitle(instance)}</span>
+        {instance.type === "google" || shared ? null : <EnvBadge env={instance.env} />}
         <span className="text-xs text-muted">{SERVICE[instance.type] ?? instance.type}</span>
         <span className="text-xs text-muted">{scopeText(instance.scope ?? {}, fields)}</span>
         <div className="ml-auto flex items-center gap-3">
@@ -56,7 +58,7 @@ function BoundRow({ project, instance, fields, onChange }: { project: string; in
             </Button>
           ) : null}
           <Button kind="ghost" onClick={() => put(null)}>
-            Remove
+            Unlink
           </Button>
         </div>
       </div>
@@ -83,8 +85,8 @@ export function ProjectView({ name }: { name: string }) {
   const project = useApi<Detail>(`projects/${name}`);
   const tasksSummary = useTaskSummary({ project: name });
   const connections = useApi<LibraryConnection[]>("connections");
-  const [adding, setAdding] = useState("");
-  const [scope, setScope] = useState<Record<string, string>>({});
+  const [linking, setLinking] = useState(false);
+  const [picked, setPicked] = useState<Record<string, Record<string, string>>>({}); // connection -> scope
   const [connecting, setConnecting] = useState(false);
   const [added, setAdded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,25 +122,94 @@ export function ProjectView({ name }: { name: string }) {
 
   const instances = project.data.instances;
   const production = instances.filter((i) => i.env === "prod").length;
-  const connectionSummary = `${instances.length}${production ? ` · ${production} production` : ""}`;
+  const connectionSummary = `${instances.length} connection${instances.length === 1 ? "" : "s"}${production ? ` · ${production} production` : ""}`;
   const about = project.data;
   const autonomy = AUTONOMY[about.autonomy]?.join(": ") ?? about.autonomy;
 
+  const chosen = Object.keys(picked);
   const connectionsTab = (
-    <Section id="connections" title="Connections" summary={connectionSummary}>
+    <Section
+      id="connections"
+      title="Connections"
+      summary={connectionSummary}
+      action={
+        <Button kind={instances.length ? "secondary" : "primary"} onClick={() => setLinking(!linking)}>
+          {linking ? "Cancel" : "Link a connection"}
+        </Button>
+      }
+    >
       <p className="text-sm text-muted">
         The services this project may use: from{" "}
         <Link href={clientHref(about.owner)} className="text-accent">
           {clientName(about.owner)}&apos;s connections
         </Link>
-        , and your shared tools. A link can be narrowed to one database, base or project. A default is used when a request doesn&apos;t name one; production can never be the default, so live data is always named on purpose.
+        , and your own tools. A link can be narrowed to one database, base or project. A default is used when a request doesn&apos;t name one; production can never be the default, so live data is always named on purpose.
       </p>
+      {linking ? (
+        <fieldset className="space-y-2 rounded-xl border border-line p-3">
+          <legend className="px-1 text-sm font-medium">Link to {name}</legend>
+          {available.length ? (
+            <>
+              {available.map((c) => (
+                <div key={c.name} className="space-y-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={c.name in picked}
+                      onChange={(e) =>
+                        setPicked((all) => {
+                          const next = { ...all };
+                          if (e.target.checked) next[c.name] = {};
+                          else delete next[c.name];
+                          return next;
+                        })
+                      }
+                      className="size-4 accent-[var(--color-accent)]"
+                    />
+                    <ServiceMark id={typeof c.config.remote === "string" ? c.config.remote : c.type} database={c.type === "supabase"} />
+                    <span className="font-medium">{connectionTitle(c)}</span>
+                    {c.shared ? <span className="text-xs text-muted">your tool</span> : <EnvBadge env={c.env} />}
+                  </label>
+                  {c.name in picked && (c.scope_fields ?? []).length ? (
+                    <div className="ml-6">
+                      <ScopeInputs fields={c.scope_fields ?? []} value={picked[c.name] ?? {}} onChange={(next) => setPicked((all) => ({ ...all, [c.name]: next }))} />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              <Button
+                kind="primary"
+                disabled={!chosen.length}
+                onClick={() =>
+                  run(async () => {
+                    for (const [connection, narrowed] of Object.entries(picked)) {
+                      const scope = Object.fromEntries(Object.entries(narrowed).filter(([, v]) => v));
+                      await api(`projects/${name}/connections/${connection}`, { method: "PUT", json: { is_default: false, scope } });
+                    }
+                    setPicked({});
+                    setLinking(false);
+                  })
+                }
+              >
+                {chosen.length > 1 ? `Link ${chosen.length} connections` : "Link"}
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted">Every one of {clientName(about.owner)}&apos;s connections and your tools is linked already. Connect a new service below.</p>
+          )}
+        </fieldset>
+      ) : null}
+      {instances.length ? null : <p className="text-sm text-muted">No connections linked yet.{available.length ? " Link one with Link a connection, or connect a new service below." : " Connect a service below."}</p>}
       {instances.map((instance) => (
-        <BoundRow key={instance.name} project={name} instance={instance} fields={byName.get(instance.name)?.scope_fields ?? []} onChange={() => run(async () => undefined)} />
+        <BoundRow key={instance.name} project={name} instance={instance} shared={byName.get(instance.name)?.shared ?? false} fields={byName.get(instance.name)?.scope_fields ?? []} onChange={() => run(async () => undefined)} />
       ))}
       {added ? (
         <ConnectionAdded
           name={added}
+          onLinked={() => {
+            project.reload();
+            connections.reload();
+          }}
           onAnother={() => {
             setAdded(null);
             setConnecting(true);
@@ -155,6 +226,7 @@ export function ProjectView({ name }: { name: string }) {
           <Catalog
             client={about.owner}
             project={name}
+            kind="client"
             onAdded={(connection) => {
               setConnecting(false);
               setAdded(connection);
@@ -162,55 +234,15 @@ export function ProjectView({ name }: { name: string }) {
               connections.reload();
             }}
           />
-          <Details label="Other services (a database, n8n, Twilio, Gmail…)">
-            <ConnectionForm
-              client={about.owner}
-              project={name}
-              onSaved={(connection) => {
-                setConnecting(false);
-                setAdded(connection.name);
-                project.reload();
-                connections.reload();
-              }}
-            />
-          </Details>
           <Button kind="ghost" onClick={() => setConnecting(false)}>
             Cancel
           </Button>
         </div>
       ) : (
-        <Button kind="primary" onClick={() => setConnecting(true)}>
-          Connect a service
+        <Button kind="ghost" onClick={() => setConnecting(true)}>
+          Connect a new service
         </Button>
       )}
-      {available.length ? (
-        <div className="space-y-2 rounded-xl border border-line p-3">
-          <Select
-            label={`Or link one of ${clientName(about.owner)}'s connections, or a shared tool`}
-            value={adding}
-            onChange={(next) => {
-              setAdding(next);
-              setScope({});
-            }}
-            options={[["", "Choose…"], ...available.map((c): [string, string] => [c.name, c.shared ? `${c.name} (shared tool)` : `${c.name} (${c.env === "prod" ? "production" : c.env})`])]}
-          />
-          {adding ? <ScopeInputs fields={byName.get(adding)?.scope_fields ?? []} value={scope} onChange={setScope} /> : null}
-          <Button
-            kind="primary"
-            disabled={!adding}
-            onClick={() =>
-              run(async () => {
-                const narrowed = Object.fromEntries(Object.entries(scope).filter(([, v]) => v));
-                await api(`projects/${name}/connections/${adding}`, { method: "PUT", json: { is_default: false, scope: narrowed } });
-                setAdding("");
-                setScope({});
-              })
-            }
-          >
-            Link
-          </Button>
-        </div>
-      ) : null}
       {error ? <Alert>{error}</Alert> : null}
     </Section>
   );
@@ -225,7 +257,7 @@ export function ProjectView({ name }: { name: string }) {
             <dt className="text-muted">Client</dt>
             <dd>
               <Link href={clientHref(about.owner)} className="text-accent">
-                {about.owner}
+                {clientName(about.owner)}
               </Link>
             </dd>
             <dt className="text-muted">What it is</dt>
@@ -243,7 +275,7 @@ export function ProjectView({ name }: { name: string }) {
               </>
             ) : null}
             <dt className="text-muted">Connections</dt>
-            <dd>{instances.length ? instances.map((i) => i.name).join(", ") : "None yet. Add one in the Connections tab."}{production ? ` (${production} production)` : ""}</dd>
+            <dd>{instances.length ? instances.map(connectionTitle).join(", ") : "None yet. Link one in the Connections tab."}{production ? ` (${production} production)` : ""}</dd>
             <dt className="text-muted">Works</dt>
             <dd>{autonomy}</dd>
           </dl>
@@ -284,7 +316,8 @@ export function ProjectView({ name }: { name: string }) {
       </Link>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{name}</h1>
       <p className="mb-4 text-sm text-muted">
-        {clientName(about.owner)}&apos;s project · {connectionSummary} connection{instances.length === 1 ? "" : "s"}
+        {clientName(about.owner)}&apos;s project · {instances.length} connection{instances.length === 1 ? "" : "s"}
+        {production ? ` (${production} production)` : ""}
         {tasksSummary.running ? ` · ${tasksSummary.running} running` : ""}
       </p>
       <Tabs id={`project-${name}`} tabs={tabs} />

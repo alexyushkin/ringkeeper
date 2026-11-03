@@ -134,7 +134,8 @@ function RoutineRow({ routine, showProject, onChange }: { routine: RoutineData; 
 export function NewRoutine({ project, agents, onCreated }: { project: string; agents: AgentData[]; onCreated: (id: string) => void }) {
   const templates = useApi<Record<string, Template>>("routine-templates");
   const [start, setStart] = useState<Template | null>(null);
-  if (!agents.length) return <p className="text-sm text-muted">Add an agent first on the project&apos;s Agents tab: a routine runs one. {AGENTS_AND_ROUTINES}</p>;
+  // No agent yet: make one right here, then the routine.
+  if (!agents.length) return <RoutineFor project={project} onCreated={onCreated} />;
   if (!start) {
     return (
       <div className="space-y-2">

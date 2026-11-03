@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, LinkButton, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { connectionHref } from "@/lib/client/routes";
+import { clientName } from "@/lib/client/scope";
 
 interface Access {
   key: string;
@@ -61,7 +62,7 @@ const APIS: [string, string][] = [
   ["Google Calendar API", "calendar-json.googleapis.com"],
   ["Google Sheets API", "sheets.googleapis.com"],
 ];
-export const DEFAULT_ACCESS = ["mail_read", "mail_send"];
+export const DEFAULT_ACCESS = ["mail_read", "mail_send", "mail_drafts"];
 // Ringkeeper's pages, for the Branding page of your Google app.
 const HOMEPAGE = "https://yushkin.us/ringkeeper";
 const PRIVACY = "https://yushkin.us/ringkeeper/privacy";
@@ -186,6 +187,7 @@ function AppCredentials({ named = false, saveLabel, onSave, onCancel }: { named?
  * can be more than one (a client's own project, or past Google's 100 accounts). */
 export function GoogleSettings() {
   const app = useApi<GoogleApp>("google/app");
+  const connections = useApi<{ name: string; title?: string | null; projects: string[]; last_test_ok: boolean | null; last_test_message: string | null }[]>("connections");
   const [replacing, setReplacing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -213,7 +215,7 @@ export function GoogleSettings() {
   return (
     <Card className="mb-4 space-y-3">
       <h2 className="font-semibold">Google app (one-time setup)</h2>
-      <p className="text-sm">This connects Ringkeeper to Google once. Add each Google account under Connections, as many as you need, one per client or project.</p>
+      <p className="text-sm">This connects Ringkeeper to Google once. Then add each Google account, as many as you need: one per client, or your own.</p>
       <p className="text-sm text-muted">
         Gmail, Drive, Calendar and Sheets, for your clients&apos; Google accounts and your own. They sign in through a Google app you create in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
       </p>
@@ -254,28 +256,38 @@ export function GoogleSettings() {
               </li>
             ))}
           </ul>
-          <LinkButton kind="primary" href="/connections/new?google=1">
-            Add a Google account
-          </LinkButton>
-          <div className="space-y-1">
-            <h3 className="text-sm font-medium">Google accounts ({data.accounts.length})</h3>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-medium">Google accounts ({data.accounts.length})</h3>
+              <span className="ml-auto" />
+              <LinkButton kind="primary" href="/connections/new?google=1">
+                Add a Google account
+              </LinkButton>
+            </div>
             {data.accounts.length ? (
-              <ul className="space-y-1">
-                {data.accounts.map((a) => (
-                  <li key={a.name} className="text-sm">
-                    <Link href={connectionHref(a)} className="text-accent underline">
-                      {a.name}
-                    </Link>
-                    <span className="text-muted">
-                      {" "}
-                      · {a.email} · {a.shared ? "yours" : a.owner}
-                      {several ? ` · through ${appName(a.app)}` : ""}
-                    </span>
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {data.accounts.map((a) => {
+                  const found = connections.data?.find((c) => c.name === a.name);
+                  return (
+                    <li key={a.name} className="rounded-xl border border-line p-3 text-sm">
+                      <Link href={connectionHref(a)} className="font-medium text-accent">
+                        {a.email ?? found?.title ?? a.name}
+                      </Link>
+                      <span className="text-muted">
+                        {" "}
+                        · {a.shared ? "your own" : clientName(a.owner)}
+                        {several ? ` · through ${appName(a.app)}` : ""}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        {found?.projects.length ? `Used by ${found.projects.join(", ")}` : "Not linked to a project yet"}
+                      </span>
+                      {found?.last_test_ok === false && found.last_test_message ? <span className="block text-xs text-bad">Last test failed: {found.last_test_message}</span> : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="text-sm text-muted">No Google accounts yet. Add one under Connections › Add › Google.</p>
+              <p className="text-sm text-muted">No Google accounts yet. Add the first with Add a Google account.</p>
             )}
           </div>
           <Details label="Add another Google app">
@@ -292,6 +304,7 @@ export function GoogleSettings() {
         <SetupSteps access={data.access} />
       </Details>
       {data.configured ? null : <AppCredentials saveLabel="Save" onSave={(json) => api("google/app", { method: "PUT", json }).then(() => saved("Saved. Now add your Google accounts."))} />}
+      {data.configured ? null : <p className="text-xs text-muted">Once it&apos;s saved, Add a Google account shows here.</p>}
       {notice ? <Alert tone="good">{notice}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
     </Card>
@@ -402,7 +415,6 @@ export function GoogleConnect({
       </fieldset>
       {replace ? null : (
         <>
-          <Field label="Name (optional)" value={name} onChange={setName} placeholder="from the address, like geninfos-info" />
           {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}
         </>
       )}

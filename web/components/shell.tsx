@@ -25,7 +25,7 @@ const MORE = [
   { href: "/projects", label: "Clients & projects", icon: "M4 8h16v11H4zM9 8V5h6v3M4 13h16" },
   {
     href: "/connections",
-    label: "Connections",
+    label: "Connectors",
     icon: "M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1",
   },
   { href: "/agents", label: "Agents", icon: "M12 3v3M7 8h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM9.5 13h.01M14.5 13h.01" },

@@ -3,15 +3,16 @@
 import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
-import { LocalUpdate } from "@/components/catalog";
+import { LocalUpdate, ServiceMark } from "@/components/catalog";
+import { connectionTitle, defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { GoogleAccount } from "@/components/google";
 import { McpTools } from "@/components/mcp-tools";
-import { Alert, Badge, Button, CompactRow, ConfirmButton, Details, EnvBadge, Field, Select, Toggle, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, ConfirmButton, Details, EnvBadge, Field, LinkButton, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { projectHref } from "@/lib/client/routes";
+import { clientHref, projectHref } from "@/lib/client/routes";
 import { clientName, sameClient, useScope } from "@/lib/client/scope";
-import { ENVS, SERVICE, slugify } from "@/lib/client/words";
+import { SERVICE } from "@/lib/client/words";
 
 /** A connection library: one client's connections, each linked to some of their
  * projects (optionally narrowed), plus the services they can sign in to. */
@@ -44,7 +45,6 @@ export type LibraryConnection = ConnectionData & { links?: LinkInfo[]; scope_fie
 export function serviceName(connection: LibraryConnection, services: RemoteService[] = []): string {
   const remote = typeof connection.config.remote === "string" ? connection.config.remote : null;
   if (remote) return services.find((s) => s.key === remote)?.name ?? remote;
-  if (typeof connection.config.registry === "string") return connection.config.registry;
   return SERVICE[connection.type] ?? connection.type;
 }
 
@@ -119,38 +119,80 @@ function LinkRow({ connection, link, onChange }: { connection: LibraryConnection
   );
 }
 
-/** Link a client's connection to another of their projects, narrowed or not. */
-function LinkToProject({ connection, projects, onChange }: { connection: LibraryConnection; projects: string[]; onChange: () => void }) {
+/** "No projects yet": connections are used through projects, so say how to get one. */
+export function NoProjects({ client }: { client?: string }) {
+  const add = client ? `/projects/new?client=${encodeURIComponent(client)}` : "/projects/new";
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line p-3 text-sm">
+      <span className="text-muted">{client ? `${clientName(client)} has no projects yet.` : "No projects yet."} Connections are used through projects.</span>
+      <LinkButton href={add}>Add project</LinkButton>
+      <LinkButton href="/projects/new#from-claude">From Claude</LinkButton>
+    </div>
+  );
+}
+
+/** Link a connection to some of its client's projects (a shared tool: any), each
+ * narrowed where the service allows. */
+export function LinkToProjects({ connection, projects, onDone }: { connection: LibraryConnection; projects: string[]; onDone: () => void }) {
   const linked = new Set((connection.links ?? []).map((l) => l.project));
   const open = projects.filter((p) => !linked.has(p));
-  const [project, setProject] = useState("");
-  const [scope, setScope] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<Record<string, Record<string, string>>>({}); // project -> scope
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!open.length) return null;
+  const fields = connection.scope_fields ?? [];
+  const chosen = Object.keys(picked);
+  if (!projects.length) return <NoProjects client={connection.shared ? undefined : connection.owner} />;
+  if (!open.length) return <p className="text-sm text-muted">Every one of {connection.shared ? "your" : `${clientName(connection.owner)}'s`} projects already uses it.</p>;
 
   async function link() {
+    setBusy(true);
     setError(null);
     try {
-      await api(`projects/${project}/connections/${connection.name}`, { method: "PUT", json: { is_default: false, scope: cleaned(scope) } });
-      setProject("");
-      setScope({});
-      onChange();
+      for (const [project, scope] of Object.entries(picked)) {
+        await api(`projects/${project}/connections/${connection.name}`, { method: "PUT", json: { is_default: false, scope: cleaned(scope) } });
+      }
+      setPicked({});
+      onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <Details label="Link to another project">
-      <div className="space-y-2">
-        <Select label="Project" value={project} onChange={setProject} options={[["", "Choose…"], ...open.map((p): [string, string] => [p, p])]} />
-        {project ? <ScopeInputs fields={connection.scope_fields ?? []} value={scope} onChange={setScope} /> : null}
-        <Button kind="primary" disabled={!project} onClick={link}>
-          Link
-        </Button>
-        {error ? <Alert>{error}</Alert> : null}
-      </div>
-    </Details>
+    <fieldset className="space-y-2 rounded-xl border border-line p-3">
+      <legend className="px-1 text-sm font-medium">Link {connectionTitle(connection)} to…</legend>
+      {open.map((project) => (
+        <div key={project} className="space-y-1">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={project in picked}
+              onChange={(e) =>
+                setPicked((all) => {
+                  const next = { ...all };
+                  if (e.target.checked) next[project] = {};
+                  else delete next[project];
+                  return next;
+                })
+              }
+              className="size-4 accent-[var(--color-accent)]"
+            />
+            {project}
+          </label>
+          {project in picked && fields.length ? (
+            <div className="ml-6">
+              <ScopeInputs fields={fields} value={picked[project] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [project]: scope }))} />
+            </div>
+          ) : null}
+        </div>
+      ))}
+      <Button kind="primary" busy={busy} disabled={!chosen.length} onClick={link}>
+        {chosen.length > 1 ? `Link to ${chosen.length} projects` : "Link"}
+      </Button>
+      {error ? <Alert>{error}</Alert> : null}
+    </fieldset>
   );
 }
 
@@ -245,26 +287,45 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
   );
 }
 
-/** A connection in its client's library (or a shared tool, in the shared tools). */
-export function LibraryCard({ connection, projects, services, onChange, compact = false }: { connection: LibraryConnection; projects: string[]; services: RemoteService[]; onChange: () => void; compact?: boolean }) {
+/** A connection in its client's library (or a shared tool, in the shared tools): what
+ * it is, where it's used, and linking it, at a glance; testing, its tools and changing
+ * it under Details. */
+export function LibraryCard({ connection, projects, services, onChange }: { connection: LibraryConnection; projects: string[]; services: RemoteService[]; onChange: () => void; compact?: boolean }) {
   // A link to this connection (connectionHref) opens it and scrolls to it.
-  const [targeted] = useState(() => typeof window !== "undefined" && window.location.hash === `#connections/${encodeURIComponent(connection.name)}`);
+  const [targeted] = useState(() => typeof window !== "undefined" && window.location.hash.startsWith(`#connections/${encodeURIComponent(connection.name)}`));
   useEffect(() => {
     if (targeted) document.getElementById(`connection-${connection.name}`)?.scrollIntoView({ block: "center" });
   }, [targeted, connection.name]);
+  // ...and with /link, opens its Link to project… right away.
+  const [linking, setLinking] = useState(() => typeof window !== "undefined" && window.location.hash === `#connections/${encodeURIComponent(connection.name)}/link`);
+  const [open, setOpen] = useState(targeted && !linking);
+  const [title, setTitle] = useState(connectionTitle(connection));
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const remote = typeof connection.config.remote === "string";
   const fromCatalog = typeof connection.config.registry === "string";
   const imported = connection.type === "mcp" && !remote && !fromCatalog;
+  const kind = serviceName(connection, services);
+  const mark = remote ? String(connection.config.remote) : connection.type;
+
+  async function patch(json: Record<string, unknown>, done: string) {
+    setError(null);
+    try {
+      await api(`connections/${connection.name}`, { method: "PATCH", json });
+      setSaved(done);
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function replace() {
     setError(null);
     try {
       await api(`connections/${connection.name}/secret`, { method: "PUT", json: { secret } });
       setSecret("");
-      setSaved(true);
+      setSaved("Saved. Test the connection to check it.");
       onChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -282,123 +343,120 @@ export function LibraryCard({ connection, projects, services, onChange, compact 
   }
 
   const links = connection.links ?? [];
-  const head = (
-    <>
-      <span className="font-medium">{connection.name}</span>
-      {/* A Google account's writes all ask first, whatever the data: no kind-of-data badge. */}
-      {connection.type === "google" ? null : <EnvBadge env={connection.env} />}
-      <span className="text-xs text-muted">{serviceName(connection, services)}</span>
-      {connection.shared ? <Badge tone="accent">shared tool</Badge> : null}
-      {connection.config.source === "signin" ? <Badge tone="good">signed in</Badge> : null}
-      {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
-      {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
-      {/* Why the last test failed, without opening the row. */}
-      {compact && connection.last_test_ok === false && connection.last_test_message ? (
-        <span className="order-last w-full truncate text-xs text-bad" title={connection.last_test_message}>
-          {connection.last_test_message}
-        </span>
+  return (
+    <div id={`connection-${connection.name}`} className="space-y-2 rounded-2xl border border-line bg-surface p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <ServiceMark id={mark} database={connection.type === "supabase"} />
+        <span className="font-medium">{connectionTitle(connection)}</span>
+        {/* A Google account's writes all ask first, whatever the data: no kind-of-data badge. */}
+        {connection.type === "google" || connection.shared ? null : <EnvBadge env={connection.env} />}
+        {kind !== connectionTitle(connection) ? <span className="text-xs text-muted">{kind}</span> : null}
+        {connection.shared ? <Badge tone="accent">your tool</Badge> : null}
+        {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
+        {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
+        {connection.last_test_at ? <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span> : null}
+      </div>
+      {/* Why the last test failed, without opening anything. */}
+      {connection.last_test_ok === false && connection.last_test_message ? <p className="text-sm text-bad">{connection.last_test_message}</p> : null}
+      <p className="text-sm">
+        {connection.all_projects ? (
+          <span>{connection.reach || "Every project, new ones too"}</span>
+        ) : links.length ? (
+          <>
+            <span className="text-muted">Used by </span>
+            {links.map((link, i) => (
+              <span key={link.project}>
+                {i ? ", " : ""}
+                <Link href={projectHref(link.project)} className="text-accent">
+                  {link.project}
+                </Link>
+                {Object.keys(link.scope).length ? <span className="text-muted"> ({scopeText(link.scope, connection.scope_fields)})</span> : null}
+              </span>
+            ))}
+          </>
+        ) : (
+          <span className="text-muted">Not linked to a project yet, so no task can use it.</span>
+        )}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {connection.all_projects ? null : (
+          <Button kind={links.length ? "secondary" : "primary"} onClick={() => setLinking(!linking)}>
+            {linking ? "Cancel" : "Link to project…"}
+          </Button>
+        )}
+        <Button kind="ghost" onClick={() => setOpen(!open)}>
+          {open ? "Hide details" : "Details"}
+        </Button>
+      </div>
+      {linking ? (
+        <LinkToProjects
+          connection={connection}
+          projects={projects}
+          onDone={() => {
+            setLinking(false);
+            onChange();
+          }}
+        />
       ) : null}
-      {compact ? (
-        <span className="ml-auto text-xs text-muted">{connection.all_projects ? (connection.reach || "All projects") : links.length === 1 ? "1 project" : `${links.length} projects`}</span>
-      ) : connection.last_test_at ? (
-        <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span>
-      ) : null}
-    </>
-  );
-  const body = (
-    <>
-      {connection.last_test_ok === false && connection.last_test_message ? <Alert>{connection.last_test_message}</Alert> : null}
-      {connection.shared ? <AllProjects connection={connection} onChange={onChange} /> : null}
-      <ul className="space-y-1">
-        {(connection.links ?? []).map((link) => (
-          <LinkRow key={link.project} connection={connection} link={link} onChange={onChange} />
-        ))}
-        {!(connection.links ?? []).length ? <li className="text-sm text-muted">Not linked to a project yet. Pick one under Link to another project below.</li> : null}
-      </ul>
-      {/* For all projects, the only ones it isn't linked to are the ones left out. */}
-      {connection.all_projects ? null : <LinkToProject connection={connection} projects={projects} onChange={onChange} />}
-      {connection.config.package ? <LocalUpdate connection={connection.name} client={connection.owner} onDone={onChange} /> : null}
-      <TestButton name={connection.name} onDone={() => onChange()} />
-      {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
-      {connection.type === "google" ? <GoogleAccount name={connection.name} onChange={onChange} /> : null}
-      <Details label="Change">
-        <div className="space-y-3">
-          {imported ? <p className="text-sm text-muted">Its settings came from Claude Desktop. To change them, change them there, remove this connection, and import it again.</p> : null}
-          {remote || fromCatalog ? <p className="text-sm text-muted">To sign in again or use another key, remove it and connect again.</p> : null}
-          {connection.type !== "mcp" && connection.type !== "google" ? (
-            <>
-              <p className="text-sm">Secret: {connection.secret_stored ? "saved ✓ (hidden)" : "missing"}</p>
-              <Field label="New secret" type="password" value={secret} onChange={setSecret} />
-              <Button kind="primary" disabled={!secret} onClick={replace}>
-                Replace secret
-              </Button>
-            </>
+      {open ? (
+        <div className="space-y-3 border-t border-line pt-3">
+          {connection.shared ? <AllProjects connection={connection} onChange={onChange} /> : null}
+          {links.length ? (
+            <ul className="space-y-1">
+              {links.map((link) => (
+                <LinkRow key={link.project} connection={connection} link={link} onChange={onChange} />
+              ))}
+            </ul>
           ) : null}
-          <ConfirmButton question={`Remove ${connection.name}? Its projects lose it too.`} confirm={`Remove ${connection.name}`} onConfirm={remove}>
-            Remove connection
-          </ConfirmButton>
-          {saved ? <Alert tone="good">Saved. Test the connection to check it.</Alert> : null}
+          {connection.config.package ? <LocalUpdate connection={connection.name} client={connection.owner} onDone={onChange} /> : null}
+          <TestButton name={connection.name} onDone={() => onChange()} />
+          {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
+          {connection.type === "google" ? <GoogleAccount name={connection.name} onChange={onChange} /> : null}
+          <Details label="Change">
+            <div className="space-y-3">
+              <Field label="Name" value={title} onChange={setTitle} hint={`As it shows in Ringkeeper. The AI knows it as ${connection.name}.`} />
+              <Button disabled={!title.trim() || title.trim() === connectionTitle(connection)} onClick={() => patch({ title: title.trim() }, "Renamed.")}>
+                Rename
+              </Button>
+              {imported ? <p className="text-sm text-muted">Its settings came from Claude Desktop. To change them, change them there, remove this connection, and import it again.</p> : null}
+              {remote || fromCatalog ? <p className="text-sm text-muted">To sign in again or use another key, remove it and connect again.</p> : null}
+              {connection.type !== "mcp" && connection.type !== "google" ? (
+                <>
+                  <p className="text-sm">Secret: {connection.secret_stored ? "saved ✓ (hidden)" : "missing"}</p>
+                  <Field label="New secret" type="password" value={secret} onChange={setSecret} />
+                  <Button kind="primary" disabled={!secret} onClick={replace}>
+                    Replace secret
+                  </Button>
+                </>
+              ) : null}
+              <ConfirmButton question={`Remove ${connectionTitle(connection)}? Its projects lose it too.`} confirm="Remove it" onConfirm={remove}>
+                Remove connection
+              </ConfirmButton>
+            </div>
+          </Details>
         </div>
-      </Details>
+      ) : null}
+      {saved ? <Alert tone="good">{saved}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
-    </>
-  );
-  if (compact) {
-    return (
-      <div id={`connection-${connection.name}`}>
-        <CompactRow head={head} defaultOpen={targeted}>
-          {body}
-        </CompactRow>
-      </div>
-    );
-  }
-  return (
-    <div id={`connection-${connection.name}`} className="space-y-3 rounded-2xl border border-line bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-2">{head}</div>
-      {body}
     </div>
   );
 }
 
-/**
- * The services a client can sign in to (one click opens the service's own page)
- * or paste a token for. With `project`, the new connection is linked to it, and
- * the link can be narrowed right away.
- */
-export function RemoteServices({ client, project, shared = false, onAdded }: { client: string; project?: string; shared?: boolean; onAdded: (name: string) => void }) {
-  const services = useApi<RemoteService[]>("remote-services");
-  const [chosen, setChosen] = useState<RemoteService | null>(null);
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {(services.data ?? []).map((service) => (
-          <button
-            key={service.key}
-            type="button"
-            onClick={() => setChosen(chosen?.key === service.key ? null : service)}
-            className={`rounded-xl border p-3 text-left text-sm hover:border-accent ${chosen?.key === service.key ? "border-accent bg-accent-soft" : "border-line bg-surface"}`}
-          >
-            <span className="block font-medium">{service.name}</span>
-            <span className="text-xs text-muted">{service.signin ? "Sign in" : "Paste a token"}</span>
-          </button>
-        ))}
-      </div>
-      {services.error ? <Alert>{services.error}</Alert> : null}
-      {chosen ? <ConnectRemote key={chosen.key} service={chosen} client={client} project={project} shared={shared} onAdded={onAdded} /> : null}
-    </div>
-  );
-}
-
-function ConnectRemote({ service, client, project, shared = false, onAdded }: { service: RemoteService; client: string; project?: string; shared?: boolean; onAdded: (name: string) => void }) {
-  const [name, setName] = useState(slugify(shared ? service.key : `${client} ${service.key}`));
-  const [env, setEnv] = useState("dev");
+/** Connect a service you sign in to (or paste a token for). With `project`, the new
+ * connection is linked to it, and the link can be narrowed right away. */
+export function ConnectRemote({ service, client, project, shared = false, onAdded }: { service: RemoteService; client: string; project?: string; shared?: boolean; onAdded: (name: string) => void }) {
+  const [typed, setTyped] = useState<string | null>(null); // null: the suggested title
+  const [env, setEnv] = useState("");
   const [scope, setScope] = useState<Record<string, string>>({});
   const [token, setToken] = useState("");
   const [pasting, setPasting] = useState(!service.signin);
-  const [waiting, setWaiting] = useState(false);
+  const [waiting, setWaiting] = useState<string | null>(null); // the name sent, until it's there
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const body = { remote: service.key, name, owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
+  const taken = useTakenNames();
+  const title = typed ?? defaultTitle(service.name, "", shared ? undefined : client);
+  const name = nameFor(title, shared ? undefined : client, taken);
+  const body = { remote: service.key, name, title: title.trim(), owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
 
   // After the service's page opens: the connection appears once its sign-in finishes.
   useEffect(() => {
@@ -407,15 +465,15 @@ function ConnectRemote({ service, client, project, shared = false, onAdded }: { 
     const timer = setInterval(() => {
       api<ConnectionData[]>("connections")
         .then((all) => {
-          if (all.some((c) => c.name === name)) {
-            setWaiting(false);
-            onAdded(name);
-          } else if (Date.now() > deadline) setWaiting(false);
+          if (all.some((c) => c.name === waiting)) {
+            setWaiting(null);
+            onAdded(waiting);
+          } else if (Date.now() > deadline) setWaiting(null);
         })
         .catch(() => undefined);
     }, 2000);
     return () => clearInterval(timer);
-  }, [waiting, name, onAdded]);
+  }, [waiting, onAdded]);
 
   async function signIn() {
     setBusy(true);
@@ -423,7 +481,7 @@ function ConnectRemote({ service, client, project, shared = false, onAdded }: { 
     try {
       const { url } = await api<{ url: string }>("connections/signin", { json: body });
       window.open(url, "_blank", "noopener");
-      setWaiting(true);
+      setWaiting(name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -447,16 +505,15 @@ function ConnectRemote({ service, client, project, shared = false, onAdded }: { 
 
   return (
     <div className="space-y-3 rounded-xl border border-line p-3">
-      <h3 className="font-medium">Connect {service.name}</h3>
       {service.note ? <p className="text-sm text-muted">{service.note}</p> : null}
-      <Field label="Name" value={name} onChange={(v) => setName(slugify(v))} hint="A short name the agent uses for it." />
-      <Select label="Kind of data" value={env} onChange={setEnv} options={ENVS} hint={env === "prod" ? "Changes to production always wait for your approval." : undefined} />
+      <EnvChoice value={env} onChange={setEnv} tool />
+      <Field label="Name" value={title} onChange={setTyped} hint="As it shows in Ringkeeper. Change it if you like." />
       {project ? <ScopeInputs fields={service.scope} value={scope} onChange={setScope} /> : null}
       {waiting ? <Alert tone="good">Finish signing in on {service.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
       {service.signin && !pasting ? (
         <div className="flex flex-wrap gap-2">
-          <Button kind="primary" busy={busy} disabled={!name} onClick={signIn}>
+          <Button kind="primary" busy={busy} disabled={!title.trim() || !env} onClick={signIn}>
             Sign in with {service.name}
           </Button>
           {service.paste ? (
@@ -478,7 +535,7 @@ function ConnectRemote({ service, client, project, shared = false, onAdded }: { 
           </p>
           <Field label={service.paste} type="password" value={token} onChange={setToken} />
           <div className="flex flex-wrap gap-2">
-            <Button kind="primary" busy={busy} disabled={!name || !token.trim()} onClick={paste}>
+            <Button kind="primary" busy={busy} disabled={!title.trim() || !env || !token.trim()} onClick={paste}>
               Connect
             </Button>
             {service.signin ? (
