@@ -32,6 +32,21 @@ here once per client.
 - **Narrow it** (on the client's page): limit a link to one base, repository,
   project or folder, so a project sees only that.
 
+## Link a connection to a project
+
+A connection does nothing until a project uses it. On the client's Connections tab,
+each card says where it's used and has **Link to project…**: tick one or several
+projects, and narrow each if you like. On a project's Connections tab, **Link a
+connection** lists the client's connections that aren't linked yet and your own tools.
+A client with no projects says so, with **Add project** and **From Claude**.
+
+## Your own tools (shared tools)
+
+A shared tool is yours and holds no client's data: a browser like Playwright, files on
+this computer, public documentation. **Connectors › Add your own tool**, search for it,
+then choose **For all projects** or link it to some. To leave a client or project out,
+open its card: Details › All projects › Except….
+
 ## Where the key goes
 
 Into Ringkeeper's vault, encrypted with a key kept in Windows' credential store

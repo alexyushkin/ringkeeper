@@ -193,10 +193,123 @@ servers before you type.
 | Linking from the client, the project, the overview | Done |
 | No projects: say so, offer Add project and From Claude | Done, on the client page, the success card, agents and routines |
 | From Claude cleanup | Wasn't done; done now |
-| Archive failed tasks older than 7 days | Done. It covers failed, timed-out, over-budget and stopped tasks. It only shows when there are some. The button was unit-tested but not clicked in this walk, because a fresh install has no week-old tasks. |
+| Archive failed tasks older than 7 days | Done, and clicked (below). It covers failed, timed-out, over-budget and stopped tasks, and only shows when there are some. |
 | Subscription first; tasks, architect, routines and router use it | Done. Router, tasks and routines ran on a subscription token here; the architect shares the workers' path, checked in code, not walked. |
 | Settings › Google | Done |
 | Test failures show the reason on the card | Done |
 | Agents and Routines: New, project first, Create an agent | Done |
 | No stray scrollbars; 1366×768 and 375 | Done |
 | Readable **project** names | **Not done.** Connections and clients read well; projects still show their short name (`geninfos-website`), which is usually readable but isn't what was typed. |
+
+# The convenience batch and the Help assistant
+
+Walked the same way, in a fresh scratch install, after journeys a and b.
+
+## @-mentions
+
+`@` in any request box lists clients, projects, connections and agents. A mention is a
+firm choice: the router's answer is held to it, whatever the model said.
+
+![Mentions](ux-walkthrough/h01-mention-list.png)
+
+## Files on a request
+
+Dropped on the box, or added with the clip. `brief.txt` landed in the project's
+`attachments` folder, and the task was told where.
+
+![Attached](ux-walkthrough/h02-file-attached.png)
+
+**Not clicked with a real drag:** the walk used the clip. The desktop shell had to stop
+catching file drops itself for dropping to reach the page; that's in the shell, so it
+needs trying in the real app.
+
+## Run again and saved requests
+
+![Run again](ux-walkthrough/h04-task-run-again.png)
+
+Saved requests sit under the box, and the digest card is on Home:
+
+![Home](ux-walkthrough/h05-home-digest-shortcut.png)
+
+**Where I hesitated:** a saved request kept the "Files attached" line and doubled its
+`@project`. Fixed. Conversation rows showed the client's short name. Fixed.
+
+## Keys already in a project
+
+With a `.env` in the project, its Connections tab offers what it recognizes, masked.
+Twilio's auth token can't be used, and it says why rather than hiding it. The value
+never leaves the server: confirming one reads it again from the file.
+
+![Found](ux-walkthrough/h06-keys-found.png)
+![Confirm](ux-walkthrough/h07-key-confirm.png)
+
+## Connection health
+
+**Test all** ran every connection (the daily check does the same). A failure shows its
+reason on the card:
+
+![Failed test](ux-walkthrough/h21-failed-test-reason.png)
+
+The daily timing, and "key expires in 7 days", are covered by tests, not by waiting a day.
+
+## Approvals
+
+J and K move, A approves, D denies. **Approve all 2 like this** shows for the same action,
+with the same details, in one task. I kept that strict on purpose: two different SQL
+statements through the same tool are not "like this".
+
+![Approve all](ux-walkthrough/h10-approve-all.png)
+
+After **Approve, and trust this…**, the next activation ran with nothing waiting, and
+it's listed with **Stop trusting**:
+
+![Trusted](ux-walkthrough/h11-trusted.png)
+
+## Pins, the digest, the quick box
+
+![Palette](ux-walkthrough/h13-pinned-palette.png)
+![Digest setting](ux-walkthrough/h14-digest-settings.png)
+
+| | |
+|---|---|
+| ![Quick box](ux-walkthrough/h16-quick-box.png) | ![Sent](ux-walkthrough/h17-quick-sent.png) |
+| The quick box, at its window size | After Send: it's its own toast, with the link, for 8 seconds |
+
+**The hotkey itself was not pressed.** The page was walked in a browser at the window's
+size. The shell code compiles and its tests pass, but running a second shell on this PC
+would hand off to your installed app through its single-instance lock, so pressing
+Win+Shift+R, the always-on-top window and real file drops are yours to try first.
+Windows 11's Snipping Tool may already use Win+Shift+R for screen recording: if so,
+Ringkeeper says the key is taken, and Settings › Advanced › Quick request changes it.
+
+The digest's message to Slack, Discord and Telegram is covered by tests with a fake
+sender; no real channel was used.
+
+## Old failed tasks
+
+![Archive](ux-walkthrough/h22-archive-offer.png)
+
+## The Help assistant
+
+Asked in the request box, it answers with no project, no task and no approval, cites its
+section, and ends with a next step. The reply here is my stand-in's, so the wording isn't
+a real model's; the routing, the section, the link and the button are real:
+
+![Help](ux-walkthrough/h18-help-in-the-box.png)
+
+What doesn't exist is answered without calling a model at all, from a section of the
+guide written for it:
+
+![Not yet](ux-walkthrough/h19-help-not-yet.png)
+![Help › Ask](ux-walkthrough/h20-help-ask.png)
+
+**Tests:** 20 real questions each find their expected section, and 7 questions about
+things that don't exist never reach a model (`tests/test_help.py`).
+
+**Not tested:** how well a real Haiku follows "answer only from the guide". Its prompt
+says so and it only sees those sections, but that needs a real key. Try it with a few
+questions you know the answers to.
+
+**Where I hesitated:** while writing "what Ringkeeper doesn't do yet" I had said Activity
+can't export, and it can (CSV). That's exactly the mistake this feature must not make, so
+that section is worth a read from you: it's the last part of `docs/faq.md`.
