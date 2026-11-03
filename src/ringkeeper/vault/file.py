@@ -11,7 +11,7 @@ import secrets
 import sys
 import tempfile
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -25,6 +25,21 @@ from ringkeeper.vault import VaultError
 
 VAULT_FILE_NAME = "vault.json"
 NONCE_BYTES = 12
+# On Windows a file can't be replaced while it's being read, and can't be read at the
+# instant it's replaced: either side gets "access denied". Neither lasts: try again.
+BUSY_TRIES = 40
+BUSY_WAIT_SECONDS = 0.05
+
+
+def _when_free[T](action: Callable[[], T]) -> T:
+    for _ in range(BUSY_TRIES - 1):
+        try:
+            return action()
+        except PermissionError:
+            if sys.platform != "win32":
+                raise
+            time.sleep(BUSY_WAIT_SECONDS)
+    return action()
 
 
 def _b64(data: bytes) -> str:
@@ -48,7 +63,7 @@ class FileBackend:
         if not self.path.exists():
             return {}
         try:
-            data: Any = json.loads(self.path.read_text(encoding="utf-8"))
+            data: Any = json.loads(_when_free(lambda: self.path.read_text(encoding="utf-8")))
         except (OSError, ValueError) as error:
             raise VaultError(f"cannot read vault file {self.path}: {error}") from None
         if not isinstance(data, dict) or data.get("version") != 1:  # pyright: ignore[reportUnknownMemberType]
@@ -139,7 +154,7 @@ class FileBackend:
             os.chmod(tmp, 0o600)
             if self._owner_uid is not None and sys.platform != "win32":
                 os.chown(tmp, self._owner_uid, -1)
-            os.replace(tmp, self.path)
+            _when_free(lambda: os.replace(tmp, self.path))
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
