@@ -39,6 +39,7 @@ use tauri::{
     AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as _;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
 use tauri_plugin_notification::NotificationExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 use tauri_plugin_updater::{Update, UpdaterExt as _};
@@ -47,6 +48,7 @@ use backend::{Backend, Launcher};
 use logic::{CheckReport, Crashes, Runtime, Status, UpdateFailure, UPDATE_EVERY, UPDATE_RETRY};
 
 const WINDOW: &str = "main";
+const QUICK: &str = "quick";
 const TRAY: &str = "tray";
 const HIDDEN_ARG: &str = "--hidden";
 const QUIT_ARG: &str = "--quit";
@@ -94,6 +96,8 @@ struct Shell {
     check_now: AtomicBool,
     /// The last Open link from Slack or Discord the window was opened for.
     opened: Mutex<Option<String>>,
+    /// The key the quick request box is on now.
+    hotkey: Mutex<Option<String>>,
 }
 
 /// Small things the shell remembers between launches (data_dir/shell.json).
@@ -152,6 +156,15 @@ fn main() {
                 .app_name("Ringkeeper")
                 .build(),
         )
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _keys, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        open_quick(app);
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -177,6 +190,7 @@ fn main() {
                 downloaded: Mutex::new(None),
                 check_now: AtomicBool::new(false),
                 opened: Mutex::new(None),
+                hotkey: Mutex::new(None),
             };
             app.manage(shell);
             remove_previous_version(app.handle());
@@ -231,6 +245,8 @@ fn build_window(app: &AppHandle, visible: bool) -> tauri::Result<()> {
             .min_inner_size(900.0, 600.0)
             .center()
             .visible(visible)
+            // Files dropped on a request go to the page, not to Tauri.
+            .disable_drag_drop_handler()
             // Ringkeeper's own pages stay in the window; links elsewhere open in the browser.
             .on_navigation(move |url| {
                 let ours = is_ours(&handle, url);
@@ -340,10 +356,73 @@ fn open_window(app: &AppHandle, path: Option<String>) {
     });
 }
 
+/// The quick request box: a small window over whatever you're doing, opened by the
+/// hotkey. Pressed again, it comes to the front. It closes itself once it's sent.
+fn open_quick(app: &AppHandle) {
+    let app = app.clone();
+    thread::spawn(move || {
+        if let Some(window) = app.get_webview_window(QUICK) {
+            show(&window);
+            return;
+        }
+        let shell = app.state::<Shell>();
+        let Some(runtime) = shell.runtime() else {
+            return; // still starting: the key just does nothing yet
+        };
+        let Ok(code) = backend::new_code(&shell.agent, &runtime) else {
+            return;
+        };
+        let address = format!(
+            "{}/desktop/start?code={code}&next={}",
+            runtime.url,
+            logic::encode("/quick")
+        );
+        let Ok(url) = Url::parse(&address) else {
+            return;
+        };
+        let handle = app.clone();
+        let built = WebviewWindowBuilder::new(&app, QUICK, WebviewUrl::External(url))
+            .title("Ringkeeper")
+            .inner_size(640.0, 340.0)
+            .resizable(false)
+            .center()
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .disable_drag_drop_handler()
+            .on_navigation(move |url| is_ours(&handle, url))
+            .build();
+        match built {
+            Ok(window) => show(&window),
+            Err(error) => backend::log(&shell.data_dir, &format!("no quick box: {error}")),
+        }
+    });
+}
+
+/// Keeps the hotkey as Settings says. A key another app holds is said once, not fatal.
+fn sync_hotkey(app: &AppHandle, wanted: Option<&str>) {
+    let shell = app.state::<Shell>();
+    let Ok(mut current) = shell.hotkey.lock() else {
+        return;
+    };
+    if current.as_deref() == wanted {
+        return;
+    }
+    *current = wanted.map(str::to_string);
+    let keys = app.global_shortcut();
+    let _ = keys.unregister_all();
+    if let Some(wanted) = wanted {
+        if let Err(error) = keys.register(wanted) {
+            backend::log(&shell.data_dir, &format!("hotkey {wanted}: {error}"));
+            notify(app, "Ringkeeper", &logic::hotkey_taken(wanted));
+        }
+    }
+}
+
 /// The app's pages come from the backend, a remote origin to Tauri, so they get
 /// no access to the shell by default. They may open the folder picker (the
 /// project form's Browse button) and set the window's theme (Settings ›
-/// Appearance), nothing else, and only from this backend's own address.
+/// Appearance), nothing else, and only from this backend's own address. The
+/// quick box may close itself, nothing else.
 fn allow_pages(app: &AppHandle, runtime: &Runtime) {
     let Ok(url) = Url::parse(&runtime.url) else {
         return;
@@ -354,9 +433,16 @@ fn allow_pages(app: &AppHandle, runtime: &Runtime) {
         .window(WINDOW)
         .permission("dialog:allow-open")
         .permission("core:window:allow-set-theme");
-    if let Err(error) = app.add_capability(capability) {
-        let shell = app.state::<Shell>();
-        backend::log(&shell.data_dir, &format!("pages get no access: {error}"));
+    let quick = CapabilityBuilder::new(format!("quick-{}", url.port().unwrap_or(0)))
+        .remote(format!("{}/*", url.origin().ascii_serialization()))
+        .local(false)
+        .window(QUICK)
+        .permission("core:window:allow-close");
+    for capability in [capability, quick] {
+        if let Err(error) = app.add_capability(capability) {
+            let shell = app.state::<Shell>();
+            backend::log(&shell.data_dir, &format!("pages get no access: {error}"));
+        }
     }
 }
 
@@ -519,6 +605,7 @@ fn apply_status(app: &AppHandle, status: &Status) {
         notify(app, &notice.title, &notice.body);
     }
     sync_start_at_login(app, status.start_at_login);
+    sync_hotkey(app, status.hotkey.as_deref());
     let handled = shell.opened.lock().ok().and_then(|o| o.clone());
     if let Some(path) = logic::asked_to_open(status, handled.as_deref()) {
         if let Ok(mut opened) = shell.opened.lock() {

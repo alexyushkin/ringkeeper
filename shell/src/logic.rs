@@ -47,6 +47,9 @@ pub struct Status {
     /// A page an Open link from Slack or Discord asked for (its id and path).
     #[serde(default)]
     pub open: Option<OpenRequest>,
+    /// The quick request box's key ("Super+Shift+R"); None: it's off.
+    #[serde(default)]
+    pub hotkey: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -76,6 +79,11 @@ pub fn asked_to_open(status: &Status, handled: Option<&str>) -> Option<String> {
         .filter(|open| open.path.starts_with('/') && !open.path.starts_with("//"))
         .filter(|open| !open.path.contains(['\\', ':']))
         .map(|open| open.path.clone())
+}
+
+/// When another app already holds the key.
+pub fn hotkey_taken(keys: &str) -> String {
+    format!("{keys} is taken by another app. Choose another key in Settings › Advanced › Quick request.")
 }
 
 fn yes() -> bool {
@@ -352,6 +360,7 @@ mod tests {
             check_updates: true,
             check_update: None,
             open: None,
+            hotkey: None,
         };
         assert_eq!(tooltip(Some(&status), false), "Ringkeeper");
         assert_eq!(tooltip(Some(&status), true), "Ringkeeper: starting…");
@@ -434,6 +443,7 @@ mod tests {
             check_updates: true,
             check_update: None,
             open: None,
+            hotkey: None,
         };
         assert_eq!(asked_to_open(&status, None), None);
         status.open = Some(OpenRequest {
