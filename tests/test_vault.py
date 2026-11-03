@@ -19,6 +19,7 @@ from ringkeeper.config import Settings
 from ringkeeper.keys import MasterKeyError, derive_key, generate_master_key, load_master_key
 from ringkeeper.vault import Secret, Vault, VaultError, get_vault
 from ringkeeper.vault.aws import AwsSecretsManagerBackend
+from ringkeeper.vault import file as vault_file
 from ringkeeper.vault.file import FileBackend
 from tests.helpers import make_instance
 
@@ -359,3 +360,18 @@ def test_uninstalling_with_the_data_removes_the_keychain_key(keychain: MemoryKey
     assert uninstall.main() == 0
     assert keychain.items == {}
     assert uninstall.main() == 0  # nothing left to remove is fine too
+
+
+def test_a_busy_vault_file_is_tried_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Windows, reading and replacing the file at once is "access denied" for a moment."""
+    monkeypatch.setattr(vault_file.sys, "platform", "win32")
+    monkeypatch.setattr(vault_file, "BUSY_WAIT_SECONDS", 0)
+    tries = iter([PermissionError("busy"), PermissionError("busy"), "done"])
+
+    def flaky() -> str:
+        outcome = next(tries)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    assert vault_file._when_free(flaky) == "done"  # pyright: ignore[reportPrivateUsage]
