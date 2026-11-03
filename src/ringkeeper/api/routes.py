@@ -3,7 +3,7 @@
 Everything but /health needs the admin token (`public` vs `router`).
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
@@ -28,7 +28,16 @@ from ringkeeper.schemas import (
     ProjectOut,
     ThreadOut,
 )
-from ringkeeper.services import bindings, decisions, inbox, instances, projects, threads, undo
+from ringkeeper.services import (
+    bindings,
+    decisions,
+    inbox,
+    instances,
+    mentions,
+    projects,
+    threads,
+    undo,
+)
 
 public = APIRouter()
 router = APIRouter(dependencies=[AdminDep])
@@ -80,12 +89,18 @@ def list_instances(
     ]
 
 
+@router.get("/mentions")
+def list_mentions(session: SessionDep) -> list[dict[str, Any]]:
+    """What a request can @-mention: clients, projects, connections and agents."""
+    return mentions.offered(session)
+
+
 @router.post("/messages", status_code=202)
 def post_message(data: MessageIn, session: WriteSessionDep) -> MessageAccepted:
     """Queue a message for the router. Its reply lands in the thread."""
     message = threads.post_message(
         session, data.body, author=data.author, source=data.source, thread=data.thread_id,
-        input_kind=data.input,
+        input_kind=data.input, attachments=data.attachments,
     )  # fmt: skip
     return MessageAccepted(message_id=str(message.id), thread_id=str(message.thread_id))
 

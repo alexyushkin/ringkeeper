@@ -173,6 +173,7 @@ class MessageIn(_Input):
     author: NonEmpty = "api"
     source: Literal["api", "web"] = "api"
     input: Literal["text", "voice"] = "text"  # voice: a transcript the user confirmed
+    attachments: CleanList = Field(default_factory=list[str])  # ids from POST /attachments
 
 
 class MessageAccepted(BaseModel):
@@ -187,6 +188,7 @@ class MessageOut(_Output):
     source: str
     input: str  # text, or voice (a confirmed transcript)
     body: str
+    attachments: list[str] = []
     routing: dict[str, Any] | None
     routed_at: datetime | None
     route_error: str | None

@@ -521,6 +521,8 @@ class ConnectionIn(Input):
 
 class ConnectionPatch(Input):
     title: Title | None = None
+    # When its key expires ("2027-01-31"), if you know; empty: not known.
+    expires_at: Annotated[str, Field(pattern=r"^(\d{4}-\d{2}-\d{2})?$")] | None = None
     env: Env | None = None
     owner: NonEmpty | None = None
     shared: bool | None = None  # yours (a shared tool), or a client's connection
@@ -626,6 +628,13 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
     return _connection_out(instances.get_instance(session, instance.name))
 
 
+def _with_expiry(instance: Instance, changes: dict[str, Any]) -> dict[str, Any]:
+    config = dict(instance.config or {})
+    if "expires_at" in changes:
+        config["expires_at"] = changes["expires_at"] or None
+    return config
+
+
 @router.patch("/connections/{name}")
 def update_connection(
     name: str, data: ConnectionPatch, request: Request, session: WriteSessionDep, token: OwnerToken
@@ -653,7 +662,7 @@ def update_connection(
     merged = InstanceIn(
         name=instance.name, title=changes.get("title"), type=instance.type,
         env=changes.get("env", instance.env), secret_ref=instance.secret_ref, owner=owner,
-        base_url=base_url, config=dict(instance.config or {}), shared=shared,
+        base_url=base_url, config=_with_expiry(instance, changes), shared=shared,
         all_projects=everywhere,
         # Exceptions only mean something for all projects; turning that off drops them.
         except_clients=changes.get("except_clients", instance.except_clients) if everywhere else [],

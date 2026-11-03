@@ -66,6 +66,7 @@ def post_message(
     thread: str | None = None,
     input_kind: str = "text",
     origin_chat_id: int | None = None,
+    attachments: list[str] | None = None,
 ) -> Message:
     """Store a user message (in a new thread unless one is given) for the router.
 
@@ -91,7 +92,7 @@ def post_message(
         target.updated_at = datetime.now(UTC)
     message = Message(
         thread_id=target.id, role=MessageRole.USER, author=author, source=source, body=body,
-        input=input_kind,
+        input=input_kind, attachments=attachments or [],
     )  # fmt: skip
     session.add(message)
     session.flush()
@@ -100,11 +101,17 @@ def post_message(
 
 
 def add_reply(
-    session: Session, thread_id: uuid.UUID, body: str, *, role: MessageRole = MessageRole.ROUTER
+    session: Session,
+    thread_id: uuid.UUID,
+    body: str,
+    *,
+    role: MessageRole = MessageRole.ROUTER,
+    routing: dict[str, Any] | None = None,
 ) -> Message:
     message = Message(
-        thread_id=thread_id, role=role, author="ringkeeper", source="system", body=body
-    )
+        thread_id=thread_id, role=role, author="ringkeeper", source="system", body=body,
+        routing=routing,
+    )  # fmt: skip
     session.add(message)
     session.flush()
     return message

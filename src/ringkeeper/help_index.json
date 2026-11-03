@@ -1,0 +1,692 @@
+[
+{
+"doc": "concepts",
+"anchor": "",
+"title": "Concepts",
+"text": "Ringkeeper has seven ideas. Once they click, the rest of the app follows. **Client.** Someone you do work for, like Acme Inc. Each client's projects and connections are kept apart from every other client's: a task for one client can never reach another client's data. **Project.** One piece of a client's work: a website, an app, a set of automations. Every request goes to one project, and its task works in that project's folder. A project has other names people use (\"the Acme site\"), so Ringkeeper can tell which one you mean. **Connection.** A client's service that their projects can use: a database, Airtable, n8n, Vercel, GitHub, a Google account, Twilio, an MCP server. Ringkeeper keeps the key in its vault and makes each call itself; the AI never sees a key. A connection is marked production, staging or development. **Shared tool.** A tool of yours that holds no client's data, like a web browser or files on this computer. You can give it to any client's projects, or to all of them. **Agent.** A named helper inside one project, with instructions it always follows and only the connections you give it. *An agent is who does the work.* **Routine.** When an agent runs on its own: on a schedule, when something happens (an email, a file, a webhook), or when you press Run. *A routine is when it runs.* **Hold.** A change to live client data (a production connection), or anything that reaches real people (an email, a text), waits for your OK in Approvals. Nothing happens until you approve it, and everything is logged."
+},
+{
+"doc": "concepts",
+"anchor": "a-request-start-to-finish",
+"title": "A request, start to finish",
+"text": "1. You ask, in plain words: \"Mark order 1007 as shipped in Acme's shop.\" 2. Ringkeeper picks the project (it asks if it isn't sure) and starts a task. 3. The task reads what it needs through the project's connections. 4. A change to production is held. You see exactly what would run, and approve or deny it. 5. The task goes on with the result and reports back in the conversation. See also: Connections, Agents and routines, Approvals and safety."
+},
+{
+"doc": "connections",
+"anchor": "",
+"title": "Connections and shared tools",
+"text": "A **connection** is one client's service: their database, Airtable base, n8n, Vercel, GitHub, Google account, Twilio number, or an MCP server. You add it once, link it to that client's projects, and every task in those projects can use it. A connection can't be linked to another client's project. A **shared tool** is yours, not a client's: a web browser, files on this computer, a search tool. It holds no client data, so it can go to any project, or to all of them (new ones too), with exceptions."
+},
+{
+"doc": "connections",
+"anchor": "adding-one",
+"title": "Adding one",
+"text": "**Connectors › Browse connectors** (or a client's Connections tab, or press Ctrl+K and type \"add a connection\"). It asks first whether it's a client's account or your own tool. Built-in services come first, each a tile that opens its form; then the services you sign in to; then **Other connectors**, a search of every MCP server, with the service's own first and community servers folded away. The form links to the page where the service gives you its key. Using these in Claude? Claude's connectors stay in your Claude account; connect them here once per client. - **Is this live client data?** Asked every time, with no default. Production is live data: every change on it waits for your approval. On staging and test data, a built-in service's changes run straight away, and are logged (texts and emails still wait). - **Its name** reads like \"n8n · n8n.geninfos.com\". Change it under Details › Change. - **Link to project…** on its card links it to any of the client's projects, and each project's Connections tab has **Link a connection**. - **Test connection** makes one read-only call and tells you what it found. - **Narrow it** (on the client's page): limit a link to one base, repository, project or folder, so a project sees only that."
+},
+{
+"doc": "connections",
+"anchor": "link-a-connection-to-a-project",
+"title": "Link a connection to a project",
+"text": "A connection does nothing until a project uses it. On the client's Connections tab, each card says where it's used and has **Link to project…**: tick one or several projects, and narrow each if you like. On a project's Connections tab, **Link a connection** lists the client's connections that aren't linked yet and your own tools. A client with no projects says so, with **Add project** and **From Claude**."
+},
+{
+"doc": "connections",
+"anchor": "your-own-tools-shared-tools",
+"title": "Your own tools (shared tools)",
+"text": "A shared tool is yours and holds no client's data: a browser like Playwright, files on this computer, public documentation. **Connectors › Add your own tool**, search for it, then choose **For all projects** or link it to some. To leave a client or project out, open its card: Details › All projects › Except…."
+},
+{
+"doc": "connections",
+"anchor": "where-the-key-goes",
+"title": "Where the key goes",
+"text": "Into Ringkeeper's vault, encrypted with a key kept in Windows' credential store (or your server's key file). Keys never go to the AI, never appear in logs, and aren't shown again after you save them. To change one, paste the new key. Every service has its own page: services (where to get the token, what's held for approval, how to narrow it, what can be undone)."
+},
+{
+"doc": "agents-and-routines",
+"anchor": "",
+"title": "Agents and routines",
+"text": "*An agent is who does the work; a routine is when it runs.*"
+},
+{
+"doc": "agents-and-routines",
+"anchor": "agents",
+"title": "Agents",
+"text": "An agent is a named helper in one project (**Agents › New agent**, or a project's Agents tab): - **Instructions** it follows every time: tone, what to check, what never to touch. - **Connections** it may use: some of the project's. A shared tool only when you tick it. Ringkeeper refuses its calls to anything else. - Its own **model**, **effort** and **how independently it works**, or the project's. In a request, ask it by name: \"ask the follow-up agent to draft replies to today's leads.\""
+},
+{
+"doc": "agents-and-routines",
+"anchor": "routines",
+"title": "Routines",
+"text": "A routine runs one agent with a prompt (**Routines › New routine**: the project, then its agent; you can create the agent right there): - **On a schedule:** every day, weekdays, chosen days, monthly or every few hours, at a time in your time zone. After the computer slept, one run makes up for the missed ones. - **When something happens:** a new email matching a search, a new Airtable record, a file added to the project's folder, or its webhook being called (on this computer only). - **By hand:** Run now. New routines start paused, with **Test run**. Each run is an ordinary task: reads run, changes wait for your approval like any other. Limits per run (steps, minutes, a dollar cap with an API key) and runs per day keep it in check. Pause one routine, a project's, or all of them (also from the tray). Templates to start from: daily digest, new-lead follow-up draft, weekly report, data sync check."
+},
+{
+"doc": "approvals",
+"anchor": "",
+"title": "Approvals and safety",
+"text": "Ringkeeper lets the AI read freely and makes it ask before it changes anything that matters."
+},
+{
+"doc": "approvals",
+"anchor": "what-waits-for-you",
+"title": "What waits for you",
+"text": "- **A change on a production connection**: a database update, a new Airtable record, an n8n workflow change, a Vercel deploy. - **Anything that reaches real people**, on any connection: an email, a text, a call, a calendar invite, a shared file. Reads never wait. Changes on staging and development connections run straight away and are logged. A Google account can let a single tool run without asking (per account, in its settings)."
+},
+{
+"doc": "approvals",
+"anchor": "approving",
+"title": "Approving",
+"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. A held action expires after 24 hours if nobody answers. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster."
+},
+{
+"doc": "approvals",
+"anchor": "the-record",
+"title": "The record",
+"text": "Every change attempt and every refusal is in **Activity** with the time, project, connection, what was asked, and what happened. Nothing in that log can be edited or deleted, by you or by Ringkeeper."
+},
+{
+"doc": "approvals",
+"anchor": "stop-everything",
+"title": "Stop everything",
+"text": "**Settings › Stop everything** stops every running task and pauses new work. Approvals wait where they are until you resume."
+},
+{
+"doc": "undo",
+"anchor": "",
+"title": "Undo",
+"text": "When a change runs on a connection (because you approved it, or because it runs without asking on a staging or development connection), Ringkeeper first keeps a copy of what it's about to change. For 7 days you can put it back."
+},
+{
+"doc": "undo",
+"anchor": "what-can-be-undone",
+"title": "What can be undone",
+"text": "- **Databases:** a plain `UPDATE` or `DELETE` on one table that has a primary key. Ringkeeper keeps only the rows it touches (for an update, only the columns it sets). Reverting puts the old values back, or the deleted rows. - **Airtable:** changed fields go back to what they were; deleted records come back (as new records, with new IDs); added records are deleted. - **n8n:** a replaced workflow goes back to how it was; a workflow turned on or off goes back."
+},
+{
+"doc": "undo",
+"anchor": "what-cant",
+"title": "What can't",
+"text": "An email or text that was sent, a call, a deploy, a push to GitHub, an `INSERT` (Ringkeeper can't tell which rows it added), changes to tables themselves, and anything another tool's server does. The approval card says **Can't be undone** and why, before you approve."
+},
+{
+"doc": "undo",
+"anchor": "reverting",
+"title": "Reverting",
+"text": "Open the task (or its conversation): **Data it changed** lists each one with **Revert** and what it will put back. Reverting is itself a change, so it waits for your OK in Approvals. If something else changed those rows or records since, the approval says so; and if they change between asking and approving, the revert stops instead of overwriting them."
+},
+{
+"doc": "undo",
+"anchor": "space-and-time",
+"title": "Space and time",
+"text": "Kept changes live in Ringkeeper's data folder and are deleted after 7 days. Each project has 50 MB for them; past that, a change still runs but isn't kept, and its task says so. Space frees up as old ones pass 7 days."
+},
+{
+"doc": "notifications",
+"anchor": "",
+"title": "Notifications",
+"text": "Ringkeeper can tell you about approvals, finished tasks, routine results and failures when you're away from the app: in **Telegram**, **Slack** or **Discord** (Settings › Notifications). On Windows you also get a notification from the tray."
+},
+{
+"doc": "notifications",
+"anchor": "each-channels-choices",
+"title": "Each channel's choices",
+"text": "- **What it sends:** approvals and questions, routine results, failures, finished tasks. - **Quiet hours:** nothing is sent then; what came up is sent when they end (an approval only if it's still waiting). - **Which clients and projects:** all by default. - **Send test** checks it works, and that your button presses count."
+},
+{
+"doc": "notifications",
+"anchor": "telegram",
+"title": "Telegram",
+"text": "In Telegram, message **@BotFather**, send `/newbot`, and paste the token it gives you into **Settings › Notifications › Telegram**. Then send your new bot a message and choose your chat in Settings. Only that chat gets messages, and only it can answer. You can also turn on requests from Telegram: type or send a voice note, and you see what Ringkeeper heard before anything is sent."
+},
+{
+"doc": "notifications",
+"anchor": "slack-and-discord",
+"title": "Slack and Discord",
+"text": "Both are your own app (Slack, in Socket Mode) or bot (Discord). They connect out from your computer, so nothing needs a public address. Settings walks you through creating them step by step: the Slack app manifest to paste, or the Discord invite link that asks only to see channels and send messages. Then choose where it posts (a channel or a direct message) and your member or user ID. Tokens go into the vault."
+},
+{
+"doc": "notifications",
+"anchor": "buttons",
+"title": "Buttons",
+"text": "Messages are a short summary (no secrets, code or full SQL) with **Approve**, **Deny** and **Open** buttons: - **Approve** only appears for a safe change: not on production, and not one that needs the connection's name typed. Those say *Approve it in Ringkeeper*. - **Only you can answer.** A press from anyone else in the channel is refused with \"not allowed\". - **Open** brings the Ringkeeper window up at that page."
+},
+{
+"doc": "backup",
+"anchor": "",
+"title": "Backup and moving to another computer",
+"text": "**Settings › Backup** (desktop app) makes one file with everything Ringkeeper knows: clients, projects, connections and their keys, agents, routines, settings and history. It's locked with a password you choose when you make it. Without that password nobody can open it, including you, so keep it somewhere safe and apart from the file. **Project folders aren't in the backup.** They stay where they are. A restored project points to the same folder path; on a new computer, copy the folders over yourself and, if the path changed, set each project's folder on its page."
+},
+{
+"doc": "backup",
+"anchor": "make-a-backup",
+"title": "Make a backup",
+"text": "Choose a password (at least 8 characters), a folder (Documents › Ringkeeper backups unless you pick another), and **Save the backup**. The file ends in `.rkbackup`."
+},
+{
+"doc": "backup",
+"anchor": "restore-on-another-computer",
+"title": "Restore on another computer",
+"text": "1. Install Ringkeeper and connect Claude in the first run. On the next step, choose **Restore a backup instead**: the backup brings your projects and connections. 2. **Settings › Backup › Restore a backup**: choose the file, type its password, and **Show what's in it**. You see the clients, projects (and whether each project's folder is on this computer), connections and how much history comes in. Nothing has changed yet. 3. **Restore and restart.** The keys go into this computer's vault, and Ringkeeper restarts with the backup's data. What was here before is kept beside it, as `ringkeeper.db.before-restore` in the data folder."
+},
+{
+"doc": "backup",
+"anchor": "automatic-backups",
+"title": "Automatic backups",
+"text": "Turn on **Make a backup every week**, choose a folder (one your cloud drive copies is a good choice), how many to keep, and a password. The password is kept in Ringkeeper's vault on this computer so it can lock each backup; write it down, because you need it to restore. The first backup is made right away, then one every week; older ones are deleted, keeping the last few you chose."
+},
+{
+"doc": "backup",
+"anchor": "on-a-server",
+"title": "On a server",
+"text": "The server (Docker) keeps its data in Postgres and its data folder: back those up with your usual tools (`pg_dump`, and a copy of the data folder with its master key)."
+},
+{
+"doc": "working-faster",
+"anchor": "",
+"title": "Working faster",
+"text": "Small things that save a trip."
+},
+{
+"doc": "working-faster",
+"anchor": "quick-request",
+"title": "Quick request",
+"text": "Press **Win+Shift+R** anywhere, and a small box opens over whatever you're doing. Type or hold the mic, choose a client or project if you like, and send. It says **Sent**, with a link to the conversation, and closes. Change the key or turn it off in Settings › Advanced › Quick request. Windows may use the same key for screen recording: if it's taken, Ringkeeper says so and you can pick another."
+},
+{
+"doc": "working-faster",
+"anchor": "mentions",
+"title": "Mentions",
+"text": "Type **@** in any request box to name a client, project, connection or agent. A mention is a firm choice: the request goes there, whatever else it says. Mention a client with several projects and Ringkeeper asks which."
+},
+{
+"doc": "working-faster",
+"anchor": "attach-files-to-a-request",
+"title": "Attach files to a request",
+"text": "Drop files on the request box, or use the clip. They go into an `attachments` folder in the project its task runs in, and the task is told where they are. Up to 50 MB each."
+},
+{
+"doc": "working-faster",
+"anchor": "run-again-and-saved-requests",
+"title": "Run again and saved requests",
+"text": "On a task's page, **Run again** starts the same request as a new task. **Save this request** keeps it on its project as a shortcut: saved requests are under the box on Home, one click to fill it in."
+},
+{
+"doc": "working-faster",
+"anchor": "keys-already-in-a-project",
+"title": "Keys already in a project",
+"text": "When a project has a folder, its Overview and Connections tabs look in its `.env` files and config files for keys they know, like `DATABASE_URL`, `AIRTABLE_API_KEY`, `N8N_API_KEY`, `VERCEL_TOKEN`, `TWILIO_*` and `GITHUB_TOKEN`. Each shows masked, with **Connect…** or **Skip**. Nothing is added until you confirm that one, and nothing outside the project's folder is read."
+},
+{
+"doc": "working-faster",
+"anchor": "connection-health",
+"title": "Connection health",
+"text": "Every connection is tested once a day, reads only, like the Test button. Its card shows the result and the reason it failed. If one stops working, or a key is 7 days from expiring, your channels say so. GitHub tells Ringkeeper when its tokens expire; for others, write the date on the card (Details › Change). **Test all** on Connectors runs it now. Turn it off in Settings › Notifications › Connection check."
+},
+{
+"doc": "working-faster",
+"anchor": "approvals-by-keyboard",
+"title": "Approvals by keyboard",
+"text": "On Approvals: **J** next, **K** previous, **A** approve, **D** deny. A change that needs the connection's name typed puts you in that box instead. **Approve all N like this** shows when one task is waiting on the same action, with the same details, more than once."
+},
+{
+"doc": "working-faster",
+"anchor": "trust-an-action-for-an-hour",
+"title": "Trust an action for an hour",
+"text": "**Approve, and trust this in the project for 1 hour** lets that tool on that connection run without asking in that project, for an hour. It's never offered for deletes or anything else that needs the name typed, and even under a trust such a call still asks. Approvals lists what's trusted, with **Stop trusting**. Every trust and every call under one is in Activity."
+},
+{
+"doc": "working-faster",
+"anchor": "morning-digest",
+"title": "Morning digest",
+"text": "Home shows the last 24 hours per client: what ran, what failed and what waits for you. To get it on Telegram, Slack and Discord too, turn on Settings › Notifications › Morning digest and set the time."
+},
+{
+"doc": "working-faster",
+"anchor": "pins-and-recents",
+"title": "Pins and recents",
+"text": "The client and project switcher, and Ctrl+K, list what you pinned and what you used lately first. The star beside the switcher pins what's chosen."
+},
+{
+"doc": "security",
+"anchor": "",
+"title": "Security: what's stored where, and what leaves your computer",
+"text": "Ringkeeper runs on your computer. There's no Ringkeeper account and no Ringkeeper server: nothing about your clients goes to the people who make it."
+},
+{
+"doc": "security",
+"anchor": "whats-stored-where-desktop-app",
+"title": "What's stored where (desktop app)",
+"text": "| What | Where | How it's protected | | --- | --- | --- | | Clients, projects, connections (names, settings), agents, routines, tasks, conversations, approvals, the activity log | `%LOCALAPPDATA%\\Ringkeeper\\ringkeeper.db` | Your Windows account. The activity log can't be edited or deleted, by you or by Ringkeeper. | | Keys and tokens (Claude, every connection, Telegram/Slack/Discord, your Google app) | `%LOCALAPPDATA%\\Ringkeeper\\vault.json` | Each one encrypted (AES-256-GCM) with a key derived from the master key. | | The master key | Windows Credential Manager (`Ringkeeper/master-key`) | Your Windows sign-in. Without it the vault can't be read. | | Kept changes, for Undo | `%LOCALAPPDATA%\\Ringkeeper\\undo` | Your Windows account. Deleted after 7 days. | | Logs | `%LOCALAPPDATA%\\Ringkeeper\\logs` | Secrets are removed before anything is written. | | Project folders | Wherever you chose (new ones in `Documents\\Ringkeeper`) | Your Windows account. | | Backups you make | Where you save them | Encrypted with the password you chose (Backup). |"
+},
+{
+"doc": "security",
+"anchor": "the-ai-never-sees-a-clients-key",
+"title": "The AI never sees a client's key",
+"text": "A task runs Claude Code with only two things: its Claude credential (so it can think) and a short-lived pass for its own project. Every call to a client's service goes through Ringkeeper's gateway on your computer, which checks that the project may use that connection, adds the key itself, removes any secret from the answer, and logs the call. One client's project can never reach another client's connection, whatever the AI asks for."
+},
+{
+"doc": "security",
+"anchor": "what-leaves-your-computer",
+"title": "What leaves your computer",
+"text": "- **To Anthropic:** your requests, and what tasks read and do, so Claude can work on them (with your API key or subscription, under Anthropic's terms). - **To the services you connect:** the calls tasks make (Airtable, your database, GitHub, Google, and so on), with their keys. - **To Telegram, Slack or Discord, if you set them up:** short summaries of approvals and finished tasks (never keys, code or full SQL). - **To GitHub:** the update check (`latest.json` from the releases page) and the update download. - **To the MCP registry and Hugging Face, only when you use them:** catalog searches, and the download of the on-device voice model. Nothing else: no analytics, no usage statistics, no crash reports. A problem report only leaves when you send it yourself, after reading it."
+},
+{
+"doc": "security",
+"anchor": "changes-wait-for-you",
+"title": "Changes wait for you",
+"text": "Changes to production connections, and anything that reaches real people, wait for your approval; destructive ones need the connection's name typed. See Approvals and safety."
+},
+{
+"doc": "security",
+"anchor": "reporting-a-vulnerability",
+"title": "Reporting a vulnerability",
+"text": "Privately, please: see SECURITY.md."
+},
+{
+"doc": "troubleshooting",
+"anchor": "",
+"title": "Troubleshooting",
+"text": "If something here doesn't fix it, use **Help › Report a problem** in the app (or Ctrl+K, \"report\"). It gathers the version and the end of the logs, removes keys, tokens, passwords and email addresses, and shows you exactly what's in it (you can edit it) before you open a GitHub issue or save it as a zip. Nothing is sent by Ringkeeper itself."
+},
+{
+"doc": "troubleshooting",
+"anchor": "windows-says-windows-protected-your-pc",
+"title": "Windows says \"Windows protected your PC\"",
+"text": "The beta isn't signed yet. Click **More info › Run anyway**. The installer comes from the releases page."
+},
+{
+"doc": "troubleshooting",
+"anchor": "cant-reach-ringkeepers-backend",
+"title": "\"Can't reach Ringkeeper's backend\"",
+"text": "The part of Ringkeeper that does the work stopped. Quit Ringkeeper from the tray icon and open it again. If it keeps happening, report a problem: the logs say why it stopped."
+},
+{
+"doc": "troubleshooting",
+"anchor": "claude-says-the-key-isnt-valid",
+"title": "Claude says the key isn't valid",
+"text": "Open **Settings › Claude** and paste the key again. Keys start with `sk-ant-`. If you're on an Anthropic workspace that needs it, add its ID there too. Ringkeeper checks the key with Anthropic before saving it, and shows Anthropic's own message if it's refused."
+},
+{
+"doc": "troubleshooting",
+"anchor": "a-connections-test-fails",
+"title": "A connection's test fails",
+"text": "Open the connection and press **Test connection** to see the service's own message. Usually the key was revoked or expired: paste a new one. A database must be reachable from this computer (not `localhost` on another machine), and Ringkeeper never connects to addresses on this computer itself."
+},
+{
+"doc": "troubleshooting",
+"anchor": "a-task-went-to-the-wrong-project",
+"title": "A task went to the wrong project",
+"text": "Ringkeeper asks when it isn't sure, and remembers your answer for next time. Naming the project in the request (\"in globex-portal\") settles it. A project's other names (Clients & projects › the project) help too."
+},
+{
+"doc": "troubleshooting",
+"anchor": "an-approval-disappeared",
+"title": "An approval disappeared",
+"text": "Held actions expire after 24 hours. The task says so, and you can ask it to try again. Activity shows what happened to each one."
+},
+{
+"doc": "troubleshooting",
+"anchor": "a-google-account-stopped-working",
+"title": "A Google account stopped working",
+"text": "Its password changed (for mail), it was unused for six months, or its owner removed Ringkeeper. Open it under Connections and sign in again."
+},
+{
+"doc": "troubleshooting",
+"anchor": "where-the-logs-are",
+"title": "Where the logs are",
+"text": "`%LOCALAPPDATA%\\Ringkeeper\\logs`: `backend.log` and `shell.log` (and the previous run's, `*.previous.log`). They never contain your keys."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Is it free?",
+"text": "Yes: free and open source (MIT). You pay Anthropic for Claude (your own API key, or your Claude subscription for personal use)."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Does my clients' data go to you?",
+"text": "No. Ringkeeper runs on your computer, with no account and no server of ours. See Security for what leaves your computer, and where it goes."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Mac or Linux?",
+"text": "The desktop app is made for Windows 10 and 11. For Apple Silicon Macs there's an experimental build: unsigned, not yet tested on a real Mac, reports welcome (how to install it). On Linux, the server install runs in Docker."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Why does Windows warn about the installer?",
+"text": "The beta isn't code-signed yet. Click **More info › Run anyway**."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Where do I see what a task changed?",
+"text": "Open the task from Tasks: Data it changed lists what it did on connections, with Revert, and Changes shows its files."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Can it change things without asking?",
+"text": "Live client data never changes without asking. Reads always run. Changes on staging and development connections run and are logged. Changes on production connections, and anything that reaches real people (emails, texts), wait for your approval. See Approvals and safety."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Can I undo a change?",
+"text": "Database updates and deletes, Airtable records and n8n workflows: yes, for 7 days, from the task page. Sent emails, texts and deploys: no, and the approval says so first. See Undo."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "What's the difference between an agent and a routine?",
+"text": "An agent is who does the work (its instructions and connections); a routine is when it runs (a schedule, an event, or Run now). See Agents and routines."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Can I approve from my phone?",
+"text": "Yes: Telegram, Slack or Discord. Safe changes can be approved there; risky ones say \"Open in Ringkeeper\". See Notifications."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "How do I move to a new computer?",
+"text": "Make a backup in Settings › Backup and restore it on the new one. See Backup."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Can I use my Claude subscription instead of an API key?",
+"text": "For your own work, yes. Turn on Settings › Claude › Personal subscription mode, run `claude setup-token` in a terminal and paste the token, or use your Claude Code login. Your subscription is for your own use: use an API key for client work."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Where are my agents?",
+"text": "Agents in the menu lists every project's agents; the Agents tab on a project lists its own. **New agent** asks for the project first."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Something's wrong. Where do I start?",
+"text": "Troubleshooting, then Help › Report a problem in the app."
+},
+{
+"doc": "faq",
+"anchor": "what-ringkeeper-doesnt-do-yet",
+"title": "What Ringkeeper doesn't do yet",
+"text": "- **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles. - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser. - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages. - **Billing:** no invoices, time tracking or client billing. - **Exporting tasks to spreadsheets:** there's no export of tasks to Excel. The Activity page can download its log as CSV, and a backup is a whole copy, for restoring."
+},
+{
+"doc": "install-desktop",
+"anchor": "windows-10-and-11",
+"title": "Windows 10 and 11",
+"text": "Download `Ringkeeper_<version>_x64-setup.exe` from the latest release and run it. It installs for your user only: no administrator rights, nothing else to install, no terminal. Ringkeeper opens when it's done and walks you through first run; you need an Anthropic API key (platform.claude.com → API keys). **Windows may warn you first.** Until the installer is signed and well known, Microsoft Defender SmartScreen shows **\"Windows protected your PC\"**. Click **More info**, check that the app is `Ringkeeper_..._x64-setup.exe`, then click **Run anyway**. (If your browser flags the download, choose **Keep**.) If instead **Smart App Control** blocks it (some new Windows 11 PCs have it on), there's no \"Run anyway\": use a signed release once there is one. Turning Smart App Control off is possible in Windows Security, but it can't be turned back on without reinstalling Windows. - **Where things go:** the app in `%LOCALAPPDATA%\\Programs\\Ringkeeper`, your data in `%LOCALAPPDATA%\\Ringkeeper` (the master key that protects your saved keys is in Windows Credential Manager), new projects in `Documents\\Ringkeeper`. - **Updates:** Ringkeeper checks when it starts and every 6 hours (turn off **Check automatically** in Settings › About to check only when you ask), downloads updates in the background and shows **Update ready**. To check now, use **Check for updates** in Settings › About or the tray menu: it shows when it last checked, \"You're up to date\", the new version with its release notes and **Install and restart**, or what went wrong (offline, a signature that didn't verify). It never restarts by itself: while tasks run, the button is **Restart when tasks finish**. It never touches your data, and if an update fails, the old version keeps working. - **Uninstall:** Settings → Apps → Ringkeeper → Uninstall. Your data stays unless you tick **Also delete my data**; your project folders always stay."
+},
+{
+"doc": "install-desktop",
+"anchor": "mac-apple-silicon-experimental",
+"title": "Mac (Apple Silicon), experimental",
+"text": "**Experimental: unsigned, not yet tested on a real Mac — reports welcome.** Each release also has `Ringkeeper_<version>_aarch64.dmg` for Macs with Apple Silicon (M1 or newer). There's no build for Intel Macs. 1. Download the `.dmg` from the latest release, open it, and drag **Ringkeeper** into **Applications**. 2. Open Ringkeeper from Applications. macOS says it can't check the app for malware, because it isn't signed yet. Click **Done**. 3. Open **System Settings › Privacy & Security**, scroll down to **Security**, and next to \"Ringkeeper was blocked…\" click **Open Anyway**. Confirm with your password or Touch ID, then click **Open**. macOS remembers this, so you only do it once. If macOS instead says the app \"is damaged and can't be opened\", that's the same missing signature. In Terminal, run `xattr -dr com.apple.quarantine /Applications/Ringkeeper.app`, then open it again. Your data goes in `~/Library/Application Support/Ringkeeper`, the master key in your Keychain, and new projects in `Documents/Ringkeeper`. Updates install from inside the app, as on Windows. Something not working on your Mac? Please open an issue: that's how the Mac build gets tested."
+},
+{
+"doc": "install-desktop",
+"anchor": "first-run",
+"title": "First run",
+"text": "1. **Claude:** paste your Anthropic API key (or, for personal use, sign in with your Claude subscription). Ringkeeper checks it with Anthropic before saving. 2. **Projects:** add your first project, pick up the folders Claude Code already knows, or **Try it with demo data** to look around first. 3. **Connections:** connect a client's service, or skip for now. Then Home has a short **Get started** checklist and a three-step tour. See Concepts for how it fits together."
+},
+{
+"doc": "install-desktop",
+"anchor": "moving-to-a-new-computer",
+"title": "Moving to a new computer",
+"text": "Make a backup in Settings › Backup, install Ringkeeper on the new computer, and restore it there: see Backup. Running Ringkeeper on a server instead: Install with Docker."
+},
+{
+"doc": "services/add-on-tools",
+"anchor": "",
+"title": "Add-on tools (MCP servers)",
+"text": "Add-on tools give agents abilities Ringkeeper doesn't have built in: a web browser, a search engine, a service's own official tool. They're MCP servers; Ringkeeper runs them behind its gateway, keeps their keys, and checks each call."
+},
+{
+"doc": "services/add-on-tools",
+"anchor": "adding-one",
+"title": "Adding one",
+"text": "- **From the catalog** (Connectors › Browse connectors, or the first run): search, then sign in or paste a key. Some run on this computer (Ringkeeper installs them). - **From Claude Desktop:** Settings › From Claude Desktop imports the tools you already set up there; their keys move into Ringkeeper's vault. - **By address:** a tool that isn't listed, by its `https://` address. A tool that holds no client's data (a browser, your own files) can be a **shared tool**: yours, linkable to any client's projects."
+},
+{
+"doc": "services/add-on-tools",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "Reading tools run. Everything else waits for your approval. Per tool, you can set it to need the connection's name typed, or to run without asking."
+},
+{
+"doc": "services/add-on-tools",
+"anchor": "undo",
+"title": "Undo",
+"text": "Ringkeeper can't undo what another tool's server does."
+},
+{
+"doc": "services/airtable",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "A **personal access token** from Airtable: add the `data.records:read` and `schema.bases:read` scopes (and `data.records:write` if Ringkeeper may change records), and add **only this client's bases**. It starts with `pat`."
+},
+{
+"doc": "services/airtable",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** list bases, tables (with their fields) and records; get one record. - **Change:** create, update or delete up to 10 records at a time."
+},
+{
+"doc": "services/airtable",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "Reads always run. Changes run straight away on a staging or development connection, and wait for your approval on a production one. Changing or deleting records needs the connection's name typed to approve; adding records doesn't."
+},
+{
+"doc": "services/airtable",
+"anchor": "narrowing-it",
+"title": "Narrowing it",
+"text": "On the client's page, a project's link can be limited to **one base** (its ID starts with `app`): calls from that project can't reach the client's other bases."
+},
+{
+"doc": "services/airtable",
+"anchor": "undo",
+"title": "Undo",
+"text": "All three changes can be reverted for 7 days (Undo). Deleted records come back as new records, with new IDs."
+},
+{
+"doc": "services/database",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "The **connection string**, starting with `postgresql://`: - **Supabase:** open the project, click **Connect**, and copy the **Session pooler** string. - **Neon:** open the project, click **Connect**, and copy the connection string. - **Any other Postgres** reachable from your computer: its usual connection string. Ringkeeper won't connect to an address on your own computer, or to itself. A database user that can only read is a good choice for a production database you only want reports from."
+},
+{
+"doc": "services/database",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** list tables, describe a table, run a query. Every query runs inside a read-only transaction, one statement at a time. - **Change:** run one statement that writes (`INSERT`, `UPDATE`, `DELETE`, schema changes). A statement that only reads runs at once, even through this tool."
+},
+{
+"doc": "services/database",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "Reads always run. Changes run straight away on a staging or development connection, and wait for your approval on a production one. Deleting rows, dropping or altering tables, and anything the check can't read for certain need the connection's name typed to approve."
+},
+{
+"doc": "services/database",
+"anchor": "undo",
+"title": "Undo",
+"text": "A plain `UPDATE` or `DELETE` on one table with a primary key can be reverted for 7 days (Undo). An `INSERT` and schema changes can't."
+},
+{
+"doc": "services/github",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "A fine-grained token (best): Resource owner = the client's organization (or you), **Only select repositories** (this client's), and Repository permissions **Contents, Issues, Pull requests, Metadata** (read and write to push and open issues and pull requests; read-only to only read). Everything else at No access. Set an expiry. A classic token (scope `repo`) only if the organization doesn't allow fine-grained ones. GitHub Enterprise Server: add its address."
+},
+{
+"doc": "services/github",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** repositories, issues, pull requests, files, branches, commits. - **Change:** open and update issues, comment, open and merge pull requests, push a branch. A push never forces."
+},
+{
+"doc": "services/github",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "**Every change waits for your approval.** A merge needs the connection's name typed."
+},
+{
+"doc": "services/github",
+"anchor": "narrowing-it",
+"title": "Narrowing it",
+"text": "Pin each project to **one repository** (`owner/name`): its tasks can't reach the token's other repositories."
+},
+{
+"doc": "services/github",
+"anchor": "undo",
+"title": "Undo",
+"text": "Changes on GitHub can't be undone by Ringkeeper."
+},
+{
+"doc": "services/gmail",
+"anchor": "",
+"title": "Gmail (app password)",
+"text": "The simple way to connect one mailbox. For Calendar, Drive and Sheets too, or for several accounts, use a Google account instead."
+},
+{
+"doc": "services/gmail",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "An app password (Google needs 2-Step Verification on), and the Gmail address. A work admin may have turned app passwords off, and accounts with Advanced Protection can't use them."
+},
+{
+"doc": "services/gmail",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** search mail and read messages (without marking them read). - **Change:** save a draft, send an email."
+},
+{
+"doc": "services/gmail",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "**Every email waits for your approval** before it's sent. Saving a draft doesn't wait: only you see it."
+},
+{
+"doc": "services/gmail",
+"anchor": "undo",
+"title": "Undo",
+"text": "A sent email can't be unsent."
+},
+{
+"doc": "services/google",
+"anchor": "",
+"title": "Google (Gmail, Calendar, Drive, Sheets)",
+"text": "Google accounts sign in through **your own Google app**: you make it once, for free, and then add as many clients' Google accounts as you need. This is in the desktop app."
+},
+{
+"doc": "services/google",
+"anchor": "make-the-app-once-about-10-minutes",
+"title": "Make the app (once, about 10 minutes)",
+"text": "**Settings › Google app** has every step with links that open the right page: 1. In the Google Cloud console, signed in with your own account, create a project. No billing needed. 2. Turn on the Gmail, Calendar, Drive and Sheets APIs. 3. **Google Auth Platform › Branding › Get started**: app name \"Ringkeeper\", audience **External**. Fill in the home page, privacy policy link and authorized domain that Settings shows, then save. 4. **Audience › Publish app.** Left in \"Testing\", Google signs accounts out after 7 days. 5. **Data Access**: paste the scopes Settings lists. 6. **Clients › Create client**: type **Desktop app**. Copy the client ID and secret (Google shows the secret only once) and paste both into Settings."
+},
+{
+"doc": "services/google",
+"anchor": "add-a-google-account",
+"title": "Add a Google account",
+"text": "**Settings › Google app › Add a Google account** (or the Google account tile under Connectors › Browse connectors), then sign in with the client's account. Google will say it hasn't verified the app: click **Advanced › Go to Ringkeeper**. It's your own app, so that's expected. Choose what it may do (mail, calendar, files, sheets) when you add it."
+},
+{
+"doc": "services/google",
+"anchor": "what-waits-for-approval",
+"title": "What waits for approval",
+"text": "Reading runs. Every write (sending, sharing, invites, edits, uploads, drafts, moving to the trash) asks you first. Per account, you can later let a tool run without asking."
+},
+{
+"doc": "services/google",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- An unverified app can sign in up to 100 accounts over its whole life. - An account stops working if its password changes (for mail), if it's unused for six months, or if its owner removes Ringkeeper. Sign in again then. - A client's Workspace admin may need to trust your app's client ID."
+},
+{
+"doc": "services/n8n",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In n8n, open **Settings › n8n API** and create an API key (n8n's guide). Add your n8n's address too, like `https://n8n.acme.example`. n8n Cloud's free trial has no API."
+},
+{
+"doc": "services/n8n",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** list workflows and their runs (executions), get one of each. - **Change:** turn a workflow on or off, replace a workflow, run a past execution again, stop a running one."
+},
+{
+"doc": "services/n8n",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "**Every change waits for your approval**, on any connection. Replacing a workflow needs the connection's name typed. A replaced workflow stays a draft unless the agent asks to put it live; approval is refused if someone edited the workflow after it was held."
+},
+{
+"doc": "services/n8n",
+"anchor": "undo",
+"title": "Undo",
+"text": "Replacing a workflow, and turning one on or off, can be reverted for 7 days (Undo). Re-running or stopping a run can't."
+},
+{
+"doc": "services/twilio",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the Twilio console: copy the **Account SID** from the home page, then **Account › API keys & tokens › Create API key** (Standard) and copy its SID and secret."
+},
+{
+"doc": "services/twilio",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** phone numbers, messages, calls. - **Change:** send a text."
+},
+{
+"doc": "services/twilio",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "**Every text waits for your approval** before it's sent."
+},
+{
+"doc": "services/twilio",
+"anchor": "undo",
+"title": "Undo",
+"text": "A text or a call can't be taken back."
+},
+{
+"doc": "services/vercel",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "An **access token** from Vercel, scoped to this client's team (or one project), with an expiry date."
+},
+{
+"doc": "services/vercel",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** teams, projects, deployments and their build logs, and the **names** of environment variables. Ringkeeper never reads their values. - **Change:** redeploy, put a deployment live (promote), roll back."
+},
+{
+"doc": "services/vercel",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "Reads always run. Changes run straight away on a staging or development connection, and wait for your approval on a production one."
+},
+{
+"doc": "services/vercel",
+"anchor": "narrowing-it",
+"title": "Narrowing it",
+"text": "A project's link can be limited to **one team**, and optionally **one project**."
+},
+{
+"doc": "services/vercel",
+"anchor": "undo",
+"title": "Undo",
+"text": "A deploy can't be undone by Ringkeeper. Put the earlier deployment live in Vercel (or ask Ringkeeper to promote it)."
+}
+]

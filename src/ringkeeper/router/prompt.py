@@ -23,7 +23,7 @@ from ringkeeper.models import (
     Task,
 )
 from ringkeeper.router.schema import json_schema
-from ringkeeper.services import examples, threads
+from ringkeeper.services import examples, mentions, threads
 
 SNIPPET_CHARS = 160
 
@@ -73,6 +73,10 @@ Rules:
   database is the client's data, not Ringkeeper's.
 - A request that is vague about what to read or change (no table, record,
   workflow or outcome named) gets a low confidence, so the operator is asked.
+- Questions about how to use Ringkeeper itself ("how do I link a connection?",
+  "what's a routine?", "can Ringkeeper do X?"): also `about_ringkeeper`, no tasks.
+- `@name` in a message is the operator naming a client, project, connection or
+  agent on purpose: route to it, with high confidence.
 - If the message asks for nothing to be done (a greeting, thanks), return no
   tasks and answer in `reply`.
 - `reply` is one short line for the operator.
@@ -165,8 +169,11 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
             )
             or "(none)"
         ),
-        "MESSAGE TO ROUTE:\n" + message.body,
     ]
+    named = mentions.find(session, message.body)
+    if named:
+        sections.append(mentions.note(named))
+    sections.append("MESSAGE TO ROUTE:\n" + message.body)
     return Context(
         owners={p.name: p.owner for p in projects},
         prompt="\n\n".join(sections),

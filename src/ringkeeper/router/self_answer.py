@@ -37,8 +37,8 @@ setup. RINGKEEPER DATA below is everything you know: their projects and clients,
 connections, tasks, what is waiting for them, settings and costs. Answer from it
 only. Count carefully and give exact numbers and names. If the data doesn't say,
 say so plainly; never guess and never invent. You can't change anything: if they
-want something changed, say where in the app to do it (Connections, Projects,
-Settings, Approvals). Answer in a few short sentences or a short list, plain text.
+want something changed, say where in the app to do it (Connectors, Clients &
+projects, Settings, Approvals). Answer in a few short sentences or a short list, plain text.
 """
 
 # A question about the setup itself, naming no client: "how many connections do we have?"

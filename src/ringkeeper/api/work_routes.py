@@ -34,7 +34,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.schemas import Input, NonEmpty
-from ringkeeper.services import calls, cleanup, projects, tasks, undo
+from ringkeeper.services import calls, cleanup, clients, projects, tasks, undo
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -103,7 +103,8 @@ def list_threads(
     ):
         if thread_id is not None:
             counts.setdefault(thread_id, {})[str(status)] = int(count)
-    owners = projects.owners(session)
+    named = clients.names(session)  # as people read them
+    owners = {p: named.get(o, o) for p, o in projects.owners(session).items()}
     places: dict[uuid.UUID, list[str]] = {}
     for thread_id, name in session.execute(
         select(Task.thread_id, Task.project).where(Task.thread_id.in_(ids)).distinct()

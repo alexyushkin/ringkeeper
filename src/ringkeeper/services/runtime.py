@@ -75,6 +75,11 @@ class RuntimeIn(Input):
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None
     paused: bool | None = None
     routines_paused: bool | None = None
+    digest_enabled: bool | None = None
+    digest_time: Annotated[str, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")] | None = None
+    health_checks: bool | None = None
+    hotkey: Annotated[str, Field(min_length=1, max_length=60)] | None = None
+    hotkey_enabled: bool | None = None
     start_at_login: bool | None = None  # desktop mode only
     check_updates: bool | None = None  # desktop mode only
     stt_language: SpokenLanguage | None = None  # Whisper codes ("en,ru"), or "auto"

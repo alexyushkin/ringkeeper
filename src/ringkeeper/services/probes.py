@@ -92,6 +92,7 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         )
         config = dict(instance.config or {})
     timeout = MCP_TIMEOUT_SECONDS if kind is InstanceType.MCP else TIMEOUT_SECONDS
+    expires: str | None = None
     try:
         secret = google_oauth.connection_secret(get_vault(), kind, name, ref)
         if kind in ADAPTERS:
@@ -99,6 +100,8 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         target = Target(name, env, base_url, secret, config)
         message = asyncio.run(asyncio.wait_for(_probe(kind, target), timeout=timeout))
         result = ProbeResult(True, message)
+        if kind is InstanceType.GITHUB:
+            expires = asyncio.run(github.token_expiry(target))
     except TimeoutError:
         result = ProbeResult(False, f"No answer within {timeout} seconds. Check the address.")
     except (ToolError, RingkeeperError) as error:
@@ -114,6 +117,8 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         instance.last_test_at = datetime.now(UTC)
         instance.last_test_ok = result.ok
         instance.last_test_message = result.message
+        if expires:
+            instance.config = {**(instance.config or {}), "expires_at": expires}
         admin_audit.record(
             session, "connection.test", f"tested {name}: {'ok' if result.ok else 'failed'}",
             by=by, instance=name, details={"ok": result.ok},

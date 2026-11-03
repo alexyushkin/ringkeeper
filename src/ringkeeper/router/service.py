@@ -50,7 +50,8 @@ from ringkeeper.router.schema import (
     RouterOutput,
     parse,
 )
-from ringkeeper.services import examples, inbox, tasks, threads
+from ringkeeper.services import examples, inbox, mentions, tasks, threads
+from ringkeeper.services import help as help_answers
 from ringkeeper.services.runtime import current_settings
 
 logger = logging.getLogger(__name__)
@@ -235,8 +236,26 @@ def route_message(
         threads.add_reply(session, message.thread_id, reply, role=MessageRole.SYSTEM)
         return Routed(reply=reply, error=error)
 
-    if output.about_ringkeeper or self_answer.asks_about_setup(
-        message.body, [*context.owners, *set(context.owners.values()), *context.aliases]
+    named = mentions.find(session, message.body)
+    known = [*context.owners, *set(context.owners.values()), *context.aliases]
+    if (output.about_ringkeeper and help_answers.is_how_to(message.body)) or (
+        not named and help_answers.asks_how(message.body, known)
+    ):
+        helped = help_answers.answer(session, settings, model, message.body)
+        meta |= {
+            "output": output.model_dump(mode="json"), "about_ringkeeper": True,
+            "cost_usd": (cost + helped.cost) or None, "tasks": [], "decisions": [],
+        }  # fmt: skip
+        threads.mark_routed(session, message, meta)
+        threads.add_reply(
+            session, message.thread_id, helped.text, routing={"help": helped.as_dict()}
+        )
+        return Routed(reply=helped.text)
+    if output.about_ringkeeper or (
+        not named
+        and self_answer.asks_about_setup(
+            message.body, [*context.owners, *set(context.owners.values()), *context.aliases]
+        )
     ):
         reply, spent = self_answer.answer(session, settings, model, message.body)
         meta |= {
@@ -247,7 +266,7 @@ def route_message(
         threads.add_reply(session, message.thread_id, reply)
         return Routed(reply=reply)
 
-    output = _apply_example(session, message, output)
+    output = mentions.settle(session, _apply_example(session, message, output), named)
     routed = Routed()
     threshold = settings.router_confidence_threshold
     for task in output.tasks:

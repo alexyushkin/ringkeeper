@@ -326,6 +326,42 @@ class RoutineRun(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
+class Shortcut(Base):
+    """A request saved on a project, one click away on Home."""
+
+    __tablename__ = "shortcuts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_shortcuts_project")
+    )
+    label: Mapped[str] = mapped_column(Text)
+    prompt: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+
+    project: Mapped["Project"] = relationship()
+
+
+class Trust(Base):
+    """One tool on one connection of one project, running without asking until
+    `expires_at`. Never for a change that needs the connection's name typed."""
+
+    __tablename__ = "trusts"
+    __table_args__ = (Index("ix_trusts_lookup", "project", "instance", "tool"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project: Mapped[str] = mapped_column(Text)
+    instance: Mapped[str] = mapped_column(Text)
+    tool: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+
+
 class Instance(TimestampMixin, Base):
     __tablename__ = "instances"
     __table_args__ = (
@@ -702,6 +738,8 @@ class Message(Base):
     author: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
+    # Files dropped on the request (services.attachments).
+    attachments: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     # How the user gave it: typed, or a voice note (only its transcript is kept).
     input: Mapped[str] = mapped_column(Text, server_default=text("'text'"))
     # The router's validated output for this message.

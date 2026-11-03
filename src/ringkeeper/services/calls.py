@@ -56,6 +56,7 @@ from ringkeeper.services import (
     mcp_oauth,
     mcp_tools,
     revocations,
+    trusts,
     undo,
 )
 from ringkeeper.vault import Vault, VaultError
@@ -378,8 +379,16 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     held = spec.hold is Hold.ALWAYS or (
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved
     )
+    trusted = False
     if held and not runs_without_asking(auth.config, call.tool):
-        return await _hold(call, spec, target)
+        trusted = await _db(
+            partial(
+                trusts.allows, project=call.caller.project or "", instance=target.name,
+                service=call.service, tool=call.tool, args=call.args,
+            )
+        )  # fmt: skip
+        if not trusted:
+            return await _hold(call, spec, target)
 
     pending = await _keep(call, spec, target)
     try:
@@ -389,7 +398,10 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
             partial(_record, call, AuditOutcome.FAILED, reason=str(error))
         )
         raise
-    await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.EXECUTED, result=result))
+    why = {"reason": "trusted for an hour"} if trusted else {}
+    await anyio.to_thread.run_sync(
+        partial(_record, call, AuditOutcome.EXECUTED, result=result, **why)
+    )
     await _kept(pending, target, call, result)
     return scrub_obj(result)
 
