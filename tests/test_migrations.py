@@ -47,7 +47,7 @@ def test_existing_connections_get_readable_titles(database_url: str) -> None:
     """0019: a connection reads as its service and its account, host or client."""
     migrate.downgrade(database_url, "0018")
     dispose_engines()
-    rows = (
+    rows: tuple[tuple[str, str, str | None, dict[str, str], str], ...] = (
         ("acme-a-yushkin", "google", None, {"email": "a@acme.example"}, "acme"),
         ("acme-n8n", "n8n", "https://n8n.acme.example/", {}, "acme"),
         ("acme-airtable", "airtable", None, {}, "acme"),

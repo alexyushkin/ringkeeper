@@ -49,7 +49,8 @@ def upgrade() -> None:
         sa.text("SELECT id, type, owner, base_url, config, shared FROM instances")
     ).all()
     for row in rows:
-        config = json.loads(row.config) if isinstance(row.config, str) else (row.config or {})
+        raw: Any = row.config
+        config: dict[str, Any] = json.loads(raw) if isinstance(raw, str) else (raw or {})
         client = "yours" if row.shared else names.get(row.owner, row.owner)
         title = _title(str(row.type), row.base_url, config, client)
         if title:
