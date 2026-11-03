@@ -27,7 +27,7 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
-from ringkeeper.services import backup, retention, undo
+from ringkeeper.services import backup, digest, health, retention, undo
 from ringkeeper.services.runtime import SETTINGS_CHANNEL, current_settings
 from ringkeeper.vault import get_vault
 
@@ -92,6 +92,7 @@ class Supervisor:
         self._sync_web_token(settings)
         self._retention(settings)
         self._backup(settings)
+        self._daily(settings)
         if settings.router:
             # The router creates the tasks, so the model map and auth mode travel with it.
             key = (
@@ -224,6 +225,16 @@ class Supervisor:
             return
         if written is not None:
             logger.info("weekly backup written: %s", written)
+
+    @staticmethod
+    def _daily(settings: Settings) -> None:
+        """The connection check and the morning digest, when they're due."""
+        try:
+            health.run_if_due(settings)
+            with session_scope() as session:
+                digest.send_if_due(session, settings)
+        except Exception:
+            logger.exception("a daily job failed")
 
     # --- The web app's token ---
 

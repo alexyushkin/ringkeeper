@@ -116,6 +116,14 @@ async def whoami(target: Target) -> JSON:
     return await _call(target, "GET", "/user")
 
 
+async def token_expiry(target: Target) -> str | None:
+    """The day this token expires ("2027-01-31"), when GitHub says."""
+    async with _client(target) as client:
+        response = await client.get("/user")
+    expires = response.headers.get("github-authentication-token-expiration")
+    return str(expires)[:10] if expires else None
+
+
 async def probe(target: Target) -> str:
     """Who the token is (the Test button)."""
     me = await whoami(target)

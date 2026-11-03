@@ -450,6 +450,64 @@ def test_an_unsure_route_asks_plainly() -> None:
     assert inbox.options(decision) == ["acme-reports", "acme-web", "none"]
 
 
+# --- @-mentions: a firm choice ---
+
+
+def test_a_mentioned_project_wins_whatever_the_model_says() -> None:
+    ask("@acme-reports fix the totals")
+    model = FakeModel([output(routed("acme-web", 0.3))])
+    route(model)
+    assert "THE OPERATOR NAMED THESE WITH @" in model.calls[0][1]
+    [task] = all_tasks()
+    assert task.project == "acme-reports"  # low confidence didn't turn into a question
+    assert route_decisions() == []
+
+
+def test_a_mentioned_connection_picks_its_project_and_is_named_to_the_worker() -> None:
+    ask("Count the users in @globex-supabase-dev")
+    route(FakeModel([output(routed("acme-web", 0.9))]))
+    [task] = all_tasks()
+    assert task.project == "globex-portal"
+    assert "Use the connection globex-supabase-dev." in task.prompt
+
+
+def test_a_mentioned_client_with_one_project_goes_there() -> None:
+    ask("@globex update the footer")
+    route(FakeModel([output(routed("acme-web", 0.9))]))
+    assert [t.project for t in all_tasks()] == ["globex-portal"]
+
+
+def test_a_mentioned_client_with_several_projects_asks_among_them() -> None:
+    ask("@acme update the footer")
+    route(FakeModel([output(routed("globex-portal", 0.9))]))
+    assert all_tasks() == []
+    [decision] = route_decisions()
+    assert decision.payload is not None
+    candidates: list[dict[str, str]] = decision.payload["candidates"]
+    assert {c["project"] for c in candidates} == {"acme-web", "acme-reports"}
+
+
+def test_a_mentioned_agent_runs_the_task_in_its_project() -> None:
+    from ringkeeper.services import agents  # noqa: PLC0415
+    from ringkeeper.services.agents import AgentIn  # noqa: PLC0415
+
+    with session_scope() as session:
+        agents.create_agent(session, "acme-reports", AgentIn("closer", "Be brief."))
+    ask("@closer sum up October")
+    route(FakeModel([output(routed("acme-web", 0.9))]))
+    [task] = all_tasks()
+    assert task.project == "acme-reports"
+    assert task.agent_id is not None
+
+
+def test_an_email_or_an_unknown_name_is_not_a_mention() -> None:
+    ask("Write to sales@acme-web about @nobody")
+    model = FakeModel([output(routed("globex-portal", 0.95))])
+    route(model)
+    assert "NAMED THESE WITH @" not in model.calls[0][1]
+    assert [t.project for t in all_tasks()] == ["globex-portal"]
+
+
 def test_naming_an_agent_runs_the_task_as_it() -> None:
     from ringkeeper.services import agents  # noqa: PLC0415
     from ringkeeper.services.agents import AgentIn  # noqa: PLC0415

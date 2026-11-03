@@ -70,7 +70,18 @@ def status(session: SessionDep) -> dict[str, Any]:
         "check_updates": settings.check_updates,
         "check_update": updates.request,  # a check the user asked for (its id)
         "open": opener.pending(),  # a page an Open link from Slack or Discord asked for
+        "hotkey": settings.hotkey if settings.hotkey_enabled else None,  # the quick request box
     }
+
+
+class OpenIn(Input):
+    path: str = Field(pattern=r"^/[A-Za-z0-9/?=&_.-]*$", max_length=200)
+
+
+@router.post("/open", status_code=202)
+def open_in_window(data: OpenIn) -> None:
+    """Bring the app's window up at a page (the quick box's link to its conversation)."""
+    opener.ask(data.path)
 
 
 def _running(session: SessionDep) -> int:

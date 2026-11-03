@@ -24,6 +24,8 @@ from ringkeeper.models import (
     Complexity,
     Decision,
     DecisionStatus,
+    Message,
+    Project,
     SessionEvent,
     SessionRole,
     Task,
@@ -32,7 +34,7 @@ from ringkeeper.models import (
     TaskStatus,
     WorkerSession,
 )
-from ringkeeper.services import projects, revocations
+from ringkeeper.services import attachments, projects, revocations
 from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, TASKS_CHANNEL, current_user
 from ringkeeper.services.runtime import effective as effective_settings
@@ -83,6 +85,23 @@ def branch_name(task_id: uuid.UUID) -> str:
     return f"ringkeeper/{task_id}"
 
 
+def _attached(
+    session: Session, settings: Settings, project: Project, message_id: uuid.UUID | None
+) -> str:
+    """The request's files, copied into the project: a line for the worker's prompt."""
+    message = session.get(Message, message_id) if message_id else None
+    if message is None or not message.attachments:
+        return ""
+    from ringkeeper.workers.manager import resolve_workspace  # noqa: PLC0415 (cycle)
+
+    try:
+        folder = resolve_workspace(project.workspace_path, settings.workspaces_root)
+        copied = attachments.bring_in(settings, message.attachments, folder)
+    except (OSError, RingkeeperError):
+        return "\n\nThe files attached to this request couldn't be copied into this project."
+    return f"\n\nFiles attached to this request: {', '.join(copied)}" if copied else ""
+
+
 def create_task(
     session: Session,
     settings: Settings,
@@ -108,6 +127,7 @@ def create_task(
     record = projects.get_project(session, project)
     if not prompt.strip():
         raise RuleViolationError("Type what the task should do first.")
+    prompt += _attached(session, settings, record, message_id)
     mode = settings.claude_auth_mode
     if budget_usd is not None and mode is not AuthMode.API_KEY:
         raise RuleViolationError(

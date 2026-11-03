@@ -12,6 +12,7 @@ from ringkeeper import __version__
 from ringkeeper.api import (
     about_routes,
     channels_routes,
+    convenience_routes,
     desktop_routes,
     google_routes,
     live_routes,
@@ -35,6 +36,7 @@ MAX_BODY_BYTES = 1_000_000
 OWN_LIMIT_PATHS = frozenset(
     {
         "/voice/transcribe",
+        "/attachments",
         "/catalog/extensions",
         "/desktop/backup/preview",
         "/desktop/backup/restore",
@@ -186,6 +188,7 @@ def create_app() -> FastAPI:
     app.include_router(channels_routes.router)
     app.include_router(channels_routes.opener)
     app.include_router(start_routes.router)
+    app.include_router(convenience_routes.router)
     if get_settings().mode == "desktop":
         app.include_router(desktop_routes.router)
     app.add_middleware(BodyLimit)

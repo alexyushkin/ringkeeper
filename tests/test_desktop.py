@@ -173,7 +173,7 @@ def test_the_shell_reads_the_tray_state_and_pauses(desktop: dict[str, Any]) -> N
     assert tray.get("/desktop/api/desktop/status").json() == {
         "paused": False, "start_at_login": True, "waiting": [], "running": 0,
         "install_update": False, "check_updates": True, "check_update": None,
-        "routines_paused": False, "open": None,
+        "routines_paused": False, "open": None, "hotkey": "Super+Shift+R",
     }  # fmt: skip
     with session_scope() as session:
         inbox.create(
