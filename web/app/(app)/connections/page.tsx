@@ -8,8 +8,8 @@ import { connectionTitle } from "@/components/connection-form";
 import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { HelpHint } from "@/components/help-hint";
 import { SharedTools } from "@/components/shared-tools";
-import { Alert, Badge, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
-import { useApi } from "@/lib/client/api";
+import { Alert, Badge, Button, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
+import { api, useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
 import { clientName, sameClient, useScope } from "@/lib/client/scope";
 import { ENVS } from "@/lib/client/words";
@@ -25,6 +25,7 @@ export default function ConnectionsPage() {
   const [service, setService] = useState("");
   const [env, setEnv] = useState("");
   const [attention, setAttention] = useState("");
+  const [testing, setTesting] = useState(false);
   const all = connections.data ?? [];
   const label = (c: LibraryConnection) => serviceName(c, services.data ?? []);
   const shown = all.filter(
@@ -48,12 +49,31 @@ export default function ConnectionsPage() {
   };
   const kinds = [...new Set(all.map(label))].sort();
 
+  async function testAll() {
+    setTesting(true);
+    await api("connections/test-all", { method: "POST" }).catch(() => undefined);
+    // Results land on the cards as each test finishes.
+    setTimeout(() => {
+      connections.reload();
+      setTesting(false);
+    }, 4000);
+  }
+
   return (
     <>
       <PageHeader
         title="Connectors"
         subtitle="Every client's connected services, and your own tools. Open a client to link or narrow theirs."
-        action={<LinkButton href="/connections/new" kind="primary">Browse connectors</LinkButton>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={testAll} busy={testing}>
+              Test all
+            </Button>
+            <LinkButton href="/connections/new" kind="primary">
+              Browse connectors
+            </LinkButton>
+          </div>
+        }
         help={<HelpHint doc="connections">A connection is a client&apos;s service (a database, Airtable, GitHub…) that their projects can use. Your own tool holds no client&apos;s data and can go to any project. Ringkeeper keeps every key; the AI never sees one.</HelpHint>}
       />
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">

@@ -1,5 +1,6 @@
 "use client";
 
+import { AskHelp } from "@/components/help-answer";
 import { useEffect, useState } from "react";
 
 import { openPalette } from "@/components/command-palette";
@@ -32,6 +33,7 @@ export default function HelpPage() {
         </div>
       ) : null}
       <PageHeader title="Help" subtitle="How Ringkeeper fits together, in seven ideas." />
+      <AskHelp />
       <Card className="mb-4">
         <Diagram />
       </Card>

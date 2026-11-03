@@ -32,6 +32,15 @@ export async function pickFolder(title: string, start?: string): Promise<string 
   return typeof picked === "string" ? picked : null;
 }
 
+/** Close the quick request box's own window (does nothing in a browser). */
+export async function closeQuickBox(): Promise<void> {
+  try {
+    await internals()?.invoke("plugin:window|close", { label: "quick" });
+  } catch {
+    // not in the shell's quick window
+  }
+}
+
 /** The window's title bar: light, dark, or null for the system's setting. */
 export async function setWindowTheme(theme: "light" | "dark" | null): Promise<void> {
   const shell = internals();

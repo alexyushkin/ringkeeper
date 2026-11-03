@@ -43,6 +43,11 @@ interface Settings {
     task_budget_usd: number;
     max_concurrent_workers: number;
     retention_days: number;
+    digest_enabled: boolean;
+    digest_time: string;
+    health_checks: boolean;
+    hotkey: string;
+    hotkey_enabled: boolean;
     paused: boolean;
     start_at_login: boolean;
     stt_language: string | null;
@@ -149,6 +154,14 @@ export default function SettingsPage() {
           Where Ringkeeper tells you about approvals, finished tasks and routine results when you&apos;re away from the app.
           <HelpHint doc="notifications">Each channel (Telegram, Slack, Discord) has its own choice of what it sends, quiet hours, and which clients. You can approve safe changes from Slack and Discord; anything risky says Open in Ringkeeper.</HelpHint>
         </p>
+        <Section id="digest" title="Morning digest" summary={v.digest_enabled ? `at ${v.digest_time}` : "on Home only"}>
+          <p className="text-sm text-muted">Per client: what ran, what failed and what waits for you. It&apos;s always on Home; this also sends it to Telegram, Slack and Discord.</p>
+          <Toggle label="Send it every morning" checked={v.digest_enabled} onChange={(on) => change({ digest_enabled: on })} />
+          {v.digest_enabled ? <TextSetting label="At (24-hour clock, like 08:00)" value={v.digest_time} onSave={(text) => change({ digest_time: text })} /> : null}
+        </Section>
+        <Section id="health" title="Connection check" summary={v.health_checks ? "every day" : "off"} defaultOpen={false}>
+          <Toggle label="Test every connection once a day" checked={v.health_checks} onChange={(on) => change({ health_checks: on })} hint="Reads only, like the Test button. If one stops working, or a key is 7 days from expiring, the channels above say so." />
+        </Section>
         <Section id="telegram" title="Telegram" summary={telegramSummary}>
           {DESKTOP && !settings.data!.telegram.token ? (
             <>
@@ -207,6 +220,12 @@ export default function SettingsPage() {
             ) : null}
           </Section>
           {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
+          {DESKTOP ? (
+            <Section id="hotkey" title="Quick request" summary={v.hotkey_enabled ? v.hotkey.replace("Super", "Win") : "off"} defaultOpen={false}>
+              <Toggle label="Open the quick request box with a key" checked={v.hotkey_enabled} onChange={(on) => change({ hotkey_enabled: on })} hint="A small box over whatever you're doing: type or speak, send, and it closes." />
+              {v.hotkey_enabled ? <TextSetting label="Key (like Super+Shift+R; Super is the Windows key)" value={v.hotkey} onSave={(text) => change({ hotkey: text })} /> : null}
+            </Section>
+          ) : null}
           {DESKTOP ? <ImportFromClaudeDesktop /> : null}
           {DESKTOP ? null : (
             <>

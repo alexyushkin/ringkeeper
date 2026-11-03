@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpExtras, type HelpAnswer } from "@/components/help-answer";
 import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 
@@ -19,7 +20,7 @@ interface Message {
   source: string;
   input: string;
   body: string;
-  routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] } } | null;
+  routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] }; help?: HelpAnswer } | null;
   route_error: string | null;
   created_at: string;
 }
@@ -76,6 +77,7 @@ export function ThreadView({ id }: { id: string }) {
               <Card>
                 <p className="text-xs font-medium text-muted">Ringkeeper</p>
                 <Markdown text={message.body} className="mt-1 text-sm" />
+              {message.routing?.help ? <HelpExtras help={message.routing.help} /> : null}
               </Card>
             )}
             {message.role === "user" && message.routing?.output?.tasks?.length ? (

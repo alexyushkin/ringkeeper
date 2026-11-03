@@ -8,6 +8,7 @@ import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from 
 import { Catalog, ServiceMark } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { connectionTitle } from "@/components/connection-form";
+import { ProjectScan } from "@/components/conveniences";
 import { ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { Alert, Button, ConfirmButton, Details, EnvBadge, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { Agents, type AgentData } from "@/components/agents";
@@ -199,6 +200,14 @@ export function ProjectView({ name }: { name: string }) {
           )}
         </fieldset>
       ) : null}
+      <ProjectScan
+        project={name}
+        owner={about.owner}
+        onChanged={() => {
+          project.reload();
+          connections.reload();
+        }}
+      />
       {instances.length ? null : <p className="text-sm text-muted">No connections linked yet.{available.length ? " Link one with Link a connection, or connect a new service below." : " Connect a service below."}</p>}
       {instances.map((instance) => (
         <BoundRow key={instance.name} project={name} instance={instance} shared={byName.get(instance.name)?.shared ?? false} fields={byName.get(instance.name)?.scope_fields ?? []} onChange={() => run(async () => undefined)} />
@@ -252,6 +261,17 @@ export function ProjectView({ name }: { name: string }) {
       key: "overview",
       label: "Overview",
       content: () => (
+        <>
+        <div className="mb-4">
+          <ProjectScan
+            project={name}
+            owner={about.owner}
+            onChanged={() => {
+              project.reload();
+              connections.reload();
+            }}
+          />
+        </div>
         <Section id="about" title="About" summary={autonomy}>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted">Client</dt>
@@ -280,6 +300,7 @@ export function ProjectView({ name }: { name: string }) {
             <dd>{autonomy}</dd>
           </dl>
         </Section>
+        </>
       ),
     },
     { key: "connections", label: "Connections", count: instances.length, content: () => connectionsTab },

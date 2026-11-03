@@ -1,5 +1,6 @@
 "use client";
 
+import { usePrefs } from "@/lib/client/prefs";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -99,9 +100,22 @@ function Palette({ onClose }: { onClose: () => void }) {
   const list = useRef<HTMLUListElement | null>(null);
   useEffect(() => input.current?.focus(), []);
 
+  const prefs = usePrefs();
   const commands = useMemo(() => {
     const go = (href: string) => () => router.push(href);
+    const quick = (key: string, group: string): Command | null => {
+      const [kind, ...rest] = key.split(":");
+      const value = rest.join(":");
+      if (kind === "client") {
+        const client = scope.clients.find((c) => c.slug === value);
+        return client ? { label: client.name, group, hint: "client", run: () => scope.set({ client: client.slug, project: "" }) } : null;
+      }
+      const project = (projects.data ?? []).find((p) => p.name === value);
+      return project ? { label: place(project.owner, project.name), group, hint: "project", run: () => scope.set({ client: project.owner, project: project.name }) } : null;
+    };
     const all: Command[] = [
+      ...prefs.pins.map((key) => quick(key, "Pinned")).filter((c): c is Command => c !== null),
+      ...prefs.recents.filter((key) => !prefs.pins.includes(key)).map((key) => quick(key, "Recent")).filter((c): c is Command => c !== null),
       {
         label: "New request",
         group: "Do",
@@ -138,7 +152,7 @@ function Palette({ onClose }: { onClose: () => void }) {
       })),
     ];
     return all;
-  }, [router, scope, projects.data, connections.data]);
+  }, [router, scope, projects.data, connections.data, prefs.pins, prefs.recents]);
 
   const shown = useMemo(() => {
     if (!query.trim()) return commands.filter((c) => c.group !== "Open").slice(0, 40);
