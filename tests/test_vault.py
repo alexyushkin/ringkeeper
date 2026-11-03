@@ -18,8 +18,8 @@ from ringkeeper.cli.main import app
 from ringkeeper.config import Settings
 from ringkeeper.keys import MasterKeyError, derive_key, generate_master_key, load_master_key
 from ringkeeper.vault import Secret, Vault, VaultError, get_vault
-from ringkeeper.vault.aws import AwsSecretsManagerBackend
 from ringkeeper.vault import file as vault_file
+from ringkeeper.vault.aws import AwsSecretsManagerBackend
 from ringkeeper.vault.file import FileBackend
 from tests.helpers import make_instance
 
