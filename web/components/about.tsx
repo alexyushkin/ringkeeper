@@ -46,6 +46,9 @@ export function AboutCard() {
       </p>
       <p className="text-xs text-muted">Copyright (c) 2026 Alexey Yushkin and contributors</p>
       {DESKTOP ? <UpdatesCard /> : null}
+      <p className="text-xs text-muted">
+        Service logos are from Simple Icons (CC0 1.0). They are trademarks of their owners, shown to name each service; those companies don&apos;t endorse Ringkeeper.
+      </p>
       {data.notices ? (
         <>
           <p className="text-sm text-muted">

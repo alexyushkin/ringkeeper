@@ -8,6 +8,8 @@ import { GoogleConnect } from "@/components/google";
 import { KindChoice, type Kind } from "@/components/shared-tools";
 import { Alert, Badge, Button, Details, Field, Select, Spinner, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { LOGOS } from "@/lib/client/logos";
+import { projectName } from "@/lib/client/scope";
 
 /**
  * The connectors: built-in services first (Ringkeeper's own rules: undo, SQL checks,
@@ -187,32 +189,20 @@ const BUILT_IN: Tile[] = [
 // Sign-in services shown as built-in tiles instead (Airtable: the built-in one has undo).
 const NOT_SIGN_IN = new Set(["retell", "airtable", "github"]);
 
-// Each service's mark: its initials on its color (a database: a cylinder).
+// Services with no logo in lib/client/logos: their initials on their color.
 const MARKS: Record<string, [string, string, string]> = {
-  n8n: ["n8n", "#ea4b71", "#fff"],
-  airtable: ["A", "#18bfff", "#fff"],
-  vercel: ["▲", "#000", "#fff"],
   twilio: ["T", "#f22f46", "#fff"],
-  gmail: ["M", "#ea4335", "#fff"],
-  google: ["G", "#4285f4", "#fff"],
-  github: ["GH", "#24292f", "#fff"],
   retell: ["R", "#6d28d9", "#fff"],
-  neon: ["N", "#00e599", "#063"],
-  supabase: ["S", "#3ecf8e", "#063"],
-  sentry: ["S", "#362d59", "#fff"],
-  notion: ["N", "#111", "#fff"],
-  linear: ["L", "#5e6ad2", "#fff"],
-  cloudflare: ["CF", "#f38020", "#fff"],
-  atlassian: ["A", "#0052cc", "#fff"],
 };
 
+/** A service's logo on its color, else its initials. A database connection: Postgres's. */
 export function ServiceMark({ id, database = false }: { id: string; database?: boolean }) {
-  if (database) {
+  const logo = LOGOS[database ? "postgres" : id];
+  if (logo) {
     return (
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#336791] text-white" aria-hidden>
-        <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
-          <ellipse cx="12" cy="6" rx="7" ry="3" />
-          <path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" />
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg" style={{ background: logo.color, color: logo.ink }} aria-hidden>
+        <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
+          <path d={logo.path} />
         </svg>
       </span>
     );
@@ -916,7 +906,7 @@ function SharedChoice({ fixed, kind, onKind, all, onAll, project }: { fixed?: Ki
           <input type="checkbox" checked={all} onChange={(e) => onAll(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
           <span>
             For <strong>all projects</strong>, new ones too
-            <span className="text-muted">{all ? "" : project ? ` (otherwise only ${project}; link it to more later)` : " (otherwise link it to projects later)"}</span>
+            <span className="text-muted">{all ? "" : project ? ` (otherwise only ${projectName(project)}; link it to more later)` : " (otherwise link it to projects later)"}</span>
           </span>
         </label>
       ) : null}
