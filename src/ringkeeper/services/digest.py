@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ringkeeper.config import Settings
 from ringkeeper.models import Decision, DecisionStatus, Project, Setting, Task, TaskStatus
 from ringkeeper.services import announce, clients, inbox, titles
+from ringkeeper.wording import plain
 
 LAST_KEY = "digest.last"
 WINDOW = timedelta(days=1)
@@ -46,7 +47,7 @@ def build(session: Session, now: datetime | None = None) -> dict[str, Any]:
         one.ran += 1
         if task.status in FAILED:
             title = shown.get(task.project) or titles.spoken(task.project)
-            one.failed.append(f"{title}: {(task.outcome or task.prompt)[:120]}")
+            one.failed.append(f"{title}: {plain(task.outcome or task.prompt)[:120]}")
     pending = select(Decision).where(Decision.status == DecisionStatus.PENDING)
     for decision in session.scalars(pending):
         day(decision.project).waiting.append(inbox.summary(decision, 120))

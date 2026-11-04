@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from ringkeeper.models import Decision, DecisionKind
 from ringkeeper.scrub import scrub
 from ringkeeper.services import inbox
+from ringkeeper.wording import plain
 
 SHORTENED = "Shortened for Telegram. The full text is in the Ringkeeper app."
 CODE_HIDDEN = "[code: see the app]"
@@ -74,7 +75,7 @@ def _clip(text: str, limit: int) -> tuple[str, bool]:
 def question(text: str, limit: int) -> Shown:
     """The question with its line breaks kept (blank-line runs collapsed)."""
     hidden, changed = hide_code(scrub(text))
-    lines = [" ".join(line.split()) for line in hidden.strip().splitlines()]
+    lines = [" ".join(line.split()) for line in plain(hidden).strip().splitlines()]
     tidy = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
     clipped, cut = _clip(tidy, limit)
     return Shown(clipped, changed or cut)

@@ -111,3 +111,24 @@ def action(service: InstanceType | None, tool: str | None, args: object = None) 
         if inner:
             return f"Running {inner.replace('_', ' ')}"
     return tool.replace("_", " ").capitalize()
+
+
+_MARKS = (
+    (re.compile(r"^\s{0,3}#{1,6}\s+", re.M), ""),  # headings
+    (re.compile(r"^\s{0,3}>\s?", re.M), ""),  # quotes
+    (re.compile(r"^(\s*)[-*+]\s+", re.M), r"\1• "),  # lists
+    (re.compile(r"\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?\s*\)"), r"\1 (\2)"),  # links
+    (re.compile(r"`+([^`\n]+)`+"), r"\1"),  # code
+    (re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"), r"\2"),  # bold
+    (re.compile(r"~~(?=\S)(.+?)(?<=\S)~~"), r"\1"),  # struck out
+    (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=\S)\*(?![\w*])"), r"\1"),  # emphasis
+    (re.compile(r"(?<![\w_])_(?=[^\s_])([^_\n]+?)(?<=\S)_(?![\w_])"), r"\1"),
+)
+
+
+def plain(text: str) -> str:
+    """Claude's Markdown for places that can't show it: Telegram, Slack, the digest. Words
+    with stars or underscores in them, like snake_case or 2*3*4, stay as they are."""
+    for mark, words in _MARKS:
+        text = mark.sub(words, text)
+    return text

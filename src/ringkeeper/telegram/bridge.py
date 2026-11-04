@@ -61,7 +61,7 @@ from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.voice import VoiceError, VoiceNote, vocabulary
 from ringkeeper.voice import transcribe as transcribe_voice
-from ringkeeper.wording import decision_status, person, task_status
+from ringkeeper.wording import decision_status, person, plain, task_status
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ def finished_text(task: Task) -> str:
 def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
     """A routine's run, in short: which, how it went, and its summary (scrubbed later)."""
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
-    summary = (task.summary or task.error or "").strip()
+    summary = plain(task.summary or task.error or "").strip()
     if len(summary) > limit:
         summary = summary[: limit - 1] + "…"
     title = titles.of(object_session(task), task.project)

@@ -26,7 +26,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import inbox, titles
 from ringkeeper.telegram import text as shown_text
 from ringkeeper.telegram.api import defang
-from ringkeeper.wording import decision_status, person, task_status
+from ringkeeper.wording import decision_status, person, plain, task_status
 
 PREFIX = "rk"
 TEST_ACTION = "rk:test"
@@ -69,7 +69,7 @@ def _clean(text: str) -> str:
 
 def _clip(text: str, limit: int) -> tuple[str, bool]:
     hidden, cut = shown_text.hide_code(text)
-    hidden = hidden.strip()
+    hidden = plain(hidden).strip()
     if len(hidden) > limit:
         return hidden[: limit - 1].rstrip() + "…", True
     return hidden, cut
