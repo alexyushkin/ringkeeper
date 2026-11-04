@@ -189,7 +189,7 @@
 "doc": "working-faster",
 "anchor": "quick-request",
 "title": "Quick request",
-"text": "Press **Win+Shift+R** anywhere, and a small box opens over whatever you're doing. Type or hold the mic, choose a client or project if you like, and send. It says **Sent**, with a link to the conversation, and closes. Change the key or turn it off in Settings › Advanced › Quick request. Windows may use the same key for screen recording: if it's taken, Ringkeeper says so and you can pick another."
+"text": "Press **Ctrl+Alt+R** anywhere, and a small box opens over whatever you're doing. Type or hold the mic, choose a client or project if you like, and send. It says **Sent**, with a link to the conversation, and closes. Change the key or turn it off in Settings › Advanced › Quick request. If another app already uses it, Ringkeeper says so and you can pick another."
 },
 {
 "doc": "working-faster",

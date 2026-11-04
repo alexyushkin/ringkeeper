@@ -47,7 +47,7 @@ pub struct Status {
     /// A page an Open link from Slack or Discord asked for (its id and path).
     #[serde(default)]
     pub open: Option<OpenRequest>,
-    /// The quick request box's key ("Super+Shift+R"); None: it's off.
+    /// The quick request box's key ("Ctrl+Alt+R"); None: it's off.
     #[serde(default)]
     pub hotkey: Option<String>,
 }

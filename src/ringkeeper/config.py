@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     digest_enabled: bool = False  # send the morning digest (services.digest)
     digest_time: str = "08:00"  # this computer's clock
     health_checks: bool = True  # test every connection once a day (services.health)
-    hotkey: str = "Super+Shift+R"  # the quick request box (the desktop shell)
+    hotkey: str = "Ctrl+Alt+R"  # the quick request box (the desktop shell)
     hotkey_enabled: bool = True
     routines_paused: bool = False  # the tray's "Pause all routines" (services.routines)
     # Desktop: a fixed address on this computer for routines' webhooks (the app's own
