@@ -223,7 +223,7 @@ export default function SettingsPage() {
           {DESKTOP ? (
             <Section id="hotkey" title="Quick request" summary={v.hotkey_enabled ? v.hotkey.replace("Super", "Win") : "off"} defaultOpen={false}>
               <Toggle label="Open the quick request box with a key" checked={v.hotkey_enabled} onChange={(on) => change({ hotkey_enabled: on })} hint="A small box over whatever you're doing: type or speak, send, and it closes." />
-              {v.hotkey_enabled ? <TextSetting label="Key (like Super+Shift+R; Super is the Windows key)" value={v.hotkey} onSave={(text) => change({ hotkey: text })} /> : null}
+              {v.hotkey_enabled ? <TextSetting label="Key (like Ctrl+Alt+R; Super is the Windows key)" value={v.hotkey} onSave={(text) => change({ hotkey: text })} /> : null}
             </Section>
           ) : null}
           {DESKTOP ? <ImportFromClaudeDesktop /> : null}
