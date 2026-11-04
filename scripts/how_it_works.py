@@ -118,7 +118,9 @@ def you_ask() -> str:
         f'fill="{color("accent")}"/>'
         + "".join(
             text(x + 12, CARD_Y + 115 + i * 17, line, 12.5, "accent-ink", 500)
-            for i, line in enumerate(("Add last week's", "leads to General", "Informatics' Airtable"))
+            for i, line in enumerate(
+                ("Add last week's", "leads to General", "Informatics' Airtable")
+            )
         )
     )
     return head + bubble + lines(x, CARD_Y + 180, "Typed or spoken, in the app or on Telegram", 25)
