@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.16 (2026-11-04)
 
 - **The filter says when it's on.** With a client or project chosen in the top bar,
   Home, Tasks, Approvals, Agents and Connectors now say "Showing Acme Windows only" with
