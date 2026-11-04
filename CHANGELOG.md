@@ -7,6 +7,8 @@ publishes it as the release notes and the app shows it with the update.
 
 - **Older Macs.** The app's pages are now built for the web engine in macOS 12, so they
   no longer risk stopping at Loading there. The build fails if that ever changes.
+- **Your Claude Code login on a Mac.** "Or use my Claude Code login" now works on Macs too,
+  reading it from your Keychain. macOS asks you to allow that.
 
 ## 0.1.0-beta.17 (2026-11-04)
 

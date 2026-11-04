@@ -9,7 +9,7 @@ export function ClaudeCodeLogin({ busy, onClick }: { busy: boolean; onClick: () 
         Or use my Claude Code login
       </Button>
       <p className="text-xs text-muted">
-        If you use Claude Code on this computer, Ringkeeper can use its sign-in (not the Claude desktop app&apos;s). It expires sooner; Ringkeeper copies it again whenever Claude Code renews it.
+        If you use Claude Code on this computer, Ringkeeper can use its sign-in (not the Claude desktop app&apos;s). On a Mac, allow it when macOS asks about your Keychain. It expires sooner; Ringkeeper copies it again whenever Claude Code renews it.
       </p>
     </div>
   );
