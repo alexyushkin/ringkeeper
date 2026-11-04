@@ -160,7 +160,7 @@ function ClientSettings({ slug, name, hasWork }: { slug: string; name: string; h
 
   return (
     <div className="space-y-4">
-      <Field label="Name" value={typed} onChange={setTyped} hint="As it should show, like “Seaside Windows & Doors”. Links stay the same." />
+      <Field label="Name" value={typed} onChange={setTyped} hint="As it should show, like “Acme Windows & Doors”. Links stay the same." />
       <Button kind="primary" disabled={!typed.trim() || typed.trim() === name} onClick={() => run(() => api(`clients/${slug}`, { method: "PATCH", json: { name: typed.trim() } }), () => setSaved(true))}>
         Rename
       </Button>

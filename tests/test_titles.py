@@ -57,6 +57,14 @@ def test_a_connection_of_that_name_is_more_specific_than_a_title(session: Sessio
     assert (found.projects, found.connections) == ([], ["reports"])
 
 
+def test_a_client_is_mentioned_by_its_name_too(session: Session) -> None:
+    make_project(session, "acme-web", owner="Acme Windows & Doors")
+    assert mentions.find(session, "for @Acme Windows & Doors").clients == ["acme-windows-doors"]
+    assert mentions.find(session, "for @acme-windows-doors").clients == ["acme-windows-doors"]
+    [offer] = [o for o in mentions.offered(session) if o["kind"] == "client"]
+    assert offer["token"] == "Acme Windows & Doors"
+
+
 def test_the_box_offers_a_project_by_its_title(session: Session) -> None:
     named(session, "acme-web", "Acme site")
     [offer] = [o for o in mentions.offered(session) if o["kind"] == "project"]
