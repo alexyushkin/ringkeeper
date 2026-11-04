@@ -213,7 +213,7 @@ with session_scope() as session:
 
     await page.emulateMedia({ colorScheme: "dark" });
     await theme.selectOption("light");
-    await expect.poll(background).toBe("rgb(247, 247, 245)");
+    await expect.poll(background).toBe("rgb(241, 240, 236)");
     await theme.selectOption("system");
     await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
     await expect.poll(background).toBe("rgb(18, 18, 17)");
