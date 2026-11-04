@@ -563,9 +563,12 @@ export function useLibrary(client: string) {
   const projects = useApi<{ name: string; owner: string }[]>("projects");
   const services = useApi<RemoteService[]>("remote-services");
   const same = (owner: string) => owner.trim().toLowerCase() === client.trim().toLowerCase();
+  const theirs = (projects.data ?? []).filter((p) => same(p.owner)).map((p) => p.name);
   return {
     connections: (connections.data ?? []).filter((c) => !c.shared && same(c.owner)),
-    projects: (projects.data ?? []).filter((p) => same(p.owner)).map((p) => p.name),
+    /** Your own tools their projects use: not theirs, but what those projects have. */
+    tools: (connections.data ?? []).filter((c) => c.shared && c.projects.some((p) => theirs.includes(p))),
+    projects: theirs,
     services: services.data ?? [],
     loading: connections.loading || projects.loading,
     error: connections.error ?? projects.error,

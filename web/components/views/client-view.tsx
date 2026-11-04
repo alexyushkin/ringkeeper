@@ -6,9 +6,10 @@ import { useState } from "react";
 import { LibraryCard, NoProjects, useLibrary } from "@/components/connection-library";
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
+import { connectionTitle } from "@/components/connection-form";
 import { ProjectForm } from "@/components/forms";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
-import { Alert, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
+import { Alert, Badge, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
 import { clientName, projectName, useScope } from "@/lib/client/scope";
@@ -29,8 +30,9 @@ export function ClientView({ name }: { name: string }) {
     library.reload();
   }
 
-  const production = library.connections.filter((c) => c.env === "prod").length;
-  const summary = `${library.connections.length} connection${library.connections.length === 1 ? "" : "s"}${production ? ` · ${production} production` : ""}`;
+  const everything = [...library.connections, ...library.tools];
+  const production = everything.filter((c) => c.env === "prod").length;
+  const summary = `${everything.length} connection${everything.length === 1 ? "" : "s"}${production ? ` · ${production} production` : ""}`;
 
   const tabs: Tab[] = [
     {
@@ -58,7 +60,7 @@ export function ClientView({ name }: { name: string }) {
     {
       key: "connections",
       label: "Connections",
-      count: library.connections.length,
+      count: everything.length,
       content: () => (
         <Section id="connections" title="Connections" summary={summary}>
           <p className="text-sm text-muted">
@@ -72,7 +74,25 @@ export function ClientView({ name }: { name: string }) {
               <LibraryCard key={connection.name} connection={connection} projects={library.projects} services={library.services} onChange={library.reload} />
             ))}
           </div>
-          {!library.loading && !library.connections.length && !adding ? <Empty>No connections for {display} yet. Connect their first service below.</Empty> : null}
+          {!library.loading && !everything.length && !adding ? <Empty>No connections for {display} yet. Connect their first service below.</Empty> : null}
+          {library.tools.length ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Your own tools {display}&apos;s projects use</h3>
+              <ul className="space-y-2">
+                {library.tools.map((tool) => (
+                  <li key={tool.name} className="rounded-xl border border-line p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link href="/connections#shared" className="font-medium hover:text-accent">
+                        {connectionTitle(tool)}
+                      </Link>
+                      <Badge tone="accent">your tool</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted">Used by {tool.projects.filter((p) => library.projects.includes(p)).map(projectName).join(", ")}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {added ? (
             <ConnectionAdded
               name={added}
@@ -126,7 +146,7 @@ export function ClientView({ name }: { name: string }) {
       </Link>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{display}</h1>
       <p className="mb-4 text-sm text-muted">
-        {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {library.connections.length} connection{library.connections.length === 1 ? "" : "s"}
+        {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {everything.length} connection{everything.length === 1 ? "" : "s"}
         {production ? ` (${production} production)` : ""}
         {tasks.running ? ` · ${tasks.running} running` : ""}
       </p>
