@@ -63,7 +63,7 @@ def test_a_reply_stamped_before_its_message_still_counts() -> None:
         reply = threads.add_reply(session, thread_id, "On it.")
         reply.created_at = posted.created_at - timedelta(seconds=1)
         threads.mark_routed(session, posted, {})
-    assert inbox_cli._wait_for_reply(message_id, thread_id, seen, 1.0) == "On it."  # noqa: SLF001
+    assert inbox_cli.wait_for_reply(message_id, thread_id, seen, 1.0) == "On it."
 
 
 def test_ask_waits_for_the_router_and_prints_its_reply(monkeypatch: pytest.MonkeyPatch) -> None:

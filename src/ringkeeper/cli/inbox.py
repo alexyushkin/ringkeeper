@@ -181,7 +181,7 @@ def ask(
     typer.echo(f"thread {thread_id}")
     if not wait:
         return
-    reply = _wait_for_reply(message_id, thread_id, seen, timeout)
+    reply = wait_for_reply(message_id, thread_id, seen, timeout)
     if reply is None:
         raise fail(
             f"no reply within {timeout:.0f}s; the message stays queued. Is the api running "
@@ -190,7 +190,7 @@ def ask(
     typer.echo(reply)
 
 
-def _wait_for_reply(
+def wait_for_reply(
     message_id: uuid.UUID, thread_id: uuid.UUID, seen: set[uuid.UUID], timeout: float
 ) -> str | None:
     """What's new in the thread once the message is routed. New by id, not by time: Postgres
