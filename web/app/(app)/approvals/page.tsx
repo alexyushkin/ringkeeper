@@ -6,7 +6,8 @@ import { useConnectionTitles } from "@/components/connection-form";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Alert, Button, Empty, Loading, PageHeader, Select, timeUntil } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
-import { projectName, useScope } from "@/lib/client/scope";
+import { ScopeNote } from "@/components/scope-switcher";
+import { place, projectName, useScope } from "@/lib/client/scope";
 
 /** Every action waiting for your OK, across conversations, in full: the SQL, the plan,
  * more money for a task. Questions ("which project?", a worker asking something) are
@@ -97,6 +98,7 @@ export default function ApprovalsPage() {
   return (
     <>
       <PageHeader title="Approvals" subtitle="Actions waiting for your OK before Ringkeeper goes on, from every conversation." />
+      <ScopeNote />
       <div className="mb-4 grid grid-cols-2 gap-2">
         <Select label="Show" value={kind} onChange={setKind} options={KINDS} />
       </div>
@@ -118,7 +120,7 @@ export default function ApprovalsPage() {
       {decisions.error ? <Alert>{decisions.error}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
       {decisions.loading && !decisions.data ? <Loading /> : null}
-      {decisions.data?.length === 0 ? <Empty>Nothing is waiting for you. When an agent wants to change live client data, or send something to real people, it asks here first.</Empty> : null}
+      {decisions.data?.length === 0 ? <Empty>{scope.client || scope.project ? `Nothing is waiting for you from ${place(scope.client, scope.project)}.` : "Nothing is waiting for you. When an agent wants to change live client data, or send something to real people, it asks here first."}</Empty> : null}
       {count > 1 ? <p className="mb-2 hidden text-xs text-muted md:block">Keys: J next · K previous · A approve · D deny</p> : null}
       <div className="space-y-4">
         {ordered.map((decision) => {

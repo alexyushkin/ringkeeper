@@ -9,7 +9,7 @@ import { ConnectionAdded } from "@/components/connection-added";
 import { Alert, Badge, Button, Card, Field } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref } from "@/lib/client/routes";
-import { clientName, projectName } from "@/lib/client/scope";
+import { clientName, projectName, sameClient } from "@/lib/client/scope";
 
 /* Small things that save a trip: the digest and shortcuts on Home, Run again and saving a
  * request on a task, and a project's own keys offered as connections. */
@@ -25,12 +25,12 @@ interface ClientDay {
 }
 
 /** Home: per client, what ran, failed and waits, for the last day. */
-export function DigestCard() {
+export function DigestCard({ client }: { client?: string }) {
   const digest = useApi<{ clients: ClientDay[] }>("digest");
   useLive((event) => {
     if (event.type === "task" || event.type === "approval") digest.reload();
   });
-  const days = digest.data?.clients ?? [];
+  const days = (digest.data?.clients ?? []).filter((day) => !client || sameClient(day.client, client));
   if (!days.length) return null;
   return (
     <Card className="mt-4 space-y-2">

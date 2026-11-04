@@ -6,6 +6,7 @@ import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
+import { ScopeNote } from "@/components/scope-switcher";
 import { projectName, useScope } from "@/lib/client/scope";
 
 const STATUSES: [string, string][] = [
@@ -45,6 +46,7 @@ export default function TasksPage() {
   return (
     <>
       <PageHeader title="Tasks" subtitle="Every piece of work, live." />
+      <ScopeNote />
       <div className="mb-4 grid grid-cols-2 gap-2">
         <Select label="Status" value={status} onChange={setStatus} options={STATUSES} />
       </div>

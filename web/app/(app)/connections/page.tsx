@@ -7,11 +7,12 @@ import { ServiceMark } from "@/components/catalog";
 import { connectionTitle } from "@/components/connection-form";
 import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { HelpHint } from "@/components/help-hint";
+import { ScopeNote } from "@/components/scope-switcher";
 import { SharedTools } from "@/components/shared-tools";
 import { Alert, Badge, Button, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
-import { clientName, projectName, sameClient, useScope } from "@/lib/client/scope";
+import { clientName, place, projectName, sameClient, useScope } from "@/lib/client/scope";
 import { ENVS } from "@/lib/client/words";
 
 const KINDS_OF_DATA: [string, string][] = ENVS.map(([key, label]) => [key, label]);
@@ -81,6 +82,7 @@ export default function ConnectionsPage() {
         <Select label="Kind of data" value={env} onChange={setEnv} options={[["", "Any"], ...KINDS_OF_DATA]} />
         <Select label="Show" value={attention} onChange={setAttention} options={[["", "All"], ["failing", "Last test failed"], ["unlinked", "Not linked to a project"]]} />
       </div>
+      <ScopeNote />
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
       <Section id="shared" title="Your own tools" summary={sharedSummary} action={<LinkButton href="/connections/new?kind=shared">Add your own tool</LinkButton>}>
@@ -89,7 +91,7 @@ export default function ConnectionsPage() {
       {connections.data && !shown.length ? (
         <Empty>
           {all.some((c) => !c.shared) ? (
-            "Nothing matches. Set the filters back to Any."
+            service || env || attention ? "Nothing matches. Set the filters back to Any." : `${place(scope.client, scope.project)} has no connections of its own.`
           ) : (
             <>
               No client connections yet. A connection is a client&apos;s service, like their database or Airtable.{" "}
