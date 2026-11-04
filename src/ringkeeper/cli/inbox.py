@@ -177,10 +177,11 @@ def ask(
             session, message, author=current_user(), source="cli", thread=thread
         )
         message_id, thread_id = posted.id, posted.thread_id
+        seen = {m.id for m in threads.thread_messages(session, thread_id)}
     typer.echo(f"thread {thread_id}")
     if not wait:
         return
-    reply = _wait_for_reply(message_id, thread_id, timeout)
+    reply = _wait_for_reply(message_id, thread_id, seen, timeout)
     if reply is None:
         raise fail(
             f"no reply within {timeout:.0f}s; the message stays queued. Is the api running "
@@ -189,7 +190,11 @@ def ask(
     typer.echo(reply)
 
 
-def _wait_for_reply(message_id: uuid.UUID, thread_id: uuid.UUID, timeout: float) -> str | None:
+def _wait_for_reply(
+    message_id: uuid.UUID, thread_id: uuid.UUID, seen: set[uuid.UUID], timeout: float
+) -> str | None:
+    """What's new in the thread once the message is routed. New by id, not by time: Postgres
+    stamps a row with its transaction's start, so a reply can look older than the message."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         with session_scope() as session:
@@ -198,7 +203,7 @@ def _wait_for_reply(message_id: uuid.UUID, thread_id: uuid.UUID, timeout: float)
                 later = [
                     m
                     for m in threads.thread_messages(session, thread_id)
-                    if m.created_at >= posted.created_at and m.role is not MessageRole.USER
+                    if m.id not in seen and m.role is not MessageRole.USER
                 ]
                 return "\n".join(m.body for m in later) or "(routed)"
         time.sleep(POLL_SECONDS)

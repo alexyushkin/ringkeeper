@@ -27,7 +27,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.router.service import route_next
-from ringkeeper.services import inbox, tasks
+from ringkeeper.services import inbox, tasks, threads
 from tests.fake_router import FakeModel, output, routed
 
 pytestmark = pytest.mark.usefixtures("task_registry")
@@ -51,6 +51,19 @@ def route_soon(model: FakeModel) -> threading.Thread:
     thread = threading.Thread(target=work, daemon=True)
     thread.start()
     return thread
+
+
+def test_a_reply_stamped_before_its_message_still_counts() -> None:
+    with session_scope() as session:
+        posted = threads.post_message(session, "count customers", author="me", source="cli")
+        message_id, thread_id = posted.id, posted.thread_id
+        seen = {m.id for m in threads.thread_messages(session, thread_id)}
+    with session_scope() as session:
+        posted = threads.get_message(session, message_id)
+        reply = threads.add_reply(session, thread_id, "On it.")
+        reply.created_at = posted.created_at - timedelta(seconds=1)
+        threads.mark_routed(session, posted, {})
+    assert inbox_cli._wait_for_reply(message_id, thread_id, seen, 1.0) == "On it."  # noqa: SLF001
 
 
 def test_ask_waits_for_the_router_and_prints_its_reply(monkeypatch: pytest.MonkeyPatch) -> None:
