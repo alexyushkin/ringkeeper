@@ -121,8 +121,8 @@ account's client and projects right there:
 ![Google settings](ux-walkthrough/d05-settings-google-accounts.png)
 ![Add an account](ux-walkthrough/d03-google-account-form.png)
 
-A draft for `seaside-newsletter` asks first, names the account, and went out as that
-account (the fake Google logged `POST /drafts as office@seasidewindows.example`):
+A draft for `acme-newsletter` asks first, names the account, and went out as that
+account (the fake Google logged `POST /drafts as office@acmewindows.example`):
 
 ![Draft approval](ux-walkthrough/d07-draft-approval.png)
 
@@ -184,7 +184,7 @@ servers before you type.
 | Item | State |
 |---|---|
 | Built-in tiles, sign-in, then search | Done |
-| Tiles "with logos" | **Partly.** Each service has its initials on its color. Real logos are a licensing and trademark choice, so that's yours to make. |
+| Tiles "with logos" | Done, with Simple Icons logos. Twilio and Retell aren't in that set, so they keep their initials. |
 | Connectors name, Browse connectors, Claude note | Done |
 | Search: publisher, badge, dedupe, ranking, community folded | Done |
 | No default for kind of data | Done (client connections; your own MCP tools aren't asked) |
@@ -199,7 +199,7 @@ servers before you type.
 | Test failures show the reason on the card | Done |
 | Agents and Routines: New, project first, Create an agent | Done |
 | No stray scrollbars; 1366×768 and 375 | Done |
-| Readable **project** names | **Not done.** Connections and clients read well; projects still show their short name (`geninfos-website`), which is usually readable but isn't what was typed. |
+| Readable **project** names | Done. A project keeps the name as typed; the short name stays for links and the AI, under Project › Settings. |
 
 # The convenience batch and the Help assistant
 
@@ -278,9 +278,9 @@ it's listed with **Stop trusting**:
 **The hotkey itself was not pressed.** The page was walked in a browser at the window's
 size. The shell code compiles and its tests pass, but running a second shell on this PC
 would hand off to your installed app through its single-instance lock, so pressing
-Win+Shift+R, the always-on-top window and real file drops are yours to try first.
-Windows 11's Snipping Tool may already use Win+Shift+R for screen recording: if so,
-Ringkeeper says the key is taken, and Settings › Advanced › Quick request changes it.
+Ctrl+Alt+R, the always-on-top window and real file drops are yours to try first.
+If another app already uses the key, Ringkeeper says it's taken, and Settings ›
+Advanced › Quick request changes it.
 
 The digest's message to Slack, Discord and Telegram is covered by tests with a fake
 sender; no real channel was used.
@@ -313,3 +313,22 @@ questions you know the answers to.
 **Where I hesitated:** while writing "what Ringkeeper doesn't do yet" I had said Activity
 can't export, and it can (CSV). That's exactly the mistake this feature must not make, so
 that section is worth a read from you: it's the last part of `docs/faq.md`.
+
+## Before beta.15
+
+**Project names.** A project had only its short name, so there was nothing better to show.
+It now has a name as typed (`projects.title`), and every page, approval, Slack and
+Telegram message, digest and audit line uses it. Existing projects get one from their
+short name ("Demo shop"): change it under About this project. The AI still works with
+the short name, and is told to say the title to you. A request can mention `@Demo shop`.
+Checked by opening every page and tab and looking for each short name on screen; the only
+ones left are in folder paths and in what the AI itself wrote.
+
+**Screenshots.** All of them were retaken from a scratch install at `C:\Ringkeeper-demo`,
+each checked for a user folder as it was taken. The four `before-*` images are the old
+screens and stay, and show no path.
+
+**The quick request key** is now Ctrl+Alt+R: Win+Shift+R is Windows' screen recording.
+
+**Logos** come from Simple Icons (see Settings › About for the notice). **Hide the menu**
+is now just the panel icon.
