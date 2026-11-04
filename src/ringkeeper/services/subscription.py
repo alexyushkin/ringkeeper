@@ -46,9 +46,8 @@ def allowed(settings: Settings) -> bool:
 
 def credentials_file() -> Path:
     """Where the Claude Code CLI keeps its login on Windows and Linux (a Mac uses the
-    Keychain, see `_from_keychain`): ~/.claude, or CLAUDE_CONFIG_DIR.
-    The Claude desktop app's own Claude
-    Code signs in through the app and keeps no file here."""
+    Keychain, see `_from_keychain`): ~/.claude, or CLAUDE_CONFIG_DIR. The Claude desktop
+    app's own Claude Code signs in through the app and keeps no file here."""
     base = os.environ.get("CLAUDE_CONFIG_DIR")
     return (Path(base) if base else Path.home() / ".claude") / ".credentials.json"
 
@@ -77,23 +76,26 @@ def _from_keychain() -> str | None:
     return found.stdout if found.returncode == 0 and found.stdout.strip() else None
 
 
-def _stored_login() -> str | None:
-    """The login as Claude Code stored it: the Keychain on a Mac, then its file."""
+def _stored_login() -> tuple[str | None, float | None]:
+    """The login as Claude Code stored it, and when if that's known: the Keychain on a
+    Mac (which doesn't say), then its file."""
     if platform.system() == "Darwin":
         found = _from_keychain()
         if found is not None:
-            return found
+            return found, None
+    path = credentials_file()
     try:
-        return credentials_file().read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8"), path.stat().st_mtime
     except OSError:
-        return None
+        return None, None
 
 
 def login_token() -> str:
     """The Claude Code CLI login's current access token. Raises, saying what it found,
     if there's none it can use."""
+    stored, saved = _stored_login()
     try:
-        data: Any = json.loads(_stored_login() or "")
+        data: Any = json.loads(stored or "")
     except ValueError:
         raise RuleViolationError(
             "No Claude Code login found on this computer (the Claude desktop app keeps "
@@ -106,8 +108,8 @@ def login_token() -> str:
     expires = cast(dict[str, Any], oauth).get("expiresAt")
     if isinstance(expires, int | float) and expires / 1000 < time.time():
         raise RuleViolationError(
-            f"Found an old Claude Code login from {_day(expires / 1000)} that has expired. "
-            f"Open Claude Code to refresh it, or: {INSTEAD}"
+            f"Found an old Claude Code login from {_day(saved or expires / 1000)} that has "
+            f"expired. {INSTEAD}"
         )
     return token
 
