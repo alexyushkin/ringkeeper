@@ -4,10 +4,12 @@ moved and removed; and projects renamed everywhere they are named."""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ringkeeper.db import session_scope
 from ringkeeper.models import Decision, DecisionKind, Instance, Project, Task
-from ringkeeper.services import clients, inbox, projects
+from ringkeeper.schemas import BindingIn
+from ringkeeper.services import bindings, clients, inbox, projects
 from tests import test_web_api
 from tests.helpers import make_instance, make_project
 
@@ -16,6 +18,20 @@ setup_code, admin, owner = test_web_api.setup_code, test_web_api.admin, test_web
 
 def listed(app: TestClient) -> dict[str, dict[str, object]]:
     return {c["name"]: c for c in app.get("/clients").json()}
+
+
+def test_a_client_counts_your_tools_its_projects_use(session: Session) -> None:
+    make_project(session, "beta-one", owner="Beta")
+    make_project(session, "beta-two", owner="Beta")
+    make_project(session, "other-one", owner="Other")
+    make_instance(session, "beta-db", owner="beta")
+    make_instance(session, "tool", shared=True, owner="you")
+    make_instance(session, "unused", shared=True, owner="you")
+    for project in ("beta-one", "beta-two"):  # two links, still one connection
+        bindings.set_binding(session, BindingIn(project=project, instance="tool"))
+    bindings.set_binding(session, BindingIn(project="beta-one", instance="beta-db"))
+    counts = {c.slug: c.connections for c in clients.list_clients(session)}
+    assert counts == {"beta": 2, "other": 0}
 
 
 def test_a_client_is_named_as_typed_and_listed_without_projects(owner: TestClient) -> None:

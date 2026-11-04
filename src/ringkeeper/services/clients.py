@@ -7,13 +7,14 @@ connections yet and is still listed. Clients match by slug: "Acme" and "acme"
 are one client.
 """
 
+from collections import Counter
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Client, Instance, Project
+from ringkeeper.models import Client, Instance, Project, ProjectInstance
 from ringkeeper.names import slug
 
 SHARED_OWNER = "you"  # a shared tool's owner (services.instances): never a client
@@ -72,19 +73,21 @@ class Listed:
 
 
 def list_clients(session: Session) -> list[Listed]:
-    """Every client, with or without projects and connections, by name."""
+    """Every client, with or without projects and connections, by name. Their connections
+    are their own and your tools their projects use, each once: what those projects have."""
     projects = dict(
         session.execute(select(Project.owner, func.count()).group_by(Project.owner)).tuples().all()
     )
-    connections = dict(
-        session.execute(
-            select(Instance.owner, func.count())
-            .where(Instance.shared.is_(False))
-            .group_by(Instance.owner)
-        )
-        .tuples()
-        .all()
-    )
+    own = session.execute(
+        select(Instance.owner, Instance.id).where(Instance.shared.is_(False))
+    ).tuples()
+    tools = session.execute(
+        select(Project.owner, Instance.id)
+        .join(ProjectInstance, ProjectInstance.project_id == Project.id)
+        .join(Instance, Instance.id == ProjectInstance.instance_id)
+        .where(Instance.shared.is_(True))
+    ).tuples()
+    connections = Counter(owner for owner, _ in {*own, *tools})
     return sorted(
         (
             Listed(c.slug, c.name, projects.get(c.slug, 0), connections.get(c.slug, 0))
