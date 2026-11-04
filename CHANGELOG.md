@@ -10,8 +10,9 @@ publishes it as the release notes and the app shows it with the update.
   supports them. Like the other Mac build, it's unsigned and experimental.
 - **Checkboxes keep their size.** Next to long text they were squeezed narrower than
   the others.
-- **The Help diagram.** The arrow to Hold is drawn properly, with its label beside it, and
-  the example project goes by its name.
+- **A new picture of how it works.** Help and the guide now start from what you actually
+  do: you ask, Ringkeeper finds the project, Claude does the work, and live changes wait
+  for you. Agents and routines are shown as the optional extras they are.
 
 ## 0.1.0-beta.16 (2026-11-04)
 

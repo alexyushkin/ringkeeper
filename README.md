@@ -4,8 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/alexyushkin/ringkeeper-releases?include_prereleases&label=release)](https://github.com/alexyushkin/ringkeeper-releases/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Ringkeeper lets one person run AI agents across many clients without ever
-switching connections.
+Ringkeeper lets one person get work done for many clients from one chat, without
+ever switching connections.
 
 If you work for many clients, each has its own database, Airtable, n8n, Vercel
 and email. In Ringkeeper you connect each client's tools once, attach them to
@@ -17,14 +17,18 @@ project's connections, and anything that changes live data waits for your OK.
 · Windows 10/11 · free and open source (MIT) · beta: SmartScreen will warn,
 click **More info › Run anyway**.
 
+![You ask, Ringkeeper finds the right project, Claude does the work, live changes wait for your OK, and it reports back](docs/images/how-it-works.svg)
+
 | Ask in plain words | Approve what matters | Undo for 7 days |
 | --- | --- | --- |
 | ![Home, with the Get started checklist and requests to try](docs/images/home.png) | ![A change to a production database waiting for approval](docs/images/approval.png) | ![A task's change with Revert](docs/images/undo.png) |
 
 - Connect once per client; one client's connections can never reach another's
-- Changes to live data wait for your approval, and can be reverted for 7 days
+- Changes to live data wait for your approval; database, Airtable and n8n changes
+  can be undone for 7 days
 - Runs on your computer with your own Claude: no account, no Ringkeeper server
-- Agents and routines: named helpers that run on a schedule or when something happens
+- Optional agents and routines: named helpers that run on a schedule or when something
+  happens, when you'd rather not ask
 - Approve from Telegram, Slack or Discord; back up and move to a new computer
 
 **Learn more:** [User guide](docs/README.md) · [Concepts](docs/concepts.md) ·

@@ -1,8 +1,13 @@
 # Concepts
 
-Ringkeeper has seven ideas. Once they click, the rest of the app follows.
+You ask, and Ringkeeper does the work for the right client. That's the whole app:
+agents and routines are extras, for work that should start without you. Once these
+eight ideas click, the rest follows.
 
-![How they fit](images/concepts.svg)
+![How a request flows: you ask, it finds the project, Claude does the work, live changes wait for your OK, and it reports back](images/how-it-works.svg)
+
+**Request.** What you ask, in your own words: typed or spoken, in the app or on
+Telegram. It starts a conversation, and this is how nearly everything begins.
 
 **Client.** Someone you do work for, like Acme Inc. Each client's projects and
 connections are kept apart from every other client's: a task for one client can
@@ -22,10 +27,10 @@ sees a key. A connection is marked production, staging or development.
 browser or files on this computer. You can give it to any client's projects, or
 to all of them.
 
-**Agent.** A named helper inside one project, with instructions it always
+**Agent.** Optional. A named helper inside one project, with instructions it always
 follows and only the connections you give it. *An agent is who does the work.*
 
-**Routine.** When an agent runs on its own: on a schedule, when something
+**Routine.** Optional. When an agent runs on its own: on a schedule, when something
 happens (an email, a file, a webhook), or when you press Run. *A routine is when
 it runs.*
 
@@ -40,7 +45,8 @@ Nothing happens until you approve it, and everything is logged.
 3. The task reads what it needs through the project's connections.
 4. A change to production is held. You see exactly what would run, and approve
    or deny it.
-5. The task goes on with the result and reports back in the conversation.
+5. The task goes on with the result and reports back in the conversation. Most
+   data changes can be undone for 7 days ([what can and can't](undo.md)).
 
 See also: [Connections](connections.md), [Agents and routines](agents-and-routines.md),
 [Approvals and safety](approvals.md).

@@ -89,6 +89,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/how_it_works.py" = ["E501", "RUF001"]  # a drawing: coordinates and a › in its text
 "tests/**" = ["S101", "S105", "S106", "PLR0911", "PLR0912", "PLR0915"]
 
 [tool.ruff.lint.flake8-tidy-imports]
