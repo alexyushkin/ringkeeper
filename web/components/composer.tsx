@@ -250,7 +250,7 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
       }}
     >
       <div
-        className={`relative flex items-end gap-2 rounded-2xl border bg-surface p-2 focus-within:border-accent ${dragging ? "border-accent bg-accent-soft" : "border-line"}`}
+        className={`relative flex items-end gap-2 rounded-2xl border bg-surface p-2 focus-within:border-accent ${dragging ? "border-accent bg-accent-soft" : "border-control"}`}
         onDragOver={(event) => {
           event.preventDefault();
           setDragging(true);

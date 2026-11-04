@@ -26,7 +26,7 @@ export function ScopeSwitcher() {
   // Every client, also those with only connections or nothing yet.
   const clients = scope.clients;
   const theirs = rows.filter((p) => !scope.client || sameClient(p.owner, scope.client));
-  const select = "min-h-9 rounded-lg border border-line bg-surface px-2 text-sm";
+  const select = "min-h-9 rounded-lg border border-control bg-surface px-2 text-sm";
   const current = scope.project ? `project:${scope.project}` : scope.client ? `client:${scope.client}` : "";
   const pinned = current !== "" && prefs.pins.includes(current);
   const named = (kind: string, list: string[]) => list.filter((key) => key.startsWith(`${kind}:`)).map((key) => key.slice(kind.length + 1));
