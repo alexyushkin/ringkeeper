@@ -1,0 +1,11 @@
+# What building the Intel Mac's source packages may use (uv reads this through
+# UV_BUILD_CONSTRAINT): pinned, like everything else, and at least two weeks old.
+maturin==1.15.0
+cffi==2.1.1
+pycparser==3.11
+setuptools==84.2.1
+setuptools-scm==10.3.4
+setuptools-rust==1.13.0
+wheel==0.48.0
+packaging==26.3
+hatchling==1.32.4
