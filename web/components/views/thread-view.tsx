@@ -12,6 +12,7 @@ import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Badge, Card, Details, Loading, timeAgo } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
+import { projectName } from "@/lib/client/scope";
 
 interface Message {
   id: string;
@@ -86,7 +87,7 @@ export function ThreadView({ id }: { id: string }) {
                   <ul className="space-y-1 text-sm">
                     {message.routing.output.tasks.map((task, index) => (
                       <li key={index}>
-                        <Badge>{task.project}</Badge> {task.outcome}{" "}
+                        <Badge>{projectName(task.project)}</Badge> {task.outcome}{" "}
                         <span className="text-xs text-muted">
                           ({task.kind}, {Math.round(task.confidence * 100)}% sure)
                         </span>

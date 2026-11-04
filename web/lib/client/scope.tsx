@@ -33,6 +33,7 @@ interface ScopeState extends Scope {
   query: { client?: string; project?: string };
   /** Every client, with or without projects, by name. */
   clients: Client[];
+  /** After a client or project is added or named. */
   reloadClients: () => void;
 }
 
@@ -40,6 +41,8 @@ const ScopeContext = createContext<ScopeState>({ ...EMPTY, set: () => undefined,
 
 // Slug -> name, for `place` and `clientName` outside components; kept by ScopeProvider.
 const NAMES = new Map<string, string>();
+// A project's slug -> its title, the same way.
+const TITLES = new Map<string, string>();
 
 function fromUrl(): Scope | null {
   const params = new URLSearchParams(window.location.search);
@@ -71,6 +74,9 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const clients = useApi<Client[]>("clients");
   NAMES.clear();
   for (const client of clients.data ?? []) NAMES.set(client.slug, client.name);
+  const projects = useApi<{ name: string; title: string }[]>("projects");
+  TITLES.clear();
+  for (const project of projects.data ?? []) TITLES.set(project.name, project.title);
 
   // The URL wins (a shared link), then what this browser remembers.
   useEffect(() => {
@@ -91,9 +97,13 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const query = { ...(scope.client ? { client: scope.client } : {}), ...(scope.project ? { project: scope.project } : {}) };
-  const value = { ...scope, set, query, clients: clients.data ?? [], reloadClients: clients.reload };
-  // Pages show clients by name (clientName): wait for the names the first time.
-  if (!clients.data && !clients.error) return null;
+  const reloadClients = () => {
+    clients.reload();
+    projects.reload();
+  };
+  const value = { ...scope, set, query, clients: clients.data ?? [], reloadClients };
+  // Pages show clients and projects by name: wait for the names the first time.
+  if ((!clients.data && !clients.error) || (!projects.data && !projects.error)) return null;
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
 }
 
@@ -106,10 +116,22 @@ export function clientName(slug: string | null | undefined): string {
   return slug ? (NAMES.get(slug) ?? slug) : "";
 }
 
-/** "client › project", or what's known of it, with the client's name. */
+/** For pages outside ScopeProvider (setup), which load the projects themselves. */
+export function rememberTitles(projects: { name: string; title: string }[] | null | undefined): void {
+  for (const project of projects ?? []) TITLES.set(project.name, project.title);
+}
+
+/** A project's title, from its slug. One that's gone (or still loading) reads like one nobody named. */
+export function projectName(slug: string | null | undefined): string {
+  if (!slug) return "";
+  const spoken = slug.replace(/-/g, " ");
+  return TITLES.get(slug) || `${spoken.charAt(0).toUpperCase()}${spoken.slice(1)}`;
+}
+
+/** "client › project", or what's known of it, by the names people read. */
 export function place(client: string | null | undefined, project: string | null | undefined): string {
-  if (client && project) return `${clientName(client)} › ${project}`;
-  return project ?? clientName(client);
+  if (client && project) return `${clientName(client)} › ${projectName(project)}`;
+  return project ? projectName(project) : clientName(client);
 }
 
 /** The slug of a name or slug, as the server matches clients. */

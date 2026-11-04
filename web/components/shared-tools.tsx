@@ -3,6 +3,7 @@
 import { LibraryCard, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { Alert, Empty, Loading, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
+import { projectName } from "@/lib/client/scope";
 
 /**
  * Two kinds of connection. A client's connection holds that client's account and
@@ -94,7 +95,7 @@ export function ProjectPicker({
                     .map((p) => (
                       <label key={p.name} className={`flex items-center gap-2 text-sm ${locked ? "opacity-50" : ""}`} title={locked ? "A client's connection is only for one client's projects" : undefined}>
                         <input type="checkbox" disabled={locked} checked={value.includes(p.name)} onChange={(e) => toggle(p.name, e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
-                        {p.name}
+                        {projectName(p.name)}
                       </label>
                     ))}
                 </div>

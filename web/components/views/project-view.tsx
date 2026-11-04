@@ -16,7 +16,7 @@ import { NewRoutine, RoutineList } from "@/components/routines";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref, projectHref, routineHref } from "@/lib/client/routes";
-import { clientName } from "@/lib/client/scope";
+import { clientName, projectName } from "@/lib/client/scope";
 import { AUTONOMY, SERVICE, slugify } from "@/lib/client/words";
 
 interface Bound {
@@ -126,6 +126,7 @@ export function ProjectView({ name }: { name: string }) {
   const connectionSummary = `${instances.length} connection${instances.length === 1 ? "" : "s"}${production ? ` · ${production} production` : ""}`;
   const about = project.data;
   const autonomy = AUTONOMY[about.autonomy]?.join(": ") ?? about.autonomy;
+  const title = about.title;
 
   const chosen = Object.keys(picked);
   const connectionsTab = (
@@ -148,7 +149,7 @@ export function ProjectView({ name }: { name: string }) {
       </p>
       {linking ? (
         <fieldset className="space-y-2 rounded-xl border border-line p-3">
-          <legend className="px-1 text-sm font-medium">Link to {name}</legend>
+          <legend className="px-1 text-sm font-medium">Link to {projectName(name)}</legend>
           {available.length ? (
             <>
               {available.map((c) => (
@@ -231,7 +232,7 @@ export function ProjectView({ name }: { name: string }) {
         />
       ) : connecting ? (
         <div className="space-y-3 rounded-xl border border-line p-3">
-          <h3 className="font-medium">New connection for {name}</h3>
+          <h3 className="font-medium">New connection for {projectName(name)}</h3>
           <Catalog
             client={about.owner}
             project={name}
@@ -319,10 +320,10 @@ export function ProjectView({ name }: { name: string }) {
           <Section id="project-settings" title="About this project" summary={about.description || undefined}>
             <ProjectForm existing={about} onSaved={() => project.reload()} />
           </Section>
-          <Section id="project-name" title="Name" summary={name} defaultOpen={false}>
+          <Section id="project-name" title="Short name" summary="Used in links and by the AI" defaultOpen={false}>
             <RenameProject name={name} />
           </Section>
-          <ConfirmButton question={`Remove ${name}? Its connections stay; only the link to them goes.`} confirm={`Remove ${name}`} onConfirm={remove}>
+          <ConfirmButton question={`Remove ${title}? Its connections stay; only the link to them goes.`} confirm={`Remove ${title}`} onConfirm={remove}>
             Remove project
           </ConfirmButton>
         </>
@@ -335,7 +336,7 @@ export function ProjectView({ name }: { name: string }) {
       <Link href="/projects" className="text-sm text-accent">
         ‹ Clients & projects
       </Link>
-      <h1 className="mt-2 mb-1 text-xl font-semibold">{name}</h1>
+      <h1 className="mt-2 mb-1 text-xl font-semibold">{title}</h1>
       <p className="mb-4 text-sm text-muted">
         {clientName(about.owner)}&apos;s project · {instances.length} connection{instances.length === 1 ? "" : "s"}
         {production ? ` (${production} production)` : ""}
@@ -346,8 +347,8 @@ export function ProjectView({ name }: { name: string }) {
   );
 }
 
-/** A new name everywhere the project is named; the old one stays as another name,
- * so asking by it still finds the project. */
+/** The short name links and the AI use (its title is in About this project). The old
+ * one stays as another name, so asking by it still finds the project. */
 function RenameProject({ name }: { name: string }) {
   const router = useRouter();
   const [typed, setTyped] = useState(name);
@@ -370,7 +371,7 @@ function RenameProject({ name }: { name: string }) {
 
   return (
     <div className="space-y-3">
-      <Field label="Name" value={typed} onChange={setTyped} hint={next && next !== typed ? `Saved as ${next}. Its tasks, approvals and links follow; the old name stays as another name.` : "Its tasks, approvals and links follow; the old name stays as another name."} />
+      <Field label="Short name" value={typed} onChange={setTyped} hint={next && next !== typed ? `Saved as ${next}. Its tasks, approvals and links follow; the old one stays as another name.` : "You rarely need this: the project's name is under About this project. Its tasks, approvals and links follow; the old one stays as another name."} />
       <Button kind="primary" busy={busy} disabled={!next || next === name} onClick={rename}>
         Rename
       </Button>
@@ -390,7 +391,7 @@ function ProjectRoutines({ project, paused, onPaused }: { project: string; pause
     <div className="space-y-4">
       {error ? <Alert>{error}</Alert> : null}
       <Toggle
-        label={`Pause ${project}'s routines`}
+        label={`Pause ${projectName(project)}'s routines`}
         checked={paused}
         onChange={(on) => void api(`projects/${project}/routines/paused`, { json: { paused: on } }).then(onPaused, () => setError("Couldn't change that. Try again in a moment."))}
         hint="None of this project's routines runs on its own while paused."

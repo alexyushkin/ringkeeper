@@ -10,6 +10,7 @@ import { clientName, useScope } from "@/lib/client/scope";
 import { AUTONOMY, slugify } from "@/lib/client/words";
 
 export interface ProjectData {
+  title: string;
   name: string;
   owner: string;
   description: string;
@@ -34,7 +35,7 @@ const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boo
 /** Create (no `existing`) or edit a project. */
 export function ProjectForm({ existing, client: forClient, onSaved }: { existing?: ProjectData; client?: string; onSaved: (name: string, saved?: ProjectSaved) => void }) {
   const [client, setClient] = useState(clientName(existing?.owner ?? forClient ?? ""));
-  const [title, setTitle] = useState(existing?.name ?? "");
+  const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [aliases, setAliases] = useState((existing?.aliases ?? []).join(", "));
   const [folder, setFolder] = useState(existing?.workspace_path ?? "");
@@ -71,6 +72,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
     setBusy(true);
     setError(null);
     const body = {
+      title: title.trim(),
       owner: client.trim(), // the client's name (or slug); a new one is created as typed
       description,
       aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean),
@@ -83,6 +85,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
     try {
       if (existing) {
         await api(`projects/${existing.name}`, { method: "PATCH", json: body });
+        scope.reloadClients(); // its name may be new
         onSaved(name);
       } else {
         const saved = await api<ProjectSaved>("projects", { json: { name, ...body } });
@@ -100,16 +103,14 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
     <form onSubmit={save} className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
       <Field label="Client" value={client} onChange={setClient} placeholder="General Informatics LLC" hint="Who this work is for. Projects of different clients never share a task." required />
-      {existing ? null : (
-        <Field
-          label="Project name"
-          value={title}
-          onChange={setTitle}
-          placeholder="geninfos.com website"
-          hint={name ? `Short name: ${name}` : "Lowercase letters, numbers and dashes are used as its short name."}
-          required
-        />
-      )}
+      <Field
+        label="Project name"
+        value={title}
+        onChange={setTitle}
+        placeholder="geninfos.com website"
+        hint={name ? "As it shows everywhere in Ringkeeper." : "Use at least one letter or number."}
+        required
+      />
       <Field label="Other names people use" value={aliases} onChange={setAliases} placeholder="geninfos site, the company site" hint="Separate with commas." />
       </div>
       <TextArea label="What is it?" value={description} onChange={setDescription} rows={2} hint="One or two sentences. This helps Ringkeeper send requests to the right project." />

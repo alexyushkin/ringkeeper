@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, LinkButton, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { connectionHref } from "@/lib/client/routes";
-import { clientName } from "@/lib/client/scope";
+import { clientName, projectName } from "@/lib/client/scope";
 
 interface Access {
   key: string;
@@ -279,7 +279,7 @@ export function GoogleSettings() {
                         {several ? ` · through ${appName(a.app)}` : ""}
                       </span>
                       <span className="block text-xs text-muted">
-                        {found?.projects.length ? `Used by ${found.projects.join(", ")}` : "Not linked to a project yet"}
+                        {found?.projects.length ? `Used by ${found.projects.map(projectName).join(", ")}` : "Not linked to a project yet"}
                       </span>
                       {found?.last_test_ok === false && found.last_test_message ? <span className="block text-xs text-bad">Last test failed: {found.last_test_message}</span> : null}
                     </li>

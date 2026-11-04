@@ -11,7 +11,7 @@ import { SharedTools } from "@/components/shared-tools";
 import { Alert, Badge, Button, Empty, EnvBadge, LinkButton, Loading, PageHeader, Section, Select } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
-import { clientName, sameClient, useScope } from "@/lib/client/scope";
+import { clientName, projectName, sameClient, useScope } from "@/lib/client/scope";
 import { ENVS } from "@/lib/client/words";
 
 const KINDS_OF_DATA: [string, string][] = ENVS.map(([key, label]) => [key, label]);
@@ -131,7 +131,7 @@ export default function ConnectionsPage() {
                   {c.last_test_ok === false && c.last_test_message ? <p className="mt-1 text-sm text-bad">{c.last_test_message}</p> : null}
                   <p className="mt-1 text-sm">
                     {(c.links ?? []).length ? (
-                      <span className="text-muted">Used by {(c.links ?? []).map((l) => (Object.keys(l.scope).length ? `${l.project} (${scopeText(l.scope, c.scope_fields)})` : l.project)).join(", ")}</span>
+                      <span className="text-muted">Used by {(c.links ?? []).map((l) => (Object.keys(l.scope).length ? `${projectName(l.project)} (${scopeText(l.scope, c.scope_fields)})` : projectName(l.project))).join(", ")}</span>
                     ) : (
                       <>
                         <span className="text-muted">Not linked yet · </span>

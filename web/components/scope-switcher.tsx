@@ -5,6 +5,7 @@ import { usePrefs } from "@/lib/client/prefs";
 import { sameClient, useScope } from "@/lib/client/scope";
 
 interface ProjectRow {
+  title: string;
   name: string;
   owner: string;
 }
@@ -86,7 +87,7 @@ export function ScopeSwitcher() {
           <optgroup label="Pinned">
             {firstProjects(prefs.pins).map((p) => (
               <option key={p.name} value={p.name}>
-                ★ {p.name}
+                ★ {p.title}
               </option>
             ))}
           </optgroup>
@@ -95,7 +96,7 @@ export function ScopeSwitcher() {
           <optgroup label="Recent">
             {firstProjects(recentOnly(prefs.recents)).map((p) => (
               <option key={p.name} value={p.name}>
-                {p.name}
+                {p.title}
               </option>
             ))}
           </optgroup>
@@ -103,7 +104,7 @@ export function ScopeSwitcher() {
         <optgroup label="All">
           {theirs.map((p) => (
             <option key={p.name} value={p.name}>
-              {p.name}
+              {p.title}
             </option>
           ))}
         </optgroup>

@@ -6,7 +6,7 @@ import type { ConnectionData } from "@/components/forms";
 import { SHARED_OWNER } from "@/components/shared-tools";
 import { Alert, Button, Field, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { clientName } from "@/lib/client/scope";
+import { clientName, projectName } from "@/lib/client/scope";
 import { slugify } from "@/lib/client/words";
 
 /** A connection as people read it: its title, else its name. */
@@ -312,7 +312,7 @@ export function ConnectionForm({
       {service.note ? <p className="text-sm text-muted">{service.note}</p> : null}
       {error ? <Alert>{error}</Alert> : null}
       <Button type="submit" kind="primary" busy={busy} disabled={!title.trim() || !env || !filled || (!shared && !owner.trim()) || (!!service.address && !service.address.optional && !address.trim())}>
-        {project ? `Add and link to ${project}` : "Add connection"}
+        {project ? `Add and link to ${projectName(project)}` : "Add connection"}
       </Button>
     </form>
   );

@@ -7,7 +7,7 @@ import { useState } from "react";
 
 import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { place } from "@/lib/client/scope";
+import { place, projectName } from "@/lib/client/scope";
 import { taskHref } from "@/lib/client/routes";
 import { KIND } from "@/lib/client/words";
 
@@ -136,7 +136,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
             </span>
             {destructive || decision.tool === "revert_change" ? null : (
               <Button kind="ghost" busy={busy === "trust"} onClick={() => void trustAndApprove()}>
-                Approve, and trust this in {decision.project} for 1 hour
+                Approve, and trust this in {projectName(decision.project)} for 1 hour
               </Button>
             )}
           </div>
@@ -222,7 +222,7 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
     return (
       <div className="mt-3 space-y-3">
         <p className="text-sm">
-          This would use <strong>{production}</strong> in {project}: live client data. Go ahead?
+          This would use <strong>{production}</strong> in {projectName(project)}: live client data. Go ahead?
         </p>
         {task.outcome ? <p className="text-sm text-muted">{task.outcome}</p> : null}
         <div className="flex flex-wrap gap-2">
@@ -253,7 +253,7 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
       {rest.length ? (
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-48 flex-1">
-            <Select label="Another project" value={other} onChange={setOther} options={[["", "Choose…"], ...rest.map((name): [string, string] => [name, name])]} />
+            <Select label="Another project" value={other} onChange={setOther} options={[["", "Choose…"], ...rest.map((name): [string, string] => [name, projectName(name)])]} />
           </div>
           <Button disabled={!other} busy={busy === other} onClick={() => onAnswer(other)}>
             Use it

@@ -6,7 +6,7 @@ import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
-import { useScope } from "@/lib/client/scope";
+import { projectName, useScope } from "@/lib/client/scope";
 
 const STATUSES: [string, string][] = [
   ["", "Any status"],
@@ -66,7 +66,7 @@ export default function TasksPage() {
         {tasks.data?.map((task) => (
           <div key={task.id} className="flex items-start gap-3">
             <span className="pt-5">
-              <SelectBox checked={pick.has(task.id)} onChange={() => pick.toggle(task.id)} label={`Select the ${task.project} task`} />
+              <SelectBox checked={pick.has(task.id)} onChange={() => pick.toggle(task.id)} label={`Select the ${projectName(task.project)} task`} />
             </span>
             <div className="min-w-0 flex-1">
               <TaskCardView task={task} />

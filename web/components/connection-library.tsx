@@ -11,7 +11,7 @@ import { McpTools } from "@/components/mcp-tools";
 import { Alert, Badge, Button, ConfirmButton, Details, EnvBadge, Field, LinkButton, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref, projectHref } from "@/lib/client/routes";
-import { clientName, sameClient, useScope } from "@/lib/client/scope";
+import { clientName, projectName, sameClient, useScope } from "@/lib/client/scope";
 import { SERVICE } from "@/lib/client/words";
 
 /** A connection library: one client's connections, each linked to some of their
@@ -92,7 +92,7 @@ function LinkRow({ connection, link, onChange }: { connection: LibraryConnection
     <li className="space-y-2 rounded-xl bg-sunken p-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Link href={projectHref(link.project)} className="font-medium text-accent">
-          {link.project}
+          {projectName(link.project)}
         </Link>
         <span className="text-muted">{scopeText(link.scope, fields)}</span>
         {link.is_default ? <Badge>default</Badge> : null}
@@ -179,7 +179,7 @@ export function LinkToProjects({ connection, projects, onDone }: { connection: L
               }
               className="size-4 accent-[var(--color-accent)]"
             />
-            {project}
+            {projectName(project)}
           </label>
           {project in picked && fields.length ? (
             <div className="ml-6">
@@ -247,7 +247,7 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
     if (value.startsWith("client:")) onSave({ except_clients: [...clients, value.slice(7)] });
     else if (value.startsWith("project:")) onSave({ except_projects: [...projects, value.slice(8)] });
   }
-  const left = [...clients.map((c) => ({ key: `client:${c}`, label: `${clientName(c)} (client)` })), ...projects.map((p) => ({ key: `project:${p}`, label: p }))];
+  const left = [...clients.map((c) => ({ key: `client:${c}`, label: `${clientName(c)} (client)` })), ...projects.map((p) => ({ key: `project:${p}`, label: projectName(p) }))];
   return (
     <div className="space-y-2">
       {left.length ? (
@@ -279,7 +279,7 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
           options={[
             ["", left.length ? "Leave out another client or project…" : "Leave out a client or a project…"],
             ...clientChoices.map((c): [string, string] => [`client:${c}`, `${clientName(c)} (client: all their projects, new ones too)`]),
-            ...projectChoices.map((p): [string, string] => [`project:${p}`, p]),
+            ...projectChoices.map((p): [string, string] => [`project:${p}`, projectName(p)]),
           ]}
         />
       ) : null}
@@ -372,7 +372,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
               <span key={link.project}>
                 {i ? ", " : ""}
                 <Link href={projectHref(link.project)} className="text-accent">
-                  {link.project}
+                  {projectName(link.project)}
                 </Link>
                 {Object.keys(link.scope).length ? <span className="text-muted"> ({scopeText(link.scope, connection.scope_fields)})</span> : null}
               </span>
