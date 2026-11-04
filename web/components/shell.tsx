@@ -158,12 +158,12 @@ export function Shell({ children }: { children: ReactNode }) {
         <button
           type="button"
           onClick={() => setNarrow(!narrow)}
-          title={narrow ? "Show the menu's names" : undefined}
-          aria-label={narrow ? "Show the menu's names" : "Icons only"}
-          className={`mt-auto flex min-h-10 items-center gap-3 rounded-xl text-sm text-muted hover:bg-sunken hover:text-ink ${narrow ? "w-10 justify-center" : "px-3"}`}
+          title={narrow ? "Show the menu" : "Hide the menu"}
+          aria-label={narrow ? "Show the menu" : "Hide the menu"}
+          aria-expanded={!narrow}
+          className="mt-auto grid size-10 place-items-center rounded-xl text-muted hover:bg-sunken hover:text-ink"
         >
-          <Icon d={narrow ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} small />
-          {narrow ? null : "Icons only"}
+          <Icon d="M5 5h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM9 5v14" small />
         </button>
       </aside>
 
