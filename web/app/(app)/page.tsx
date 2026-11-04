@@ -7,10 +7,11 @@ import { useState } from "react";
 import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
+import { ScopeNote } from "@/components/scope-switcher";
 import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
-import { useScope } from "@/lib/client/scope";
+import { place, useScope } from "@/lib/client/scope";
 import { threadHref } from "@/lib/client/routes";
 
 interface Thread {
@@ -46,13 +47,14 @@ export default function Home() {
       <div className="mt-4">
         <FirstSteps />
       </div>
-      <DigestCard />
+      <DigestCard client={scope.client || undefined} />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
+      <ScopeNote />
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="conversations" />
       <BulkBar kind="thread" ids={[...pick.selected]} archivedView={archived} onDone={threads.reload} onClear={pick.clear} />
       {threads.error ? <Alert>{threads.error}</Alert> : null}
       {threads.loading && !threads.data ? <Loading /> : null}
-      {threads.data?.length === 0 ? <Empty>{query || archived ? "Nothing matches. Clear the search, or switch Archived off." : "Nothing yet. Type or say what you need above, and the conversation shows up here."}</Empty> : null}
+      {threads.data?.length === 0 ? <Empty>{query || archived ? "Nothing matches. Clear the search, or switch Archived off." : scope.client || scope.project ? `No conversations for ${place(scope.client, scope.project)} yet.` : "Nothing yet. Type or say what you need above, and the conversation shows up here."}</Empty> : null}
       <ul className="space-y-2">
         {threads.data?.map((thread) => {
           const running = (thread.tasks.running ?? 0) + (thread.tasks.queued ?? 0);

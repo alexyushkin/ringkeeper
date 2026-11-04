@@ -7,6 +7,7 @@ import Link from "@/components/link";
 import { Alert, Badge, Button, CompactRow, ConfirmButton, Empty, Field, Loading, Select, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
+import { ScopeNote } from "@/components/scope-switcher";
 import { place, useScope } from "@/lib/client/scope";
 import { AUTONOMY } from "@/lib/client/words";
 
@@ -153,6 +154,7 @@ export function AgentDirectory() {
   useEffect(() => setAdding(new URLSearchParams(window.location.search).has("new")), []);
   return (
     <div className="space-y-3">
+      <ScopeNote />
       {adding ? (
         <NewAgent
           onSaved={() => {
