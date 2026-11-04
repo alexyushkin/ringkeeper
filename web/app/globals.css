@@ -87,3 +87,9 @@ pre,
 code {
   font-family: var(--font-mono);
 }
+
+/* Beside long text a flex row would squeeze them, each to a different size. */
+input[type="checkbox"],
+input[type="radio"] {
+  flex-shrink: 0;
+}
