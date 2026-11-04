@@ -92,7 +92,7 @@ function NameThem({ clients, onDone }: { clients: Client[]; onDone: () => void }
   return (
     <Card className="mb-6 space-y-3">
       <h2 className="font-semibold">Give your clients their full names</h2>
-      <p className="text-sm text-muted">These are named by their short form. Write each the way it should show, like “Seaside Windows &amp; Doors”. Links and IDs stay the same.</p>
+      <p className="text-sm text-muted">These are named by their short form. Write each the way it should show, like “Acme Windows &amp; Doors”. Links and IDs stay the same.</p>
       {clients.map((client) => (
         <Field key={client.slug} label={client.slug} value={names[client.slug] ?? ""} onChange={(value) => setNames((all) => ({ ...all, [client.slug]: value }))} placeholder={client.slug} />
       ))}

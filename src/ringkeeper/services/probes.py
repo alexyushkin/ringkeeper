@@ -120,7 +120,8 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         if expires:
             instance.config = {**(instance.config or {}), "expires_at": expires}
         admin_audit.record(
-            session, "connection.test", f"tested {name}: {'ok' if result.ok else 'failed'}",
+            session, "connection.test",
+            f"tested {instance.title or name}: {'ok' if result.ok else 'failed'}",
             by=by, instance=name, details={"ok": result.ok},
         )  # fmt: skip
     return result
