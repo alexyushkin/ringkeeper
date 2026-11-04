@@ -220,7 +220,7 @@ export function Field({ label, value, onChange, type = "text", placeholder, hint
         inputMode={inputMode}
         spellCheck={type === "password" ? false : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-base outline-none focus:border-accent"
+        className="min-h-11 w-full rounded-xl border border-control bg-surface px-3 text-base outline-none focus:border-accent"
       />
       {hint ? <p className="text-xs text-muted">{hint}</p> : null}
     </div>
@@ -239,7 +239,7 @@ export function TextArea({ label, value, onChange, rows = 3, hint }: { label: st
         rows={rows}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-base outline-none focus:border-accent"
+        className="w-full rounded-xl border border-control bg-surface px-3 py-2 text-base outline-none focus:border-accent"
       />
       {hint ? <p className="text-xs text-muted">{hint}</p> : null}
     </div>
@@ -257,7 +257,7 @@ export function Select({ label, value, onChange, options, hint }: { label: strin
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-base"
+        className="min-h-11 w-full rounded-xl border border-control bg-surface px-3 text-base"
       >
         {options.map(([v, text]) => (
           <option key={v} value={v}>

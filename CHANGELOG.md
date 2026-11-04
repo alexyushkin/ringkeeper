@@ -12,6 +12,8 @@ publishes it as the release notes and the app shows it with the update.
 - **Client connections add up.** A client now counts your own tools its projects use,
   and its page lists them, so a project with a connection no longer sits under
   "0 connections".
+- **A clearer light theme.** Cards stand out from the page, quiet text is darker, and
+  boxes you type in or choose from have a border you can see. In the dark theme too.
 - **New projects reach the switcher.** The switcher and the client counts refresh as you
   move between pages and come back to the window, without restarting the app.
 
