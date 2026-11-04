@@ -423,6 +423,17 @@ def web_components() -> list[dict]:
     return sorted(seen.values(), key=lambda c: (c["name"], c["version"]))
 
 
+# Copied into web/lib/client/logos.ts rather than installed, so npm doesn't list it.
+SIMPLE_ICONS_VERSION = "16.35.0"
+SIMPLE_ICONS_NOTICE = """\
+The service logos come from Simple Icons, https://simpleicons.org, released under
+CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/).
+
+CC0 grants no trademark rights. Each logo is a trademark of its owner, and is shown
+only to name that owner's service. Ringkeeper isn't endorsed by those companies.
+"""
+
+
 def write_notices(python_root: Path, mingit_version: str | None) -> None:
     notices = OUT / "notices"
     remove(notices)
@@ -495,6 +506,15 @@ def write_notices(python_root: Path, mingit_version: str | None) -> None:
     components += python_components(site)
     components += python_components(VOICE_LICENSES, "Python package, downloaded for voice")
     components += rust_components() + web_components()
+    components.append(
+        {
+            "name": "Simple Icons (the service logos)",
+            "version": SIMPLE_ICONS_VERSION,
+            "license": "CC0-1.0",
+            "kind": "web asset",
+            "texts": [("Simple Icons", SIMPLE_ICONS_NOTICE)],
+        }
+    )
 
     lines = [
         "Ringkeeper: third-party notices",
