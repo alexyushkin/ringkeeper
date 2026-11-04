@@ -194,13 +194,13 @@ function ListView({ list }: { list: List }) {
 
 // Code first (nothing inside it is Markdown), then links, then emphasis.
 const INLINE =
-  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?\s*\)|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])|\*\*(?=\S)([\s\S]*?\S)\*\*|(?<![\w])__(?=\S)([\s\S]*?\S)__(?![\w])|~~(?=\S)([\s\S]*?\S)~~|\*(?=[^\s*])([\s\S]*?[^\s*])\*|(?<![\w])_(?=[^\s_])([\s\S]*?[^\s_])_(?![\w])/g;
+  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?\s*\)|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])|\*\*(?=\S)([\s\S]*?\S)\*\*|__(?=\S)([\s\S]*?\S)__(?![\w])|~~(?=\S)([\s\S]*?\S)~~|\*(?=[^\s*])([\s\S]*?[^\s*])\*|_(?=[^\s_])([\s\S]*?[^\s_])_(?![\w])/g;
 
 /** The words alone, for a preview cut to a few lines. */
 export function plainText(text: string): string {
   const flat = (part: string): string =>
-    part.replace(INLINE, (_whole, _ticks, code?: string, label?: string, _url?: string, bare?: string, bold?: string, bold2?: string, strike?: string, em?: string, em2?: string) =>
-      code ?? bare ?? flat(label ?? bold ?? bold2 ?? strike ?? em ?? em2 ?? ""),
+    part.replace(INLINE, (whole: string, _ticks, code?: string, label?: string, _url?: string, bare?: string, bold?: string, bold2?: string, strike?: string, em?: string, em2?: string, at = 0) =>
+      (bold2 !== undefined || em2 !== undefined) && insideWord(part, at) ? whole : (code ?? bare ?? flat(label ?? bold ?? bold2 ?? strike ?? em ?? em2 ?? "")),
     );
   const blocks = text
     .replace(/^\s*```.*$/gm, "")
@@ -208,6 +208,11 @@ export function plainText(text: string): string {
     .replace(/^\s{0,3}>\s?/gm, "")
     .replace(/^\s*[-*+]\s+/gm, "• ");
   return flat(blocks).replace(/\s+/g, " ").trim();
+}
+
+/** `_` and `__` only open emphasis at the start of a word: snake_case stays as it is. */
+function insideWord(text: string, at: number): boolean {
+  return at > 0 && /\w/.test(text.charAt(at - 1));
 }
 
 function safeHref(url: string): string | null {
@@ -222,7 +227,9 @@ export function inline(text: string): ReactNode[] {
     if (at > last) out.push(text.slice(last, at));
     const key = out.length;
     const [whole, , code, label, url, bare, bold, bold2, strike, em, em2] = match;
-    if (code !== undefined) {
+    if ((bold2 !== undefined || em2 !== undefined) && insideWord(text, at)) {
+      out.push(whole);
+    } else if (code !== undefined) {
       out.push(
         <code key={key} className="rounded bg-sunken px-1 font-mono text-[0.9em]">
           {code.replace(/^ (.*) $/, "$1")}

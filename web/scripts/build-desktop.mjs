@@ -7,7 +7,7 @@
 //
 //   node scripts/build-desktop.mjs      ->  web/.desktop/out
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,5 +46,22 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 if (!existsSync(join(out, "out", "index.html"))) {
   console.error("the export has no index.html");
   process.exit(1);
+}
+// The oldest Mac we support has Safari 15's engine. One thing it can't parse stops the whole
+// page at the "Loading" in the HTML, with no error anyone sees, so a build with any fails here.
+const TOO_NEW = [
+  [/\(\?<[=!]/, "a regular expression lookbehind"],
+  [/\bstatic\s*\{/, "a class static block"],
+];
+const scripts = readdirSync(join(out, "out", "_next", "static"), { recursive: true }).filter((f) => String(f).endsWith(".js"));
+for (const script of scripts) {
+  const text = readFileSync(join(out, "out", "_next", "static", String(script)), "utf8");
+  for (const [pattern, what] of TOO_NEW) {
+    const found = text.match(pattern);
+    if (found) {
+      console.error(`${script} has ${what}, which macOS 12 can't parse: ...${text.slice(Math.max(0, found.index - 40), found.index + 40)}...`);
+      process.exit(1);
+    }
+  }
 }
 console.log(`desktop web files: ${join(out, "out")}`);
