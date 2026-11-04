@@ -34,11 +34,15 @@ turned back on without reinstalling Windows.
 - **Uninstall:** Settings → Apps → Ringkeeper → Uninstall. Your data stays
   unless you tick **Also delete my data**; your project folders always stay.
 
-## Mac (Apple Silicon), experimental
+## Mac, experimental
 
 **Experimental: unsigned, not yet tested on a real Mac — reports welcome.**
-Each release also has `Ringkeeper_<version>_aarch64.dmg` for Macs with Apple
-Silicon (M1 or newer). There's no build for Intel Macs.
+Each release also has two Mac downloads, for macOS 12 or newer. To see which
+is yours, open the Apple menu › **About This Mac**:
+
+- **Chip: Apple M1** or newer: `Ringkeeper_<version>_aarch64.dmg`
+- **Processor: Intel**: `Ringkeeper_<version>_x64.dmg`. Voice isn't available on
+  Intel Macs, because the speech engine no longer supports them. Type your requests instead.
 
 1. Download the `.dmg` from the
    [latest release](https://github.com/alexyushkin/ringkeeper-releases/releases/latest),

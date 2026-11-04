@@ -52,12 +52,15 @@ def test_the_notes_are_that_version_s_entry_only(release: ModuleType) -> None:
 def test_latest_json_points_at_the_signed_files(release: ModuleType, tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     (dist / "windows").mkdir(parents=True)
-    (dist / "macos").mkdir()
+    (dist / "macos-aarch64").mkdir()
+    (dist / "macos-x64").mkdir()
     setup = dist / "windows" / "Ringkeeper_0.1.1_x64-setup.exe"
     setup.write_bytes(b"installer")
     (dist / "windows" / f"{setup.name}.sig").write_text("c2lnbmF0dXJl\n")
-    (dist / "macos" / "Ringkeeper.app.tar.gz").write_bytes(b"app")
-    (dist / "macos" / "Ringkeeper.app.tar.gz.sig").write_text("bWFj")
+    (dist / "macos-aarch64" / "Ringkeeper_aarch64.app.tar.gz").write_bytes(b"app")
+    (dist / "macos-aarch64" / "Ringkeeper_aarch64.app.tar.gz.sig").write_text("bWFj")
+    (dist / "macos-x64" / "Ringkeeper_x64.app.tar.gz").write_bytes(b"app")
+    (dist / "macos-x64" / "Ringkeeper_x64.app.tar.gz.sig").write_text("aW50ZWw=")
 
     base = "https://github.com/alexyushkin/ringkeeper-releases/releases/download/v0.1.1"
     made = release.manifest("0.1.1", dist, base)
@@ -67,7 +70,14 @@ def test_latest_json_points_at_the_signed_files(release: ModuleType, tmp_path: P
         "signature": "c2lnbmF0dXJl",
         "url": f"{base}/Ringkeeper_0.1.1_x64-setup.exe",
     }
-    assert made["platforms"]["darwin-aarch64"]["url"] == f"{base}/Ringkeeper.app.tar.gz"
+    assert made["platforms"]["darwin-aarch64"] == {
+        "signature": "bWFj",
+        "url": f"{base}/Ringkeeper_aarch64.app.tar.gz",
+    }
+    assert made["platforms"]["darwin-x86_64"] == {
+        "signature": "aW50ZWw=",
+        "url": f"{base}/Ringkeeper_x64.app.tar.gz",
+    }
 
 
 def test_an_earlier_version_s_installer_left_over_is_ignored(

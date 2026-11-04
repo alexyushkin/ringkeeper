@@ -6,7 +6,8 @@
             and the stt modules, and the Claude Code CLI that comes inside the
             Agent SDK, unmodified; plus voice-packages.json, the voice extra's
             wheels (address, size, hash), which the app downloads only when
-            voice is first used (ringkeeper.voice_engine)
+            voice is first used (ringkeeper.voice_engine). Not on Intel Macs:
+            onnxruntime has no build for them, and the app says voice isn't there
 - web/      the static web app (web/scripts/build-desktop.mjs)
 - mingit/   git for the workers, on Windows (fetch-mingit.ps1)
 - notices/  third-party license notices, shown in Settings > About
@@ -18,6 +19,7 @@ uv.lock with hashes, MinGit by checksum.
 import argparse
 import json
 import os
+import platform as host
 import re
 import shutil
 import subprocess
@@ -34,6 +36,7 @@ OUT = SHELL / "resources"
 # The voice wheels' license files, for the notices (beside the bundle, not in it).
 VOICE_LICENSES = SHELL / "target" / "voice-licenses"
 WINDOWS = sys.platform == "win32"
+INTEL_MAC = sys.platform == "darwin" and host.machine() == "x86_64"
 
 # Parts of the standard install the app never uses.
 PYTHON_TRIM = [
@@ -271,6 +274,10 @@ def build_python(work: Path) -> Path:
     )
     # What the app and its workers import, from the trimmed install.
     run(python_exe(target), "-I", "-c", IMPORT_CHECK)
+    if INTEL_MAC:
+        remove(VOICE_LICENSES)
+        VOICE_LICENSES.mkdir(parents=True)
+        return target
     # Voice: the list of its wheels, then the app's own download of them (from
     # PyPI, as a user's would be), checked by importing the engine.
     listed = voice_wheels(work, target, base)

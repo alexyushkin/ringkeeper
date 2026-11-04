@@ -15,8 +15,9 @@ Installers and update files go to a separate public repository,
   - `Ringkeeper_<version>_x64-setup.exe`: the Windows installer
   - `Ringkeeper_<version>_x64-setup.exe.sig`: its updater signature
   - `latest.json`: what installed apps read to find updates
-  - on macOS builds: `Ringkeeper_<version>_aarch64.dmg`,
-    `Ringkeeper.app.tar.gz` and its `.sig` (unsigned, not advertised)
+  - on macOS builds, for Apple Silicon and Intel: `Ringkeeper_<version>_aarch64.dmg`
+    and `Ringkeeper_<version>_x64.dmg`, with `Ringkeeper_aarch64.app.tar.gz` and
+    `Ringkeeper_x64.app.tar.gz` and their `.sig` (unsigned, not advertised)
 
 Installed apps check
 `https://github.com/alexyushkin/ringkeeper-releases/releases/latest/download/latest.json`.

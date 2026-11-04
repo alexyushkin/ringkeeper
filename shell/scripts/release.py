@@ -24,7 +24,8 @@ SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$")
 # The updater's names for the platforms, and which built file each one updates from.
 PLATFORMS = {
     "windows-x86_64": "-setup.exe",
-    "darwin-aarch64": ".app.tar.gz",
+    "darwin-aarch64": "_aarch64.app.tar.gz",
+    "darwin-x86_64": "_x64.app.tar.gz",
 }
 
 
