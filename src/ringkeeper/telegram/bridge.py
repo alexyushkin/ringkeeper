@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import voice_local
 from ringkeeper.channels import telegram_state
@@ -54,7 +54,7 @@ from ringkeeper.models import (
     VoiceConfirmation,
 )
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, threads
+from ringkeeper.services import inbox, threads, titles
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.storage.sql import insert
 from ringkeeper.telegram import text as telegram_text
@@ -102,7 +102,7 @@ def callback_data(decision: Decision, index: int) -> str:
 def render(decision: Decision, settings: Settings) -> str:
     head = [KIND_LABELS[decision.kind]]
     if decision.project:
-        head.append(decision.project)
+        head.append(titles.of(object_session(decision), decision.project))
     if decision.instance:
         head.append(decision.instance)
     shown = telegram_text.body(
@@ -118,13 +118,17 @@ def render(decision: Decision, settings: Settings) -> str:
     return scrub("\n".join(lines))
 
 
+def _label(decision: Decision, choice: str) -> str:
+    return BUTTON_LABELS.get(choice, inbox.chosen(decision, choice))
+
+
 def keyboard(decision: Decision) -> dict[str, Any]:
     if decision.kind is DecisionKind.QUESTION:
         return {"force_reply": True, "input_field_placeholder": "Your answer"}
     # A write that deletes or drops data can only be denied here (approve it in the app).
     blocked = {"approve"} if inbox.destructive_reason(decision) else set[str]()
     buttons = [
-        {"text": BUTTON_LABELS.get(option, option), "callback_data": callback_data(decision, i)}
+        {"text": _label(decision, option), "callback_data": callback_data(decision, i)}
         for i, option in enumerate(inbox.options(decision))
         if option not in blocked
     ]
@@ -144,7 +148,7 @@ def outcome_line(decision: Decision) -> str:
         case DecisionStatus.FAILED:
             return f"✖ Approved by {who}, but it failed. Open Ringkeeper to see why."
         case DecisionStatus.ANSWERED if choice:
-            return f"✔ Answered by {who}: {BUTTON_LABELS.get(choice, choice)}"
+            return f"✔ Answered by {who}: {_label(decision, choice)}"
         case _:
             return f"✔ {decision_status(decision.status).capitalize()} by {who}."
 
@@ -162,7 +166,7 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
     for ident in routing.get("tasks", []):
         task = session.get(Task, ident)
         if task is not None:
-            lines.append(f"→ {task.project}: started")
+            lines.append(f"→ {titles.of(session, task.project)}: started")
     for _ident in routing.get("decisions", []):
         lines.append("? I need to know which project. I've sent that question separately.")
     if not lines:
@@ -178,7 +182,7 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
 
 def finished_text(task: Task) -> str:
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
-    return f"{mark} {task.project}: {task_status(task.status)}"
+    return f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
 
 
 def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
@@ -187,7 +191,8 @@ def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
     summary = (task.summary or task.error or "").strip()
     if len(summary) > limit:
         summary = summary[: limit - 1] + "…"
-    head = f"{mark} Routine {routine.name} · {task.project}: {task_status(task.status)}"
+    title = titles.of(object_session(task), task.project)
+    head = f"{mark} Routine {routine.name} · {title}: {task_status(task.status)}"
     return f"{head}\n{summary}" if summary else head
 
 

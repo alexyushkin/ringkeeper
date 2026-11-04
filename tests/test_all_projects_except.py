@@ -126,7 +126,7 @@ def test_the_connection_says_what_it_reaches(owner: TestClient) -> None:
     )
     assert changed.status_code == 200, changed.text
     body = changed.json()
-    assert body["reach"] == "All projects except Acme (client), seaside-messages"
+    assert body["reach"] == "All projects except Acme (client), Seaside messages"
     assert body["projects"] == []
 
     # Turning "all projects" off drops the exceptions with it.

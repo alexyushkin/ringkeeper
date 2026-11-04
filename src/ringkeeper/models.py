@@ -206,6 +206,8 @@ class Project(TimestampMixin, Base):
         primary_key=True, server_default=text("gen_random_uuid()")
     )
     name: Mapped[str] = mapped_column(String(63), unique=True)
+    # As people read it (services.titles); `name` is for URLs, IDs and the AI.
+    title: Mapped[str] = mapped_column(Text, server_default="")
     owner: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, server_default="")
     aliases: Mapped[list[str]] = mapped_column(TextList, server_default="{}")

@@ -134,7 +134,9 @@ def suggestions(session: Session, settings: Settings) -> list[str]:
                 continue
             seen_services.add(instance.type)
             picked.append(
-                BY_SERVICE[instance.type].format(project=project.name, connection=instance.name)
+                BY_SERVICE[instance.type].format(
+                    project=project.title, connection=instance.title or instance.name
+                )
             )
             break
         if len(picked) >= MAX_SUGGESTIONS - 1:
@@ -143,7 +145,7 @@ def suggestions(session: Session, settings: Settings) -> list[str]:
         unlisted = next(
             (p for p in found if not any(not b.instance.shared for b in p.bindings)), found[0]
         )
-        picked.append(FOLDER.format(project=unlisted.name))
+        picked.append(FOLDER.format(project=unlisted.title))
     if session.scalar(select(func.count()).select_from(Task)):
         picked.append(TASKS)
     return picked[:MAX_SUGGESTIONS]

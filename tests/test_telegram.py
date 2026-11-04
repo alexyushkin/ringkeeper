@@ -98,7 +98,7 @@ def test_new_decisions_go_to_allowed_chats_as_short_scrubbed_summaries(
 
     assert {m["chat_id"] for m in telegram.sent} == {ME}
     write_msg, plan_msg = telegram.sent
-    assert write_msg["text"].startswith("Approval · acme-web · acme-supabase-prod\n")
+    assert write_msg["text"].startswith("Approval · Acme web · acme-supabase-prod\n")
     assert "A database change on acme-supabase-prod: waits for your OK" in write_msg["text"]
     for text in (write_msg["text"], plan_msg["text"]):
         assert "UPDATE" not in text
@@ -136,7 +136,7 @@ def test_route_decisions_get_one_button_per_candidate(telegram: FakeTelegram) ->
     bridge().send_new()
     [sent] = telegram.sent
     labels = [b["text"] for row in sent["reply_markup"]["inline_keyboard"] for b in row]
-    assert labels == ["acme-web", "globex-portal", "None of these"]
+    assert labels == ["Acme web", "Globex portal", "None of these"]
 
     telegram.press(callback_data(decision(route_id), 1))
     bridge().poll_once(0)

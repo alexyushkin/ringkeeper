@@ -156,7 +156,7 @@ def test_notices_say_what_the_router_did_and_when_tasks_end(
         session.scalars(select(Task)).one()  # one task was made
 
     assert bridge.send_notices() == 1
-    assert telegram.sent[-1]["text"] == ("Your request:\n→ acme-web: started")
+    assert telegram.sent[-1]["text"] == ("Your request:\n→ Acme web: started")
     assert "invoice" not in telegram.sent[-1]["text"]  # never the worker prompt
     assert bridge.send_notices() == 0  # once only
     with session_scope() as session:
@@ -164,7 +164,7 @@ def test_notices_say_what_the_router_did_and_when_tasks_end(
             update(Task).values(status=TaskStatus.SUCCEEDED, finished_at=datetime.now(UTC))
         )
     assert bridge.send_notices() == 1
-    assert telegram.sent[-1]["text"] == "✔ acme-web: done"
+    assert telegram.sent[-1]["text"] == "✔ Acme web: done"
     assert bridge.send_notices() == 0
 
 
@@ -246,6 +246,6 @@ def test_a_routine_set_to_send_a_summary_sends_it_once(
         started.task.summary = "3 new leads; nothing failed."
     assert bridge.send_new() == 1
     assert telegram.sent[-1]["text"] == (
-        "✔ Routine Morning digest · acme-web: done\n3 new leads; nothing failed."
+        "✔ Routine Morning digest · Acme web: done\n3 new leads; nothing failed."
     )
     assert bridge.send_new() == 0

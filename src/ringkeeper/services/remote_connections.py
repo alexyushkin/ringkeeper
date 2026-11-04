@@ -107,10 +107,11 @@ def check_new(session: Session, new: NewConnection) -> None:
     if instances.find_instance(session, new.name) is not None:
         raise RuleViolationError(f"A connection named '{new.name}' already exists.")
     if new.project is not None:
-        owner = projects.get_project(session, new.project).owner
+        found = projects.get_project(session, new.project)
+        owner = found.owner
         if not new.shared and not bindings.same_client(owner, new.owner):
             raise RuleViolationError(
-                f"'{new.project}' is {owner}'s project; this connection is for {new.owner}."
+                f"'{found.title}' is {owner}'s project; this connection is for {new.owner}."
             )
 
 

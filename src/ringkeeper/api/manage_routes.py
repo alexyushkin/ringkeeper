@@ -75,6 +75,7 @@ from ringkeeper.services import (
     secrets_in,
     subscription,
     tasks,
+    titles,
     workspaces,
 )
 from ringkeeper.services.runtime import RuntimeIn, current_settings
@@ -280,6 +281,7 @@ def detect_telegram_chats(
 
 
 class ProjectPatch(Input):
+    title: Title | None = None
     owner: NonEmpty | None = None
     description: str | None = None
     aliases: CleanList | None = None
@@ -324,7 +326,7 @@ def create_project(data: ProjectIn, session: WriteSessionDep) -> dict[str, Any]:
         _check_workspace(data.workspace_path)
     project = projects.create_project(session, data)
     admin_audit.record(
-        session, "project.create", f"created project {project.name}", by=OWNER,
+        session, "project.create", f"created project {project.title}", by=OWNER,
         project=project.name,
     )  # fmt: skip
     if path is None:
@@ -353,7 +355,8 @@ def update_project(
         _check_workspace(data.workspace_path)
     current = ProjectIn.model_validate(
         {
-            "name": project.name, "owner": project.owner, "description": project.description,
+            "name": project.name, "title": project.title, "owner": project.owner,
+            "description": project.description,
             "aliases": project.aliases, "repo_url": project.repo_url,
             "workspace_path": project.workspace_path, "autonomy": project.autonomy,
             "checks": project.checks, "models": project.models,
@@ -373,9 +376,10 @@ def update_project(
 
 @router.delete("/projects/{name}", status_code=204)
 def delete_project(name: str, session: WriteSessionDep) -> None:
+    title = titles.of(session, name)
     removed = projects.remove_project(session, name)
     admin_audit.record(
-        session, "project.delete", f"removed project {name} ({removed} connections unbound)",
+        session, "project.delete", f"removed project {title} ({removed} connections unbound)",
         by=OWNER, project=name,
     )  # fmt: skip
 
@@ -389,7 +393,7 @@ def rename_project(name: str, data: RenameIn, session: WriteSessionDep) -> dict[
     """A new name everywhere the project is named; the old one stays as another name."""
     projects.rename_project(session, name, data.name)
     admin_audit.record(
-        session, "project.rename", f"renamed project {name} to {data.name}", by=OWNER,
+        session, "project.rename", f"changed the short name {name} to {data.name}", by=OWNER,
         project=data.name,
     )  # fmt: skip
     return {"name": data.name}

@@ -34,7 +34,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.schemas import Input, NonEmpty
-from ringkeeper.services import calls, cleanup, clients, projects, tasks, undo
+from ringkeeper.services import calls, cleanup, clients, projects, tasks, titles, undo
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -105,12 +105,13 @@ def list_threads(
             counts.setdefault(thread_id, {})[str(status)] = int(count)
     named = clients.names(session)  # as people read them
     owners = {p: named.get(o, o) for p, o in projects.owners(session).items()}
+    shown = titles.mapping(session)
     places: dict[uuid.UUID, list[str]] = {}
     for thread_id, name in session.execute(
         select(Task.thread_id, Task.project).where(Task.thread_id.in_(ids)).distinct()
     ):
         if thread_id is not None:
-            places.setdefault(thread_id, []).append(_place(owners, name))
+            places.setdefault(thread_id, []).append(_place(owners, name, shown))
     pending: dict[uuid.UUID | None, int] = {
         thread_id: int(count)
         for thread_id, count in session.execute(
@@ -163,9 +164,10 @@ def _cost(rows: list[WorkerSession]) -> float | None:
     return round(sum(costs), 6) if costs else None
 
 
-def _place(owners: dict[str, str], project: str) -> str:
+def _place(owners: dict[str, str], project: str, shown: dict[str, str]) -> str:
     client = owners.get(project)
-    return f"{client} \u203a {project}" if client else project
+    title = shown.get(project) or titles.spoken(project)
+    return f"{client} \u203a {title}" if client else title
 
 
 def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, Any]:

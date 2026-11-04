@@ -72,8 +72,12 @@ class _Input(BaseModel):
 Input = _Input  # for request bodies defined next to their endpoints
 
 
+Title = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
+
+
 class ProjectIn(_Input):
     name: Slug
+    title: Title = ""  # as shown; empty: made from the name, or the one it has
     owner: NonEmpty
     description: str = ""
     aliases: CleanList = Field(default_factory=list[str])
@@ -87,9 +91,6 @@ class ProjectIn(_Input):
 
 # A connection's name as people read it ("n8n · n8n.geninfos.com"); the slug
 # `name` is what the AI and the URLs use.
-Title = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
-
-
 class InstanceIn(_Input):
     name: Slug
     # As shown; None on an update keeps the one it has (empty: shown by its name).
@@ -134,6 +135,7 @@ class _Output(BaseModel):
 
 class ProjectOut(_Output):
     name: str
+    title: str
     owner: str
     description: str
     aliases: list[str]

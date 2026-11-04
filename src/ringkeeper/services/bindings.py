@@ -39,7 +39,7 @@ def check_same_client(session: Session, project_name: str, instance_name: str) -
         names = clients.names(session)
         raise RuleViolationError(
             f"{instance.name} belongs to {names.get(instance.owner, instance.owner)} and "
-            f"{project.name} belongs to {names.get(project.owner, project.owner)}. A client's "
+            f"{project.title} belongs to {names.get(project.owner, project.owner)}. A client's "
             "connection can only be used by that client's projects. To use it for several "
             "clients, make it a shared tool (only for tools that hold no client's data)."
         )
@@ -52,7 +52,7 @@ def find_binding(project: Project, instance: Instance) -> ProjectInstance | None
 def check_default_allowed(project: Project, instance: Instance) -> None:
     if instance.env == Env.PROD:
         raise RuleViolationError(
-            f"{instance.name} is a production connection, so it can't be {project.name}'s "
+            f"{instance.name} is a production connection, so it can't be {project.title}'s "
             "default: each change to it must name it. Link it without Default."
         )
     for binding in project.bindings:
@@ -62,7 +62,7 @@ def check_default_allowed(project: Project, instance: Instance) -> None:
             and binding.instance_id != instance.id
         ):
             raise RuleViolationError(
-                f"{project.name} already uses {binding.instance.name} as its default "
+                f"{project.title} already uses {binding.instance.name} as its default "
                 f"{service(instance.type)} connection. Turn off Default on "
                 f"{binding.instance.name} first, or link this one without it."
             )
@@ -76,7 +76,7 @@ def set_binding(session: Session, data: BindingIn) -> tuple[ProjectInstance, boo
     project, instance = _resolve(session, data.project, data.instance)
     if excluded(instance, project):
         raise RuleViolationError(
-            f"'{instance.name}' is for all projects except some, and '{project.name}' is one "
+            f"'{instance.name}' is for all projects except some, and '{project.title}' is one "
             "of them. Remove that exception to give it this project."
         )
     if data.is_default:
@@ -107,7 +107,7 @@ def remove_binding(session: Session, project_name: str, instance_name: str) -> N
     binding = None if instance is None else find_binding(project, instance)
     if binding is None:
         raise NotFoundError(
-            f"{instance_name} isn't linked to {project_name} any more. Refresh the page."
+            f"{instance_name} isn't linked to {project.title} any more. Refresh the page."
         )
     project.bindings.remove(binding)
     session.flush()

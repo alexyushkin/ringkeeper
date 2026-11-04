@@ -60,7 +60,7 @@ def test_ask_waits_for_the_router_and_prints_its_reply(monkeypatch: pytest.Monke
     worker.join()
     assert stdout.startswith("thread ")
     assert "On it." in stdout
-    assert "Working on it in acme-web" in stdout
+    assert "Working on it in Acme web" in stdout
 
 
 def test_ask_without_a_router_times_out_but_keeps_the_message(

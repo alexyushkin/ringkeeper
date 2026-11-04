@@ -217,7 +217,13 @@ def import_claude_project(
     if found is None:
         raise HTTPException(404, "That Claude project isn't on this computer any more.")
     made = manage_routes.create_project(
-        ProjectIn(name=data.name, owner=data.owner, description=found.description), session
+        ProjectIn(
+            name=data.name,
+            title="" if found.name == data.name else found.name,
+            owner=data.owner,
+            description=found.description,
+        ),
+        session,
     )
     wrote, copied = claude_work.bring_in(get_settings(), found, Path(made["folder"]))
     return {**made, "instructions": wrote, "files": copied}

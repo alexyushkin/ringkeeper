@@ -1,8 +1,9 @@
 """@-mentions in a request: clients, projects, connections and agents, named on purpose.
 
-The request box offers them as you type `@`, and writes each as `@name`. A mention
-is the operator's firm choice: the router's model is told so, and whatever it
-answers, `settle` holds the tasks to it. A mention that matches nothing is just text.
+The request box offers them as you type `@`, and writes each as `@name`, a project
+as `@Its title`. A mention is the operator's firm choice: the router's model is told
+so, and whatever it answers, `settle` holds the tasks to it. A mention that matches
+nothing is just text.
 """
 
 import re
@@ -45,7 +46,7 @@ def offered(session: Session) -> list[dict[str, Any]]:
             for slug, name in sorted(names.items(), key=lambda item: item[1].lower())
         ),
         *(
-            {"kind": "project", "token": p.name, "label": p.name,
+            {"kind": "project", "token": p.title, "label": p.title,
              "detail": names.get(p.owner, p.owner)}
             for p in projects
         ),
@@ -56,7 +57,7 @@ def offered(session: Session) -> list[dict[str, Any]]:
         ),
         *(
             {"kind": "agent", "token": a.name, "label": a.name,
-             "detail": f"agent in {a.project.name}"}
+             "detail": f"agent in {a.project.title}"}
             for a in agents
         ),
     ]  # fmt: skip
@@ -65,25 +66,42 @@ def offered(session: Session) -> list[dict[str, Any]]:
 def find(session: Session, text: str) -> Mentions:
     """The mentions in a message. A name used by more than one kind counts as the most
     specific: an agent, then a connection, a project, a client."""
-    tokens = list(dict.fromkeys(t.rstrip(".-_").lower() for t in TOKEN.findall(text)))
-    if not tokens:
+    if "@" not in text:
         return Mentions()
     agents = session.scalars(select(Agent).options(selectinload(Agent.project))).all()
     instances = {i.lower() for i in session.scalars(select(Instance.name))}
     projects = {p.lower() for p in session.scalars(select(Project.name))}
     slugs = {s.lower() for s in session.scalars(select(Client.slug))}
-    found = Mentions()
+    taken = instances | {a.name.lower() for a in agents}
+    titled, text = _titled(session, text, taken)
+    found = Mentions(projects=titled)
+    tokens = list(dict.fromkeys(t.rstrip(".-_").lower() for t in TOKEN.findall(text)))
     for token in tokens:
         named = [(a.project.name, a.name) for a in agents if a.name.lower() == token]
         if named:
             found.agents.extend(named)
         elif token in instances:
             found.connections.append(token)
-        elif token in projects:
+        elif token in projects and token not in found.projects:
             found.projects.append(token)
         elif token in slugs:
             found.clients.append(token)
     return found
+
+
+def _titled(session: Session, text: str, taken: set[str]) -> tuple[list[str], str]:
+    """Projects mentioned by title, which may have spaces, and the text without them.
+    Longest first: "@Web shop" isn't "@Web". A title that's also the name of an agent
+    or connection is left for `find`, where the more specific one wins."""
+    found: list[str] = []
+    rows = session.execute(select(Project.title, Project.name)).tuples().all()
+    for title, name in sorted(rows, key=lambda row: -len(row[0])):
+        if title and title.lower() not in taken:
+            mention = re.compile(rf"(?<![\w@.])@{re.escape(title)}(?![\w-])", re.IGNORECASE)
+            text, hits = mention.subn(" ", text)
+            if hits:
+                found.append(name)
+    return found, text
 
 
 def note(found: Mentions) -> str:

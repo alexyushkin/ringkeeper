@@ -148,7 +148,7 @@ def test_the_checklist_and_suggestions_follow_what_is_there(data_dir: Path, tmp_
             False,
         )
         suggested = onboarding.suggestions(session, settings)
-        assert suggested[0] == "List the tables in acme-web's database"
+        assert suggested[0] == "List the tables in Acme web's database"
         assert all("delete" not in s.lower() and "update" not in s.lower() for s in suggested)
         onboarding.dismiss(session)
         assert onboarding.checklist(session, claude_ready=True).dismissed

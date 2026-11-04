@@ -50,7 +50,7 @@ from ringkeeper.router.schema import (
     RouterOutput,
     parse,
 )
-from ringkeeper.services import examples, inbox, mentions, tasks, threads
+from ringkeeper.services import examples, inbox, mentions, tasks, threads, titles
 from ringkeeper.services import help as help_answers
 from ringkeeper.services.runtime import current_settings
 
@@ -101,9 +101,10 @@ def _task_fields(task: RoutedTask) -> dict[str, Any]:
     }
 
 
-def _why_asking(task: RoutedTask, threshold: float) -> str:
+def _why_asking(session: Session, task: RoutedTask, threshold: float) -> str:
     if task.touches:
-        return f"it touches {', '.join([task.project, *task.touches])}"
+        places = [titles.of(session, p) for p in [task.project, *task.touches]]
+        return f"it touches {', '.join(places)}"
     return f"confidence {task.confidence:.2f} is below {threshold:.2f}"
 
 
@@ -136,7 +137,7 @@ def _ask(
         "message": message.body,
         "candidates": [c.model_dump() for c in candidates(task)],
         "task": _task_fields(task),
-        "reason": _why_asking(task, settings.router_confidence_threshold),
+        "reason": _why_asking(session, task, settings.router_confidence_threshold),
     }
     if production is not None:  # sure of the project; asking before it uses production
         payload["candidates"] = [{"project": task.project, "confidence": task.confidence}]
@@ -189,14 +190,14 @@ def _apply_example(session: Session, message: Message, output: RouterOutput) -> 
     return output.model_copy(update={"tasks": [settled]})
 
 
-def _reply(routed: Routed, output: RouterOutput) -> str:
+def _reply(session: Session, routed: Routed, output: RouterOutput) -> str:
     """Plain words: what started, and what Ringkeeper needs from the operator (the
     question itself is shown under the reply, with its buttons)."""
     lines: list[str] = []
     for task in routed.tasks:
         what = task.outcome or "the task"
         plan = " I'll show you a plan first." if task.phase is not None else ""
-        lines.append(f"Working on it in {task.project}: {what}{plan}")
+        lines.append(f"Working on it in {titles.of(session, task.project)}: {what}{plan}")
     for decision in routed.decisions:
         payload = decision.payload or {}
         if payload.get("production"):
@@ -276,7 +277,7 @@ def route_message(
             routed.decisions.append(_ask(session, settings, message, task, live))
         else:
             routed.tasks.append(_dispatch(session, settings, message, task))
-    routed.reply = _reply(routed, output)
+    routed.reply = _reply(session, routed, output)
     meta |= {
         "output": output.model_dump(mode="json"),
         "tasks": [str(t.id) for t in routed.tasks],

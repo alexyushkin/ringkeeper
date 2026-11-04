@@ -362,7 +362,7 @@ def blocked(session: Session, settings: Settings, routine: Routine) -> str | Non
     if current.routines_paused:
         return "all routines are paused"
     if routine.project.paused:
-        return f"{routine.project.name}'s routines are paused"
+        return f"{routine.project.title}'s routines are paused"
     if routine.paused:
         return "the routine is paused"
     return None

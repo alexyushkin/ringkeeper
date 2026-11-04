@@ -44,7 +44,7 @@ def _check(project: Project, data: AgentIn) -> AgentIn:
     unknown = sorted(set(data.connections) - linked)
     if unknown:
         raise RuleViolationError(
-            f"{', '.join(unknown)} isn't linked to {project.name}: link it to the project "
+            f"{', '.join(unknown)} isn't linked to {project.title}: link it to the project "
             "first, then give it to the agent."
         )
     if data.effort is not None and data.effort not in EFFORTS:

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, object_session, selectinload
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType, Project, ProjectInstance
 from ringkeeper.schemas import InstanceIn
-from ringkeeper.services import clients
+from ringkeeper.services import clients, titles
 from ringkeeper.wording import service
 
 # The owner shown for a shared tool: yours, not a client's (Instance.shared decides).
@@ -43,6 +43,10 @@ def list_instances(
 
 def bound_project_names(instance: Instance) -> list[str]:
     return sorted(binding.project.name for binding in instance.bindings)
+
+
+def _bound_titles(instance: Instance) -> str:
+    return ", ".join(sorted(binding.project.title for binding in instance.bindings))
 
 
 def _check_kind(session: Session, data: InstanceIn, before: Instance | None = None) -> None:
@@ -85,9 +89,9 @@ def describe_reach(instance: Instance) -> str:
         return ""
     session = object_session(instance)
     names = clients.names(session) if session is not None else {}
-    left_out = [f"{names.get(clients.key(c), c)} (client)" for c in instance.except_clients] + list(
-        instance.except_projects
-    )
+    left_out = [f"{names.get(clients.key(c), c)} (client)" for c in instance.except_clients] + [
+        titles.of(session, p) for p in instance.except_projects
+    ]
     return "All projects" + (f" except {', '.join(left_out)}" if left_out else "")
 
 
@@ -145,7 +149,7 @@ def update_instance(session: Session, data: InstanceIn) -> Instance:
     if data.type != instance.type and instance.bindings:
         raise RuleViolationError(
             f"You can't change what kind of connection {instance.name} is while projects use "
-            f"it ({', '.join(bound_project_names(instance))}). Unlink it from those projects "
+            f"it ({_bound_titles(instance)}). Unlink it from those projects "
             "first, or add a new connection."
         )
     if data.env == Env.PROD and instance.env != Env.PROD:
@@ -174,7 +178,7 @@ def remove_instance(session: Session, name: str, *, force: bool = False) -> list
     projects = bound_project_names(instance)
     if projects and not force:
         raise RuleViolationError(
-            f"{name} is still linked to {', '.join(projects)}. Unlink it from those projects "
+            f"{name} is still linked to {_bound_titles(instance)}. Unlink it from those projects "
             "first, then remove it."
         )
     if projects:

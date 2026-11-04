@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from ringkeeper.config import Settings
 from ringkeeper.errors import NotFoundError, RingkeeperError, RuleViolationError
 from ringkeeper.models import Setting, Task, TaskStatus, Thread
-from ringkeeper.services import admin_audit, projects, tasks
+from ringkeeper.services import admin_audit, projects, tasks, titles
 
 ACTIVE = (TaskStatus.QUEUED, TaskStatus.RUNNING)
 PENDING_STATE_KEY = "pending_state_removals"
@@ -226,7 +226,8 @@ def delete_tasks(
     for task in found:
         admin_audit.record(
             session, "task.delete",
-            f"deleted task {str(task.id)[:8]} ({task.project}); branch {branches[str(task.id)]}",
+            f"deleted task {str(task.id)[:8]} ({titles.of(session, task.project)}); "
+            f"branch {branches[str(task.id)]}",
             by=by, project=task.project, details={"task": str(task.id)},
         )  # fmt: skip
     # In SQL, so the database's cascades take the sessions and their events along.

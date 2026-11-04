@@ -51,7 +51,7 @@ def test_lists_narrow_to_a_client_or_a_project(
 
     listed = owner.get("/threads", params={"client": "globex"}).json()
     assert [t["id"] for t in listed] == [two_clients["globex-portal"]]
-    assert listed[0]["places"] == ["globex › globex-portal"]  # noqa: RUF001 (the label uses it)
+    assert listed[0]["places"] == ["globex › Globex portal"]  # noqa: RUF001 (the label uses it)
 
     decisions = owner.get("/decisions", params={"client": "Acme"}).json()
     assert sorted(d["project"] for d in decisions) == ["acme-app", "acme-web"]

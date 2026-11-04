@@ -205,5 +205,5 @@ def test_unbind(session: Session) -> None:
 def test_unbind_when_not_bound(session: Session) -> None:
     make_project(session)
     make_instance(session, "acme-supabase-dev")
-    with pytest.raises(NotFoundError, match="isn't linked to acme-web"):
+    with pytest.raises(NotFoundError, match="isn't linked to Acme web"):
         bindings.remove_binding(session, "acme-web", "acme-supabase-dev")

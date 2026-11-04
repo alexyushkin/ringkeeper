@@ -1,6 +1,6 @@
 """Demo data: a made-up client to try Ringkeeper on before connecting anything real.
 
-"Try it with demo data" adds the client Demo Co with one project, demo-shop:
+"Try it with demo data" adds the client Demo Co with one project, Demo shop:
 a folder of sample files (in the workspaces folder, like any project's) and a
 small SQLite shop database in the data folder, connected as a production
 database, so a change to it waits for approval like a real one would. One
@@ -48,9 +48,9 @@ FOLDER = "ringkeeper-demo-shop"
 
 # Things to try, once the demo is there (the second one waits for approval).
 TRY = (
-    "List the tables in demo-shop's database",
-    "Which customers ordered more than once? Use demo-shop's database",
-    "Mark order 1007 as shipped in demo-shop's database",
+    "List the tables in Demo shop's database",
+    "Which customers ordered more than once? Use Demo shop's database",
+    "Mark order 1007 as shipped in Demo shop's database",
 )
 
 

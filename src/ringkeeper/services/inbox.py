@@ -43,7 +43,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import decisions, examples, projects, tasks
+from ringkeeper.services import decisions, examples, projects, tasks, titles
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -173,6 +173,13 @@ def options(decision: Decision) -> list[str]:
         candidates = (decision.payload or {}).get("candidates", [])
         return [c["project"] for c in candidates] + [NO_PROJECT]
     return []
+
+
+def chosen(decision: Decision, option: str) -> str:
+    """A choice as people read it: a project by its title."""
+    if decision.kind is DecisionKind.ROUTE and option != NO_PROJECT:
+        return titles.of(object_session(decision), option)
+    return option
 
 
 def _audit(session: Session, decision: Decision, answer: Answer, by: str, via: Via) -> None:
@@ -525,7 +532,8 @@ def summary(decision: Decision, limit: int = 160) -> str:
                 what = "Undoing a change"
             text = f"{what} on {_shown(decision)}: waits for your OK"
         case DecisionKind.ROUTE:
-            names = " or ".join(c["project"] for c in payload.get("candidates", []))
+            candidates = payload.get("candidates", [])
+            names = " or ".join(chosen(decision, c["project"]) for c in candidates)
             text = f"Which project ({names})? {payload.get('task', {}).get('outcome', '')}"
         case DecisionKind.PLAN:
             text = f"Plan ready: {payload.get('title') or 'review the plan'}"

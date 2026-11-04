@@ -83,7 +83,7 @@ def test_rebinding_updates(seeded: None) -> None:
 def test_remove_bound_instance_needs_force(seeded: None) -> None:
     ok("bind", "acme-web", "acme-supabase-dev")
     error = fails("instance", "remove", "acme-supabase-dev")
-    assert "acme-supabase-dev is still linked to acme-web" in error
+    assert "acme-supabase-dev is still linked to Acme web" in error
     assert "--force" in error
     assert "unbound from acme-web" in ok("instance", "remove", "acme-supabase-dev", "--force")
     assert "acme-supabase-dev" not in ok("instance", "list")
