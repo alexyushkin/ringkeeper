@@ -8,6 +8,8 @@ publishes it as the release notes and the app shows it with the update.
 - **Intel Macs.** There's now a download for Macs with an Intel processor, beside the
   one for Apple Silicon. Voice isn't available there: the speech engine no longer
   supports them. Like the other Mac build, it's unsigned and experimental.
+- **Replies read cleanly everywhere.** Task cards, Telegram, Slack and the digest showed
+  Claude's formatting as raw stars and backticks. Now they show plain words.
 - **Checkboxes keep their size.** Next to long text they were squeezed narrower than
   the others.
 - **A new picture of how it works.** Help and the guide now start from what you actually

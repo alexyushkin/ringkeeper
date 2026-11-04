@@ -196,6 +196,20 @@ function ListView({ list }: { list: List }) {
 const INLINE =
   /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?\s*\)|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])|\*\*(?=\S)([\s\S]*?\S)\*\*|(?<![\w])__(?=\S)([\s\S]*?\S)__(?![\w])|~~(?=\S)([\s\S]*?\S)~~|\*(?=[^\s*])([\s\S]*?[^\s*])\*|(?<![\w])_(?=[^\s_])([\s\S]*?[^\s_])_(?![\w])/g;
 
+/** The words alone, for a preview cut to a few lines. */
+export function plainText(text: string): string {
+  const flat = (part: string): string =>
+    part.replace(INLINE, (_whole, _ticks, code?: string, label?: string, _url?: string, bare?: string, bold?: string, bold2?: string, strike?: string, em?: string, em2?: string) =>
+      code ?? bare ?? flat(label ?? bold ?? bold2 ?? strike ?? em ?? em2 ?? ""),
+    );
+  const blocks = text
+    .replace(/^\s*```.*$/gm, "")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "• ");
+  return flat(blocks).replace(/\s+/g, " ").trim();
+}
+
 function safeHref(url: string): string | null {
   return /^(https?:\/\/|mailto:)/i.test(url) ? url : null;
 }

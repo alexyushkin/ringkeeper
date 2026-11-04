@@ -224,7 +224,7 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
         <p className="text-sm">
           This would use <strong>{production}</strong> in {projectName(project)}: live client data. Go ahead?
         </p>
-        {task.outcome ? <p className="text-sm text-muted">{task.outcome}</p> : null}
+        {task.outcome ? <Markdown text={task.outcome} className="text-sm text-muted" /> : null}
         <div className="flex flex-wrap gap-2">
           <Button kind="primary" busy={busy === project} onClick={() => onAnswer(project)}>
             Go ahead
@@ -239,7 +239,7 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
   return (
     <div className="mt-3 space-y-3">
       <p className="text-sm">Which project is this for?</p>
-      {task.outcome ? <p className="text-sm text-muted">{task.outcome}</p> : null}
+      {task.outcome ? <Markdown text={task.outcome} className="text-sm text-muted" /> : null}
       <div className="flex flex-wrap gap-2">
         {offered.map((option) => (
           <Button key={option} busy={busy === option} onClick={() => onAnswer(option)}>

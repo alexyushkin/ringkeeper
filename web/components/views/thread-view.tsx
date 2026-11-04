@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
 import { DecisionCard, type Decision } from "@/components/decision-card";
-import { Markdown } from "@/components/markdown";
+import { Markdown, plainText } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Badge, Card, Details, Loading, timeAgo } from "@/components/ui";
@@ -87,7 +87,7 @@ export function ThreadView({ id }: { id: string }) {
                   <ul className="space-y-1 text-sm">
                     {message.routing.output.tasks.map((task, index) => (
                       <li key={index}>
-                        <Badge>{projectName(task.project)}</Badge> {task.outcome}{" "}
+                        <Badge>{projectName(task.project)}</Badge> {plainText(task.outcome)}{" "}
                         <span className="text-xs text-muted">
                           ({task.kind}, {Math.round(task.confidence * 100)}% sure)
                         </span>
