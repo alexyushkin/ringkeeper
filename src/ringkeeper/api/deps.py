@@ -40,7 +40,10 @@ def get_write_session() -> Generator[Session]:
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
-WriteSessionDep = Annotated[Session, Depends(get_write_session)]
+# "function": commit before the answer goes out. By default FastAPI finishes this after
+# sending it, so the next request could still see the old values, and a failed commit
+# would already have answered 200.
+WriteSessionDep = Annotated[Session, Depends(get_write_session, scope="function")]
 
 
 def client_address(

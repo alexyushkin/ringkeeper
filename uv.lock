@@ -2266,7 +2266,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "ctranslate2", marker = "extra == 'voice'", specifier = "==4.8.2" },
     { name = "docker", specifier = ">=7.2.0" },
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.121" },
     { name = "faster-whisper", marker = "extra == 'voice'", specifier = "==1.2.1" },
     { name = "fastmcp", specifier = ">=4.1.3" },
     { name = "httpx2", specifier = ">=2.16.0" },

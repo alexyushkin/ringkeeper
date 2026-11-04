@@ -9,6 +9,8 @@ publishes it as the release notes and the app shows it with the update.
   no longer risk stopping at Loading there. The build fails if that ever changes.
 - **Your Claude Code login on a Mac.** "Or use my Claude Code login" now works on Macs too,
   reading it from your Keychain. macOS asks you to allow that.
+- **Changes are saved before the app answers.** A change could take a moment longer to
+  save than the app took to reply, so the next screen could briefly show the old value.
 
 ## 0.1.0-beta.17 (2026-11-04)
 
