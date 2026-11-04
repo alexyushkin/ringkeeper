@@ -233,8 +233,10 @@ def build_python(work: Path) -> Path:
     target = OUT / "python"
     remove(target)
     shutil.copytree(found, target, symlinks=True)
+    # An Intel Mac compiles what has no wheel for it, which needs Python's headers.
     for part in PYTHON_TRIM:
-        remove(target / part)
+        if not (INTEL_MAC and part == "include"):
+            remove(target / part)
     site = site_packages(target)
     for leftover in site.glob("pip*"):
         remove(leftover)
@@ -247,6 +249,7 @@ def build_python(work: Path) -> Path:
     run("uv", "build", "--wheel", "--out-dir", work / "wheel")
     [wheel] = (work / "wheel").glob("ringkeeper-*.whl")
     run(*install, "--no-deps", "--no-compile", wheel)
+    remove(target / "include")
     for package in (REPO / "worker" / "ringkeeper_worker", REPO / "stt" / "ringkeeper_stt"):
         shutil.copytree(package, site / package.name, ignore=shutil.ignore_patterns("__pycache__"))
     for cache in list(target.rglob("__pycache__")):
