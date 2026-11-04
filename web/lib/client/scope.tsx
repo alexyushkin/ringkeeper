@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useApi } from "@/lib/client/api";
 
@@ -27,17 +27,26 @@ export interface Client {
   connections: number;
 }
 
+/** A project as the switcher and the names need it. */
+export interface ScopeProject {
+  name: string;
+  title: string;
+  owner: string;
+}
+
 interface ScopeState extends Scope {
   set: (next: Scope) => void;
   /** For API calls: `client` and `project`, left out when empty. */
   query: { client?: string; project?: string };
   /** Every client, with or without projects, by name. */
   clients: Client[];
+  /** Every project, whichever client is chosen. */
+  projects: ScopeProject[];
   /** After a client or project is added or named. */
   reloadClients: () => void;
 }
 
-const ScopeContext = createContext<ScopeState>({ ...EMPTY, set: () => undefined, query: {}, clients: [], reloadClients: () => undefined });
+const ScopeContext = createContext<ScopeState>({ ...EMPTY, set: () => undefined, query: {}, clients: [], projects: [], reloadClients: () => undefined });
 
 // Slug -> name, for `place` and `clientName` outside components; kept by ScopeProvider.
 const NAMES = new Map<string, string>();
@@ -74,7 +83,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const clients = useApi<Client[]>("clients");
   NAMES.clear();
   for (const client of clients.data ?? []) NAMES.set(client.slug, client.name);
-  const projects = useApi<{ name: string; title: string }[]>("projects");
+  const projects = useApi<ScopeProject[]>("projects");
   TITLES.clear();
   for (const project of projects.data ?? []) TITLES.set(project.name, project.title);
 
@@ -96,12 +105,27 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const { reload: reloadClientList } = clients;
+  const { reload: reloadProjectList } = projects;
+  const reloadClients = useCallback(() => {
+    reloadClientList();
+    reloadProjectList();
+  }, [reloadClientList, reloadProjectList]);
+  // These outlive every page, and work lands from anywhere (a chat, another window, the
+  // command line): look again on each page, and when the window comes back.
+  const shown = useRef(path);
+  useEffect(() => {
+    if (shown.current === path) return;
+    shown.current = path;
+    reloadClients();
+  }, [path, reloadClients]);
+  useEffect(() => {
+    window.addEventListener("focus", reloadClients);
+    return () => window.removeEventListener("focus", reloadClients);
+  }, [reloadClients]);
+
   const query = { ...(scope.client ? { client: scope.client } : {}), ...(scope.project ? { project: scope.project } : {}) };
-  const reloadClients = () => {
-    clients.reload();
-    projects.reload();
-  };
-  const value = { ...scope, set, query, clients: clients.data ?? [], reloadClients };
+  const value = { ...scope, set, query, clients: clients.data ?? [], projects: projects.data ?? [], reloadClients };
   // Pages show clients and projects by name: wait for the names the first time.
   if ((!clients.data && !clients.error) || (!projects.data && !projects.error)) return null;
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;

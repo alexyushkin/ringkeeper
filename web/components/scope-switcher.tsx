@@ -1,22 +1,28 @@
 "use client";
 
-import { useApi } from "@/lib/client/api";
 import { usePrefs } from "@/lib/client/prefs";
-import { projectName, sameClient, useScope } from "@/lib/client/scope";
+import { place, projectName, sameClient, useScope } from "@/lib/client/scope";
 
-interface ProjectRow {
-  title: string;
-  name: string;
-  owner: string;
+/** Above a list the switcher narrows: what's left out isn't gone, and this says so. */
+export function ScopeNote() {
+  const scope = useScope();
+  if (!scope.client && !scope.project) return null;
+  return (
+    <p className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm">
+      <span className="text-muted">Showing {place(scope.client, scope.project)} only.</span>
+      <button type="button" className="text-accent" onClick={() => scope.set({ client: "", project: "" })}>
+        Show everything
+      </button>
+    </p>
+  );
 }
 
 /** The top bar's client › project switcher: it filters every list in the app. What you
  * pinned and what you used lately come first. */
 export function ScopeSwitcher() {
   const scope = useScope();
-  const projects = useApi<ProjectRow[]>("projects");
   const prefs = usePrefs();
-  const rows = projects.data ?? [];
+  const rows = scope.projects;
   // Every client, also those with only connections or nothing yet.
   const clients = scope.clients;
   const theirs = rows.filter((p) => !scope.client || sameClient(p.owner, scope.client));
