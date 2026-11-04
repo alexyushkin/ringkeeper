@@ -3,6 +3,18 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **The filter says when it's on.** With a client or project chosen in the top bar,
+  Home, Tasks, Approvals, Agents and Connectors now say "Showing Acme Windows only" with
+  Show everything beside it, so nothing looks gone. The last 24 hours follows the filter
+  too, and Approvals no longer says nothing is waiting when other clients have requests.
+- **Client connections add up.** A client now counts your own tools its projects use,
+  and its page lists them, so a project with a connection no longer sits under
+  "0 connections".
+- **New projects reach the switcher.** The switcher and the client counts refresh as you
+  move between pages and come back to the window, without restarting the app.
+
 ## 0.1.0-beta.15 (2026-11-03)
 
 - **Project names.** A project now has a name as you typed it, shown everywhere: pages,
