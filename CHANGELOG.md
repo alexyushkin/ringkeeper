@@ -10,6 +10,8 @@ publishes it as the release notes and the app shows it with the update.
   supports them. Like the other Mac build, it's unsigned and experimental.
 - **Checkboxes keep their size.** Next to long text they were squeezed narrower than
   the others.
+- **The Help diagram.** The arrow to Hold is drawn properly, with its label beside it, and
+  the example project goes by its name.
 
 ## 0.1.0-beta.16 (2026-11-04)
 

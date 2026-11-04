@@ -118,7 +118,7 @@ function Arrow({ d, label, lx, ly }: { d: string; label?: string; lx?: number; l
  * by a routine; a change to live data held for you. */
 function Diagram() {
   return (
-    <svg viewBox="0 0 640 312" role="img" aria-labelledby="help-diagram-title" className="h-auto w-full">
+    <svg viewBox="0 0 640 298" role="img" aria-labelledby="help-diagram-title" className="h-auto w-full">
       <title id="help-diagram-title">
         A client has projects. A project uses the client&apos;s connections and your shared tools. An agent works in a project and a routine runs it. A change to live data is held until you approve it.
       </title>
@@ -128,7 +128,7 @@ function Diagram() {
         </marker>
       </defs>
       <Box x={10} y={14} w={180} title="Client" text="General Informatics LLC" />
-      <Box x={10} y={104} w={180} title="Project" text="geninfos-web" tone="accent" />
+      <Box x={10} y={104} w={180} title="Project" text="geninfos.com website" tone="accent" />
       <Box x={250} y={60} w={180} title="Connections" text="their database, Airtable" />
       <Box x={450} y={60} w={180} title="Shared tools" text="your browser, your files" />
       <Box x={10} y={200} w={180} title="Agent" text="follow-up: who does it" />
@@ -139,7 +139,7 @@ function Diagram() {
       <Arrow d="M190 136 C330 160 470 150 534 116" />
       <Arrow d="M100 156 V196" label="has" lx={108} ly={182} />
       <Arrow d="M250 226 H194" label="runs" lx={204} ly={220} />
-      <Arrow d="M100 252 C100 290 540 290 540 256" label="a change to live data" lx={262} ly={305} />
+      <Arrow d="M100 252 V264 Q100 274 110 274 H530 Q540 274 540 264 V256" label="a change to live data" lx={268} ly={290} />
     </svg>
   );
 }
