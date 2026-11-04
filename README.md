@@ -9,8 +9,8 @@ ever switching connections.
 
 If you work for many clients, each has its own database, Airtable, n8n, Vercel
 and email. In Ringkeeper you connect each client's tools once, attach them to
-that client's projects, and just ask: "Add last week's leads to Acme's
-Airtable." It works out which client and project you mean, uses only that
+that client's projects, and just ask: "Add last week's leads to General
+Informatics' Airtable." It works out which client and project you mean, uses only that
 project's connections, and anything that changes live data waits for your OK.
 
 **[Download for Windows](https://github.com/alexyushkin/ringkeeper-releases/releases/latest)**

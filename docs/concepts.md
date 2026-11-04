@@ -9,13 +9,13 @@ eight ideas click, the rest follows.
 **Request.** What you ask, in your own words: typed or spoken, in the app or on
 Telegram. It starts a conversation, and this is how nearly everything begins.
 
-**Client.** Someone you do work for, like Acme Inc. Each client's projects and
+**Client.** Someone you do work for, like General Informatics LLC. Each client's projects and
 connections are kept apart from every other client's: a task for one client can
 never reach another client's data.
 
 **Project.** One piece of a client's work: a website, an app, a set of
 automations. Every request goes to one project, and its task works in that
-project's folder. A project has other names people use ("the Acme site"), so
+project's folder. A project has other names people use ("the geninfos site"), so
 Ringkeeper can tell which one you mean.
 
 **Connection.** A client's service that their projects can use: a database,
@@ -40,7 +40,7 @@ Nothing happens until you approve it, and everything is logged.
 
 ## A request, start to finish
 
-1. You ask, in plain words: "Mark order 1007 as shipped in Acme's shop."
+1. You ask, in plain words: "Add last week's leads to General Informatics' Airtable."
 2. Ringkeeper picks the project (it asks if it isn't sure) and starts a task.
 3. The task reads what it needs through the project's connections.
 4. A change to production is held. You see exactly what would run, and approve

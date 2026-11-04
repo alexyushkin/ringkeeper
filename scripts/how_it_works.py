@@ -118,7 +118,7 @@ def you_ask() -> str:
         f'fill="{color("accent")}"/>'
         + "".join(
             text(x + 12, CARD_Y + 115 + i * 17, line, 12.5, "accent-ink", 500)
-            for i, line in enumerate(("Mark order 1007", "as shipped in", "Acme's shop"))
+            for i, line in enumerate(("Add last week's", "leads to General", "Informatics' Airtable"))
         )
     )
     return head + bubble + lines(x, CARD_Y + 180, "Typed or spoken, in the app or on Telegram", 25)
@@ -126,7 +126,7 @@ def you_ask() -> str:
 
 def finds_project() -> str:
     head, x = step(1, "folder", "It finds the project")
-    drawn, _ = chip(x, CARD_Y + 96, "Acme › Shop")
+    drawn, _ = chip(x, CARD_Y + 96, "geninfos.com website")
     return (
         head
         + drawn
@@ -136,7 +136,7 @@ def finds_project() -> str:
 
 def does_the_work() -> str:
     head, x = step(2, "spark", "Claude does the work")
-    first, nx = chip(x, CARD_Y + 96, "Database")
+    first, nx = chip(x, CARD_Y + 96, "Airtable")
     second, _ = chip(nx, CARD_Y + 96, "n8n")
     return head + first + second + lines(
         x, CARD_Y + 146, "In that project's folder, with only that project's connections.", 25
@@ -227,7 +227,7 @@ def apart_panel() -> str:
         + text(x + 70, y + 34, "Every client kept apart", 16, "ink", 700)
         + text(x + 70, y + 54, "One client's project can't reach another's connections.", 12.5, "muted")
         + f'<rect x="{x + 20}" y="{lane_y}" width="210" height="50" rx="12" fill="{color("sunken")}"/>'
-        + text(x + 34, lane_y + 21, "Acme", 13, "ink", 700)
+        + text(x + 34, lane_y + 21, "General Informatics LLC", 13, "ink", 700)
         + text(x + 34, lane_y + 39, "Its projects and connections", 12, "muted")
         + f'<rect x="{x + 250}" y="{lane_y}" width="210" height="50" rx="12" fill="{color("sunken")}"/>'
         + text(x + 264, lane_y + 21, "Another client", 13, "ink", 700)
