@@ -5,7 +5,14 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
-- **Quick request.** Win+Shift+R opens a small box over whatever you're doing, with
+- **Project names.** A project now has a name as you typed it, shown everywhere: pages,
+  approvals, messages and the digest. The short name stays for links and the AI, and
+  moves to Project › Settings. Existing projects get a name from their short one:
+  change it under About this project.
+- **Logos.** Connectors show each service's logo (from Simple Icons), and initials
+  where there is none.
+- **Hide the menu.** The sidebar's toggle is now just the panel icon.
+- **Quick request.** Ctrl+Alt+R opens a small box over whatever you're doing, with
   voice and the client and project switcher. Send, and it shows a link to the
   conversation and closes. Change the key in Settings › Advanced.
 - **@-mentions.** Type @ in a request box to name a client, project, connection or
