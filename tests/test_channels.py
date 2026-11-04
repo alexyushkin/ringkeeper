@@ -199,7 +199,7 @@ def test_slack_gets_a_short_summary_with_approve_deny_open_once(slack: FakeSlack
     assert rk.send_due() == 0  # once
     [message] = slack.posted()
     assert message["channel"] == "C1"
-    assert message["text"].startswith("Approval · acme-web · acme-db\n")
+    assert message["text"].startswith("Approval · Acme web · acme-db\n")
     assert "UPDATE" not in message["text"]
     assert "vip@acme.test" not in message["text"]
     assert [(b["text"]["text"], b.get("value"), b.get("url")) for b in buttons(message)] == [
@@ -279,7 +279,7 @@ def test_scope_and_events_choose_what_is_sent(slack: FakeSlack) -> None:
     rk = runner(ident)
     assert rk.send_due() == 1
     [message] = slack.posted()
-    assert message["text"].startswith("✖ globex-portal: failed")
+    assert message["text"].startswith("✖ Globex portal: failed")
     assert buttons(message)[0]["url"] == f"https://rk.example/tasks/{failed}"
     with session_scope(commit=False) as session:
         note = session.scalars(
@@ -394,7 +394,7 @@ def test_telegram_follows_its_prefs(monkeypatch: pytest.MonkeyPatch) -> None:
     ended_task("acme-web", TaskStatus.FAILED)
     assert bridge.send_new() == 1
     [sent] = fake.sent
-    assert sent["text"].startswith("✖ acme-web: failed")
+    assert sent["text"].startswith("✖ Acme web: failed")
     assert bridge.send_new() == 0
 
 

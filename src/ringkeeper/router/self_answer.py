@@ -87,18 +87,19 @@ def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
     ).all()
     now = datetime.now(UTC)
     clients = sorted({p.owner for p in projects}, key=str.lower)
+    shown = {p.name: p.title for p in projects}
     return {
         "today": now.date().isoformat(),
         "clients": [
-            {"name": c, "projects": sorted(p.name for p in projects if p.owner == c)}
+            {"name": c, "projects": sorted(p.title for p in projects if p.owner == c)}
             for c in clients
         ],
         "projects": [
             {
-                "name": p.name,
+                "name": p.title,
                 "client": p.owner,
                 "description": p.description,
-                "other_names": p.aliases,
+                "other_names": [p.name, *p.aliases],
                 "autonomy": p.autonomy.value,
                 "connections": sorted(b.instance.name for b in p.bindings),
             }
@@ -111,7 +112,7 @@ def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
                 "kind_of_data": i.env.value,
                 "whose": "yours (a shared tool)" if i.shared else i.owner,
                 "all_projects": i.all_projects,
-                "projects": sorted(b.project.name for b in i.bindings),
+                "projects": sorted(b.project.title for b in i.bindings),
                 "last_test": None
                 if i.last_test_ok is None
                 else ("works" if i.last_test_ok else "failed"),
@@ -122,7 +123,7 @@ def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
             "by_status": {s.value: n for s, n in counts.items()},
             "recent": [
                 {
-                    "project": t.project,
+                    "project": shown.get(t.project, t.project),
                     "status": t.status.value,
                     "what": (t.outcome or t.prompt)[:200],
                     "created": t.created_at.isoformat(),
@@ -133,7 +134,7 @@ def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
         "waiting_for_you": [
             {
                 "kind": "approval" if inbox.is_approval(d) else "question",
-                "project": d.project,
+                "project": shown.get(d.project or "", d.project),
                 "what": inbox.summary(d),
             }
             for d in waiting

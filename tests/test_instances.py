@@ -25,7 +25,7 @@ def test_removing_a_bound_instance_fails(session: Session) -> None:
     bind(session, "acme-admin", "acme-supabase-dev")
 
     with pytest.raises(
-        RuleViolationError, match=r"still linked to acme-admin, acme-web"
+        RuleViolationError, match=r"still linked to Acme admin, Acme web"
     ) as excinfo:
         instances.remove_instance(session, "acme-supabase-dev")
     assert "Unlink it from those projects first" in str(excinfo.value)

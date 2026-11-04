@@ -16,7 +16,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.schemas import ProjectIn
-from ringkeeper.services import clients
+from ringkeeper.services import clients, titles
 from ringkeeper.services.instances import excluded
 
 
@@ -45,7 +45,12 @@ def list_projects(session: Session) -> Sequence[Project]:
 def create_project(session: Session, data: ProjectIn) -> Project:
     if find_project(session, data.name) is not None:
         raise AlreadyExistsError(f"There's already a project named {data.name}. Pick another name.")
-    data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
+    data = data.model_copy(
+        update={
+            "owner": clients.ensure(session, data.owner),
+            "title": data.title or titles.spoken(data.name),
+        }
+    )
     project = Project(**data.model_dump(), bindings=[])
     session.add(project)
     # Shared tools for all projects come with every new one, unless they leave out
@@ -59,7 +64,12 @@ def create_project(session: Session, data: ProjectIn) -> Project:
 
 def update_project(session: Session, data: ProjectIn) -> Project:
     project = get_project(session, data.name)
-    data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
+    data = data.model_copy(
+        update={
+            "owner": clients.ensure(session, data.owner),
+            "title": data.title or project.title,
+        }
+    )
     for field, value in data.model_dump(exclude={"name"}).items():
         setattr(project, field, value)
     session.flush()
@@ -85,7 +95,7 @@ def rename_project(session: Session, name: str, new: str) -> Project:
     )
     if busy:
         raise RuleViolationError(
-            f"'{name}' has {busy} task(s) running or waiting to start. Rename it once "
+            f"{project.title} has {busy} task(s) running or waiting to start. Rename it once "
             "they're done or stopped."
         )
     project.name = new

@@ -274,7 +274,7 @@ async def finish(pending: Pending, target: Target, call: ToolCall, result: JSON)
         change.kept = change.after = change.restores = None
         cap = PROJECT_CAP_BYTES // (1024 * 1024)
         change.why_not = (
-            f"Not kept for undo: {change.project}'s undo space ({cap} MB) is full. Space "
+            f"Not kept for undo: this project's undo space ({cap} MB) is full. Space "
             "frees up as kept changes pass 7 days."
         )
     if change.project:

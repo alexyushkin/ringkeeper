@@ -40,8 +40,10 @@ Rules:
 - `project` is your best guess. `confidence` (0 to 1) is how sure you are that
   this task belongs to that project; be honest, the operator is asked when
   you're unsure. Put other plausible projects in `alternatives`, best first.
-- Use project names exactly as listed. Aliases, descriptions and instance names
-  help you match the operator's words to a project.
+- Use project names exactly as listed. Titles, aliases, descriptions and instance
+  names help you match the operator's words to a project.
+- A project's `name` is its ID, for your answer's fields. In `reply`, and anywhere
+  else the operator reads, call it by its `title`.
 - ROUTING EXAMPLES are past answers from the operator: follow them for the
   same or very similar phrasing.
 - `agent`: when the operator asks one of a project's agents by name ("ask the
@@ -100,6 +102,7 @@ def _snippet(text: str, limit: int = SNIPPET_CHARS) -> str:
 def _project_card(project: Project, agents: dict[str, list[Agent]]) -> dict[str, Any]:
     return {
         "name": project.name,
+        "title": project.title,
         "owner": project.owner,
         "description": project.description,
         "aliases": project.aliases,
@@ -177,5 +180,5 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
     return Context(
         owners={p.name: p.owner for p in projects},
         prompt="\n\n".join(sections),
-        aliases=tuple(a for p in projects for a in p.aliases),
+        aliases=tuple(a for p in projects for a in (p.title, *p.aliases)),
     )

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ringkeeper import destructive
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Decision, DecisionKind, Instance, InstanceType, Trust
-from ringkeeper.services import admin_audit
+from ringkeeper.services import admin_audit, titles
 
 HOURS = 1
 REVERT_TOOL = "revert_change"
@@ -44,7 +44,8 @@ def grant(session: Session, decision: Decision, *, by: str, hours: int = HOURS) 
     session.flush()
     admin_audit.record(
         session, "trust.add",
-        f"trusted {decision.tool} on {decision.instance} in {decision.project} for {hours}h",
+        f"trusted {decision.tool} on {decision.instance} in "
+        f"{titles.of(session, decision.project or '')} for {hours}h",
         by=by, project=decision.project, instance=decision.instance,
     )  # fmt: skip
     return trust

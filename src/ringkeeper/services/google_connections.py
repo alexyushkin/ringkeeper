@@ -70,12 +70,13 @@ def check_start(session: Session, connection: dict[str, Any]) -> None:
     if (name := connection.get("name")) and instances.find_instance(session, str(name)):
         raise RuleViolationError(f"A connection named '{name}' already exists.")
     if project := connection.get("project"):
-        owner = projects.get_project(session, str(project)).owner
+        found = projects.get_project(session, str(project))
+        owner = found.owner
         if not connection.get("shared") and not bindings.same_client(
             owner, str(connection["owner"])
         ):
             raise RuleViolationError(
-                f"'{project}' is {owner}'s project; this account is for {connection['owner']}."
+                f"'{found.title}' is {owner}'s project; this account is for {connection['owner']}."
             )
 
 

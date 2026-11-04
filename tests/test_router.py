@@ -125,7 +125,7 @@ def test_a_small_clear_feature_skips_the_architect() -> None:
     assert (task.kind, task.phase) == (TaskKind.FEATURE, None)
     [first] = task.sessions
     assert (first.role, first.model) == (SessionRole.WORKER, "claude-haiku-5-5")
-    assert "Working on it in acme-web" in thread_bodies(thread_id)[1][1]
+    assert "Working on it in Acme web" in thread_bodies(thread_id)[1][1]
     assert "plan first" not in thread_bodies(thread_id)[1][1]
 
 

@@ -16,12 +16,14 @@ channel is told they're not allowed, and nothing happens.
 import uuid
 from dataclasses import dataclass, field
 
+from sqlalchemy.orm import object_session
+
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Routine, Task, TaskStatus
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox
+from ringkeeper.services import inbox, titles
 from ringkeeper.telegram import text as shown_text
 from ringkeeper.telegram.api import defang
 from ringkeeper.wording import decision_status, person, task_status
@@ -77,9 +79,22 @@ def _open(url: str | None, label: str = "Open in Ringkeeper") -> list[Button]:
     return [Button(label, url=url)] if url else []
 
 
+def _title(task: Task) -> str:
+    return titles.of(object_session(task), task.project)
+
+
+def _project(decision: Decision) -> str | None:
+    project = decision.project
+    return titles.of(object_session(decision), project) if project else None
+
+
+def _label(decision: Decision, choice: str) -> str:
+    return CHOICE_LABELS.get(choice, inbox.chosen(decision, choice))
+
+
 def decision_card(decision: Decision, open_url: str | None) -> Card:
     head = [KIND_LABELS[decision.kind]]
-    head += [part for part in (decision.project, decision.instance) if part]
+    head += [part for part in (_project(decision), decision.instance) if part]
     shown = shown_text.body(decision, SUMMARY_CHARS, QUESTION_CHARS)
     lines = [" · ".join(head), shown.text]
     if shown.cut:
@@ -97,7 +112,7 @@ def decision_card(decision: Decision, open_url: str | None) -> Card:
         buttons.append(Button("Deny", _action(decision, options, "deny"), style="danger"))
     if decision.kind is DecisionKind.ROUTE:
         buttons += [
-            Button(CHOICE_LABELS.get(option, option), _action(decision, options, option))
+            Button(_label(decision, option), _action(decision, options, option))
             for option in options
         ]
     return Card(_clean("\n".join(lines)), buttons + _open(open_url))
@@ -124,7 +139,7 @@ def outcome_line(decision: Decision) -> str:
         case DecisionStatus.FAILED:
             return f"Approved by {who}, but it failed. Open it in Ringkeeper to see why."
         case DecisionStatus.ANSWERED if choice:
-            return f"Answered by {who}: {CHOICE_LABELS.get(choice, choice)}."
+            return f"Answered by {who}: {_label(decision, choice)}."
         case _:
             return f"{decision_status(decision.status).capitalize()} by {who}."
 
@@ -137,7 +152,7 @@ def closed_card(decision: Decision, open_url: str | None) -> Card:
 
 def task_card(task: Task, open_url: str | None) -> Card:
     mark = "✖" if task.status in FAILED else "✔"
-    head = f"{mark} {task.project}: {task_status(task.status)}"
+    head = f"{mark} {_title(task)}: {task_status(task.status)}"
     said = (task.error if task.status in FAILED else task.summary) or ""
     summary, cut = _clip(said, TASK_CHARS)
     lines = [head] + ([summary] if summary else []) + ([SHORTENED] if cut else [])
@@ -146,7 +161,7 @@ def task_card(task: Task, open_url: str | None) -> Card:
 
 def routine_card(routine: Routine, task: Task, open_url: str | None) -> Card:
     mark = "✖" if task.status in FAILED else "✔"
-    head = f"{mark} Routine {routine.name} · {task.project}: {task_status(task.status)}"
+    head = f"{mark} Routine {routine.name} · {_title(task)}: {task_status(task.status)}"
     summary, cut = _clip(task.summary or task.error or "", TASK_CHARS)
     lines = [head] + ([summary] if summary else []) + ([SHORTENED] if cut else [])
     return Card(_clean("\n".join(lines)), _open(open_url))
@@ -180,7 +195,7 @@ def press(  # noqa: PLR0911 (one answer per way a press can go)
             answered = inbox.answer(
                 session, settings, str(decision.id), inbox.Answer(choice=choice), by=who, via=via
             )
-            label = CHOICE_LABELS.get(choice, choice).lower()
+            label = _label(decision, choice).lower()
             return f"Done: {label}. It's {decision_status(answered.decision.status)}."
     except (ValueError, IndexError):
         return "This button no longer works. Open Ringkeeper to answer."

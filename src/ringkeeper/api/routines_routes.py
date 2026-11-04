@@ -246,7 +246,8 @@ def pause_project_routines(name: str, data: PauseIn, session: WriteSessionDep) -
     project.paused = data.paused
     admin_audit.record(
         session, "routine.pause" if data.paused else "routine.resume",
-        f"{'paused' if data.paused else 'resumed'} {name}'s routines", by=OWNER, project=name,
+        f"{'paused' if data.paused else 'resumed'} {project.title}'s routines", by=OWNER,
+        project=name,
     )  # fmt: skip
     return {"paused": project.paused}
 
