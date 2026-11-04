@@ -60,7 +60,7 @@ export function useChannels() {
 /** What a channel sends: events, quiet hours, and which clients and projects. */
 export function ChannelPrefs({ prefs, onSave }: { prefs: Prefs; onSave: (prefs: Prefs) => Promise<unknown> }) {
   const { clients } = useScope();
-  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const projects = useApi<{ name: string; title: string; owner: string }[]>("projects");
   const [draft, setDraft] = useState<Prefs>(prefs);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +130,7 @@ export function ChannelPrefs({ prefs, onSave }: { prefs: Prefs; onSave: (prefs: 
                   .map((p) => (
                     <label key={p.name} className="ml-6 flex items-center gap-2 text-sm">
                       <input type="checkbox" checked={draft.projects.includes(p.name)} onChange={() => setDraft({ ...draft, projects: flip(draft.projects, p.name) })} />
-                      {p.name}
+                      {p.title}
                     </label>
                   ))}
           </div>

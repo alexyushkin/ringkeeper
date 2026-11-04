@@ -6,7 +6,7 @@ import { useConnectionTitles } from "@/components/connection-form";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Alert, Button, Empty, Loading, PageHeader, Select, timeUntil } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
-import { useScope } from "@/lib/client/scope";
+import { projectName, useScope } from "@/lib/client/scope";
 
 /** Every action waiting for your OK, across conversations, in full: the SQL, the plan,
  * more money for a task. Questions ("which project?", a worker asking something) are
@@ -105,7 +105,7 @@ export default function ApprovalsPage() {
           {trusts.data.map((trust) => (
             <li key={trust.id} className="flex flex-wrap items-center gap-2">
               <span>
-                Trusted: <strong>{trust.tool.replace(/_/g, " ")}</strong> on {title(trust.instance)} in {trust.project}, {timeUntil(trust.expires_at)}
+                Trusted: <strong>{trust.tool.replace(/_/g, " ")}</strong> on {title(trust.instance)} in {projectName(trust.project)}, {timeUntil(trust.expires_at)}
               </span>
               <span className="ml-auto" />
               <Button kind="ghost" onClick={() => void api(`trusts/${trust.id}`, { method: "DELETE" }).then(trusts.reload)}>

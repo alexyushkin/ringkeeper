@@ -7,7 +7,7 @@ import { AGENTS_AND_ROUTINES, ProjectAgentForm, ProjectPicker, type AgentData } 
 import { Alert, Badge, Button, Empty, Field, Loading, Select, StatusBadge, TextArea, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { routineHref } from "@/lib/client/routes";
-import { place, useScope } from "@/lib/client/scope";
+import { place, projectName, useScope } from "@/lib/client/scope";
 
 export interface RoutineData {
   id: string;
@@ -183,7 +183,7 @@ function RoutineFor({ project, onCreated }: { project: string; onCreated: (id: s
   if (making) {
     return (
       <div className="space-y-2">
-        <p className="text-sm font-medium">New agent for {project}</p>
+        <p className="text-sm font-medium">New agent for {projectName(project)}</p>
         <ProjectAgentForm
           project={project}
           onSaved={() => {
@@ -198,7 +198,7 @@ function RoutineFor({ project, onCreated }: { project: string; onCreated: (id: s
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted">
-        {project} has no agents yet. {AGENTS_AND_ROUTINES}
+        {projectName(project)} has no agents yet. {AGENTS_AND_ROUTINES}
       </p>
       <Button kind="primary" onClick={() => setMaking(true)}>
         Create an agent

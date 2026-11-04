@@ -11,7 +11,7 @@ import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { Alert, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
-import { clientName, useScope } from "@/lib/client/scope";
+import { clientName, projectName, useScope } from "@/lib/client/scope";
 import { useRouter } from "next/navigation";
 
 /** One client: their projects and their connection library. A connection is added
@@ -43,7 +43,7 @@ export function ClientView({ name }: { name: string }) {
               {library.projects.map((p) => (
                 <li key={p}>
                   <Link href={projectHref(p)} className="text-accent">
-                    {p}
+                    {projectName(p)}
                   </Link>
                   <span className="ml-2 text-xs text-muted">{library.connections.filter((c) => c.projects.includes(p)).length} of {display}&apos;s connections</span>
                 </li>

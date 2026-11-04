@@ -292,7 +292,7 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
           value={text}
           onChange={(event) => typed(event.target.value, event.target.selectionStart)}
           onBlur={() => setMention(null)}
-          placeholder={threadId ? "Add to this conversation…" : "Ask for something, e.g. “Add a line to geninfos-web's notes”. @ names a client, project or connection."}
+          placeholder={threadId ? "Add to this conversation…" : "Ask for something, e.g. “Add a line to the website's notes”. @ names a client, project or connection."}
           className="min-h-11 flex-1 resize-none bg-transparent px-2 py-1 text-base outline-none"
           onKeyDown={(event) => {
             if (offers.length) {

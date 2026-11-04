@@ -9,7 +9,7 @@ import { ConnectionAdded } from "@/components/connection-added";
 import { Alert, Badge, Button, Card, Field } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref } from "@/lib/client/routes";
-import { clientName } from "@/lib/client/scope";
+import { clientName, projectName } from "@/lib/client/scope";
 
 /* Small things that save a trip: the digest and shortcuts on Home, Run again and saving a
  * request on a task, and a project's own keys offered as connections. */
@@ -68,7 +68,7 @@ export function Shortcuts({ project, client }: { project?: string; client?: stri
       <ul className="flex flex-wrap gap-2">
         {list.map((shortcut) => (
           <li key={shortcut.id} className="flex items-center rounded-full border border-line bg-surface text-sm">
-            <button type="button" title={`${shortcut.project}: ${shortcut.prompt}`} className="px-3 py-1 hover:text-accent" onClick={() => fillRequest(shortcut.prompt.includes(`@${shortcut.project}`) ? shortcut.prompt : `@${shortcut.project} ${shortcut.prompt}`)}>
+            <button type="button" title={`${projectName(shortcut.project)}: ${shortcut.prompt}`} className="px-3 py-1 hover:text-accent" onClick={() => fillRequest(shortcut.prompt.includes(`@${projectName(shortcut.project)}`) ? shortcut.prompt : `@${projectName(shortcut.project)} ${shortcut.prompt}`)}>
               {shortcut.label}
             </button>
             <button type="button" aria-label={`Remove ${shortcut.label}`} className="pr-2 text-muted hover:text-ink" onClick={() => void api(`shortcuts/${shortcut.id}`, { method: "DELETE" }).then(shortcuts.reload)}>
@@ -116,7 +116,7 @@ export function TaskAgain({ id, project, prompt, outcome }: { id: string; projec
       <div className="flex flex-wrap gap-2">
         <Button onClick={again}>Run again</Button>
         {saved ? (
-          <span className="self-center text-sm text-muted">★ Saved on {project}: it&apos;s on Home.</span>
+          <span className="self-center text-sm text-muted">★ Saved on {projectName(project)}: it&apos;s on Home.</span>
         ) : (
           <Button kind="ghost" onClick={() => setSaving(!saving)}>
             ☆ Save this request
@@ -129,7 +129,7 @@ export function TaskAgain({ id, project, prompt, outcome }: { id: string; projec
             <Field label="Call it" value={label} onChange={setLabel} />
           </div>
           <Button kind="primary" disabled={!label.trim()} onClick={save}>
-            Save on {project}
+            Save on {projectName(project)}
           </Button>
         </div>
       ) : null}

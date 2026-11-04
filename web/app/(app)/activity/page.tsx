@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useConnectionTitles } from "@/components/connection-form";
 import { Alert, Badge, Card, Code, Details, Empty, Field, Loading, PageHeader, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 import { place, useScope } from "@/lib/client/scope";
@@ -44,6 +45,7 @@ export default function ActivityPage() {
   const [since, setSince] = useState("");
   const query = { client: scope.client, project: scope.project, outcome, since: since ? new Date(since).toISOString() : "" };
   const rows = useApi<Row[]>("audit", { ...query, limit: 200 });
+  const connection = useConnectionTitles();
   const csv = `/bff/audit.csv?${new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])}`;
 
   return (
@@ -66,7 +68,7 @@ export default function ActivityPage() {
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <Badge tone={TONE[row.outcome] ?? "neutral"}>{OUTCOMES.find(([k]) => k === row.outcome)?.[1] ?? row.outcome}</Badge>
                 {row.project ? <span className="font-medium">{place(row.client, row.project)}</span> : null}
-                {row.instance ? <span className="text-muted">on {row.instance}</span> : null}
+                {row.instance ? <span className="text-muted">on {connection(row.instance)}</span> : null}
                 <span className="ml-auto text-xs text-muted">{new Date(row.at).toLocaleString()}</span>
               </div>
               {row.reason ? <p className="text-sm">{row.reason}</p> : null}

@@ -16,6 +16,7 @@ import { Alert, Button, Card, Field, Loading, Logo, Select, Toggle } from "@/com
 import { ApiError, api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
+import { projectName, rememberTitles } from "@/lib/client/scope";
 
 interface Status {
   owner: boolean;
@@ -166,7 +167,8 @@ function ProjectStep({ onSaved }: { onSaved: (name: string, saved?: ProjectSaved
 
 /** Desktop: projects from Claude Code's folders or by hand, and Claude Desktop's servers for them. */
 function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: ProjectSaved) => void }) {
-  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const projects = useApi<{ name: string; title: string; owner: string }[]>("projects");
+  rememberTitles(projects.data);
   const [last, setLast] = useState<{ name: string; saved?: ProjectSaved } | null>(null);
   const [form, setForm] = useState(0); // a fresh form after each project added by hand
   const names = (projects.data ?? []).map((p) => p.name);
@@ -204,7 +206,7 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
       {names.length ? (
         <Card className="space-y-3">
           <p className="text-sm">
-            Your projects: <strong>{names.join(", ")}</strong>
+            Your projects: <strong>{(projects.data ?? []).map((p) => p.title).join(", ")}</strong>
           </p>
           <Button kind="primary" onClick={() => onDone(last?.name ?? names.join(", "), last?.saved)}>
             Continue
@@ -240,7 +242,7 @@ function RestoreInstead() {
 }
 
 /** Step 2, next to Claude Desktop's servers: the catalog, for a project already added. */
-function BrowseCatalog({ projects: list }: { projects: { name: string; owner: string }[] }) {
+function BrowseCatalog({ projects: list }: { projects: { name: string; title: string; owner: string }[] }) {
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState("");
   const [added, setAdded] = useState<string | null>(null);
@@ -260,7 +262,7 @@ function BrowseCatalog({ projects: list }: { projects: { name: string; owner: st
           <ConnectionAdded name={added} onAnother={() => setAdded(null)} onDone={() => { setAdded(null); setOpen(false); }} />
         ) : (
           <>
-            {list.length > 1 ? <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} /> : null}
+            {list.length > 1 ? <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.title])} /> : null}
             <Catalog key={project.name} client={project.owner} project={project.name} kind="client" onAdded={setAdded} />
           </>
         )
@@ -271,7 +273,8 @@ function BrowseCatalog({ projects: list }: { projects: { name: string; owner: st
 
 /** Optional: services for the projects, as many as wanted, so the first request can use them. */
 function DesktopConnectStep({ onDone }: { onDone: () => void }) {
-  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const projects = useApi<{ name: string; title: string; owner: string }[]>("projects");
+  rememberTitles(projects.data);
   const [chosen, setChosen] = useState("");
   const [added, setAdded] = useState<string[]>([]);
   const [showing, setShowing] = useState<string | null>(null); // the card for the one just added
@@ -303,7 +306,7 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
       ) : project ? (
         <>
           {list.length > 1 ? (
-            <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.name])} />
+            <Select label="For project" value={project.name} onChange={setChosen} options={list.map((p): [string, string] => [p.name, p.title])} />
           ) : null}
           <Catalog key={`remote-${project.name}-${added.length}`} client={project.owner} project={project.name} kind="client" onAdded={add} />
         </>
@@ -324,7 +327,9 @@ function DesktopConnectStep({ onDone }: { onDone: () => void }) {
 }
 
 /** The desktop app's last step: where the files are, and starting with Windows. */
-function DesktopDone({ project, saved }: { project: string | null; saved: ProjectSaved | null }) {
+function DesktopDone({ project: slug, saved }: { project: string | null; saved: ProjectSaved | null }) {
+  rememberTitles(useApi<{ name: string; title: string }[]>("projects").data);
+  const project = projectName(slug);
   const router = useRouter();
   const settings = useApi<{ values: { start_at_login: boolean } }>("settings");
   const [choice, setChoice] = useState<boolean | null>(null);
@@ -611,7 +616,8 @@ function ConnectionStep({ project: added, onDone }: { project: string | null; on
   const [showing, setShowing] = useState<string | null>(null); // the card for the one just added
   const [error, setError] = useState<string | null>(null);
   const [project, setProject] = useState<string | null>(added);
-  const projects = useApi<{ name: string; owner: string }[]>("projects");
+  const projects = useApi<{ name: string; title: string; owner: string }[]>("projects");
+  rememberTitles(projects.data);
   const owner = projects.data?.find((p) => p.name === project)?.owner ?? null;
 
   useEffect(() => {

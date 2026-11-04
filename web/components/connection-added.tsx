@@ -8,7 +8,7 @@ import { TestButton } from "@/components/forms";
 import { useProjects } from "@/components/shared-tools";
 import { Alert, Button } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { clientName } from "@/lib/client/scope";
+import { clientName, projectName } from "@/lib/client/scope";
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -55,7 +55,7 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
     <div className="space-y-3 rounded-xl border border-line p-3">
       <Alert tone="good">
         Added {connection ? connectionTitle(connection) : name}
-        {connection?.projects.length ? `, for ${connection.projects.join(", ")}` : ""}.
+        {connection?.projects.length ? `, for ${connection.projects.map(projectName).join(", ")}` : ""}.
         {connection?.config.source === "open" ? " It needs no key." : " Its secrets are stored encrypted and won't be shown again."}
       </Alert>
       <TestButton name={name} />
@@ -82,7 +82,7 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
                   }
                   className="size-4 accent-[var(--color-accent)]"
                 />
-                {p.name}
+                {projectName(p.name)}
                 {connection?.shared ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
               </label>
               {p.name in picked && fields.length ? (

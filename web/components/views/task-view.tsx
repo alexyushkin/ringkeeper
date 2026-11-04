@@ -14,6 +14,7 @@ import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { threadHref } from "@/lib/client/routes";
+import { projectName } from "@/lib/client/scope";
 
 interface Session {
   id: string;
@@ -222,7 +223,7 @@ export function TaskView({ id }: { id: string }) {
       <Changes task={id} />
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold">{t.project}</h1>
+          <h1 className="text-lg font-semibold">{projectName(t.project)}</h1>
           <StatusBadge status={t.status} />
           {t.kind ? <Badge>{t.kind}</Badge> : null}
           {t.archived ? <Badge>archived</Badge> : null}

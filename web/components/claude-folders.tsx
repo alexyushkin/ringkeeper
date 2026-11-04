@@ -144,7 +144,7 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
         if (!offer) continue;
         const name = freeName(offer.title, names);
         // A folder (also when it's a Claude project too) is used as it is.
-        if (offer.folder) await api("projects", { json: { name, owner, workspace_path: offer.folder.folder, description: offer.project?.description ?? "" } });
+        if (offer.folder) await api("projects", { json: { name, title: offer.title === name ? "" : offer.title, owner, workspace_path: offer.folder.folder, description: offer.project?.description ?? "" } });
         else if (offer.project) await api(`desktop/claude-projects/${encodeURIComponent(offer.project.id)}`, { json: { name, owner } });
         names.add(name);
         added.push(name);
