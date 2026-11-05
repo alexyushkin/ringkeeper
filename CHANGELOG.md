@@ -3,6 +3,15 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Clouds.** AWS, Azure, Google Cloud and OCI connect from the login you already have in
+  their command line tools. Each runs the cloud's own server on this computer, so
+  Ringkeeper holds no key. What a command needs comes from the command itself, and each
+  project's link names the client's own subscription, project or compartment.
+- **Oracle Database,** with its wallet for an Autonomous Database. The same checks as
+  Postgres, and a plain update or delete can be undone.
+
 ## 0.1.0-beta.20 (2026-11-05)
 
 - **Business systems.** HubSpot, Salesforce, Pipedrive, Keap, Jobber, Housecall Pro,

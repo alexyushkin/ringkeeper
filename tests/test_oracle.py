@@ -4,6 +4,7 @@ import base64
 import datetime
 import io
 import json
+import socket
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -179,6 +180,17 @@ async def test_a_write_commits_and_a_failure_rolls_back(db: FakeDb) -> None:
         await oracle.execute.handler(target(), "update a set b = :1", [1])
     assert db.ended == ["rollback", "close"]
     assert str(caught.value) == "ORA-00001: unique constraint"  # never the data after it
+
+
+async def test_a_name_that_doesnt_resolve_says_so(
+    db: FakeDb, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_such_host(**_options: Any) -> None:
+        raise socket.gaierror(11001, "getaddrinfo failed")
+
+    monkeypatch.setattr(oracle, "connector", no_such_host)
+    with pytest.raises(ToolError, match="check its connect string"):
+        await oracle.query.handler(target(), "select 1 from dual")
 
 
 async def test_a_wallet_is_unpacked_for_the_call_and_gone_after(db: FakeDb) -> None:

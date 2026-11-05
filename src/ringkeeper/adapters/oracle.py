@@ -153,6 +153,8 @@ def _connected(target: Target) -> Generator[Any]:
             connection = connector(**options)
         except oracledb.Error as error:
             raise ToolError(f"cannot connect to '{target.name}': {_message(error)}") from None
+        except OSError:  # the driver lets a name that doesn't resolve through as it is
+            raise ToolError(f"cannot reach '{target.name}': check its connect string") from None
         try:
             yield connection
         finally:
@@ -186,12 +188,14 @@ def _kept(value: object) -> object:
 
 def _back(value: object) -> object:
     """A kept value as it's bound again."""
-    fields = cast(JSON, value) if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return value
+    fields = cast(JSON, value)
     if "$date" in fields:
         return datetime.datetime.fromisoformat(str(fields["$date"]))
     if "base64" in fields:
         return base64.b64decode(str(fields["base64"]))
-    return value
+    return fields
 
 
 def _clean(statement: str) -> str:
