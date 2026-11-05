@@ -12,6 +12,10 @@ publishes it as the release notes and the app shows it with the update.
   with Built in, Official and Community marks.
 - **Use a connection in all of a client's projects.** Projects added later get it too,
   with exceptions if you want, and a project's link can still be narrowed.
+- **Ringkeeper finds what you already have.** Logins on this computer (GitHub CLI, Vercel
+  CLI, and AWS, Azure, Google Cloud and OCI, listed for now), MCP servers in a project's
+  folder and in Claude Code, Codex and Cursor settings, and many more keys in `.env` files.
+  Each is offered once and added only when you say.
 - **Card and bank numbers stay out.** A tool call carrying one is refused, and they're
   removed from logs, conversations, a task's events and the audit log.
 - **Voice on Intel Macs.** The Intel build can now download voice like the others. Older

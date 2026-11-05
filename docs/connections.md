@@ -40,6 +40,21 @@ projects, and narrow each if you like. On a project's Connections tab, **Link a
 connection** lists the client's connections that aren't linked yet and your own tools.
 A client with no projects says so, with **Add project** and **From Claude**.
 
+## Found on this computer
+
+Ringkeeper prefers logins you already have to keys you'd paste. Connectors lists what
+you're signed in to here: GitHub CLI and Vercel CLI, and AWS profiles and SSO, Azure CLI,
+Google Cloud CLI and OCI. Each is offered once: **Connect** makes it your own tool, and you
+choose which projects use it; **Skip** stops offering it. Only who it signs in as is shown.
+The cloud logins are listed for now and can't connect yet.
+
+A project's page lists what its folder holds, the same way: keys in its `.env` and config
+files, and MCP servers in `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`,
+`.codex/config.toml`, Claude Code's settings for that folder, and its own code. Nothing is
+added until you connect one. A server on a temporary tunnel like `trycloudflare.com`
+connects with a warning: it stops working when the tunnel does. A key for a service
+Ringkeeper has no connection for yet is named and left in the file.
+
 ## All of a client's projects
 
 A connection can go to all of its client's projects, and to projects added later. When

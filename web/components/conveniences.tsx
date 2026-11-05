@@ -148,6 +148,7 @@ interface Finding {
   title: string;
   usable: boolean;
   why: string;
+  warning: string;
   added: boolean;
 }
 
@@ -193,6 +194,7 @@ function FoundKey({ project, owner, finding, onDone }: { project: string; owner:
         </Button>
       </div>
       {finding.why ? <p className="text-xs text-muted">{finding.why}</p> : null}
+      {finding.warning ? <Alert tone="warn">{finding.warning}</Alert> : null}
       {open ? (
         <div className="space-y-3">
           <EnvChoice value={env} onChange={setEnv} />
@@ -220,7 +222,7 @@ export function ProjectScan({ project, owner, onChanged }: { project: string; ow
   return (
     <div className="space-y-2 rounded-xl bg-sunken p-3">
       <h3 className="text-sm font-semibold">Found in this project&apos;s files</h3>
-      <p className="text-xs text-muted">These look like {clientName(owner)}&apos;s keys. Nothing is added until you connect one; values stay in the file until then.</p>
+      <p className="text-xs text-muted">These look like {clientName(owner)}&apos;s keys and tools. Nothing is added until you connect one; values stay in the file until then.</p>
       <ul className="space-y-2">
         {open.map((finding) => (
           <FoundKey
@@ -238,6 +240,73 @@ export function ProjectScan({ project, owner, onChanged }: { project: string; ow
           />
         ))}
       </ul>
+    </div>
+  );
+}
+
+interface FoundLogin {
+  id: string;
+  tool: string;
+  account: string;
+  title: string;
+  usable: boolean;
+  why: string;
+  added: boolean;
+}
+
+/** Tools you're signed in to on this computer, offered once each as your own connections:
+ * you choose which projects use them. Nothing is added until you connect one. */
+export function FoundLogins({ onChanged }: { onChanged: () => void }) {
+  const logins = useApi<{ found: FoundLogin[] }>("logins");
+  const taken = useTakenNames();
+  const [added, setAdded] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const open = (logins.data?.found ?? []).filter((login) => !login.added);
+
+  async function connect(login: FoundLogin) {
+    setBusy(login.id);
+    setError(null);
+    const name = nameFor(login.title, undefined, taken);
+    try {
+      await api("logins/connect", { json: { id: login.id, name, title: login.title } });
+      setAdded(name);
+      logins.reload();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (added) return <ConnectionAdded name={added} onLinked={onChanged} onDone={() => setAdded(null)} />;
+  if (!open.length) return null;
+  return (
+    <div className="space-y-2 rounded-xl bg-sunken p-3">
+      <h3 className="text-sm font-semibold">Signed in on this computer</h3>
+      <p className="text-xs text-muted">Use a login you already have instead of pasting a key. Each becomes your own tool, and you choose which projects use it. Nothing is added until you connect one.</p>
+      <ul className="space-y-2">
+        {open.map((login) => (
+          <li key={login.id} className="space-y-1 rounded-xl border border-line p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{login.tool}</span>
+              <span className="text-xs text-muted">{login.account}</span>
+              <span className="ml-auto" />
+              {login.usable ? (
+                <Button busy={busy === login.id} onClick={() => void connect(login)}>
+                  Connect
+                </Button>
+              ) : null}
+              <Button kind="ghost" onClick={() => void api("logins/skip", { json: { id: login.id } }).then(() => logins.reload())}>
+                Skip
+              </Button>
+            </div>
+            {login.why ? <p className="text-xs text-muted">{login.why}</p> : null}
+          </li>
+        ))}
+      </ul>
+      {error ? <Alert>{error}</Alert> : null}
     </div>
   );
 }

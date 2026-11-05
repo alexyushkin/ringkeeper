@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { ServiceMark } from "@/components/catalog";
 import { connectionTitle } from "@/components/connection-form";
+import { FoundLogins } from "@/components/conveniences";
 import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { HelpHint } from "@/components/help-hint";
 import { ScopeNote } from "@/components/scope-switcher";
@@ -83,6 +84,9 @@ export default function ConnectionsPage() {
         <Select label="Show" value={attention} onChange={setAttention} options={[["", "All"], ["failing", "Last test failed"], ["unlinked", "Not linked to a project"]]} />
       </div>
       <ScopeNote />
+      <div className="mb-4">
+        <FoundLogins onChanged={connections.reload} />
+      </div>
       {connections.error ? <Alert>{connections.error}</Alert> : null}
       {connections.loading && !connections.data ? <Loading /> : null}
       <Section id="shared" title="Your own tools" summary={sharedSummary} action={<LinkButton href="/connections/new?kind=shared">Add your own tool</LinkButton>}>
