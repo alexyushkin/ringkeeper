@@ -32,6 +32,7 @@ export const SERVICE: Record<string, string> = {
   http: "API",
   s3: "File storage",
   vendor: "Business system",
+  oracle: "Oracle Database",
   mcp: "Add-on tool (MCP)",
 };
 

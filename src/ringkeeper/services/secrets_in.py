@@ -24,6 +24,7 @@ from ringkeeper.adapters import (
     http_api,
     mailbox,
     mcp,
+    oracle,
     resend,
     smtp,
     storage,
@@ -140,6 +141,7 @@ PARTS = {
     InstanceType.HTTP: http_api.settings,
     InstanceType.S3: storage.settings,
     InstanceType.VENDOR: vendor.settings,
+    InstanceType.ORACLE: oracle.settings,
 }
 
 
@@ -153,6 +155,8 @@ def _check_addresses(kind: InstanceType, parts: object) -> None:
         netpolicy.check_host(str(fields["smtp"]["host"]))
     elif kind is InstanceType.S3 and fields.get("endpoint"):
         netpolicy.check_url(str(fields["endpoint"]))
+    elif kind is InstanceType.ORACLE:
+        oracle.check_address(fields)
     elif kind is InstanceType.HTTP and fields.get("spec_url"):
         netpolicy.check_url(str(fields["spec_url"]))
 

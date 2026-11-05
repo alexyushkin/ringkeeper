@@ -262,6 +262,21 @@ def _vendors(values: dict[str, str], add: Add) -> None:
         )  # fmt: skip
 
 
+def _oracle(values: dict[str, str], add: Add) -> None:
+    dsn = _first(values, "ORACLE_DSN", "ORACLE_CONNECTION_STRING", "ORACLE_CONNECT_STRING")
+    user = _first(values, "ORACLE_USER", "ORACLE_USERNAME")
+    password = _first(values, "ORACLE_PASSWORD", "ORACLE_PASS")
+    if dsn:
+        fields = {"dsn": dsn[1], "user": user[1] if user else "",
+                  "password": password[1] if password else ""}  # fmt: skip
+        add(
+            "oracle", "Oracle Database", _named(dsn, user, password), json.dumps(fields),
+            title="Oracle Database", shown=mask(dsn[1]),
+            why="" if user and password else "It needs the user and password too (ORACLE_USER, "
+            "ORACLE_PASSWORD).",
+        )  # fmt: skip
+
+
 def _not_yet(values: dict[str, str], add: Add) -> None:
     """Services with no connection yet: named, so you know it was seen, and left alone."""
     for label, words in NOT_YET:
@@ -337,6 +352,7 @@ def _in_file(file: str, values: dict[str, str]) -> list[tuple[Finding, str, str 
     _apis(values, add)
     _storage(values, add)
     _vendors(values, add)
+    _oracle(values, add)
     _not_yet(values, add)
     return found
 

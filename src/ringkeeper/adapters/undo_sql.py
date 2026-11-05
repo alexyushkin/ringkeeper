@@ -91,8 +91,9 @@ class Plan:
     columns: list[str]  # an update's columns, as written
 
 
-def plan(sql: str, params: list[Any] | None) -> Plan:
-    """What an UPDATE or DELETE touches. Raises CantUndoError for anything else."""
+def plan(sql: str, params: list[Any] | None, bind: str = r"%s") -> Plan:
+    """What an UPDATE or DELETE touches. Raises CantUndoError for anything else. `bind` is how
+    a value is marked in the statement: Postgres's %s, or Oracle's :1."""
     text = normalized(sql).strip()
     masked = _mask(text)
     if reads_only(text):
@@ -121,8 +122,8 @@ def plan(sql: str, params: list[Any] | None) -> Plan:
         table = text[found.start("table") : found.end("table")]
         where = text[found.start("where") : found.end("where")] if found.group("where") else None
         before_where = masked[: found.start("where")] if where else masked
-        used = before_where.count("%s")
-        where_params = params[used : used + (where or "").count("%s")]
+        used = len(re.findall(bind, before_where))
+        where_params = params[used : used + len(re.findall(bind, _mask(where or "")))]
         columns: list[str] = []
         if kind == "update":
             set_text, set_masked = (

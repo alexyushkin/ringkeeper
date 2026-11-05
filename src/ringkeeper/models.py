@@ -65,6 +65,7 @@ class InstanceType(enum.StrEnum):
     HTTP = "http"  # any HTTP API: an address, a way to sign in, optionally an OpenAPI file
     S3 = "s3"  # file storage: AWS S3, Cloudflare R2, S3-compatible, Vercel Blob
     VENDOR = "vendor"  # a business system through its own API (adapters.vendors)
+    ORACLE = "oracle"  # an Oracle Database, with its wallet if it's an Autonomous one
 
 
 class Env(enum.StrEnum):

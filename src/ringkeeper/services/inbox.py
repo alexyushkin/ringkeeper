@@ -462,7 +462,9 @@ def _one_line(text: str, limit: int) -> str:
     return flat if len(flat) <= limit else flat[: max(limit - 1, 1)] + "…"
 
 
-DATA_SERVICES = (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE)
+DATA_SERVICES = (
+    InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE, InstanceType.ORACLE,
+)  # fmt: skip
 SENDS = (
     InstanceType.TWILIO, InstanceType.GMAIL, InstanceType.SMTP, InstanceType.RESEND,
     InstanceType.MAILBOX,

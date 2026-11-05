@@ -11,6 +11,8 @@ from typing import Any, cast
 
 COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
 ESCAPE_STRING = re.compile(r"(?<![\w'])[eE]'")
+# Oracle's q'[it's]': any delimiter, so what's inside can't be told from what's outside.
+Q_QUOTE = re.compile(r"(?<![\w'])[nN]?[qQ]'")
 DOLLAR_QUOTE = re.compile(r"\$[A-Za-z_]?\w*\$")
 QUOTED = re.compile(r"'(?:[^']|'')*'")
 IDENTIFIERS = re.compile(r'"(?:[^"]|"")*"')
@@ -77,21 +79,22 @@ _WRITES = re.compile(
 _EXPLAIN_OPTIONS = re.compile(r"^explain\s*(\([^)]*\)\s*|verbose\s+|costs\s+)*")
 
 
-def reads_only(sql: str) -> bool:
+def reads_only(sql: str, harmless: frozenset[str] = frozenset()) -> bool:
     """Whether every statement in `sql` is shown to only read: SELECT (WITH, VALUES,
     TABLE, SHOW, or EXPLAIN of one) with no writing keyword anywhere, no quoting that
-    can hide one, and no function calls beyond harmless ones. Anything else: False."""
+    can hide one, and no function calls beyond harmless ones (HARMLESS, and `harmless`).
+    Anything else: False."""
     text = COMMENTS.sub(" ", normalized(sql))
-    if DOLLAR_QUOTE.search(text) or ESCAPE_STRING.search(text):
+    if DOLLAR_QUOTE.search(text) or ESCAPE_STRING.search(text) or Q_QUOTE.search(text):
         return False
     bare = IDENTIFIERS.sub('"x"', QUOTED.sub("''", text)).lower()
     statements = [s.strip() for s in bare.split(";") if s.strip()]
     if not statements:
         return False
-    return all(map(_reads, statements))
+    return all(_reads(s, harmless) for s in statements)
 
 
-def _reads(statement: str) -> bool:
+def _reads(statement: str, harmless: frozenset[str]) -> bool:
     # EXPLAIN (not ANALYZE, which runs it: _WRITES) is judged by what it explains.
     explained = _EXPLAIN_OPTIONS.sub("", statement).strip()
     words = re.findall(r"[a-z_]+", explained)
@@ -99,4 +102,8 @@ def _reads(statement: str) -> bool:
         return False
     if _WRITES.search(explained):
         return False
-    return all(call.group(1).rsplit(".", 1)[-1] in HARMLESS for call in CALL.finditer(explained))
+    allowed = HARMLESS | harmless
+    return all(
+        call.group(1) in allowed or call.group(1).rsplit(".", 1)[-1] in HARMLESS
+        for call in CALL.finditer(explained)
+    )

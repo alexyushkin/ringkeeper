@@ -35,6 +35,7 @@ BY_SERVICE: dict[InstanceType, str] = {
     InstanceType.HTTP: "List what the {connection} API offers",
     InstanceType.S3: "List the files in {connection}",
     InstanceType.VENDOR: "List what {connection} can do for {project}",
+    InstanceType.ORACLE: "List the tables in {project}'s database",
 }
 FOLDER = "Explain what's in {project}'s folder, in a few lines"
 TASKS = "What did my tasks do this week?"

@@ -47,6 +47,7 @@ SERVICES = {
     InstanceType.HTTP: "API",
     InstanceType.S3: "file storage",
     InstanceType.VENDOR: "business system",
+    InstanceType.ORACLE: "database",
 }
 
 APPS = {"slack": "Slack", "discord": "Discord", "telegram": "Telegram", "web": "the app"}

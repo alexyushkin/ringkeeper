@@ -277,11 +277,19 @@ def test_the_clouds_are_found_and_hold_no_key(machine: Path) -> None:
     assert profiles["DEFAULT (us-ashburn-1)"] == {"OCI_CONFIG_PROFILE": "DEFAULT"}
 
 
+def nothing_missing(_command: str) -> None:
+    return None
+
+
+def no_uv(_command: str) -> str:
+    return "needs uv (uvx)"
+
+
 def test_connecting_a_cloud_login_runs_its_own_server_and_keeps_no_key(
     owner: TestClient, machine: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("ringkeeper.api.convenience_routes._on_this_computer", lambda: True)
-    monkeypatch.setattr("ringkeeper.api.convenience_routes.missing_command", lambda _c: None)
+    monkeypatch.setattr("ringkeeper.api.convenience_routes.missing_command", nothing_missing)
     write(machine, ".aws/config", "[profile gi-prod]\nregion=us-east-1\n")
     write(machine, ".aws/credentials", "[gi-prod]\naws_access_key_id=AKIAFAKE\n")
     login = next(x for x in owner.get("/logins").json()["found"] if x["service"] == "aws")
@@ -302,9 +310,7 @@ def test_a_cloud_login_says_what_this_computer_is_missing(
     owner: TestClient, machine: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("ringkeeper.api.convenience_routes._on_this_computer", lambda: True)
-    monkeypatch.setattr(
-        "ringkeeper.api.convenience_routes.missing_command", lambda _c: "needs uv (uvx)"
-    )
+    monkeypatch.setattr("ringkeeper.api.convenience_routes.missing_command", no_uv)
     write(machine, ".aws/config", "[profile gi-prod]\nregion=us-east-1\n")
     login = next(x for x in owner.get("/logins").json()["found"] if x["service"] == "aws")
     made = owner.post(

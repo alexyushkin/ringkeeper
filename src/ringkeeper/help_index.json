@@ -1420,5 +1420,59 @@
 "anchor": "undo",
 "title": "Undo",
 "text": "Nothing changes, so there's nothing to undo."
+},
+{
+"doc": "services/oracle",
+"anchor": "",
+"title": "Oracle Database",
+"text": "Your own Oracle Database, or an Autonomous Database with its wallet. Nothing else needs installing: Ringkeeper connects in thin mode, with no Oracle client."
+},
+{
+"doc": "services/oracle",
+"anchor": "add-it",
+"title": "Add it",
+"text": "Use the **Oracle Database** tile under Connectors, with a user that has only the access it needs. The connect string looks like `db.example.com:1521/orclpdb1`. For an **Autonomous Database**, download the wallet `.zip` from its Database connection page, choose it in the form, and use one of its service names as the connect string, like `acme_high`. Ringkeeper uses only `ewallet.pem` and `tnsnames.ora` from it. The wallet is kept in the vault and unpacked only for the length of a call. If a project's `.env` has `ORACLE_DSN`, `ORACLE_USER` and `ORACLE_PASSWORD`, Ringkeeper offers it on the project's page."
+},
+{
+"doc": "services/oracle",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "The same checks as a Postgres database: - **Reading runs,** in a read-only transaction. - **On production,** every change waits for your approval. On test data, changes run and are logged. - **Needs the name typed:** deleting rows, dropping or changing tables, permissions, and anything that can't be checked, including PL/SQL blocks and calls to your own functions. A plain `UPDATE` or `DELETE` on one table with a primary key can be undone for 7 days."
+},
+{
+"doc": "services/oracle",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- An Oracle function can write even inside a read-only transaction, so a query that calls a function Ringkeeper doesn't know has to go through `execute`, where it's checked. - Oracle's `q'[...]'` strings can hide what a statement does, so they count as something that can't be checked. - Values use `:1`, `:2` binds."
+},
+{
+"doc": "services/cloud",
+"anchor": "",
+"title": "Clouds: AWS, Azure, Google Cloud and OCI",
+"text": "Each runs the cloud's own server on this computer, with the login you already have in its command line tool. Ringkeeper holds no cloud key: it only tells the server which profile to use. This is in the desktop app."
+},
+{
+"doc": "services/cloud",
+"anchor": "add-one",
+"title": "Add one",
+"text": "Sign in with the cloud's command line tool (`aws sso login`, `az login`, `gcloud auth login`, or your OCI config). **Connectors** then lists the login under **Signed in on this computer**. Connect it, and it's your own tool. The first run downloads the server, so it needs `uv` for AWS and OCI, and Node.js for Azure and Google Cloud. The form says if one is missing."
+},
+{
+"doc": "services/cloud",
+"anchor": "keeping-clients-apart",
+"title": "Keeping clients apart",
+"text": "One Azure, Google Cloud or OCI login can often reach many clients, so **each project's link has to name the client's own** subscription, project or compartment. Until it does, the project's calls are refused. A command that names a different one is refused too. For AWS, one connection is one profile, so one account. A link can also pin a region. On OCI, a command on a project's link has to name that compartment, because Ringkeeper can't tell which compartment a resource ID belongs to. Listing commands get it added. Flags that would leave the login, like `--profile`, `--account` or `--endpoint-url`, are always refused."
+},
+{
+"doc": "services/cloud",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "What a command needs comes from the command, not the tool: - **Runs:** list, describe, get. - **Waits for approval:** update, modify, tag, stop, copying files. - **Needs the name typed, in the app:** deleting, creating or starting anything that costs money, anything on IAM, and whatever hands out a secret. So does any command Ringkeeper doesn't recognize. Azure's tools go by their names, the same way. A per-tool setting can make these stricter, never looser. Nothing here can be undone from Ringkeeper."
+},
+{
+"doc": "services/cloud",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- These use your login's own permissions, so give it no more than you want used. - Oracle marks its server as not meant for production use. - Versions are pinned, and change only with a Ringkeeper update."
 }
 ]

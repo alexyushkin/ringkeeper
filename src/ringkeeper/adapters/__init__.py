@@ -9,6 +9,7 @@ from ringkeeper.adapters import (
     mailbox,
     mcp,
     n8n,
+    oracle,
     resend,
     smtp,
     storage,
@@ -38,6 +39,7 @@ ADAPTERS: dict[InstanceType, Adapter] = {
         http_api,
         storage,
         vendor,
+        oracle,
     )
 }
 

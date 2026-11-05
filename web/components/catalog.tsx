@@ -185,6 +185,7 @@ interface Tile {
 const BUILT_IN: Tile[] = [
   { key: "supabase", label: "Database", sub: "Postgres: Supabase, Neon or your own", open: "form", category: "Databases", words: ["postgres", "postgresql", "sql", "supabase", "neon", "database", "db"] },
   { key: "airtable", label: "Airtable", sub: "Bases and records, with undo", open: "form", category: "Databases", words: ["airtable"] },
+  { key: "oracle", label: "Oracle Database", sub: "Your own, or Autonomous with a wallet", open: "form", category: "Databases", words: ["oracle", "oracledb", "sql", "autonomous", "atp", "adb", "wallet", "database"] },
   { key: "mailbox", label: "Mailbox", sub: "Gmail, Outlook, Zoho, Yahoo or any IMAP", open: "form", category: "Email", words: ["mailbox", "gmail", "outlook", "office365", "microsoft", "zoho", "yahoo", "imap", "email", "mail", "inbox"] },
   { key: "smtp", label: "Email sending", sub: "SMTP, any provider", open: "form", category: "Email", words: ["smtp", "email", "mail", "send", "sendgrid", "mailgun", "postmark", "brevo", "ses", "mailchimp", "mandrill"] },
   { key: "resend", label: "Resend", sub: "Email sending", open: "form", category: "Email", words: ["resend", "email", "mail", "send"] },

@@ -25,6 +25,7 @@ from ringkeeper.sql_text import (
     ESCAPE_STRING,
     HARMLESS,
     IDENTIFIERS,
+    Q_QUOTE,
     QUOTED,
     normalized,
     sql_of,
@@ -87,8 +88,8 @@ _KEYWORDS = re.compile(
 def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
     """Why a statement needs confirmation, or None if it is shown to be ordinary."""
     text = COMMENTS.sub(" ", normalized(sql))
-    if DOLLAR_QUOTE.search(text) or ESCAPE_STRING.search(text):
-        return "uses quoting that hides what it does ($$ or E'')"
+    if DOLLAR_QUOTE.search(text) or ESCAPE_STRING.search(text) or Q_QUOTE.search(text):
+        return "uses quoting that hides what it does ($$, E'' or q'')"
     bare = IDENTIFIERS.sub('"x"', QUOTED.sub("''", text)).lower()
     words = re.findall(r"[a-z_]+", bare)
     if not words:
@@ -142,7 +143,7 @@ def reason(  # noqa: PLR0911 (one return per kind of tool)
         from ringkeeper.services import undo  # noqa: PLC0415 (undo needs the adapters first)
 
         return undo.destroys(args)
-    if service is InstanceType.SUPABASE and tool == "execute":
+    if service in (InstanceType.SUPABASE, InstanceType.ORACLE) and tool == "execute":
         sql = args.get("sql")
         return sql_reason(sql) if isinstance(sql, str) else "has no SQL to check"
     if (service, tool) in SAFE_TOOLS:

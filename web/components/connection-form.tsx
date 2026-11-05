@@ -117,6 +117,7 @@ interface SecretField {
   options?: [string, string][]; // a choice, not a text box
   when?: (parts: Record<string, string>) => boolean; // shown only then
   hint?: string;
+  file?: string; // a file to choose instead of typing, kept as base64; what it accepts
 }
 
 const TEST_ADDRESS: SecretField = { key: "test_address", label: "Your own address for test sends", placeholder: "you@geninfos.com", optional: true, hint: "A test to this address runs without asking. Nothing else does." };
@@ -315,6 +316,21 @@ export const SERVICES: Record<string, ServiceInfo> = {
     secret: API_FIELDS,
     note: API_NOTE,
   },
+  oracle: {
+    short: "Oracle",
+    label: "Oracle Database",
+    example: "Oracle · acme",
+    get: [["Download a wallet (Autonomous Database)", "https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/connect-download-wallet.html"]],
+    steps: "Use a user with only the access it needs. An Autonomous Database also needs its wallet: download the .zip from its Database connection page, and use one of its service names as the connect string, like acme_high.",
+    secret: [
+      { key: "dsn", label: "Connect string", placeholder: "db.example.com:1521/orclpdb1" },
+      { key: "user", label: "User" },
+      { key: "password", label: "Password", hidden: true },
+      { key: "wallet", label: "Wallet", file: ".zip", optional: true, hint: "Only for an Autonomous Database. It's kept in the vault." },
+      { key: "wallet_password", label: "Wallet password", hidden: true, optional: true, when: (parts) => Boolean(parts.wallet) },
+    ],
+    note: "Reading runs. Changes follow the same checks as Postgres, and a plain update or delete can be undone for 7 days.",
+  },
   s3: {
     short: "Files",
     label: "File storage",
@@ -462,7 +478,24 @@ export function ConnectionForm({
         />
       ) : null}
       {shownFields.map((f) =>
-        f.options ? (
+        f.file ? (
+          <label key={`${type}-${f.key}`} className="block space-y-1 text-sm font-medium">
+            <span>{f.label} (optional)</span>
+            <input
+              type="file"
+              accept={f.file}
+              className="block w-full text-sm font-normal"
+              onChange={(e) => {
+                const chosen = e.target.files?.[0];
+                if (!chosen) return setParts((all) => ({ ...all, [f.key]: "" }));
+                const reader = new FileReader();
+                reader.onload = () => setParts((all) => ({ ...all, [f.key]: String(reader.result).split(",")[1] ?? "" }));
+                reader.readAsDataURL(chosen);
+              }}
+            />
+            {f.hint ? <span className="block text-xs font-normal text-muted">{f.hint}</span> : null}
+          </label>
+        ) : f.options ? (
           <Select key={`${type}-${f.key}`} label={f.label} value={parts[f.key] ?? ""} onChange={(v) => setParts((all) => ({ ...all, [f.key]: v }))} options={f.options} />
         ) : (
           <Field
