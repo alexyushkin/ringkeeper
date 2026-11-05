@@ -174,6 +174,7 @@ class Remote:
     url_label: str = ""  # each customer has their own address: what to ask for
     url_hint: str = ""
     basic: bool = False  # the pasted "user:password" goes as HTTP Basic
+    minor_units: bool = False  # its amounts are in cents, for the approval card
     # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
     # its own connection type, with GitHub Enterprise Server and pushes).
     shelf: bool = True
@@ -384,7 +385,7 @@ CATALOG: tuple[Remote, ...] = (
     # --- Payments ---
     Remote(
         "stripe", "Stripe", "https://mcp.stripe.com", signin=True, paste=None,
-        category="Payments", guard="payments",
+        category="Payments", guard="payments", minor_units=True,
         note="You pick the account and what it may do when you sign in. Use a sandbox while "
         "you try it.",
     ),
@@ -398,12 +399,12 @@ CATALOG: tuple[Remote, ...] = (
     ),
     Remote(
         "paddle", "Paddle", "https://mcp.paddle.com/mcp", signin=True, paste=None,
-        category="Payments", guard="payments",
+        category="Payments", guard="payments", minor_units=True,
         note="Paddle starts read-only: an admin raises it under Connectors, then MCP.",
     ),
     Remote(
         "gocardless", "GoCardless", "https://mcp.gocardless.com", signin=True, paste=None,
-        category="Payments", guard="payments",
+        category="Payments", guard="payments", minor_units=True,
         note="You pick Sandbox or Live, and what it may do, when you sign in.",
     ),
     # --- Other services ---

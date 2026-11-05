@@ -197,6 +197,10 @@ def _jobber(_app: App, _tokens: JSON, _back: JSON) -> tuple[str, JSON]:
 
 
 HUBSPOT_OAUTH = "https://api.hubspot.com/oauth/2026-09"
+HUBSPOT_OPTIONAL = (
+    "automation.sequences.read", "automation.sequences.enrollments.write", "marketing-email",
+    "transactional-email",
+)  # fmt: skip
 LOGIN = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0"
 MICROSOFT_ACCESS = (
     Access("mail_read", "Read mail", "Mail.Read"),
@@ -232,7 +236,7 @@ PROVIDERS: dict[str, Provider] = {
             scopes=("openid", "profile", "email", "offline_access", "User.Read"),
             access=MICROSOFT_ACCESS,
             vendor_scopes={
-                "business_central": (
+                "businesscentral": (
                     "openid", "profile", "email", "offline_access",
                     "https://api.businesscentral.dynamics.com/user_impersonation",
                 ),
@@ -256,7 +260,8 @@ PROVIDERS: dict[str, Provider] = {
                 "using the CLI, in a free developer account.",
                 "In the app's configuration, set the auth type to OAuth and add {redirect} to "
                 "the redirect URLs. HubSpot allows http://localhost for this.",
-                "Add the scopes listed here to the app's required scopes, and upload it.",
+                "Add the scopes listed here to the app's required scopes, and these to its "
+                f"optional scopes: {', '.join(HUBSPOT_OPTIONAL)}. Then upload it.",
                 "In HubSpot, open the project, click the app, then the Auth tab, and copy the "
                 "Client ID and Client secret.",
             ),
@@ -266,6 +271,8 @@ PROVIDERS: dict[str, Provider] = {
                 "crm.objects.deals.read", "crm.objects.deals.write",
                 "crm.objects.owners.read",
             ),
+            # Dropped by HubSpot for an account without these products.
+            extra={"optional_scope": " ".join(HUBSPOT_OPTIONAL)},
             identify=_hubspot,
         ),
         Provider(

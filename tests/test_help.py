@@ -56,7 +56,7 @@ QUESTIONS = [
 # Features that don't exist: answered without a model, so nothing can be made up.
 NOT_THERE = [
     "How do I export my tasks to Excel?",
-    "Can Ringkeeper make invoices for my clients?",
+    "Can Ringkeeper order pizza for my clients?",
     "Is there an iPhone app?",
     "Can I add a teammate?",
     "Can I change the app to French?",
@@ -91,7 +91,7 @@ def test_what_doesnt_exist_is_never_invented(question: str) -> None:
 def test_connecting_something_the_guide_doesnt_name_still_gets_an_answer() -> None:
     model = FakeModel(["Search for it under Other connectors.\nSOURCES: 1"])
     with session_scope() as session:
-        helped = guide.answer(session, get_settings(), model, "How do I connect Salesforce?")
+        helped = guide.answer(session, get_settings(), model, "How do I connect Zendesk?")
     assert helped.text == "Search for it under Other connectors."
     assert helped.cites[0]["url"].endswith("docs/connections.md#adding-one")
 

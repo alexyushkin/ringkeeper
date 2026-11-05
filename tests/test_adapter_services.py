@@ -25,6 +25,7 @@ from tests.fake_services import (
 pytestmark = pytest.mark.anyio
 
 NEW = {
+    InstanceType.VENDOR,
     InstanceType.SMTP,
     InstanceType.RESEND,
     InstanceType.MAILBOX,

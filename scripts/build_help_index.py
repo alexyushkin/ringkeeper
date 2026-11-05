@@ -19,6 +19,14 @@ PAGES = (
     "backup", "working-faster", "security", "troubleshooting", "faq", "install-desktop",
     "services/add-on-tools", "services/airtable", "services/database", "services/github",
     "services/gmail", "services/google", "services/n8n", "services/twilio", "services/vercel",
+    "services/developer-apps", "services/mailbox", "services/smtp", "services/resend",
+    "services/http-api", "services/storage", "services/clerk", "services/microsoft",
+    "services/hubspot", "services/salesforce", "services/pipedrive", "services/keap",
+    "services/jobber", "services/housecallpro", "services/servicetitan",
+    "services/quickbooks", "services/xero", "services/wave", "services/businesscentral",
+    "services/bill", "services/shopify", "services/ghost", "services/square",
+    "services/helcim", "services/lemonsqueezy", "services/clover", "services/braintree",
+    "services/plaid",
 )  # fmt: skip
 QUESTION = re.compile(r"^\*\*(.+?\?)\*\*\s*(.*)$", re.S)
 

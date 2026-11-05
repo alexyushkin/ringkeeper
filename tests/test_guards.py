@@ -1,15 +1,19 @@
 """Services on the shelf whose rules can't be lowered: CRM, accounting, CMS and payments."""
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from ringkeeper import destructive, remote
-from ringkeeper.adapters import mcp
+from ringkeeper.adapters import mcp, vendor
+from ringkeeper.adapters.vendor_spec import Money
+from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import Env, InstanceType
+from ringkeeper.models import Decision, DecisionKind, Env, InstanceType
 from ringkeeper.services import inbox, remote_connections
 from ringkeeper.services.remote_connections import NewConnection
+from tests.helpers import make_instance
 
 
 def config(key: str, **fields: object) -> dict[str, object]:
@@ -153,5 +157,59 @@ def test_the_shelf_says_where_each_service_belongs() -> None:
     assert shelf["strapi"]["url_label"]
 
 
-def test_inbox_has_a_card_for_money() -> None:
-    assert inbox.money
+@pytest.mark.parametrize(
+    ("body", "minor", "amount"),
+    [
+        ({"amount": 1250, "currency": "usd"}, True, "12.50 USD"),
+        ({"amount_money": {"amount": 1250, "currency": "USD"}}, True, "12.50 USD"),
+        ({"amount": "99.00", "currency_code": "eur"}, False, "99.00 EUR"),
+        ({"currency": "usd"}, True, "not stated USD"),
+        ({"amount": 5}, False, "5 (currency not stated)"),
+        ({"amount": {"value": "10.00", "currency": "EUR"}}, False, "10.00 EUR"),
+        ({"amount": "about ten", "currency": "usd"}, True, "about ten USD"),
+    ],
+)
+def test_the_money_card_shows_what_the_call_says(
+    body: dict[str, object], minor: bool, amount: str
+) -> None:
+    assert vendor.card_of(Money(minor_units=minor), body).amount == amount
+
+
+def test_the_money_card_never_guesses_who_or_which_account() -> None:
+    card = vendor.card_of(Money(), {"amount": 5, "currency": "usd"})
+    assert (card.counterparty, card.account) == ("not stated", "not stated")
+    named = vendor.card_of(Money(), {"customer": "cus_1", "destination": "acct_1"})
+    assert (named.counterparty, named.account) == ("cus_1", "acct_1")
+
+
+def _stripe_connection(database_url: str) -> None:
+    assert database_url
+    with session_scope() as session:
+        make_instance(
+            session, "acme-stripe", type=InstanceType.MCP, config={"remote": "stripe"},
+        )  # fmt: skip
+
+
+def _held(tool: str, arguments: dict[str, object]) -> Decision:
+    return Decision(
+        kind=DecisionKind.APPROVE, service=InstanceType.MCP, tool="call_tool",
+        instance="acme-stripe", args={"tool": tool, "arguments": arguments},
+        expires_at=datetime.now(UTC) + timedelta(days=1), args_hash="hash", project="acme-web",
+        session_id="session-1", token_id="token-1",
+    )  # fmt: skip
+
+
+def test_a_payment_servers_refund_gets_the_card_and_a_lookup_doesnt(database_url: str) -> None:
+    _stripe_connection(database_url)
+    with session_scope() as session:
+        refund = _held("create_refund", {"amount": 500, "currency": "usd", "customer": "cus_1"})
+        session.add(refund)
+        session.flush()
+        assert inbox.money(refund) == {
+            "amount": "5.00 USD", "counterparty": "cus_1", "account": "not stated",
+        }  # fmt: skip
+        link = _held("create_payment_link", {"amount": 500})
+        session.add(link)
+        session.flush()
+        assert inbox.money(link) is None
+        session.rollback()

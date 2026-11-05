@@ -5,6 +5,16 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Business systems.** CRM, field service, accounting, CMS and payment services, plus
+  Clerk. Each has only the actions Ringkeeper knows, so what isn't listed can't be called.
+- **Settings › Developer apps** holds your own registered apps for Google, Microsoft,
+  HubSpot, Salesforce, Xero, Intuit and Jobber, with the steps, the address to paste, the
+  scopes and a live check. Many accounts sign in through one app.
+- **Trusting an action for an hour now covers that one action.** On an add-on tool or a
+  business system it used to cover everything the connection could do.
+- **Rules that can't be loosened.** On CRM, accounting, CMS and payment servers a per-tool
+  setting can make a tool stricter, never looser. Nothing on an accounting connection runs
+  by itself.
 - **Gmail and Google accounts follow the same email rule as every other connection.**
   One email waits for your approval, and more than 10 people at once needs the connection's
   name typed, never from a chat app. A Google account can no longer let sending run without

@@ -150,7 +150,7 @@ def test_your_google_app_is_kept_in_the_vault(owner: TestClient, fake: FakeGoogl
     assert owner.get("/google/app").json()["configured"] is False
     refused = owner.post("/google/signin", json={"access": ["mail_read"], "owner": "acme"})
     assert refused.status_code == 409
-    assert "Settings > Google" in refused.text
+    assert "Settings > Developer apps" in refused.text
     bad = owner.put("/google/app", json={"client_id": "not-a-client-id", "client_secret": "x" * 8})
     assert bad.status_code == 409
     saved = owner.put("/google/app", json={"client_id": CLIENT_ID, "client_secret": "s3cret-value"})

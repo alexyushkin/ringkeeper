@@ -12,16 +12,19 @@ refused before it's held.
 """
 
 import base64
+import contextlib
+import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Annotated, Any, cast
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
 import httpx2
 from pydantic import Field
 
-from ringkeeper import remote
+from ringkeeper import remote, scrub
 from ringkeeper.adapters import rest
 from ringkeeper.adapters.base import (
     JSON,
@@ -52,15 +55,24 @@ OPERATIONS: dict[str, tuple[Vendor, Op]] = {
     f"{v.key}.{op.name}": (v, op) for v in ALL for op in v.ops
 }
 MAX_ANSWER_CHARS = 100_000
+# Currencies with no cents: an amount in them is already whole (Stripe's and Square's list).
+WHOLE_CURRENCIES = frozenset({
+    "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VND",
+    "VUV", "XAF", "XOF", "XPF",
+})  # fmt: skip
+EXCHANGE_MARGIN_SECONDS = 120
 RUNS = {
     READ: "without asking",
     "held": "after the user approves",
     FINAL: "after the user approves and types the connection's name",
 }
 # A value that goes into a path: one segment, nothing that climbs out of it.
-SEGMENT_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:@~+=")
+SEGMENT_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:@~+=!,"
+)
 # Tests swap in httpx2.MockTransport; production talks to the vendor.
 transport: httpx2.AsyncBaseTransport | None = None
+_exchanged: dict[str, tuple[str, float]] = {}  # the keys' hash: (token, when it ends)
 
 for _vendor in ALL:
     if _vendor.scope:
@@ -98,7 +110,23 @@ def settings(value: str) -> JSON:
             raise ToolError(f"this {vendor.name} connection needs its {wanted.label}")
         if given and wanted.pattern and not re.fullmatch(wanted.pattern, given):
             raise ToolError(f"that doesn't look like a {vendor.name} {wanted.label}")
+    _has_a_way_in(vendor, fields)
     return fields
+
+
+def _has_a_way_in(vendor: Vendor, fields: JSON) -> None:
+    """A vendor that takes a token or a key to trade for one needs one of them, whole."""
+    exchange = vendor.exchange
+    if exchange is None or not exchange.when:
+        return
+    wanted = [v for v in exchange.form.values() if not v.startswith("=")]
+    if fields.get(exchange.when):
+        if missing := [
+            s.label for s in vendor.secrets if s.key in wanted and not fields.get(s.key)
+        ]:
+            raise ToolError(f"this {vendor.name} connection needs its {missing[0]} too")
+    elif not fields.get(vendor.auth.field):
+        raise ToolError(f"this {vendor.name} connection needs a token, or a client ID and secret")
 
 
 def secret_fragments(value: str) -> list[str]:
@@ -250,6 +278,45 @@ def _limited(answer: JSON) -> JSON:
     return {"truncated": True, "text": text[:MAX_ANSWER_CHARS], "note": "ask for fewer at a time"}
 
 
+def _filled_url(vendor: Vendor, address: str, fields: JSON) -> str:
+    patterns = {s.key: s.pattern for s in vendor.secrets}
+
+    def fill(match: Any) -> str:
+        name = str(match.group(1))
+        value = str(fields.get(name) or "")
+        if not re.fullmatch(patterns[name], value):
+            raise ToolError(f"this {vendor.name} connection's {name} isn't an address it can use")
+        return value
+
+    return PLACEHOLDER.sub(fill, address)
+
+
+async def _with_token(vendor: Vendor, fields: JSON) -> JSON:
+    """The connection's values, with a fresh token if this vendor trades its key for one."""
+    exchange = vendor.exchange
+    if exchange is None or (exchange.when and not fields.get(exchange.when)):
+        return fields
+    form = {
+        k: v[1:] if v.startswith("=") else str(fields.get(v) or "")
+        for k, v in exchange.form.items()
+    }
+    form = {k: v for k, v in form.items() if v}  # what's optional and unset isn't sent
+    seen = hashlib.sha256(json.dumps([vendor.key, form], sort_keys=True).encode()).hexdigest()
+    token, ends = _exchanged.get(seen, ("", 0.0))
+    if time.time() >= ends - EXCHANGE_MARGIN_SECONDS:
+        client = httpx2.AsyncClient(timeout=rest.TIMEOUT, transport=transport)
+        sent: JSON = {"json": form} if exchange.as_json else {"data": form}
+        address = _filled_url(vendor, exchange.url, fields)
+        answer = await rest.call(client, vendor.name, "POST", address, **sent)
+        token = str(answer.get(exchange.answer) or "")
+        if not token:
+            raise ToolError(f"{vendor.name} didn't give a token for this key")
+        ends = time.time() + float(answer.get("expires_in") or exchange.lifetime)
+        _exchanged[seen] = (token, ends)
+    scrub.register(token)
+    return {**fields, (exchange.into or vendor.auth.field): token}
+
+
 async def run(
     vendor: Vendor,
     op: Op,
@@ -260,6 +327,7 @@ async def run(
     account: str | None = None,
 ) -> JSON:
     account = account or cast(str | None, fields.get("default_account"))
+    fields = await _with_token(vendor, fields)
     client = _client(vendor, fields, account)
     if op.graphql:
         answer = await rest.call(
@@ -269,10 +337,16 @@ async def run(
         if errors := answer.get("errors"):
             raise ToolError(f"{vendor.name} said: {json.dumps(errors)[:500]}")
         return cast(JSON, answer.get("data") or {})
-    return await rest.call(
-        client, vendor.name, op.method, _address(op, path or {}, account), params=query,
-        json=_checked_body(op, body),
-    )  # fmt: skip
+    sent = _checked_body(op, body)
+    if op.inject:
+        sent = {**(sent or {}), **{k: fields[k] for k in op.inject}}
+    # A query written in the operation's path is part of what it does (operation=void), so
+    # it's sent, and the call's own values can't change it.
+    address, _, fixed = _address(op, path or {}, account).partition("?")
+    values = {**(query or {}), **{k: v[0] for k, v in parse_qs(fixed).items()}}
+    if op.method != "GET":
+        client.headers.update(dict(vendor.write_headers))
+    return await rest.call(client, vendor.name, op.method, address, params=values, json=sent)
 
 
 @read
@@ -319,9 +393,14 @@ async def _call_operation(
 
 
 def _at(value: JSON, dotted: str) -> Any:
+    """A value by its path: amount_money.amount, input.transactions.0.amount."""
     found: Any = value
     for part in dotted.split("."):
-        found = cast(JSON, found).get(part) if isinstance(found, dict) else None
+        if isinstance(found, list):
+            items = cast(list[Any], found)
+            found = items[int(part)] if part.isdigit() and int(part) < len(items) else None
+        else:
+            found = cast(JSON, found).get(part) if isinstance(found, dict) else None
     return found
 
 
@@ -350,15 +429,37 @@ def money_card(args: JSON) -> Card | None:
 
 def card_of(rule: Money, body: JSON) -> Card:
     amount, currency = _picked(rule.amount, body), _picked(rule.currency, body)
-    shown = "not stated"
-    if amount is not None:
-        number = float(amount) / 100 if rule.minor_units else amount
-        shown = f"{number:,.2f}" if isinstance(number, float) else str(number)
+    shown = "not stated" if amount is None else str(amount)
+    if isinstance(amount, float):
+        shown = f"{amount:,.2f}"
+    if amount is not None and rule.minor_units and str(currency).upper() not in WHOLE_CURRENCIES:
+        # An amount in a currency the call doesn't name can't be divided by a guess.
+        with contextlib.suppress(TypeError, ValueError):  # not a number: shown as written
+            shown = f"{float(amount) / 100:,.2f}" if currency else f"{amount} (smallest units)"
     return Card(
         f"{shown} {str(currency).upper() if currency else '(currency not stated)'}",
         str(_picked(rule.counterparty, body) or "not stated"),
         str(_picked(rule.account, body) or "not stated"),
     )
+
+
+def _edited(snapshot: Snapshot, args: JSON) -> list[str]:
+    body = cast(JSON, args.get("body") or {})
+    return list(cast(JSON, body.get(snapshot.nest) or {}) if snapshot.nest else body)
+
+
+async def _record(vendor: Vendor, snapshot: Snapshot, fields: JSON, kept: JSON) -> JSON:
+    """The fields being kept, as the vendor has them now."""
+    wanted = cast(list[str], kept["keep"])
+    reader = next(o for o in vendor.ops if o.name == snapshot.read)
+    asked = {snapshot.query: ",".join(wanted)} if snapshot.query else None
+    found = await run(
+        vendor, reader, fields, cast(JSON, kept["path"]), asked, account=kept.get("account")
+    )
+    record = cast(JSON, _at(found, snapshot.where) or {}) if snapshot.where else found
+    if snapshot.nest:
+        record = cast(JSON, record.get(snapshot.nest) or {})
+    return {k: record.get(k) for k in wanted}
 
 
 def _snapshot(op: Op) -> Snapshot:
@@ -383,33 +484,32 @@ class OperationUndo(Undoer):
         vendor, op, fields = _own(target, args)
         snapshot = _snapshot(op)
         path = cast(JSON, args.get("path") or {})
-        reader = next(o for o in vendor.ops if o.name == snapshot.read)
-        found = await run(vendor, reader, fields, path, account=args.get("account"))
-        record = cast(JSON, found.get(snapshot.where) or {}) if snapshot.where else found
-        restore = snapshot.restore or op.name
-        return {
+        # Only what the edit sets goes back: anything else was never changed.
+        edited = _edited(snapshot, args)
+        keep = [k for k in snapshot.keep if k in edited] or list(snapshot.keep) or sorted(edited)
+        kept: JSON = {
             "operation": f"{vendor.key}.{op.name}",
-            "restore": f"{vendor.key}.{restore}",
+            "restore": f"{vendor.key}.{snapshot.restore or op.name}",
             "path": path,
             "account": args.get("account"),
-            "fields": {k: record.get(k) for k in snapshot.keep},
+            "keep": keep,
         }
+        return kept | {"fields": await _record(vendor, snapshot, fields, kept)}
 
     async def current(self, target: Target, kept: JSON) -> JSON:
         vendor, op, fields = _own(target, kept)
-        snapshot = _snapshot(op)
-        reader = next(o for o in vendor.ops if o.name == snapshot.read)
-        found = await run(
-            vendor, reader, fields, cast(JSON, kept["path"]), account=kept.get("account")
-        )
-        record = cast(JSON, found.get(snapshot.where) or {}) if snapshot.where else found
-        return {"fields": {k: record.get(k) for k in snapshot.keep}}
+        return {"fields": await _record(vendor, _snapshot(op), fields, kept)}
 
     async def restore(self, target: Target, kept: JSON) -> JSON:
-        vendor, restore, fields = _own(target, {"operation": kept["restore"]})
+        vendor, op, fields = _own(target, kept)
+        snapshot = _snapshot(op)
+        _, restore, _ = _own(target, {"operation": kept["restore"]})
+        back = {
+            k: snapshot.empty if v is None else v for k, v in cast(JSON, kept["fields"]).items()
+        }
         return await run(
             vendor, restore, fields, cast(JSON, kept["path"]),
-            body={k: v for k, v in cast(JSON, kept["fields"]).items() if v is not None},
+            body={snapshot.nest: back} if snapshot.nest else back,
             account=kept.get("account"),
         )  # fmt: skip
 

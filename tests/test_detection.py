@@ -92,20 +92,25 @@ def test_storage_keys_pick_the_right_provider(tmp_path: Path) -> None:
     [
         ("STRIPE_SECRET_KEY=sk_live_fake123456", "Stripe"),
         ("PAYPAL_CLIENT_SECRET=fake123456", "PayPal"),
-        ("SQUARE_ACCESS_TOKEN=fake123456", "Square"),
         ("HUBSPOT_ACCESS_TOKEN=fake123456", "HubSpot"),
         ("QBO_CLIENT_SECRET=fake123456", "QuickBooks"),
         ("XERO_CLIENT_SECRET=fake123456", "Xero"),
         ("WP_APP_PASSWORD=fake123456", "WordPress"),
     ],
 )
-def test_a_service_without_a_connection_is_named_and_cant_connect(
+def test_a_service_that_signs_in_is_named_and_cant_connect_from_its_key(
     tmp_path: Path, line: str, label: str
 ) -> None:
     finding = found_in(tmp_path, line + "\n")[label][0]
     assert not finding.usable
-    assert "no " + label in finding.why
+    assert f"Connect {label} from its tile" in finding.why
     assert "fake123456" not in finding.masked
+
+
+def test_a_key_that_needs_more_says_what(tmp_path: Path) -> None:
+    finding = found_in(tmp_path, "SQUARE_ACCESS_TOKEN=fake123456\n")["Square"][0]
+    assert (finding.service, finding.usable) == ("vendor", False)
+    assert "Environment" in finding.why
 
 
 # --- MCP servers in a project ---

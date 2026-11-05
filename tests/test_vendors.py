@@ -11,12 +11,20 @@ import pytest
 from ringkeeper import destructive
 from ringkeeper.adapters import vendor
 from ringkeeper.adapters.base import Target, ToolError, ToolKind
-from ringkeeper.adapters.vendor_spec import FINAL, HELD, READ, Op, Vendor
+from ringkeeper.adapters.vendor_spec import FINAL, HELD, READ, Money, Op, Vendor
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, InstanceType
-from ringkeeper.services import decisions, env_scan, inbox, secrets_in, trusts, undo
+from ringkeeper.services import (
+    decisions,
+    developer_apps,
+    env_scan,
+    inbox,
+    secrets_in,
+    trusts,
+    undo,
+)
 from ringkeeper.services.calls import RefusalError, run_call
 from ringkeeper.vault import Secret, Vault, get_vault
 from tests.helpers import bind, make_instance, make_project
@@ -108,7 +116,7 @@ def test_a_read_changes_nothing_and_a_change_says_what_it_needs(name: str) -> No
     if op.level == READ and op.graphql:
         assert "mutation" not in op.graphql.lower(), name
     if op.level == READ and not op.graphql:
-        assert op.method in ("GET", "HEAD") or "/search" in op.path or op.path.endswith("/query")
+        assert vendor.OPERATIONS[name][0]._reads(op) or op.method in ("GET", "HEAD")  # pyright: ignore[reportPrivateUsage]
     if op.method == "DELETE":
         assert op.level == FINAL, f"{name} deletes"
     assert op.says, name
@@ -144,6 +152,146 @@ def test_a_vendor_must_say_why_and_cant_call_a_change_a_read() -> None:
         Vendor("x", "X", "Other", "", "https://x.example", (Op("a", "POST", "/a", "A", READ),))
     with pytest.raises(ValueError, match="needs a pattern"):
         Vendor("x", "X", "Other", "", "https://{host}/v1", ())
+
+
+# --- What a table can say ---
+
+
+class Echo:
+    """Answers everything, and keeps what it was sent."""
+
+    def __init__(self, answers: dict[str, Any] | None = None) -> None:
+        self.answers = answers or {}
+        self.requests: list[httpx2.Request] = []
+
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
+        self.requests.append(request)
+        return httpx2.Response(200, json=self.answers.get(request.url.path, {"ok": True}))
+
+
+@pytest.fixture
+def echo(monkeypatch: pytest.MonkeyPatch) -> Echo:
+    made = Echo()
+    monkeypatch.setattr(vendor, "transport", httpx2.MockTransport(made))
+    monkeypatch.setattr(vendor, "_exchanged", {})
+    return made
+
+
+async def test_a_query_written_in_the_path_is_sent_and_cant_be_changed(echo: Echo) -> None:
+    op = Op("void", "POST", "/invoice?operation=void", "Void", FINAL, "voids")
+    table = Vendor("x", "X", "Other", "", "https://x.example", (op,))
+    await vendor.run(table, op, {"api_key": "k"}, query={"operation": "update", "a": "1"})
+    sent = echo.requests[0].url
+    assert sent.path == "/invoice"
+    assert dict(sent.params) == {"operation": "void", "a": "1"}
+
+
+async def test_write_headers_go_on_changes_and_not_on_reads(echo: Echo) -> None:
+    get, patch = Op("g", "GET", "/a", "G", READ), Op("p", "PATCH", "/a", "P", HELD)
+    table = Vendor("x", "X", "Other", "", "https://x.example", (get, patch),
+                   write_headers={"If-Match": "*"})  # fmt: skip
+    await vendor.run(table, get, {"api_key": "k"})
+    await vendor.run(table, patch, {"api_key": "k"})
+    assert "If-Match" not in echo.requests[0].headers
+    assert echo.requests[1].headers["If-Match"] == "*"
+
+
+async def test_a_value_from_the_connection_goes_in_the_body(echo: Echo) -> None:
+    v, op = vendor.OPERATIONS["plaid.get_accounts"]
+    fields = {"vendor": "plaid", "host": "sandbox.plaid.com", "client_id": "c", "secret": "s",
+              "access_token": "access-sandbox-1"}  # fmt: skip
+    await vendor.run(v, op, fields, body={"options": {}})
+    assert json.loads(echo.requests[0].content)["access_token"] == "access-sandbox-1"
+    assert echo.requests[0].headers["PLAID-SECRET"] == "s"
+
+
+def test_the_ai_cant_name_plaids_token_itself() -> None:
+    connection = target({"vendor": "plaid", "host": "sandbox.plaid.com", "client_id": "c",
+                         "secret": "s", "access_token": "a"})  # fmt: skip
+    with pytest.raises(ToolError, match="doesn't take access_token"):
+        classify(connection, {"operation": "plaid.get_accounts", "body": {"access_token": "x"}})
+
+
+async def test_a_key_is_traded_once_and_the_token_kept_for_its_life(echo: Echo) -> None:
+    echo.answers["/connect/token"] = {"access_token": "traded-1", "expires_in": 900}
+    v, op = vendor.OPERATIONS["servicetitan.list_business_units"]
+    fields = {"vendor": "servicetitan", "client_id": "c", "client_secret": "s", "app_key": "ak",
+              "default_account": "123"}  # fmt: skip
+    await vendor.run(v, op, fields)
+    await vendor.run(v, op, fields)
+    trades = [r for r in echo.requests if r.url.path == "/connect/token"]
+    assert len(trades) == 1
+    assert b"grant_type=client_credentials" in trades[0].content
+    last = echo.requests[-1]
+    assert (last.headers["Authorization"], last.headers["ST-App-Key"]) == ("traded-1", "ak")
+
+
+async def test_a_shopify_store_takes_an_old_token_or_trades_a_new_apps_key(echo: Echo) -> None:
+    v, op = vendor.OPERATIONS["shopify.get_shop"]
+    echo.answers["/admin/api/2026-10/graphql.json"] = {"data": {"shop": {}}}
+    await vendor.run(v, op, {"shop": "acme.myshopify.com", "api_key": "shpat_old"})
+    assert echo.requests[-1].headers["X-Shopify-Access-Token"] == "shpat_old"
+    assert len(echo.requests) == 1
+    echo.answers["/admin/oauth/access_token"] = {"access_token": "shpua_new", "expires_in": 86399}
+    await vendor.run(v, op, {"shop": "acme.myshopify.com", "client_id": "c", "client_secret": "s"})
+    assert echo.requests[-1].headers["X-Shopify-Access-Token"] == "shpua_new"
+    assert str(echo.requests[-2].url) == "https://acme.myshopify.com/admin/oauth/access_token"
+
+
+@pytest.mark.parametrize(
+    ("fields", "says"),
+    [
+        ({}, "needs a token, or a client ID"),
+        ({"client_id": "c"}, "needs its Client secret"),
+    ],
+)
+def test_a_shopify_connection_needs_a_whole_way_in(fields: dict[str, str], says: str) -> None:
+    value = json.dumps({"vendor": "shopify", "shop": "acme.myshopify.com", **fields})
+    with pytest.raises(ToolError, match=says):
+        vendor.settings(value)
+
+
+async def test_undo_keeps_what_the_edit_sets_and_empties_what_was_empty(echo: Echo) -> None:
+    v = vendor.VENDORS["hubspot"]
+    name = next(o.name for o in v.ops if o.undo is not None and o.undo.nest)
+    echo.answers["/crm/v3/objects/contacts/1"] = {"properties": {"city": "Riga"}}
+    connection = target({"vendor": "hubspot", "access_token": "at"})
+    op = next(o for o in v.ops if o.name == name)
+    path = dict.fromkeys(vendor.PLACEHOLDER.findall(op.path), "1")
+    args = {"operation": f"hubspot.{name}", "path": path,
+            "body": {"properties": {"city": "Oslo", "phone": "1"}}}  # fmt: skip
+    back = vendor.OperationUndo()
+    kept = await back.before(connection, args)
+    assert kept["fields"] == {"city": "Riga", "phone": None}
+    assert echo.requests[0].url.params["properties"] == "city,phone"
+    await back.restore(connection, kept)
+    assert json.loads(echo.requests[-1].content) == {"properties": {"city": "Riga", "phone": ""}}
+
+
+@pytest.mark.parametrize(
+    ("body", "amount"),
+    [
+        ({"amount": 500, "currency": "jpy"}, "500 JPY"),
+        ({"amount": 500, "currency": "usd"}, "5.00 USD"),
+        ({"amount": 500}, "500 (smallest units) (currency not stated)"),
+    ],
+)
+def test_whole_currencies_arent_divided(body: dict[str, Any], amount: str) -> None:
+    assert vendor.card_of(Money(minor_units=True), body).amount == amount
+
+
+def test_a_money_field_can_be_inside_a_list() -> None:
+    rule = Money(("input.transactions.0.amount",), ("input.currency",))
+    body = {"input": {"transactions": [{"amount": "9.50"}], "currency": "usd"}}
+    assert vendor.card_of(rule, body).amount == "9.50 USD"
+
+
+def test_every_vendors_sign_in_exists() -> None:
+    for v in vendor.VENDORS.values():
+        assert not v.provider or v.provider in developer_apps.PROVIDERS, v.key
+    microsoft = developer_apps.PROVIDERS["microsoft"]
+    for key in microsoft.vendor_scopes:
+        assert key in vendor.VENDORS
 
 
 # --- Clerk ---

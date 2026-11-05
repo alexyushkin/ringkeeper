@@ -33,8 +33,11 @@ class Money:
     """Which fields of a call say what an approval card shows in large text."""
 
     # Each may be dotted: amount_money.amount.
-    amount: tuple[str, ...] = ("amount", "amount_money.amount", "total", "value")
-    currency: tuple[str, ...] = ("currency", "amount_money.currency", "currency_code")
+    amount: tuple[str, ...] = ("amount.value", "amount_money.amount", "amount", "total", "value")
+    currency: tuple[str, ...] = (
+        "amount.currency", "amount.currency_code", "amount_money.currency", "currency",
+        "currency_code",
+    )  # fmt: skip
     counterparty: tuple[str, ...] = ("customer", "customer_id", "payee", "vendor", "email")
     account: tuple[str, ...] = ("account", "source", "source_id", "destination", "location_id")
     # The amount is in the currency's smallest unit (cents).
@@ -47,10 +50,13 @@ class Snapshot:
     the record before the edit, and `restore` writes `keep` back."""
 
     read: str
-    keep: tuple[str, ...]
+    keep: tuple[str, ...] = ()  # empty: the fields the edit sets, inside `nest`
     restore: str = ""  # the operation that writes it back; empty: the edit itself
     where: str = ""  # the record, inside what `read` answers
     says: str = "the fields it changed"
+    nest: str = ""  # the fields go inside this one, both in the edit and in the record
+    query: str = ""  # `read` is told which fields to send, in this query value
+    empty: Any = None  # what clears a field that was empty before the edit
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,8 @@ class Op:
     graphql: str = ""  # sent as the query; the call's body is its variables
     undo: Snapshot | None = None
     money: Money | None = None
+    # Values added to the body from the connection, never from the AI.
+    inject: tuple[str, ...] = ()
 
 
 def reads(name: str, path: str, says: str, *params: str, method: str = "GET") -> Op:
@@ -134,6 +142,21 @@ class Secret:
 
 
 @dataclass(frozen=True)
+class Exchange:
+    """A key traded for a short-lived token before calling. `form` maps what's sent to the
+    Secret that holds it; a value starting with = is sent as it is. The token goes in the
+    Auth's field. With `when`, only a connection that has that Secret trades."""
+
+    url: str  # may name a patterned Secret
+    form: Mapping[str, str]
+    when: str = ""
+    into: str = ""  # the field the token goes in (empty: the Auth's)
+    as_json: bool = False  # sent as JSON, not a form
+    answer: str = "access_token"  # where the token is in the answer
+    lifetime: int = 3600  # seconds, when the answer doesn't say (expires_in)
+
+
+@dataclass(frozen=True)
 class Auth:
     """How a call signs in. `bearer`: Authorization: Bearer <field>. `header`: <name>: <field>.
     `basic`: <field> as the user, `field2` (if any) as the password. `custom`: from the
@@ -160,8 +183,10 @@ class Vendor:
     probe: str = ""  # a read the Test button runs
     who: Callable[[JSON], str] | None = None  # says which account, from the probe's answer
     provider: str = ""  # signs in through this Developer app instead of a pasted key
+    exchange: Exchange | None = None
     headers: Mapping[str, str] = field(default_factory=dict[str, str])
     graphql_path: str = ""  # under `base`: where its GraphQL operations go
+    write_headers: Mapping[str, str] = field(default_factory=dict[str, str])  # on changes only
     words: tuple[str, ...] = ()  # what a search for it might say
     steps: str = ""  # where to get the key
     key_url: str = ""

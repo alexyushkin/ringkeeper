@@ -33,7 +33,7 @@ _LINE = re.compile(
 FORMS_ON_FIRE = "https://secure.formsonfire.com/api/v2"
 DATAFORSEO = "https://api.dataforseo.com/v3"
 NOT_YET = (
-    ("Stripe", ("STRIPE_",)), ("PayPal", ("PAYPAL_",)), ("Square", ("SQUARE_",)),
+    ("Stripe", ("STRIPE_",)), ("PayPal", ("PAYPAL_",)),
     ("HubSpot", ("HUBSPOT_",)), ("QuickBooks", ("QUICKBOOKS_", "QBO_", "INTUIT_")),
     ("Xero", ("XERO_",)), ("WordPress", ("WP_", "WORDPRESS_")),
 )  # fmt: skip
@@ -269,7 +269,8 @@ def _not_yet(values: dict[str, str], add: Add) -> None:
         if keys:
             add(
                 "http", label, keys, values[keys[0]], title=label, shown=mask(values[keys[0]]),
-                why=f"Ringkeeper has no {label} connection yet, so this stays in the file.",
+                why=f"Connect {label} from its tile under Connectors: it signs in there, so "
+                "this stays in the file.",
             )  # fmt: skip
 
 

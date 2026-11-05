@@ -536,7 +536,7 @@ def _mcp_money(decision: Decision, args: dict[str, Any]) -> dict[str, str] | Non
     ):
         return None
     given = cast(dict[str, Any], args.get("arguments") or {})
-    return vars(vendor.card_of(Money(minor_units=False), given))
+    return vars(vendor.card_of(Money(minor_units=found.minor_units), given))
 
 
 def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)

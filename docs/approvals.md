@@ -39,6 +39,15 @@ people at once, deleting a file or an email, a DELETE through an API. These alwa
 even on test data; they can't be trusted for an hour, and no per-tool setting lets them
 run by themselves.
 
+**Business systems follow the action, not the vendor.** Reports and lookups run. Drafts and
+edits wait for approval, even on test data. Anything that sends to real people, publishes,
+posts to the books, moves money, deletes, changes who has access or adds ongoing cost needs
+the name typed, in the app itself. On these services a per-tool setting can make a tool
+stricter, never looser. Nothing on an accounting connection ever runs by itself, even after
+you've approved one like it. An approval that moves money shows the amount, currency,
+counterparty and account in large text, as written in the call; anything the call doesn't
+say shows as not stated.
+
 **Card and bank numbers never go through.** A tool call that carries one is refused
 before it's sent, and they're removed from logs, conversations, a task's events and the
 audit log. Use the service's own hosted page, or a token it issued.
@@ -46,7 +55,8 @@ audit log. Use the service's own hosted page, or a token it issued.
 A held action expires after 24 hours if nobody answers.
 
 J, K, A and D work on the Approvals page, and one action can be trusted for an hour:
-see [Working faster](working-faster.md#approvals-by-keyboard).
+see [Working faster](working-faster.md#approvals-by-keyboard). On a business system or an
+add-on tool, that covers that one action on that connection, not everything it can do.
 
 ## The record
 

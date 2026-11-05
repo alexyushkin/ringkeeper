@@ -16,7 +16,9 @@ and type "add a connection"). It asks first whether it's a client's account or y
 own tool. Built-in services come first, each a tile that opens its form; then the
 services you sign in to; then **Other connectors**, a search of every MCP server,
 with the service's own first and community servers folded away. The form links to
-the page where the service gives you its key.
+the page where the service gives you its key. Tiles are grouped by what they're for: CRM,
+Accounting, Payments, CMS and so on. Some vendors sign in through an app of your own: see
+[Developer apps](services/developer-apps.md).
 
 Using these in Claude? Claude's connectors stay in your Claude account; connect them
 here once per client.

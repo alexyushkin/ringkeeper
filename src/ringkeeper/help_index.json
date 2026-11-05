@@ -21,7 +21,7 @@
 "doc": "connections",
 "anchor": "adding-one",
 "title": "Adding one",
-"text": "**Connectors › Browse connectors** (or a client's Connections tab, or press Ctrl+K and type \"add a connection\"). It asks first whether it's a client's account or your own tool. Built-in services come first, each a tile that opens its form; then the services you sign in to; then **Other connectors**, a search of every MCP server, with the service's own first and community servers folded away. The form links to the page where the service gives you its key. Using these in Claude? Claude's connectors stay in your Claude account; connect them here once per client. - **Is this live client data?** Asked every time, with no default. Production is live data: every change on it waits for your approval. On staging and test data, a built-in service's changes run straight away, and are logged (texts and emails still wait). - **Its name** reads like \"n8n · n8n.geninfos.com\". Change it under Details › Change. - **Link to project…** on its card links it to any of the client's projects, and each project's Connections tab has **Link a connection**. - **Test connection** makes one read-only call and tells you what it found. - **Narrow it** (on the client's page): limit a link to one base, repository, project or folder, so a project sees only that."
+"text": "**Connectors › Browse connectors** (or a client's Connections tab, or press Ctrl+K and type \"add a connection\"). It asks first whether it's a client's account or your own tool. Built-in services come first, each a tile that opens its form; then the services you sign in to; then **Other connectors**, a search of every MCP server, with the service's own first and community servers folded away. The form links to the page where the service gives you its key. Tiles are grouped by what they're for: CRM, Accounting, Payments, CMS and so on. Some vendors sign in through an app of your own: see Developer apps. Using these in Claude? Claude's connectors stay in your Claude account; connect them here once per client. - **Is this live client data?** Asked every time, with no default. Production is live data: every change on it waits for your approval. On staging and test data, a built-in service's changes run straight away, and are logged (texts and emails still wait). - **Its name** reads like \"n8n · n8n.geninfos.com\". Change it under Details › Change. - **Link to project…** on its card links it to any of the client's projects, and each project's Connections tab has **Link a connection**. - **Test connection** makes one read-only call and tells you what it found. - **Narrow it** (on the client's page): limit a link to one base, repository, project or folder, so a project sees only that."
 },
 {
 "doc": "connections",
@@ -81,13 +81,13 @@
 "doc": "approvals",
 "anchor": "what-waits-for-you",
 "title": "What waits for you",
-"text": "- **A change on a production connection**: a database update, a new Airtable record, an n8n workflow change, a Vercel deploy. - **Anything that reaches real people**, on any connection: an email, a text, a call, a calendar invite, a shared file. Reads never wait. Changes on staging and development connections run straight away and are logged. A Google account can let a single tool run without asking (per account, in its settings)."
+"text": "- **A change on a production connection**: a database update, a new Airtable record, an n8n workflow change, a Vercel deploy. - **Anything that reaches real people**, on any connection: an email, a text, a call, a calendar invite, a shared file. Reads never wait. Changes on staging and development connections run straight away and are logged. A Google account can let a single tool run without asking (per account, in its settings), except sending email. An email to more than 10 people at once needs the connection's name typed, on every email connection, and can't be approved from Telegram, Slack or Discord."
 },
 {
 "doc": "approvals",
 "anchor": "approving",
 "title": "Approving",
-"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. The same goes for what can't be taken back on the newer connections: sending to many people at once, deleting a file or an email, a DELETE through an API. These always ask, even on test data; they can't be trusted for an hour, and no per-tool setting lets them run by themselves. **Card and bank numbers never go through.** A tool call that carries one is refused before it's sent, and they're removed from logs, conversations, a task's events and the audit log. Use the service's own hosted page, or a token it issued. A held action expires after 24 hours if nobody answers. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster."
+"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. The same goes for what can't be taken back on the newer connections: sending to many people at once, deleting a file or an email, a DELETE through an API. These always ask, even on test data; they can't be trusted for an hour, and no per-tool setting lets them run by themselves. **Business systems follow the action, not the vendor.** Reports and lookups run. Drafts and edits wait for approval, even on test data. Anything that sends to real people, publishes, posts to the books, moves money, deletes, changes who has access or adds ongoing cost needs the name typed, in the app itself. On these services a per-tool setting can make a tool stricter, never looser. Nothing on an accounting connection ever runs by itself, even after you've approved one like it. An approval that moves money shows the amount, currency, counterparty and account in large text, as written in the call; anything the call doesn't say shows as not stated. **Card and bank numbers never go through.** A tool call that carries one is refused before it's sent, and they're removed from logs, conversations, a task's events and the audit log. Use the service's own hosted page, or a token it issued. A held action expires after 24 hours if nobody answers. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster. On a business system or an add-on tool, that covers that one action on that connection, not everything it can do."
 },
 {
 "doc": "approvals",
@@ -609,19 +609,19 @@
 "doc": "services/google",
 "anchor": "make-the-app-once-about-10-minutes",
 "title": "Make the app (once, about 10 minutes)",
-"text": "**Settings › Google app** has every step with links that open the right page: 1. In the Google Cloud console, signed in with your own account, create a project. No billing needed. 2. Turn on the Gmail, Calendar, Drive and Sheets APIs. 3. **Google Auth Platform › Branding › Get started**: app name \"Ringkeeper\", audience **External**. Fill in the home page, privacy policy link and authorized domain that Settings shows, then save. 4. **Audience › Publish app.** Left in \"Testing\", Google signs accounts out after 7 days. 5. **Data Access**: paste the scopes Settings lists. 6. **Clients › Create client**: type **Desktop app**. Copy the client ID and secret (Google shows the secret only once) and paste both into Settings."
+"text": "**Settings › Developer apps** has every step with links that open the right page: 1. In the Google Cloud console, signed in with your own account, create a project. No billing needed. 2. Turn on the Gmail, Calendar, Drive and Sheets APIs. 3. **Google Auth Platform › Branding › Get started**: app name \"Ringkeeper\", audience **External**. Fill in the home page, privacy policy link and authorized domain that Settings shows, then save. 4. **Audience › Publish app.** Left in \"Testing\", Google signs accounts out after 7 days. 5. **Data Access**: paste the scopes Settings lists. 6. **Clients › Create client**: type **Desktop app**. Copy the client ID and secret (Google shows the secret only once) and paste both into Settings."
 },
 {
 "doc": "services/google",
 "anchor": "add-a-google-account",
 "title": "Add a Google account",
-"text": "**Settings › Google app › Add a Google account** (or the Google account tile under Connectors › Browse connectors), then sign in with the client's account. Google will say it hasn't verified the app: click **Advanced › Go to Ringkeeper**. It's your own app, so that's expected. Choose what it may do (mail, calendar, files, sheets) when you add it."
+"text": "**Settings › Developer apps › Add a Google account** (or the Google account tile under Connectors › Browse connectors), then sign in with the client's account. Google will say it hasn't verified the app: click **Advanced › Go to Ringkeeper**. It's your own app, so that's expected. Choose what it may do (mail, calendar, files, sheets) when you add it."
 },
 {
 "doc": "services/google",
 "anchor": "what-waits-for-approval",
 "title": "What waits for approval",
-"text": "Reading runs. Every write (sending, sharing, invites, edits, uploads, drafts, moving to the trash) asks you first. Per account, you can later let a tool run without asking."
+"text": "Reading runs. Every write (sending, sharing, invites, edits, uploads, drafts, moving to the trash) asks you first. Per account, you can later let a tool run without asking, except sending: an email always asks, and more than 10 people at once needs the connection's name typed, in the app itself."
 },
 {
 "doc": "services/google",
@@ -712,5 +712,713 @@
 "anchor": "undo",
 "title": "Undo",
 "text": "A deploy can't be undone by Ringkeeper. Put the earlier deployment live in Vercel (or ask Ringkeeper to promote it)."
+},
+{
+"doc": "services/developer-apps",
+"anchor": "",
+"title": "Developer apps",
+"text": "Some services only let an app you registered yourself sign in: Google, Microsoft (Entra), HubSpot, Salesforce, Xero, Intuit and Jobber. You register a free app with the service once, paste its client ID and secret into **Settings › Developer apps**, and then sign in as many accounts through it as you need. Each account is its own connection, a client's or your own, with the same rules as any other. The secret stays in the vault and never comes back to the page."
+},
+{
+"doc": "services/developer-apps",
+"anchor": "set-one-up",
+"title": "Set one up",
+"text": "Each service in **Settings › Developer apps** has its own steps, the address to paste, the scopes to add, and a link to the right page. When an app is saved, **Check it** asks the service whether it accepts the client ID and secret. Nothing is created by that check."
+},
+{
+"doc": "services/developer-apps",
+"anchor": "more-than-one-app",
+"title": "More than one app",
+"text": "A service can have several apps, for example one registered in a client's own tenant, when their admin only trusts that one. When a service has more than one, its sign-in asks which to use. Removing an app stops its accounts working at their next refresh."
+},
+{
+"doc": "services/developer-apps",
+"anchor": "where-the-sign-in-comes-back",
+"title": "Where the sign-in comes back",
+"text": "Most services want one exact address, and Ringkeeper's own port changes each launch, so they come back to a fixed address on this computer: `http://localhost:17845/oauth/callback`. It only answers on this computer. Nothing is opened to the internet. **Intuit's production keys are different.** Intuit only sends production sign-ins to an https address that isn't this computer. So the sign-in ends on Intuit's page, and you copy that page's whole address back into Ringkeeper. Intuit's development keys come back here as usual, and reach sandbox companies only."
+},
+{
+"doc": "services/developer-apps",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- **Salesforce:** an app made in Setup works in the org it was made in. For a client's org, make one there and add it as another app. - **Microsoft:** a client's admin may have to allow your app in their tenant first. - **Xero:** apps made since March 2026 can only use the narrower scopes listed here. - **Intuit:** production keys need Intuit's app assessment first."
+},
+{
+"doc": "services/mailbox",
+"anchor": "where-to-get-the-password",
+"title": "Where to get the password",
+"text": "Choose your provider and enter the address and password. Most providers want an **app password**, not your normal password: - **Gmail:** app passwords, which need 2-Step Verification. - **Zoho:** an app password if two-factor sign-in is on, with IMAP turned on in Mail settings. - **Yahoo:** Account security › Generate app password. - **Another provider:** its IMAP and SMTP servers too. **Microsoft:** for Microsoft 365, use the Microsoft account tile instead. Microsoft has turned password sign-in off for IMAP there, and is doing the same for SMTP."
+},
+{
+"doc": "services/mailbox",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** folders, searching, reading a message. Reading never marks mail as read. - **Change:** save a draft, move a message, send, move to the trash."
+},
+{
+"doc": "services/mailbox",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs.** - **Drafts, moving and sending** wait for your approval, even on test data. - **Deleting, and sending to more than 10 people at once,** need the connection's name typed, in the app. Chat apps and notifications can't approve those. - **A test to your own address runs by itself,** if you set one. The AI can't change where it goes."
+},
+{
+"doc": "services/mailbox",
+"anchor": "undo",
+"title": "Undo",
+"text": "Changes to a mailbox can't be undone here. A deleted message stays in the mailbox's trash for as long as your provider keeps it."
+},
+{
+"doc": "services/smtp",
+"anchor": "",
+"title": "Email sending (SMTP)",
+"text": "For sending through any provider: SendGrid, Mailgun, Postmark, Brevo, Amazon SES, your web host."
+},
+{
+"doc": "services/smtp",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "From your email provider: the SMTP server, and a username and password or SMTP key. The connection is always encrypted, with SSL (usually port 465) or STARTTLS (usually port 587). The username defaults to the From address."
+},
+{
+"doc": "services/smtp",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** which address it sends from. - **Change:** send an email, or a test to your own address."
+},
+{
+"doc": "services/smtp",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Every email waits for your approval,** even on test data. - **More than 10 people at once** (To, Cc and Bcc together) needs the connection's name typed, in the app. Chat apps and notifications can't approve that. - **A test to your own address runs by itself,** if you set one. The AI can't change where it goes."
+},
+{
+"doc": "services/smtp",
+"anchor": "undo",
+"title": "Undo",
+"text": "A sent email can't be unsent."
+},
+{
+"doc": "services/resend",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Resend, create an API key. It starts with `re_`. Sending access is enough to send; full access also lets the AI read domains and whether an email was delivered. The From address must be on a domain you verified in Resend."
+},
+{
+"doc": "services/resend",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** sending domains, and one sent email with its delivery status. - **Change:** send an email, or a test to your own address."
+},
+{
+"doc": "services/resend",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Every email waits for your approval,** even on test data. - **More than 10 people at once** needs the connection's name typed, in the app. - **A test to your own address runs by itself,** if you set one."
+},
+{
+"doc": "services/resend",
+"anchor": "undo",
+"title": "Undo",
+"text": "A sent email can't be unsent."
+},
+{
+"doc": "services/http-api",
+"anchor": "",
+"title": "Any API",
+"text": "For a service with an HTTP API and no connection of its own. Give its address and how it signs in: a bearer token, a key in a header, a username and password, or a key in the address. If the API publishes an OpenAPI file, add its address too, and the AI can see what the API offers. **Forms On Fire** and **DataForSEO** have their own tiles, with the address filled in. The Forms On Fire tile is marked **Unverified**: its address and sign-in haven't been confirmed against Forms On Fire's own documentation, so check both in your account. Other regions and Appenate use their own."
+},
+{
+"doc": "services/http-api",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** GET and HEAD anything under the address, and list its endpoints. - **Change:** POST, PUT, PATCH and DELETE. A call can't leave the address: paths can't climb out of it, and redirects aren't followed, so the key is never carried somewhere else."
+},
+{
+"doc": "services/http-api",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **GET and HEAD run.** - **POST, PUT and PATCH** wait for your approval, even on test data: an API can do anything with a POST, and DataForSEO's cost money. - **DELETE** needs the connection's name typed, in the app. A project's link can be limited to a path, like `/v1/forms`."
+},
+{
+"doc": "services/http-api",
+"anchor": "undo",
+"title": "Undo",
+"text": "Ringkeeper can't undo what an API call does."
+},
+{
+"doc": "services/storage",
+"anchor": "",
+"title": "File storage (AWS S3, Cloudflare R2, Vercel Blob)",
+"text": "Also any other S3-compatible service: MinIO, Backblaze B2, Wasabi, DigitalOcean Spaces."
+},
+{
+"doc": "services/storage",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "Make a key limited to this client's bucket. - **AWS S3:** an access key and its secret, and the region. - **Cloudflare R2:** an R2 API token's access key and secret, and your account ID from the R2 overview page. - **Vercel Blob:** open the Blob store and copy its read-write token. It starts with `vercel_blob_rw_`. A Blob store has no buckets. - **Another service:** its address, region, access key and secret."
+},
+{
+"doc": "services/storage",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** list buckets, list files, read a file up to 2 MB. - **Change:** upload a file, delete a file."
+},
+{
+"doc": "services/storage",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Listing and reading run.** - **An upload** waits for your approval, even on test data. - **Deleting** needs the connection's name typed, in the app. A project's link can be pinned to a bucket and a folder, so each project stays on its own files."
+},
+{
+"doc": "services/storage",
+"anchor": "undo",
+"title": "Undo",
+"text": "Uploads and deletes can't be undone here. Versioning in the bucket, if you turn it on, keeps earlier copies."
+},
+{
+"doc": "services/clerk",
+"anchor": "",
+"title": "Clerk",
+"text": "Read and manage an app's users, sessions and organizations through Clerk's Backend API. One connection is one instance of one app. Each instance has its own secret key, so a client's development and production instances are two connections, marked as test data and production. The key says which it is: `sk_test_` for development and `sk_live_` for production. Ringkeeper won't let a live key be labelled as test data."
+},
+{
+"doc": "services/clerk",
+"anchor": "add-it",
+"title": "Add it",
+"text": "In the Clerk Dashboard, pick the application and the instance, open **API keys**, and copy the secret key. Then use the **Clerk** tile under Connectors. If `CLERK_SECRET_KEY` is in a project's `.env` file, Ringkeeper offers it on the project's page. The key reaches that one instance and nothing else, so linking the connection to a project is what scopes it."
+},
+{
+"doc": "services/clerk",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Runs:** reading users, sessions, organizations, invitations and the instance's settings. - **Waits for approval:** updating metadata, and sending or taking back invitations. - **Needs the name typed, in the app:** deleting, banning or locking users, ending sessions, changing organization roles or members, deleting organizations, and anything that changes sign-in settings, including allowlists and blocklists. Metadata that sets a role, plan or permission also needs the name typed, because an app often uses it to decide what someone may do. So does an organization invitation with any role other than `org:member`. Metadata edits can be undone for 7 days. Nothing else here can be undone from Ringkeeper."
+},
+{
+"doc": "services/clerk",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- Ringkeeper uses Clerk's Backend API, not its hosted MCP server: that server signs in as a Dashboard user and has no tools for metadata, invitations, bans, sessions or organizations. - A few things are left out on purpose: setting a password, signing in as a user, and anything that answers with a secret."
+},
+{
+"doc": "services/microsoft",
+"anchor": "how-it-signs-in",
+"title": "How it signs in",
+"text": "Add your Microsoft app in **Settings › Developer apps**, then sign in from the tile with the account, and choose what it may do. Each account is its own connection."
+},
+{
+"doc": "services/microsoft",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** mail, attachments' details, calendars and events, OneDrive and SharePoint files and who can reach them. It can't read what's inside a file yet. - **Change:** send and draft email, mark and move messages, add and change events, answer invitations, add, rename, move and copy files and folders. It can't upload a file, set a mail rule or auto-reply, or reach another person's mailbox."
+},
+{
+"doc": "services/microsoft",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Every write waits for your approval,** even on test data. - **More than 10 recipients or attendees** needs the connection's name typed, in the app. - **So do** sending a saved draft and replying to all, because how many people it reaches can't be seen from the call. - **So does** deleting mail, events or files, canceling a meeting, and sharing a file or making a link to it."
+},
+{
+"doc": "services/microsoft",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a draft, an event, a message's marks, or a file's name can be undone. A sent email can't be unsent."
+},
+{
+"doc": "services/hubspot",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "HubSpot has no pasted key here. Add your own HubSpot app in Developer apps, then sign in from the tile. Your app's scopes decide what can be reached."
+},
+{
+"doc": "services/hubspot",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the account, contacts, companies, deals, tasks, owners, pipelines, properties and sequences. - **Change:** add or edit contacts, companies, deals and tasks, and add notes. - **Reach people:** send a marketing email, or enroll a contact in a sequence."
+},
+{
+"doc": "services/hubspot",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Deletes, merges and bulk edits** need the connection's name typed, in the app. - **Sending email and sequence enrollment** need the name typed."
+},
+{
+"doc": "services/hubspot",
+"anchor": "undo",
+"title": "Undo",
+"text": "HubSpot edits can't be undone here."
+},
+{
+"doc": "services/salesforce",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "Salesforce has no pasted key here. Make an External Client App in your org, add it in Developer apps, then sign in from the tile. The connection remembers your org's address, like `acme.my.salesforce.com`, and sends its token nowhere else."
+},
+{
+"doc": "services/salesforce",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** SOQL queries, SOSL searches, org limits, object fields, and single contacts, accounts, opportunities, leads and tasks. A query reaches whatever the signed-in user can see. - **Change:** add or edit contacts, accounts, opportunities, leads and tasks, and add notes. - **Reach people:** send an email. Nothing here can run Apex or a batch of arbitrary requests."
+},
+{
+"doc": "services/salesforce",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Deletes and sending email** need the connection's name typed, in the app."
+},
+{
+"doc": "services/salesforce",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a contact, account, opportunity, lead or task can be undone. It puts back the standard fields, and a field that was empty before stays as the edit left it. Custom fields aren't put back."
+},
+{
+"doc": "services/pipedrive",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Pipedrive, click your account name, then Company settings, Personal preferences and API, and copy your token. It acts as you, with your permissions."
+},
+{
+"doc": "services/pipedrive",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** people, organizations, deals, activities, notes, pipelines and stages. - **Change:** add or edit people, organizations, deals and activities, and add notes. An edit can't delete a record, change who can see it, or change someone's marketing status."
+},
+{
+"doc": "services/pipedrive",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Deletes and merges** need the connection's name typed, in the app."
+},
+{
+"doc": "services/pipedrive",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a person, organization, deal or activity can be undone. It puts back the main fields, and a field that was empty before stays as the edit left it. Custom fields aren't put back."
+},
+{
+"doc": "services/keap",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Keap, open Settings, then API Settings, add a key and name it. The token shows once, so copy it then. A Personal Access Token acts as you. A Service Account Key has admin access, and only an admin can make one."
+},
+{
+"doc": "services/keap",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the business profile, contacts, companies, opportunities and stages, tasks, tags, campaigns and users. - **Change:** add or edit contacts, companies, opportunities and tasks, and add notes. - **Reach people:** send an email, tag contacts, or add them to a campaign sequence."
+},
+{
+"doc": "services/keap",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Deletes and merges** need the connection's name typed, in the app. - **Sending email and adding to a sequence** need the name typed. - **Tagging needs the name typed too,** because a tag can start an automation."
+},
+{
+"doc": "services/keap",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a contact, company, opportunity or task can be undone. For a contact it puts back the name only. A field that was empty before stays as the edit left it."
+},
+{
+"doc": "services/jobber",
+"anchor": "",
+"title": "Jobber",
+"text": "This one shows as Unverified. Jobber shows its current API schema only to signed-in developers, so the operations were checked against the schema in its app template and its changelog."
+},
+{
+"doc": "services/jobber",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "Jobber has no pasted key here. Make an app in the Developer Center, add it in Developer apps, then sign in from the tile. The scopes you tick there decide what can be reached."
+},
+{
+"doc": "services/jobber",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** clients, jobs, quotes, invoices, work requests, visits and users. - **Change:** add or edit clients, jobs and quotes, and add notes to clients and jobs. - **Reach people:** email a quote or invoice to a client."
+},
+{
+"doc": "services/jobber",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Archiving a client, and deleting jobs or quotes,** need the connection's name typed, in the app. - **Emailing a quote or invoice** needs the name typed."
+},
+{
+"doc": "services/jobber",
+"anchor": "undo",
+"title": "Undo",
+"text": "Jobber edits can't be undone here."
+},
+{
+"doc": "services/housecallpro",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "Sign in to Housecall Pro as an admin, open My Apps, then All Apps, and find API Key Management. Generate a key, name it, and choose full or read-only access. The API needs the MAX plan or above. Housecall Pro's guide has more."
+},
+{
+"doc": "services/housecallpro",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the company, customers and their addresses, employees, jobs, line items, appointments, estimates, leads and invoices. - **Change:** add or edit customers, add jobs, job notes and line items, move appointments, add leads, and turn a lead into an estimate or job."
+},
+{
+"doc": "services/housecallpro",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Changing a job's time needs the name typed,** unless the call sets both `notify` and `notify_pro` to false, so nobody is told. - **An estimate with a schedule needs the name typed,** unless `notify_customer` is false. - **Dispatching a job, approving an estimate, bulk line item edits and deleting an appointment** need the connection's name typed, in the app."
+},
+{
+"doc": "services/housecallpro",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a customer can be undone, and a field that was empty before stays as the edit left it. Nothing else can be undone here."
+},
+{
+"doc": "services/servicetitan",
+"anchor": "",
+"title": "ServiceTitan",
+"text": "You can't connect ServiceTitan yet. Its calls need a token traded for a client ID and secret, and Ringkeeper can't do that trade yet. The rules below are ready for when it can."
+},
+{
+"doc": "services/servicetitan",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the ServiceTitan Developer Portal, register an app and connect it to your account. You'll need its Client ID, client secret and application key, and your tenant ID."
+},
+{
+"doc": "services/servicetitan",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** business units, technicians, customers, locations, leads, jobs, appointments, estimates, invoices and payments. - **Change:** add or edit customers, leads and jobs, edit locations, add notes, move appointments, and add estimates. An edit can't deactivate a customer or change their credit and payment terms. Invoices and payments are read-only."
+},
+{
+"doc": "services/servicetitan",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Adding and editing wait for your approval,** even on test data. - **Cancelling a job, deleting an appointment and marking an estimate sold** need the connection's name typed, in the app."
+},
+{
+"doc": "services/servicetitan",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a customer, location, lead or job can be undone. It puts back the main fields, and a field that was empty before stays as the edit left it. An address isn't put back."
+},
+{
+"doc": "services/quickbooks",
+"anchor": "how-it-signs-in",
+"title": "How it signs in",
+"text": "Add your Intuit app in **Settings › Developer apps**, then sign in from the tile and choose the company. Each company is its own connection. A sandbox company counts as test data."
+},
+{
+"doc": "services/quickbooks",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** profit and loss, balance sheet, cash flow, trial balance, aged receivables and payables, and any record through a search. - **Change:** customers, vendors, estimates and purchase orders. - **Money:** invoices, bills, payments, bill payments, expenses and journal entries."
+},
+{
+"doc": "services/quickbooks",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **No write ever runs by itself,** even on a sandbox. - **Estimates, purchase orders, customers and vendors** wait for your approval. They don't touch the books. - **The name typed, in the app:** invoices and bills, because QuickBooks has no drafts and creating one posts it. So do payments, expenses, journal entries, sending, voiding and deleting."
+},
+{
+"doc": "services/quickbooks",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone by Ringkeeper. Void or delete the record in QuickBooks instead."
+},
+{
+"doc": "services/xero",
+"anchor": "how-it-signs-in",
+"title": "How it signs in",
+"text": "Add your Xero app in **Settings › Developer apps**, then sign in from the tile and choose the organisations. One sign-in can reach several, so a call names one, and a project's link can be narrowed to one."
+},
+{
+"doc": "services/xero",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** profit and loss, balance sheet, trial balance, aged receivables and payables, bank summary, invoices, bills, contacts, payments, quotes, purchase orders and journals. - **Change:** contacts, and draft invoices, bills, credit notes, quotes and purchase orders. - **Money:** approve, void and email invoices, record payments, bank entries, transfers and manual journals."
+},
+{
+"doc": "services/xero",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **No write ever runs by itself,** even on a demo company. - **A new record with no status, or status DRAFT,** waits for your approval. So do contacts. - **The name typed, in the app:** any other status, approving, editing an invoice, sending, voiding, deleting, payments, bank entries, journals, and a contact's bank details. An edit needs the name because the call can't show the invoice is still a draft."
+},
+{
+"doc": "services/xero",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone by Ringkeeper. Void or delete the record in Xero instead."
+},
+{
+"doc": "services/wave",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Wave's developer portal, open Manage Applications, create an application, and make a full access token for it. The token reaches every business in your Wave account, so each call names a business."
+},
+{
+"doc": "services/wave",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** businesses, customers, vendors, products, sales taxes, invoices, estimates, payments, and the chart of accounts with balances. - **Change:** customers, products, estimates and invoices. - **Money:** approve and send invoices, record payments and transactions. Wave's API has no reports and no bills. Account balances are the closest it offers."
+},
+{
+"doc": "services/wave",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **No write ever runs by itself,** even on test data. - **Draft invoices, estimates, customers and products** wait for your approval. - **The name typed, in the app:** approving, sending, payments, money transactions, editing an invoice, deleting, and any invoice that doesn't say it's a draft. An edit needs the name because the call can't show the invoice is still a draft. Wave's approval can't be taken back."
+},
+{
+"doc": "services/wave",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone by Ringkeeper. Delete a draft in Wave instead."
+},
+{
+"doc": "services/businesscentral",
+"anchor": "how-it-signs-in",
+"title": "How it signs in",
+"text": "Add your Microsoft app in **Settings › Developer apps**, with the Business Central API permission, then sign in from the tile and give the environment's name, like Production or Sandbox. One connection is one environment, and a call names the company."
+},
+{
+"doc": "services/businesscentral",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** trial balance, balance sheet, income statement, cash flow, aged receivables and payables, customers, vendors, accounts, ledger entries, invoices, payments and journals. - **Change:** draft sales and purchase invoices and their lines. - **Money:** post, send and cancel invoices, add customer payments and journal lines, post a journal."
+},
+{
+"doc": "services/businesscentral",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **No write ever runs by itself,** even in a sandbox. - **Draft invoices** wait for your approval. A draft isn't on the books. - **The name typed, in the app:** posting, sending, canceling, deleting, payments and journal lines."
+},
+{
+"doc": "services/businesscentral",
+"anchor": "undo",
+"title": "Undo",
+"text": "An edit to a draft invoice's dates and details can be undone. Nothing else can: a posted invoice is canceled in Business Central, with a credit memo."
+},
+{
+"doc": "services/bill",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "Sign up for a BILL developer account, in the sandbox or in production, and generate a developer key. You'll need four things: the username, password, organization ID (it starts with `008`) and developer key. Then type the address: `gateway.prod.bill.com` for real data, or `gateway.stage.bill.com` for the sandbox. Add one connection per organization and environment. Ringkeeper signs in with these and gets a short session, so use a BILL user made for this, with only the access it needs. **To pay bills,** BILL also needs its MFA ID and device name. They come from BILL's MFA sign-in, which sends a code to your phone, and they last 30 days. Ringkeeper doesn't run that step, so a connection without them can read and draft but can't pay."
+},
+{
+"doc": "services/bill",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** bills, vendor payments, payment options, vendors, vendor credits, invoices, payments received and customers. - **Change:** bills, invoices, customers and vendors, and make an invoice's payment link. - **Move money:** pay a bill, cancel or void a payment, charge a customer's saved bank account, and send an invoice."
+},
+{
+"doc": "services/bill",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Bills, invoices, payment links, customers and vendors wait for your approval,** every time. Nothing here can be trusted for an hour. - **Paying a bill, charging a customer, cancelling or voiding a payment and recording a payment** need the connection's name typed, in the app. So does **sending an invoice** and **archiving** anything. - The approval card shows the amount, the vendor or customer and the account in large text. A cancel or void names the payment, because BILL's call doesn't state an amount. Bank accounts are left out, for vendors, customers and your own organization, and so are users, bulk payments and bill approvals."
+},
+{
+"doc": "services/bill",
+"anchor": "undo",
+"title": "Undo",
+"text": "A customer or vendor edit can be undone. A payment or a sent invoice can't."
+},
+{
+"doc": "services/shopify",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the Shopify admin, open **Apps**, then **Develop apps**, pick the store's custom app, and copy its Admin API access token. Give the app only the access it needs. Then type the store address, like `acme.myshopify.com`. One token reaches one store, so add one connection per store. Only custom apps made before January 2026 have a token to paste. Newer apps are made in Shopify's Dev Dashboard and use short-lived tokens, which this connection can't get yet."
+},
+{
+"doc": "services/shopify",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the store, products, orders, customers, draft orders, collections, pages, blog articles, themes and sales channels. - **Change:** draft products, customers, order notes, draft orders, and draft pages and articles. - **Go live:** publish or activate, change prices in bulk, refund, cancel or fulfil an order, and change themes and store policies."
+},
+{
+"doc": "services/shopify",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself,** orders and customers too. - **A product created as a draft waits for your approval.** So does a customer, a draft order, or a page or article created as unpublished. - **Publishing, activating, or changing a status** needs the connection's name typed, in the app. A new product only counts as a draft if the call says `DRAFT`. - **Bulk price changes, refunds, cancelling or fulfilling an order, deleting, themes and store policies** need the name typed too. - An edit to something already live, with no change of status, only waits for approval. Check the card before you approve it."
+},
+{
+"doc": "services/shopify",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone yet. A refund or a cancelled order can't be taken back."
+},
+{
+"doc": "services/ghost",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Ghost Admin, open **Settings**, find **Integrations**, and add a custom integration. Copy its Admin API key, which looks like `id:secret`. Then type the domain you open Ghost Admin on, like `acme.ghost.io`. One key reaches one site."
+},
+{
+"doc": "services/ghost",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the site, posts, pages, tags, newsletters, tiers, offers and members. - **Change:** draft posts and pages, tags and members. - **Go live:** publish, schedule or unpublish, send a newsletter, delete, and change the active theme."
+},
+{
+"doc": "services/ghost",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **A post or page created as a draft waits for your approval,** and so do tags and members. Only a call that says `draft` counts as a draft. - **Publishing, scheduling, unpublishing and sending a newsletter** need the connection's name typed, in the app. So does **deleting** and **changing the theme**. - An edit to a live post, with no change of status, only waits for approval. Check the card before you approve it. Ghost's settings are left out, because reading them can answer with keys and writing them can change keys. So are staff users, integrations and webhooks."
+},
+{
+"doc": "services/ghost",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone yet. A sent newsletter can't be unsent."
+},
+{
+"doc": "services/square",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the Square Developer Console, open your application and choose **Credentials**. Pick Production or Sandbox at the top and copy the access token. Then type that environment's address: `connect.squareup.com` for real data, or `connect.squareupsandbox.com` for the sandbox. Each has its own token, so add one connection per environment."
+},
+{
+"doc": "services/square",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the account and its locations, payments, refunds, payouts, customers, orders, invoices, payment links, the catalog, subscriptions and disputes. - **Change:** customers, orders, draft invoices and payment links. - **Move money:** charge a saved source, capture or void a payment, refund, send an invoice, change a subscription, and answer a dispute."
+},
+{
+"doc": "services/square",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Customers, orders, draft invoices and new payment links wait for your approval.** - **Charges, captures, voids, refunds and subscription changes** need the connection's name typed, in the app. So does **sending an invoice**, because it can charge a saved card. - **Accepting a dispute or adding evidence** needs the name typed too, and so does anything that deletes. - The approval card shows the amount, currency, customer and account in large text. A capture or void names the payment, because Square's call doesn't state an amount. Card and bank account numbers never pass through Ringkeeper: a charge uses a token from Square's own payment form."
+},
+{
+"doc": "services/square",
+"anchor": "undo",
+"title": "Undo",
+"text": "A customer edit can be undone. A charge, refund or sent invoice can't."
+},
+{
+"doc": "services/helcim",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Helcim, open **All Tools**, then **Integrations**, then **API Access Configurations**. Choose **New API Access**, set its Access Restrictions, and create it. The restrictions narrow what the token can do: refunds need the Admin level of transaction processing. A developer test account has its own token, so add one connection per account."
+},
+{
+"doc": "services/helcim",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** card and ACH transactions, card batches, customers and their saved cards (as tokens), invoices, recurring plans and subscribers. - **Change:** customers and invoices. - **Move money:** charge or hold a saved card, capture, refund, void, take an ACH payment, and manage subscribers."
+},
+{
+"doc": "services/helcim",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Customers and invoices wait for your approval.** - **Charges, captures, refunds, voids, ACH payments and subscription changes** need the connection's name typed, in the app. - The approval card shows the amount, currency, customer and account in large text. A charge uses a saved card token. Helcim's payment call can also take a full card number: Ringkeeper refuses any call that carries one."
+},
+{
+"doc": "services/helcim",
+"anchor": "undo",
+"title": "Undo",
+"text": "A customer edit can be undone. A charge or refund can't."
+},
+{
+"doc": "services/lemonsqueezy",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Lemon Squeezy, open **Settings**, then **API**, and create a key. A key made in test mode reaches test data only, and keys last a year. The Test button says which mode a key is in."
+},
+{
+"doc": "services/lemonsqueezy",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** stores, customers, products, variants, orders, subscriptions and their invoices, discounts and checkouts. - **Change:** customers, checkout links and discount codes. - **Move money:** refund an order or a subscription invoice, and change or cancel a subscription."
+},
+{
+"doc": "services/lemonsqueezy",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Customers, discounts and checkout links wait for your approval.** - **Refunds and subscription changes** need the connection's name typed, in the app, and so does deleting a discount. - The approval card shows the amount and the order in large text. A refund with no amount is a full refund, and the card says the amount isn't stated. License keys and files are left out, because they answer with the key or a download link. A customer or subscription record carries a signed link to that customer's billing page, valid for a day. The AI sees it when it reads the record."
+},
+{
+"doc": "services/lemonsqueezy",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone. A refund can't be taken back."
+},
+{
+"doc": "services/clover",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the Clover Merchant Dashboard, open **Settings**, **View all settings**, then **Ecommerce API Tokens**. Create a token for an API integration and copy the private token. It belongs to one merchant. Then type the address: `scl.clover.com` for real data, or `scl-sandbox.dev.clover.com` for the sandbox. Clover's Ecommerce API serves the US and Canada."
+},
+{
+"doc": "services/clover",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** charges, refunds and online orders. - **Change:** orders, and customers saved with a card token. - **Move money:** refund a charge or return an order. New charges aren't available here yet. Clover needs the customer's own internet address on each one, and Ringkeeper can't send it yet. Recurring plans aren't here either: they live at a different Clover address."
+},
+{
+"doc": "services/clover",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Orders and customers wait for your approval.** - **Refunds and returns** need the connection's name typed, in the app, and so does removing a saved card. - The approval card shows the amount and the charge in large text."
+},
+{
+"doc": "services/clover",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone. A refund can't be taken back."
+},
+{
+"doc": "services/braintree",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the Braintree Control Panel, open your API settings and copy a public and private key. Then type the address: `payments.braintree-api.com` for real data, or `payments.sandbox.braintree-api.com` for the sandbox. Sandbox and production have different keys, so add one connection per environment."
+},
+{
+"doc": "services/braintree",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** transactions, refunds, customers and disputes. - **Change:** customers. - **Move money:** charge or hold a saved payment method, capture, refund, void, and answer a dispute."
+},
+{
+"doc": "services/braintree",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Customers wait for your approval.** - **Charges, captures, refunds, voids and dispute answers** need the connection's name typed, in the app, and so does deleting a customer or a saved payment method. - The approval card shows the amount, customer and account in large text. Braintree charges in the merchant account's currency, which the call doesn't state. Anything that takes card details or hands out a client token is left out: a charge uses a payment method already saved in Braintree."
+},
+{
+"doc": "services/braintree",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone. A charge or refund can't be taken back."
+},
+{
+"doc": "services/plaid",
+"anchor": "",
+"title": "Plaid",
+"text": "Not available yet: the table is written, and it needs a change in Ringkeeper first."
+},
+{
+"doc": "services/plaid",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In the Plaid Dashboard, open **Developers**, then **Keys**, and copy the client ID and the secret for your environment. Then paste the access token your own Plaid integration holds for one linked bank. Ringkeeper doesn't link banks, so one connection is one bank you've already linked."
+},
+{
+"doc": "services/plaid",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** the bank's accounts, live balances, transactions, recurring payments, the account owners on file, investment holdings and transactions, and which statements exist."
+},
+{
+"doc": "services/plaid",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "Nothing is held, because nothing can change. Every operation only reads. There's no way to move money here: transfers and payments are left out entirely. Full account and routing numbers are left out too, so account details stop at the last few digits."
+},
+{
+"doc": "services/plaid",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing changes, so there's nothing to undo."
 }
 ]
