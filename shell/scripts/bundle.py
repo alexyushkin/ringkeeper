@@ -37,6 +37,7 @@ OUT = SHELL / "resources"
 VOICE_LICENSES = SHELL / "target" / "voice-licenses"
 WINDOWS = sys.platform == "win32"
 INTEL_MAC = sys.platform == "darwin" and host.machine() == "x86_64"
+OLDEST_INTEL_MACOS = 12
 
 # Parts of the standard install the app never uses.
 PYTHON_TRIM = [
@@ -180,8 +181,11 @@ def voice_wheels(work: Path, root: Path, base: list[str]) -> Path:
     requirements.write_text("\n".join(voice) + "\n", encoding="utf-8")
     scratch = work / "voice-site"
     python = python_exe(root)
+    # The build machine's macOS is newer than the oldest one the app runs on: ask for
+    # wheels for that one (MACOSX_DEPLOYMENT_TARGET), or numpy's would need macOS 14.
+    target = ["--python-platform", "x86_64-apple-darwin"] if INTEL_MAC else []
     run(
-        "uv", "pip", "install", "--python", python, "--target", scratch,
+        "uv", "pip", "install", "--python", python, "--target", scratch, *target,
         "--no-deps", "--require-hashes", "--no-compile", "-r", requirements,
     )  # fmt: skip
     lock = {
@@ -201,6 +205,9 @@ def voice_wheels(work: Path, root: Path, base: list[str]) -> Path:
         algorithm, digest = chosen["hash"].split(":", 1)
         if algorithm != "sha256":
             sys.exit(f"{entry['name']}: uv.lock has a {algorithm} hash, not sha256")
+        needs = re.search(r"macosx_(\d+)_", chosen["url"].rsplit("/", 1)[-1])
+        if INTEL_MAC and needs and int(needs[1]) > OLDEST_INTEL_MACOS:
+            sys.exit(f"{entry['name']}: this wheel needs macOS {needs[1]}")
         wheels.append(
             {
                 "name": entry["name"],
@@ -277,10 +284,6 @@ def build_python(work: Path) -> Path:
     )
     # What the app and its workers import, from the trimmed install.
     run(python_exe(target), "-I", "-c", IMPORT_CHECK)
-    if INTEL_MAC:
-        remove(VOICE_LICENSES)
-        VOICE_LICENSES.mkdir(parents=True)
-        return target
     # Voice: the list of its wheels, then the app's own download of them (from
     # PyPI, as a user's would be), checked by importing the engine.
     listed = voice_wheels(work, target, base)

@@ -173,6 +173,9 @@ def main(argv: list[str]) -> None:
     engine.activate()
     for module in ("faster_whisper", "ctranslate2", "av", "onnxruntime", "numpy"):
         importlib.import_module(module)
+    # Finding speech is onnxruntime's whole job here, and some Macs have an older one.
+    silence = importlib.import_module("numpy").zeros(16000, dtype="float32")
+    importlib.import_module("faster_whisper.vad").get_speech_timestamps(silence)
     print(f"voice engine: {len(wheels)} packages, {engine.size / 1e6:.1f} MB, imports fine")
 
 

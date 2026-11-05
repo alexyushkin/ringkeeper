@@ -41,8 +41,7 @@ Each release also has two Mac downloads, for macOS 12 or newer. To see which
 is yours, open the Apple menu › **About This Mac**:
 
 - **Chip: Apple M1** or newer: `Ringkeeper_<version>_aarch64.dmg`
-- **Processor: Intel**: `Ringkeeper_<version>_x64.dmg`. Voice isn't available on
-  Intel Macs, because the speech engine no longer supports them. Type your requests instead.
+- **Processor: Intel**: `Ringkeeper_<version>_x64.dmg`
 
 1. Download the `.dmg` from the
    [latest release](https://github.com/alexyushkin/ringkeeper-releases/releases/latest),

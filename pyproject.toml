@@ -44,12 +44,15 @@ aws = ["boto3>=1.43.118"]
 # Voice in the desktop app: the same engine as the stt service (stt/Dockerfile),
 # run in-process. The model itself is downloaded on first use.
 # Its newest transitive releases were under two weeks old: these are held back.
+# onnxruntime only finds where the speech is. It dropped Intel Macs, then macOS 12:
+# 1.19.2 is the last that runs on both, so those Macs stay on it.
 voice = [
     "faster-whisper==1.2.1",
     "av==18.1.0",
     "ctranslate2==4.8.2",
     "huggingface-hub==2.2.0",
-    "onnxruntime==1.31.0",
+    "onnxruntime==1.31.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "onnxruntime==1.19.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.scripts]

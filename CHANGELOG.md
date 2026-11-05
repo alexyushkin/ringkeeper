@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Voice on Intel Macs.** The Intel build can now download voice like the others. Older
+  processors take longer to turn speech into text.
+- **Cmd+Q stops all of Ringkeeper on a Mac.** The background part kept running, so a newly
+  installed version could connect to it and go on showing the old version number. A new
+  version now also replaces whatever an older one left running.
+
 ## 0.1.0-beta.18 (2026-11-04)
 
 - **Older Macs.** The app's pages are now built for the web engine in macOS 12, so they
