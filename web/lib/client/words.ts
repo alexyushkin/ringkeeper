@@ -26,6 +26,11 @@ export const SERVICE: Record<string, string> = {
   twilio: "Twilio",
   gmail: "Gmail",
   github: "GitHub",
+  smtp: "Email sending (SMTP)",
+  resend: "Resend",
+  mailbox: "Mailbox",
+  http: "API",
+  s3: "File storage",
   mcp: "Add-on tool (MCP)",
 };
 

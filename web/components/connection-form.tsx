@@ -99,11 +99,54 @@ interface ServiceInfo {
   example: string; // a name, for the Name field's placeholder
   get: [string, string][]; // where to get the credential: [link text, URL]
   steps: string; // what to do there
-  address?: { label: string; placeholder: string; optional?: boolean };
+  address?: { label: string; placeholder: string; optional?: boolean; value?: string };
   // One secret field, or several sent as JSON (the adapter reads them back).
-  secret: { key: string; label: string; placeholder?: string; hidden?: boolean; optional?: boolean }[];
+  secret: SecretField[];
   note?: string;
+  noteFor?: (parts: Record<string, string>) => string | undefined; // what depends on a choice
+  type?: string; // a preset of another type ("http"); otherwise its own key
+  defaults?: Record<string, string>; // what's chosen until it's changed, sent even if not shown
 }
+
+interface SecretField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  hidden?: boolean;
+  optional?: boolean;
+  options?: [string, string][]; // a choice, not a text box
+  when?: (parts: Record<string, string>) => boolean; // shown only then
+  hint?: string;
+}
+
+const TEST_ADDRESS: SecretField = { key: "test_address", label: "Your own address for test sends", placeholder: "you@geninfos.com", optional: true, hint: "A test to this address runs without asking. Nothing else does." };
+const EMAIL_NOTE = "Every email waits for your approval. To more than 10 people at once, you also type the connection's name, in the app. A test to your own address runs by itself.";
+const AUTHS: [string, string][] = [
+  ["bearer", "Bearer token"],
+  ["header", "A key in a header"],
+  ["basic", "Username and password"],
+  ["query", "A key in the address"],
+  ["none", "No sign-in"],
+];
+const usesKey = (parts: Record<string, string>) => ["bearer", "header", "query"].includes(parts.auth ?? "");
+const API_FIELDS: SecretField[] = [
+  { key: "auth", label: "How it signs in", options: AUTHS },
+  { key: "token", label: "Key or token", hidden: true, when: usesKey },
+  { key: "header_name", label: "Header name", placeholder: "X-Api-Key", when: (p) => p.auth === "header" },
+  { key: "query_name", label: "Parameter name", placeholder: "api_key", when: (p) => p.auth === "query" },
+  { key: "username", label: "Username", when: (p) => p.auth === "basic" },
+  { key: "password", label: "Password", hidden: true, when: (p) => p.auth === "basic" },
+  { key: "spec_url", label: "OpenAPI address", placeholder: "https://api.example.com/openapi.json", optional: true, hint: "If the API publishes one, the AI can see what it offers." },
+];
+const API_NOTE = "GET runs without asking. Anything else waits for your approval, even on test data. DELETE needs the name typed. Ringkeeper can't undo what an API call does.";
+const MAILBOX_NOTES: Record<string, string> = {
+  gmail: "Gmail wants an app password (it needs 2-Step Verification): myaccount.google.com/apppasswords.",
+  outlook: "Microsoft has turned password sign-in off for IMAP on Microsoft 365, and is doing the same for SMTP. A mailbox that needs Microsoft's own sign-in can't connect this way yet.",
+  zoho: "Zoho wants an app password if two-factor sign-in is on, and IMAP turned on in Mail settings.",
+  yahoo: "Yahoo wants an app password: Account security › Generate app password.",
+};
+const isCustom = (parts: Record<string, string>) => parts.preset === "custom";
+const notBlob = (parts: Record<string, string>) => parts.provider !== "vercel_blob";
 
 /** The services a connection can be, and how to connect each (v1: API tokens only). */
 export const SERVICES: Record<string, ServiceInfo> = {
@@ -183,11 +226,126 @@ export const SERVICES: Record<string, ServiceInfo> = {
     ],
     note: "Every email waits for your approval before it's sent. Saving a draft doesn't.",
   },
+  mailbox: {
+    short: "Mailbox",
+    label: "Mailbox",
+    example: "General Informatics inbox",
+    get: [],
+    steps: "Choose your provider. Most want an app password here, not your normal password.",
+    defaults: { preset: "gmail", smtp_security: "ssl" },
+    secret: [
+      { key: "preset", label: "Provider", options: [["gmail", "Gmail"], ["outlook", "Outlook or Microsoft 365"], ["zoho", "Zoho Mail"], ["yahoo", "Yahoo Mail"], ["custom", "Another provider"]] },
+      { key: "address", label: "Email address", placeholder: "you@geninfos.com" },
+      { key: "password", label: "Password or app password", hidden: true },
+      { key: "imap_host", label: "IMAP server", placeholder: "imap.example.com", when: isCustom },
+      { key: "smtp_host", label: "SMTP server", placeholder: "smtp.example.com", when: isCustom },
+      { key: "smtp_port", label: "SMTP port", placeholder: "465", optional: true, when: isCustom },
+      { key: "smtp_security", label: "SMTP encryption", options: [["ssl", "SSL (usually port 465)"], ["starttls", "STARTTLS (usually port 587)"]], when: isCustom },
+      TEST_ADDRESS,
+    ],
+    note: "Reading runs and never marks mail as read. Drafts, moving and sending wait for your approval; deleting, and sending to more than 10 people at once, need the name typed.",
+    noteFor: (parts) => MAILBOX_NOTES[parts.preset ?? ""],
+  },
+  smtp: {
+    short: "Email",
+    label: "Email sending (SMTP)",
+    example: "General Informatics email",
+    get: [],
+    steps: "From your email provider: the SMTP server, and a username and password or SMTP key. The connection is always encrypted.",
+    defaults: { security: "starttls" },
+    secret: [
+      { key: "host", label: "SMTP server", placeholder: "smtp.example.com" },
+      { key: "security", label: "Encryption", options: [["starttls", "STARTTLS (usually port 587)"], ["ssl", "SSL (usually port 465)"]] },
+      { key: "port", label: "Port", placeholder: "587", optional: true },
+      { key: "from_address", label: "From address", placeholder: "hello@geninfos.com" },
+      { key: "username", label: "Username", placeholder: "Empty: the From address", optional: true },
+      { key: "password", label: "Password or SMTP key", hidden: true },
+      TEST_ADDRESS,
+    ],
+    note: EMAIL_NOTE,
+  },
+  resend: {
+    short: "Resend",
+    label: "Resend (email sending)",
+    example: "General Informatics email",
+    get: [["Resend API keys", "https://resend.com/api-keys"]],
+    steps: "Create an API key. Sending access is enough to send; full access also lets the AI read domains and delivery. The From address must be on a domain you verified in Resend.",
+    secret: [
+      { key: "api_key", label: "API key", placeholder: "re_…", hidden: true },
+      { key: "from_address", label: "From address", placeholder: "hello@geninfos.com" },
+      TEST_ADDRESS,
+    ],
+    note: EMAIL_NOTE,
+  },
+  http: {
+    short: "API",
+    label: "Any API",
+    example: "General Informatics API",
+    get: [],
+    steps: "Its address, and how it signs in. Its own documentation says both.",
+    address: { label: "API address", placeholder: "https://api.example.com/v1" },
+    defaults: { auth: "bearer" },
+    secret: API_FIELDS,
+    note: API_NOTE,
+  },
+  dataforseo: {
+    type: "http",
+    short: "DataForSEO",
+    label: "DataForSEO",
+    example: "General Informatics SEO data",
+    get: [["DataForSEO API access", "https://app.dataforseo.com/api-access"]],
+    steps: "Copy the API login and password from API Access. They aren't the ones you sign in with.",
+    address: { label: "API address", placeholder: "https://api.dataforseo.com/v3", value: "https://api.dataforseo.com/v3" },
+    defaults: { auth: "basic" },
+    secret: [
+      { key: "username", label: "API login" },
+      { key: "password", label: "API password", hidden: true },
+    ],
+    note: "DataForSEO's calls are POSTs and most cost credits, so each one waits for your approval. Reading finished results with GET runs.",
+  },
+  formsonfire: {
+    type: "http",
+    short: "Forms On Fire",
+    label: "Forms On Fire",
+    example: "General Informatics forms",
+    get: [],
+    steps: "Your API details are in your Forms On Fire account. Check the address and how it signs in there: other regions and Appenate use their own address.",
+    address: { label: "API address", placeholder: "https://secure.formsonfire.com/api/v2", value: "https://secure.formsonfire.com/api/v2" },
+    defaults: { auth: "header" },
+    secret: API_FIELDS,
+    note: API_NOTE,
+  },
+  s3: {
+    short: "Files",
+    label: "File storage",
+    example: "General Informatics files",
+    get: [
+      ["AWS access keys", "https://console.aws.amazon.com/iam/home#/security_credentials"],
+      ["Cloudflare R2 tokens", "https://dash.cloudflare.com/?to=/:account/r2/api-tokens"],
+      ["Vercel Blob", "https://vercel.com/dashboard/stores"],
+    ],
+    steps: "Make a key limited to this client's bucket. On R2, the Account ID is on the R2 overview page. On Vercel, open the Blob store and copy its read-write token.",
+    defaults: { provider: "aws" },
+    secret: [
+      { key: "provider", label: "Service", options: [["aws", "AWS S3"], ["r2", "Cloudflare R2"], ["vercel_blob", "Vercel Blob"], ["custom", "Another S3-compatible service"]] },
+      { key: "account_id", label: "Cloudflare account ID", when: (p) => p.provider === "r2" },
+      { key: "endpoint", label: "Address", placeholder: "https://s3.example.com", when: (p) => p.provider === "custom" },
+      { key: "region", label: "Region", placeholder: "us-east-1", optional: true, when: (p) => p.provider === "aws" || p.provider === "custom" },
+      { key: "access_key", label: "Access key ID", when: notBlob },
+      { key: "secret_key", label: "Secret access key", hidden: true, when: notBlob },
+      { key: "token", label: "Read-write token", placeholder: "vercel_blob_rw_…", hidden: true, when: (p) => p.provider === "vercel_blob" },
+      { key: "bucket", label: "Bucket", optional: true, when: notBlob },
+    ],
+    note: "Listing and reading run. An upload waits for your approval; deleting needs the name typed. Neither can be undone here. Pin a bucket and folder per project to keep each project on its own files.",
+  },
 };
 
 /** The account or host a connection's title names, from what was typed so far. */
 function detailFor(type: string, address: string, parts: Record<string, string>): string {
-  if (type === "n8n" || type === "github") return hostOf(address);
+  if (type === "n8n" || type === "github" || type === "http") return hostOf(address);
+  if (type === "smtp" || type === "resend") return (parts.from_address ?? "").trim();
+  if (type === "mailbox") return (parts.address ?? "").trim();
+  if (type === "s3") return (parts.bucket ?? "").trim();
   if (type === "supabase") return hostOf(parts[""] ?? "");
   if (type === "gmail") return (parts.address ?? "").trim();
   return "";
@@ -217,19 +375,25 @@ export function ConnectionForm({
   const [typed, setTyped] = useState<string | null>(null); // null: the suggested title
   const [owner, setOwner] = useState(client ?? "");
   const [env, setEnv] = useState("");
-  const [address, setAddress] = useState("");
-  const [parts, setParts] = useState<Record<string, string>>({});
+  const [typedAddress, setAddress] = useState<string | null>(null); // null: the service's own
+  const [typedParts, setParts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const taken = useTakenNames();
   const service = SERVICES[type] ?? SERVICES.supabase!;
-  const title = typed ?? defaultTitle(service.short, detailFor(type, address, parts), shared ? undefined : owner);
+  const kind = service.type ?? type;
+  const address = typedAddress ?? service.address?.value ?? "";
+  const parts = { ...service.defaults, ...typedParts };
+  const shownFields = service.secret.filter((f) => !f.when || f.when(parts));
+  const title = typed ?? defaultTitle(service.short, detailFor(kind, address, parts), shared ? undefined : owner);
   const name = nameFor(title, shared ? undefined : owner, taken);
-  const filled = service.secret.every((f) => f.optional || (parts[f.key] ?? "").trim());
+  const filled = shownFields.every((f) => f.optional || (parts[f.key] ?? "").trim());
+  const choiceNote = service.noteFor?.(parts);
 
   function secretValue(): string {
-    if (service.secret.length === 1) return parts[""] ?? "";
-    return JSON.stringify(Object.fromEntries(service.secret.map((f) => [f.key, (parts[f.key] ?? "").trim()])));
+    if (service.secret.length === 1 && !service.secret[0]?.key) return parts[""] ?? "";
+    const sent = [...Object.keys(service.defaults ?? {}), ...shownFields.map((f) => f.key)];
+    return JSON.stringify(Object.fromEntries(sent.map((key) => [key, (parts[key] ?? "").trim()])));
   }
 
   async function save(event: React.FormEvent) {
@@ -239,7 +403,7 @@ export function ConnectionForm({
     try {
       const saved = await api<ConnectionData>("connections", {
         json: {
-          name, title: title.trim(), type, env, owner: shared ? SHARED_OWNER : owner.trim(),
+          name, title: title.trim(), type: kind, env, owner: shared ? SHARED_OWNER : owner.trim(),
           base_url: service.address ? address.trim() || null : null, secret: secretValue(),
           shared, all_projects: shared && all,
         },
@@ -271,17 +435,19 @@ export function ConnectionForm({
         />
       )}
       <div className="space-y-1 rounded-xl bg-sunken p-3 text-sm">
-        <p>
-          Where to get it:{" "}
-          {service.get.map(([text, href], index) => (
-            <span key={href}>
-              {index ? " or " : ""}
-              <a href={href} target="_blank" rel="noreferrer" className="text-accent underline">
-                {text}
-              </a>
-            </span>
-          ))}
-        </p>
+        {service.get.length ? (
+          <p>
+            Where to get it:{" "}
+            {service.get.map(([text, href], index) => (
+              <span key={href}>
+                {index ? " or " : ""}
+                <a href={href} target="_blank" rel="noreferrer" className="text-accent underline">
+                  {text}
+                </a>
+              </span>
+            ))}
+          </p>
+        ) : null}
         <p className="text-muted">{service.steps}</p>
       </div>
       {client || shared ? null : <Field label="Client" value={owner} onChange={setOwner} placeholder="General Informatics LLC" required />}
@@ -295,17 +461,23 @@ export function ConnectionForm({
           required={!service.address.optional}
         />
       ) : null}
-      {service.secret.map((f) => (
-        <Field
-          key={`${type}-${f.key}`}
-          label={f.optional ? `${f.label} (optional)` : f.label}
-          type={f.hidden ? "password" : "text"}
-          value={parts[f.key] ?? ""}
-          onChange={(v) => setParts((all) => ({ ...all, [f.key]: v }))}
-          placeholder={f.placeholder}
-          required={!f.optional}
-        />
-      ))}
+      {shownFields.map((f) =>
+        f.options ? (
+          <Select key={`${type}-${f.key}`} label={f.label} value={parts[f.key] ?? ""} onChange={(v) => setParts((all) => ({ ...all, [f.key]: v }))} options={f.options} />
+        ) : (
+          <Field
+            key={`${type}-${f.key}`}
+            label={f.optional ? `${f.label} (optional)` : f.label}
+            type={f.hidden ? "password" : "text"}
+            value={parts[f.key] ?? ""}
+            onChange={(v) => setParts((all) => ({ ...all, [f.key]: v }))}
+            placeholder={f.placeholder}
+            hint={f.hint}
+            required={!f.optional}
+          />
+        ),
+      )}
+      {choiceNote ? <Alert tone="warn">{choiceNote}</Alert> : null}
       <EnvChoice value={env} onChange={setEnv} />
       <Field label="Name" value={title} onChange={setTyped} placeholder={service.example} hint="As it shows in Ringkeeper. Change it if you like." required />
       {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}

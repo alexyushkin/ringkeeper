@@ -61,6 +61,9 @@ const APIS: [string, string][] = [
   ["Google Drive API", "drive.googleapis.com"],
   ["Google Calendar API", "calendar-json.googleapis.com"],
   ["Google Sheets API", "sheets.googleapis.com"],
+  ["Search Console API", "searchconsole.googleapis.com"],
+  ["Analytics Data API", "analyticsdata.googleapis.com"],
+  ["Analytics Admin API", "analyticsadmin.googleapis.com"],
 ];
 export const DEFAULT_ACCESS = ["mail_read", "mail_send", "mail_drafts"];
 // Ringkeeper's pages, for the Branding page of your Google app.
@@ -91,7 +94,7 @@ function SetupSteps({ access }: { access: Access[] }) {
           Open the <Outside href={`${CONSOLE}/projectcreate`}>Google Cloud console</Outside> signed in with your own Google account, and create a project (any name, say “Ringkeeper”). No billing is needed.
         </li>
         <li>
-          Turn on the four APIs (each link opens it; click <strong>Enable</strong>):{" "}
+          Turn on these APIs (each link opens it; click <strong>Enable</strong>):{" "}
           {APIS.map(([label, id], i) => (
             <span key={id}>
               {i ? ", " : ""}

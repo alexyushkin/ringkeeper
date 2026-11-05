@@ -166,6 +166,10 @@ function SignInBadge({ signin }: { signin: boolean | null }) {
   return null;
 }
 
+/** What people look for, in the order the catalog shows it. */
+const CATEGORIES = ["Databases", "Email", "CRM", "Accounting", "Payments", "CMS", "Cloud", "Storage", "AI", "Dev tools", "Other"] as const;
+type Category = (typeof CATEGORIES)[number];
+
 /** A built-in service: its own form (a ConnectionForm type, Google, or a token service). */
 interface Tile {
   key: string;
@@ -173,26 +177,48 @@ interface Tile {
   sub: string;
   open: "form" | "google" | "remote";
   words: string[]; // what a search for it might say
+  category: Category;
 }
 
 const BUILT_IN: Tile[] = [
-  { key: "supabase", label: "Database", sub: "Postgres: Supabase, Neon or your own", open: "form", words: ["postgres", "postgresql", "sql", "supabase", "neon", "database", "db"] },
-  { key: "n8n", label: "n8n", sub: "Automations", open: "form", words: ["n8n", "workflow", "workflows", "automation"] },
-  { key: "airtable", label: "Airtable", sub: "Bases and records, with undo", open: "form", words: ["airtable"] },
-  { key: "vercel", label: "Vercel", sub: "Deployments", open: "form", words: ["vercel", "deploy", "hosting"] },
-  { key: "twilio", label: "Twilio", sub: "Texts and calls", open: "form", words: ["twilio", "sms", "text", "texts", "call", "calls"] },
-  { key: "gmail", label: "Gmail", sub: "With an app password", open: "form", words: ["gmail", "email", "mail"] },
-  { key: "google", label: "Google account", sub: "Gmail, Drive, Calendar, Sheets", open: "google", words: ["google", "gmail", "drive", "calendar", "sheets", "docs"] },
-  { key: "github", label: "GitHub", sub: "Code, issues, pull requests", open: "form", words: ["github", "git", "code", "repo"] },
-  { key: "retell", label: "Retell AI", sub: "Voice agents", open: "remote", words: ["retell", "voice", "phone"] },
+  { key: "supabase", label: "Database", sub: "Postgres: Supabase, Neon or your own", open: "form", category: "Databases", words: ["postgres", "postgresql", "sql", "supabase", "neon", "database", "db"] },
+  { key: "airtable", label: "Airtable", sub: "Bases and records, with undo", open: "form", category: "Databases", words: ["airtable"] },
+  { key: "mailbox", label: "Mailbox", sub: "Gmail, Outlook, Zoho, Yahoo or any IMAP", open: "form", category: "Email", words: ["mailbox", "gmail", "outlook", "office365", "microsoft", "zoho", "yahoo", "imap", "email", "mail", "inbox"] },
+  { key: "smtp", label: "Email sending", sub: "SMTP, any provider", open: "form", category: "Email", words: ["smtp", "email", "mail", "send", "sendgrid", "mailgun", "postmark", "brevo", "ses", "mailchimp", "mandrill"] },
+  { key: "resend", label: "Resend", sub: "Email sending", open: "form", category: "Email", words: ["resend", "email", "mail", "send"] },
+  { key: "google", label: "Google account", sub: "Gmail, Drive, Calendar, Sheets, Search Console, Analytics", open: "google", category: "Email", words: ["google", "gmail", "drive", "calendar", "sheets", "docs", "analytics", "ga4", "gsc", "seo", "search console"] },
+  { key: "twilio", label: "Twilio", sub: "Texts and calls", open: "form", category: "Email", words: ["twilio", "sms", "text", "texts", "call", "calls"] },
+  { key: "s3", label: "File storage", sub: "AWS S3, Cloudflare R2, Vercel Blob", open: "form", category: "Storage", words: ["s3", "r2", "blob", "bucket", "aws", "amazon", "minio", "backblaze", "wasabi", "spaces", "files", "storage"] },
+  { key: "retell", label: "Retell AI", sub: "Voice agents", open: "remote", category: "AI", words: ["retell", "voice", "phone"] },
+  { key: "github", label: "GitHub", sub: "Code, issues, pull requests", open: "form", category: "Dev tools", words: ["github", "git", "code", "repo"] },
+  { key: "vercel", label: "Vercel", sub: "Deployments", open: "form", category: "Dev tools", words: ["vercel", "deploy", "hosting"] },
+  { key: "n8n", label: "n8n", sub: "Automations", open: "form", category: "Dev tools", words: ["n8n", "workflow", "workflows", "automation"] },
+  { key: "http", label: "Any API", sub: "An address and a key", open: "form", category: "Other", words: ["api", "rest", "http", "https", "openapi", "swagger", "webhook"] },
+  { key: "formsonfire", label: "Forms On Fire", sub: "Forms and data sources", open: "form", category: "Other", words: ["forms", "formsonfire", "fof", "appenate", "truecontext"] },
+  { key: "dataforseo", label: "DataForSEO", sub: "SEO data", open: "form", category: "Other", words: ["dataforseo", "seo", "keywords", "serp", "backlinks"] },
 ];
 // Sign-in services shown as built-in tiles instead (Airtable: the built-in one has undo).
 const NOT_SIGN_IN = new Set(["retell", "airtable", "github"]);
+// Where the services you sign in to belong.
+const SIGN_IN_CATEGORY: Record<string, Category> = {
+  neon: "Databases",
+  supabase: "Databases",
+  cloudflare: "Cloud",
+  sentry: "Dev tools",
+  linear: "Dev tools",
+  atlassian: "Dev tools",
+};
 
 // Services with no logo in lib/client/logos: their initials on their color.
 const MARKS: Record<string, [string, string, string]> = {
   twilio: ["T", "#f22f46", "#fff"],
   retell: ["R", "#6d28d9", "#fff"],
+  mailbox: ["@", "#2563eb", "#fff"],
+  smtp: ["@", "#0f766e", "#fff"],
+  http: ["{}", "#475569", "#fff"],
+  s3: ["S3", "#c2410c", "#fff"],
+  formsonfire: ["F", "#dc2626", "#fff"],
+  dataforseo: ["D", "#1d4ed8", "#fff"],
 };
 
 /** A service's logo on its color, else its initials. A database connection: Postgres's. */
@@ -215,12 +241,15 @@ export function ServiceMark({ id, database = false }: { id: string; database?: b
   );
 }
 
-function TileButton({ mark, label, sub, onClick, database = false }: { mark: string; label: string; sub: string; onClick: () => void; database?: boolean }) {
+function TileButton({ mark, label, sub, badge, onClick, database = false }: { mark: string; label: string; sub: string; badge: string; onClick: () => void; database?: boolean }) {
   return (
     <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3 text-left text-sm hover:border-accent">
       <ServiceMark id={mark} database={database} />
-      <span className="min-w-0">
-        <span className="block font-medium">{label}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-x-2">
+          <span className="font-medium">{label}</span>
+          <Badge tone={badge === "Built in" ? "good" : undefined}>{badge}</Badge>
+        </span>
         <span className="block truncate text-xs text-muted">{sub}</span>
       </span>
     </button>
@@ -232,6 +261,7 @@ type Opened = { tile: Tile } | { service: RemoteService };
 export function Catalog(target: Target) {
   const services = useApi<RemoteService[]>("remote-services");
   const [opened, setOpened] = useState<Opened | null>(null);
+  const [searching, setSearching] = useState(false);
   const shared = target.kind === "shared";
   const signIn = (services.data ?? []).filter((s) => !NOT_SIGN_IN.has(s.key));
   const openKey = (key: string) => {
@@ -269,66 +299,55 @@ export function Catalog(target: Target) {
     );
   }
 
-  const builtIn = (
-    <section className="space-y-2">
-      <h3 className="font-medium">Built in</h3>
-      <p className="text-xs text-muted">Ringkeeper&apos;s own rules: changes wait for your approval where they should, SQL is checked before it runs, and most changes can be undone.</p>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {BUILT_IN.map((tile) => (
-          <TileButton key={tile.key} mark={tile.key} database={tile.key === "supabase"} label={tile.label} sub={tile.sub} onClick={() => setOpened({ tile })} />
-        ))}
-      </div>
-    </section>
-  );
-  const signInTiles = (
-    <section className="space-y-2">
-      <h3 className="font-medium">Sign in</h3>
-      <p className="text-xs text-muted">One click opens the service&apos;s own page. A project&apos;s link can be narrowed (to one Neon project, one Notion workspace and so on).</p>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {signIn.map((service) => (
-          <TileButton key={service.key} mark={service.key} label={service.name} sub={service.signin ? "Sign in" : "Paste a token"} onClick={() => setOpened({ service })} />
-        ))}
-      </div>
-      {services.error ? <Alert>{services.error}</Alert> : null}
-    </section>
-  );
-  const others = (
-    <section className="space-y-2">
-      <h3 className="font-medium">{shared ? "Find a tool" : "Other connectors"}</h3>
-      <CatalogSearch
-        {...target}
-        featured={[
-          ...BUILT_IN.map((t) => ({ key: t.key, label: t.label, sub: t.sub, words: t.words })),
-          ...signIn.map((s) => ({ key: s.key, label: s.name, sub: s.signin ? "Sign in" : "Paste a token", words: [s.key, ...s.name.toLowerCase().split(/[^a-z0-9]+/)] })),
-        ]}
-        onFeatured={openKey}
-      />
+  // Every service, by what people look for: built in (Ringkeeper's own rules) and the
+  // service's own server you sign in to.
+  const tiles = [
+    ...BUILT_IN.map((tile) => ({ key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: "Built in", words: tile.words, open: () => setOpened({ tile }) })),
+    ...signIn.map((service) => ({
+      key: service.key,
+      label: service.name,
+      sub: service.signin ? "Sign in" : "Paste a token",
+      category: SIGN_IN_CATEGORY[service.key] ?? ("Other" as Category),
+      badge: "Official",
+      words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/)],
+      open: () => setOpened({ service }),
+    })),
+  ];
+  return (
+    <div className="space-y-5">
+      {shared ? (
+        <p className="text-sm text-muted">
+          Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
+        </p>
+      ) : null}
+      <CatalogSearch {...target} featured={tiles} onFeatured={openKey} onTyped={setSearching} />
+      {searching ? null : (
+        <>
+          <p className="text-xs text-muted">
+            <b>Built in</b>: Ringkeeper&apos;s own rules, and most changes can be undone. <b>Official</b>: the service&apos;s own server; you sign in on its page, and a project&apos;s link can often be narrowed.
+          </p>
+          {CATEGORIES.map((category) => {
+            const here = tiles.filter((tile) => tile.category === category);
+            return here.length ? (
+              <section key={category} className="space-y-2">
+                <h3 className="font-medium">{category}</h3>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {here.map((tile) => (
+                    <TileButton key={tile.key} mark={tile.key} database={tile.key === "supabase" && tile.badge === "Built in"} label={tile.label} sub={tile.sub} badge={tile.badge} onClick={tile.open} />
+                  ))}
+                </div>
+              </section>
+            ) : null;
+          })}
+          {services.error ? <Alert>{services.error}</Alert> : null}
+        </>
+      )}
       <Details label="Add a server by its address">
         <AddByUrl {...target} />
       </Details>
       <Details label="Install extension (.mcpb file)">
         <InstallExtension {...target} />
       </Details>
-    </section>
-  );
-  return (
-    <div className="space-y-6">
-      {shared ? (
-        <>
-          <p className="text-sm text-muted">
-            Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
-          </p>
-          {others}
-          {builtIn}
-          {signInTiles}
-        </>
-      ) : (
-        <>
-          {builtIn}
-          {signInTiles}
-          {others}
-        </>
-      )}
     </div>
   );
 }
@@ -338,6 +357,7 @@ interface Featured {
   label: string;
   sub: string;
   words: string[];
+  badge: string;
 }
 
 const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -366,7 +386,7 @@ function dedupe(servers: CatalogServer[]): CatalogServer[] {
   });
 }
 
-function CatalogSearch({ featured = [], onFeatured, ...target }: Target & { featured?: Featured[]; onFeatured?: (key: string) => void }) {
+function CatalogSearch({ featured = [], onFeatured, onTyped, ...target }: Target & { featured?: Featured[]; onFeatured?: (key: string) => void; onTyped?: (searching: boolean) => void }) {
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState("");
   const [pages, setPages] = useState<SearchResult[]>([]);
@@ -424,7 +444,7 @@ function CatalogSearch({ featured = [], onFeatured, ...target }: Target & { feat
   };
   const official = servers.filter(own);
   const community = servers.filter((server) => !own(server));
-  const matches = words.length ? featured.filter((f) => words.some((w) => f.words.includes(w) || squash(f.label).startsWith(w))) : [];
+  const matches = words.length ? featured.filter((f) => words.some((w) => f.words.some((known) => known.startsWith(w)) || squash(f.label).startsWith(w))) : [];
   const last = pages[pages.length - 1];
   const row = (server: CatalogServer) => (
     <li key={server.name}>
@@ -434,6 +454,7 @@ function CatalogSearch({ featured = [], onFeatured, ...target }: Target & { feat
           {server.kind.includes("remote") ? <Badge>remote</Badge> : null}
           {server.kind.includes("local") ? <Badge>runs on this computer</Badge> : null}
           <SignInBadge signin={server.signin} />
+          <Badge>{own(server) ? "Official" : "Community"}</Badge>
           {server.status === "deprecated" ? <Badge tone="warn">deprecated</Badge> : null}
         </span>
         <span className="mt-0.5 block">
@@ -453,7 +474,15 @@ function CatalogSearch({ featured = [], onFeatured, ...target }: Target & { feat
   );
   return (
     <div className="space-y-2">
-      <Field label="Search connectors" value={typed} onChange={setTyped} placeholder="notion, postgres, playwright…" />
+      <Field
+        label="Search connectors"
+        value={typed}
+        onChange={(text) => {
+          setTyped(text);
+          onTyped?.(Boolean(text.trim()));
+        }}
+        placeholder="gmail, postgres, s3, playwright…"
+      />
       {matches.length ? (
         <ul className="space-y-2" aria-label="Built in">
           {matches.map((f) => (
@@ -463,7 +492,7 @@ function CatalogSearch({ featured = [], onFeatured, ...target }: Target & { feat
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{f.label}</span>
-                    <Badge tone="good">built in</Badge>
+                    <Badge tone={f.badge === "Built in" ? "good" : undefined}>{f.badge}</Badge>
                   </span>
                   <span className="block truncate text-xs text-muted">{f.sub}</span>
                 </span>
