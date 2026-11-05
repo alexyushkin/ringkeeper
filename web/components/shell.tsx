@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { CommandPalette, openPalette } from "@/components/command-palette";
 import { ScopeSwitcher } from "@/components/scope-switcher";
 import { startTour, Tour } from "@/components/tour";
+import { ScanOffer } from "@/components/scans";
 import { UpdateBanner } from "@/components/update-banner";
 import { Loading, Logo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -181,6 +182,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         ) : null}
         {DESKTOP ? <UpdateBanner /> : null}
+        {DESKTOP ? <ScanOffer /> : null}
         <ScopeSwitcher />
         {/* As wide as the window allows, up to where lines get too long to read. */}
         <main className="mx-auto w-full max-w-[96rem] px-4 pt-4 pb-28 md:px-6 md:pb-10 xl:px-10">{children}</main>

@@ -61,4 +61,4 @@ kept apart from what's new, and the task can ask for them.
 
 A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole
 conversation, oldest message first. Reading text from a picture or a scanned PDF needs the
-free `tesseract` program on this computer. Without it, the task is told it couldn't be read.
+scan reader, a one-time download the desktop app offers the first time a task needs it.

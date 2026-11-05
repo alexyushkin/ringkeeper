@@ -99,10 +99,10 @@ def unpack(wheel: Path, into: Path) -> None:
 class Engine:
     """The engine's packages in the data folder: there or not, how big, fetch them."""
 
-    def __init__(self, data_dir: Path, wheels: list[Wheel]) -> None:
+    def __init__(self, data_dir: Path, wheels: list[Wheel], area: str = "voice") -> None:
         self.wheels = wheels
         digest = hashlib.sha256("\n".join(sorted(w.sha256 for w in wheels)).encode()).hexdigest()
-        self.root = data_dir / "voice"
+        self.root = data_dir / area
         self.folder = self.root / f"{PREFIX}{digest[:16]}"
 
     @property

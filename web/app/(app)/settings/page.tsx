@@ -17,6 +17,7 @@ import { BackupSettings } from "@/components/backup";
 import { ClaudePlace } from "@/components/claude-place";
 import { DeveloperApps } from "@/components/developer-apps";
 import { HelpHint } from "@/components/help-hint";
+import { ScanSettings } from "@/components/scans";
 import { AUTO, VoiceSettings } from "@/components/voice";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
@@ -127,6 +128,11 @@ export default function SettingsPage() {
             key: "voice",
             label: "Voice",
             content: () => <VoiceSettings language={v.stt_language ?? AUTO} onLanguage={(value) => change({ stt_language: value }, "Saved the languages.")} />,
+          },
+          {
+            key: "scans",
+            label: "Reading scans",
+            content: () => <ScanSettings />,
           },
         ]
       : []),

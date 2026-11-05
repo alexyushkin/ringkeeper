@@ -668,6 +668,11 @@ Speech becomes text on your computer: the recording never leaves it, and is
 dropped once it's transcribed, with the same limits as the server's `stt`
 service. From source, install the engine with `uv sync --extra voice`.
 
+Reading scans works the same way: the installer carries `ocr-packages.json`, and the app
+downloads the wheels and the English language file when you say yes (`ocr_local`). A task's
+picture is read in a process of its own, with a time limit. From source, a `tesseract` program
+on the PATH reads pictures, and `uv sync --extra ocr` adds Pillow for scanned PDFs.
+
 With the optional `stt` service running, you can reply to a question with a
 voice note, and, if requests are on, send a request as one. The bot
 transcribes it and answers **I heard: ...** with **Confirm** and **Redo**.

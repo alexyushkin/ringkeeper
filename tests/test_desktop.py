@@ -4,6 +4,7 @@ worker process (the stub agent, no LLM). No Docker, no Postgres.
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -21,7 +22,7 @@ import httpx2
 import keyring
 import pytest
 
-from ringkeeper import voice_local
+from ringkeeper import ocr_local, voice_local
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
@@ -834,6 +835,36 @@ def test_voice_downloads_its_engine_and_model_on_first_use(
     assert win.delete("/bff/desktop/voice").status_code == 204
     assert win.get("/bff/desktop/voice").json()["state"] == "absent"
     sys.modules.pop("fakevoice", None)
+
+
+def test_the_scan_reader_is_offered_downloaded_and_removed(
+    desktop: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.test_ocr_local import LANGUAGE, FakeHosts, stand_in, wheels  # noqa: PLC0415
+
+    wheel = stand_in()
+    reader = ocr_local.LocalOcr(tmp_path, wheels(wheel))
+
+    def the_reader(_settings: object) -> ocr_local.LocalOcr:
+        return reader
+
+    monkeypatch.setattr(ocr_local, "model", the_reader)
+    monkeypatch.setattr(ocr_local, "transport", httpx2.MockTransport(FakeHosts(wheel).handle))
+    monkeypatch.setattr(ocr_local, "LANGUAGE_SHA256", hashlib.sha256(LANGUAGE).hexdigest())
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    win = window(desktop)
+    first = win.get("/bff/desktop/ocr").json()
+    assert (first["available"], first["state"], first["offer"]) == (True, "absent", False)
+    reader.missed()
+    assert win.get("/bff/desktop/ocr").json()["offer"] is True
+    assert win.post("/bff/desktop/ocr/decline").json()["offer"] is False
+    assert win.post("/bff/desktop/ocr/download").status_code == 202
+    deadline = time.monotonic() + 10
+    while win.get("/bff/desktop/ocr").json()["state"] != "ready":
+        assert time.monotonic() < deadline
+        time.sleep(0.1)
+    assert win.delete("/bff/desktop/ocr").status_code == 204
+    assert win.get("/bff/desktop/ocr").json()["state"] == "absent"
 
 
 def claude_app(tmp_path: Path, code: Path) -> Path:
