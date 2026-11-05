@@ -12,10 +12,15 @@ question finds its sections here, with no model. Then:
 It ends with buttons for the next step: links into the app, nothing that changes
 anything by itself. The router sends it these questions; so do Help > Ask and the
 "?" hints.
+
+Help > Ask is a conversation: the page sends the last few turns with each question, and
+nothing is kept here. They show what "why?" refers to, and find its sections. They're
+never a source, and a question that stands on its own is checked just like a first one.
 """
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from functools import cache
 from importlib import resources
@@ -39,6 +44,8 @@ SUGGEST = {
 }
 REPORT = {"label": "Report a problem", "href": "/help?report=1"}
 MAX_SECTIONS = 5
+OWN_SECTIONS = 3  # a follow-up keeps room for the sections of what came before
+MAX_EARLIER = 6
 
 SYSTEM_PROMPT = f"""\
 You are Ringkeeper's help. You answer how to use Ringkeeper, from GUIDE below and
@@ -48,6 +55,8 @@ RINGKEEPER DATA (the operator's own setup). Those are everything you know.
 - If they don't cover it, answer exactly "{NO_DOCS}" and nothing else.
 - Use the data to be specific: "Seaside has no projects yet, so first add one."
 - Name buttons and pages as the guide does. You can't change anything yourself.
+- EARLIER IN THIS CONVERSATION, if it's there, only shows what the question refers to.
+  It isn't a source: what it says counts only if GUIDE or RINGKEEPER DATA says it too.
 - A few short sentences or a short numbered list.
 - End with a last line "SOURCES: " and the numbers of the guide sections you used.
 """
@@ -196,6 +205,14 @@ class Section:
         return f"{GUIDE}/{self.doc}.md" + (f"#{self.anchor}" if self.anchor else "")
 
 
+@dataclass(frozen=True)
+class Turn:
+    """A question already answered in this conversation."""
+
+    question: str
+    answer: str
+
+
 @dataclass
 class Help:
     text: str
@@ -273,10 +290,45 @@ def search(question: str, limit: int = MAX_SECTIONS) -> list[Section]:
     return [s for _, _, s in scored[:limit]]
 
 
+# Asked of an answer, not about Ringkeeper: the guide needn't use these words.
+_OF_THE_ANSWER = frozenset(
+    words(
+        "again better clarify detail easier elaborate explain faster quicker rephrase repeat "
+        "shorter simpler simplify summarize"
+    )
+)
+
+
+def _with_earlier(own: list[Section], question: str, earlier: Sequence[Turn]) -> list[Section]:
+    """A follow-up's sections first, then the conversation's: "why?" has none of its own."""
+    if not earlier:
+        return own
+    asked = " ".join(turn.question for turn in earlier)
+    both = [*own[:OWN_SECTIONS], *search(f"{asked} {question}"), *own]
+    return list(dict.fromkeys(both))[:MAX_SECTIONS]
+
+
+def _conversation(earlier: Sequence[Turn]) -> str:
+    if not earlier:
+        return ""
+    turns = "\n\n".join(f"Q: {turn.question}\nA: {turn.answer}" for turn in earlier)
+    return f"EARLIER IN THIS CONVERSATION:\n{turns}\n\n"
+
+
 def unknown(question: str, names: list[str]) -> list[str]:
     """What a question names that the guide and your setup never mention."""
     known = _vocabulary() | frozenset(w for n in names for w in words(n.replace("-", " ")))
     return [w for w in words(question) if w not in known]
+
+
+def _unknown_here(question: str, names: list[str], earlier: Sequence[Turn]) -> list[str]:
+    """The same, in a conversation: "say that differently" has nothing to look up, and
+    "can it order pizza?" is a question of its own."""
+    if not earlier:
+        return unknown(question, names)
+    if not is_how_to(question):
+        return []
+    return [w for w in unknown(question, names) if w not in _OF_THE_ANSWER]
 
 
 def _not_yet_line(section: Section, question: str) -> str | None:
@@ -342,7 +394,13 @@ def _sources(text: str, shown: list[Section]) -> tuple[str, list[Section]]:
     return text[: match.start()].strip(), used or shown[:1]
 
 
-def answer(session: Session, settings: Settings, model: RouterModel, question: str) -> Help:
+def answer(
+    session: Session,
+    settings: Settings,
+    model: RouterModel,
+    question: str,
+    earlier: Sequence[Turn] = (),
+) -> Help:
     data = snapshot(session, settings)
     busy = {str(p["client"]) for p in data["projects"]}
     data["clients_with_no_projects"] = {
@@ -354,20 +412,21 @@ def answer(session: Session, settings: Settings, model: RouterModel, question: s
         *(str(p["name"]) for p in data["projects"]),
         *(str(c["name"]) for c in data["connections"]),
     ]
-    found = search(question)
-    missing = unknown(question, names)
-    top = found[0] if found else None
+    own = search(question)
+    top = own[0] if own else None
     if top is not None and top.title == NOT_YET and (line := _not_yet_line(top, question)):
         return Help(f"{NOT_DONE} {line}", [_cite(top)], [SUGGEST, REPORT])
+    found = _with_earlier(own, question, earlier)
+    missing = _unknown_here(question, names, earlier)
     # Connecting something the guide doesn't name is still connecting: Other connectors.
-    if (missing and not _CONNECTS.search(question)) or top is None:
+    if (missing and not _CONNECTS.search(question)) or not found:
         return Help(
             f"{NO_DOCS} If you'd like Ringkeeper to do this, say so:", [], [SUGGEST, REPORT]
         )
     guide = "\n\n".join(f"[{n}] {s.title} ({s.doc}): {s.text}" for n, s in enumerate(found, 1))
     prompt = (
         f"GUIDE:\n{guide}\n\nRINGKEEPER DATA:\n{json.dumps(data, indent=1, default=str)}\n\n"
-        f"QUESTION:\n{question}"
+        f"{_conversation(earlier)}QUESTION:\n{question}"
     )
     completion = model.complete(SYSTEM_PROMPT, prompt, router_model(settings))
     text, used = _sources(completion.text.strip(), found)

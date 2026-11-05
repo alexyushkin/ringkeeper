@@ -303,8 +303,13 @@ guide written for it:
 ![Not yet](ux-walkthrough/h19-help-not-yet.png)
 ![Help › Ask](ux-walkthrough/h20-help-ask.png)
 
+Help › Ask is a conversation: ask a follow-up under an answer, or press **New question** to
+start again. The last six turns go with each question, so "why?" knows what it's about.
+They aren't a source, and nothing is saved: reloading or signing out ends the conversation.
+
 **Tests:** 20 real questions each find their expected section, and 7 questions about
-things that don't exist never reach a model (`tests/test_help.py`).
+things that don't exist never reach a model, first or later in a conversation
+(`tests/test_help.py`).
 
 **Not tested:** how well a real Haiku follows "answer only from the guide". Its prompt
 says so and it only sees those sections, but that needs a real key. Try it with a few

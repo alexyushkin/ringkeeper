@@ -141,6 +141,103 @@ def test_a_client_with_nothing_yet_gets_add_project_first() -> None:
     assert helped.actions[0] == {"label": "Add project", "href": "/projects/new?client=seaside"}
 
 
+# --- A conversation in Help > Ask ---
+
+UNDO = guide.Turn("How do I undo a change?", "Open the task, then press Undo.")
+
+
+@pytest.mark.usefixtures("database")
+@pytest.mark.parametrize(
+    "follow_up",
+    [
+        "why?",
+        "what's next?",
+        "and then?",
+        "say that more simply",
+        "explain that in plain english please",
+        "ok, what about the second step",
+        "can you explain that again?",
+        "could you explain that more simply?",
+        "can you repeat that?",
+        "can you elaborate?",
+        "could you clarify step 2?",
+        "can you summarize that?",
+        "can you rephrase that?",
+        "is there an easier way?",
+        "is there a shorter way?",
+    ],
+)
+def test_a_follow_up_is_answered_from_what_came_before(follow_up: str) -> None:
+    model = FakeModel(["Because each task keeps its changes.\nSOURCES: 1"])
+    with session_scope() as session:
+        helped = guide.answer(session, get_settings(), model, follow_up, [UNDO])
+    assert helped.text == "Because each task keeps its changes."
+    assert helped.cites
+    _, prompt, _ = model.calls[0]
+    assert "Can I undo a change?" in prompt  # the guide's section for the earlier question
+    assert "EARLIER IN THIS CONVERSATION:\nQ: How do I undo a change?" in prompt
+    assert prompt.endswith(f"QUESTION:\n{follow_up}")
+
+
+@pytest.mark.usefixtures("database")
+def test_a_follow_up_with_nothing_before_it_has_nothing_to_go_on() -> None:
+    model = FakeModel([])
+    with session_scope() as session:
+        helped = guide.answer(session, get_settings(), model, "why?")
+    assert helped.text.startswith(guide.NO_DOCS)
+    assert model.calls == []
+
+
+@pytest.mark.usefixtures("database")
+@pytest.mark.parametrize("question", NOT_THERE)
+def test_what_doesnt_exist_is_never_invented_later_in_a_conversation(question: str) -> None:
+    model = FakeModel([])
+    with session_scope() as session:
+        helped = guide.answer(session, get_settings(), model, question, [UNDO])
+    assert helped.text.startswith((guide.NOT_DONE, guide.NO_DOCS))
+    assert model.calls == []
+
+
+@pytest.mark.usefixtures("database")
+@pytest.mark.parametrize("question", ["Can it order pizza?", "Can you explain the blockchain?"])
+def test_a_question_of_its_own_is_still_checked_against_the_guide(question: str) -> None:
+    model = FakeModel([])
+    with session_scope() as session:
+        helped = guide.answer(session, get_settings(), model, question, [UNDO])
+    assert helped.text.startswith(guide.NO_DOCS)
+    assert model.calls == []
+
+
+@pytest.mark.usefixtures("database")
+def test_a_new_question_in_a_conversation_finds_its_own_sections_first() -> None:
+    model = FakeModel(["Use Link to project….\nSOURCES: 1"])
+    question = "How do I link a connection to a project?"
+    with session_scope() as session:
+        helped = guide.answer(session, get_settings(), model, question, [UNDO])
+    assert helped.cites[0]["title"] == "Link a connection to a project"
+
+
+def test_the_earlier_turns_are_the_conversation_and_not_a_source() -> None:
+    assert "It isn't a source" in guide.SYSTEM_PROMPT
+
+
+def test_help_ask_takes_the_conversation_up_to_its_limit(owner: TestClient) -> None:  # noqa: F811
+    turn = {"question": UNDO.question, "answer": UNDO.answer}
+    question = "Is there an iPhone app?"
+    allowed = owner.post(
+        "/help/ask", json={"question": question, "earlier": [turn] * guide.MAX_EARLIER}
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["text"].startswith(guide.NOT_DONE)
+    over = owner.post(
+        "/help/ask", json={"question": question, "earlier": [turn] * (guide.MAX_EARLIER + 1)}
+    )
+    assert over.status_code == 422
+    long = {"question": UNDO.question, "answer": "x" * 4001}
+    too_long = owner.post("/help/ask", json={"question": question, "earlier": [long]})
+    assert too_long.status_code == 422
+
+
 # --- Through the router: no project, no task, no approval ---
 
 

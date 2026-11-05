@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Markdown } from "@/components/markdown";
 import { Alert, Button, Card, Field, LinkButton } from "@/components/ui";
@@ -49,12 +49,32 @@ export function HelpExtras({ help }: { help: HelpAnswer }) {
   );
 }
 
-/** Help › Ask: how to use Ringkeeper, from the guide and your setup. */
+interface Turn {
+  question: string;
+  help: HelpAnswer;
+}
+
+// What the server takes (MAX_EARLIER, and EarlierIn's answer).
+const EARLIER_TURNS = 6;
+const EARLIER_ANSWER = 4000;
+
+// Here, not in state: an answer's button opens another page, and coming back finds the
+// conversation. Nothing is saved, so signing out or reloading ends it.
+let kept: Turn[] = [];
+
+/** Help › Ask: how to use Ringkeeper, from the guide and your setup. Ask on from an
+ * answer, or start again with New question. */
 export function AskHelp() {
   const [question, setQuestion] = useState("");
-  const [help, setHelp] = useState<HelpAnswer | null>(null);
+  const [turns, setTurns] = useState<Turn[]>(kept);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+
+  function remember(next: Turn[]) {
+    kept = next;
+    setTurns(next);
+  }
 
   useEffect(() => {
     const asked = new URLSearchParams(window.location.search).get("ask");
@@ -65,9 +85,15 @@ export function AskHelp() {
     event.preventDefault();
     setBusy(true);
     setError(null);
-    setHelp(null);
+    const asked = question.trim();
+    const earlier = turns.slice(-EARLIER_TURNS).map((turn) => ({
+      question: turn.question,
+      answer: turn.help.text.slice(0, EARLIER_ANSWER),
+    }));
     try {
-      setHelp(await api<HelpAnswer>("help/ask", { json: { question: question.trim() } }));
+      const help = await api<HelpAnswer>("help/ask", { json: { question: asked, earlier } });
+      remember([...turns, { question: asked, help }]);
+      setQuestion("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -75,21 +101,43 @@ export function AskHelp() {
     }
   }
 
+  function startAgain() {
+    remember([]);
+    setQuestion("");
+    setError(null);
+    form.current?.querySelector("input")?.focus();
+  }
+
   return (
     <Card className="mb-4 space-y-3">
-      <form onSubmit={ask} className="space-y-3">
-        <Field label="Ask how something works" value={question} onChange={setQuestion} placeholder="How do I link a connection to a project?" />
-        <Button type="submit" kind="primary" busy={busy} disabled={question.trim().length < 2}>
-          Ask
-        </Button>
-      </form>
-      {error ? <Alert>{error}</Alert> : null}
-      {help ? (
-        <div className="rounded-xl bg-sunken p-3">
-          <Markdown text={help.text} className="text-sm" />
-          <HelpExtras help={help} />
+      {turns.map((turn, n) => (
+        <div key={n} className="space-y-2">
+          <p className="text-sm font-medium">{turn.question}</p>
+          <div className="rounded-xl bg-sunken p-3">
+            <Markdown text={turn.help.text} className="text-sm" />
+            <HelpExtras help={turn.help} />
+          </div>
         </div>
-      ) : null}
+      ))}
+      {error ? <Alert>{error}</Alert> : null}
+      <form ref={form} onSubmit={ask} className="space-y-3">
+        <Field
+          label={turns.length ? "Ask a follow-up" : "Ask how something works"}
+          value={question}
+          onChange={setQuestion}
+          placeholder={turns.length ? "What should I do next?" : "How do I link a connection to a project?"}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" kind="primary" busy={busy} disabled={question.trim().length < 2}>
+            Ask
+          </Button>
+          {turns.length ? (
+            <Button onClick={startAgain} disabled={busy}>
+              New question
+            </Button>
+          ) : null}
+        </div>
+      </form>
     </Card>
   );
 }

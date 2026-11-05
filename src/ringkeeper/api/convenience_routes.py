@@ -166,8 +166,16 @@ def show_digest(session: SessionDep) -> dict[str, Any]:
 # --- Help > Ask ---
 
 
+class EarlierIn(Input):
+    question: Annotated[str, Field(min_length=2, max_length=500)]
+    answer: Annotated[str, Field(max_length=4000)]
+
+
 class AskIn(Input):
     question: Annotated[str, Field(min_length=2, max_length=500)]
+    earlier: Annotated[list[EarlierIn], Field(max_length=help_answers.MAX_EARLIER)] = Field(
+        default_factory=list[EarlierIn]
+    )
 
 
 @router.post("/help/ask")
@@ -177,8 +185,9 @@ def ask_help(data: AskIn, session: SessionDep) -> dict[str, Any]:
 
     settings = current_settings()
     model = AgentSdkModel(get_vault(settings), settings)
+    earlier = [help_answers.Turn(turn.question, turn.answer) for turn in data.earlier]
     try:
-        return help_answers.answer(session, settings, model, data.question).as_dict()
+        return help_answers.answer(session, settings, model, data.question, earlier).as_dict()
     except RingkeeperError as error:
         raise HTTPException(503, detail=f"Help couldn't answer just now: {error}") from None
 
