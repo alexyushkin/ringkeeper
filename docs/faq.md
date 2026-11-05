@@ -51,11 +51,24 @@ your own use: use an API key for client work.
 **Where are my agents?** Agents in the menu lists every project's agents; the Agents
 tab on a project lists its own. **New agent** asks for the project first.
 
+**Is the desktop app a sandbox?** No. On the desktop, the AI runs as your Windows or Mac
+user. Ringkeeper's holds and gateway control what it does through connections, but it isn't
+a sandbox: a task can reach what your user can reach on this computer, including your files.
+For strong isolation, use server mode, where tasks run in Docker workers. See
+[Security](security.md).
+
+**Can a task read scanned PDFs and pictures?** Yes, in the desktop app, after a one-time
+download. The first time a task meets a scan it can't read, the app offers the scan reader
+at the top of the window. If you choose Not now, it's in Settings › Reading scans. It reads
+English, on this computer, and nothing leaves it. On a Mac it needs macOS 15 or later. A
+server install doesn't read scans yet.
+
 **Something's wrong. Where do I start?** [Troubleshooting](troubleshooting.md),
 then Help › Report a problem in the app.
 
 ## What Ringkeeper doesn't do yet
 
+- **A separate account for tasks on the desktop:** an optional mode that runs tasks as a separate local account, so they can't reach your own files, is planned. Until then, use server mode for strong isolation.
 - **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles.
 - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser.
 - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages.

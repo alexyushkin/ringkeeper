@@ -40,13 +40,16 @@ through Ringkeeper's model proxy, which adds your API key, subscription or cloud
 sign-in on the way out and counts the tokens. Both end with the session. One
 client's project can't reach another client's connection through these.
 
-**What this doesn't stop on the desktop.** A task runs as your own Windows or Mac
-user, so it isn't walled off from what that user can reach. No key is in its
-environment or its own files, but a script written to do it could still ask the
-system keychain for the master key and open the vault, or read Ringkeeper's own
-files and act as the app. A task told to do that by something it read is the risk
-to think about. With Docker workers (the server install) a task has no access to
-the vault or the keychain at all.
+**The desktop app isn't a sandbox.** On the desktop, the AI runs as your Windows or
+Mac user. Ringkeeper's holds and gateway control what it does through connections,
+but they don't wall it off from your computer. No key is in its environment or its
+own files, yet a script written to do it could still reach anything your user can:
+your files, the system keychain and the master key in it, and Ringkeeper's own
+files. A task told to do that by something it read is the risk to think about.
+
+For strong isolation, use server mode. With Docker workers, a task has no access to
+the vault, the keychain or the rest of the computer. An optional desktop mode that
+runs tasks as a separate local account is planned, but it isn't here yet.
 
 ## What leaves your computer
 
@@ -60,6 +63,8 @@ the vault or the keychain at all.
   the update download.
 - **To the MCP registry and Hugging Face, only when you use them:** catalog
   searches, and the download of the on-device voice model.
+- **To PyPI and GitHub, only if you download the scan reader:** the request for its
+  files. Scans themselves are read on this computer and never sent.
 
 Nothing else: no analytics, no usage statistics, no crash reports. A problem
 report only leaves when you send it yourself, after reading it.
