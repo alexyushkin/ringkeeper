@@ -2,9 +2,9 @@
 
 Voice agents, phone calls and speech, through ElevenLabs' own hosted server.
 
-## Connect it
+## Sign in
 
-Under **Connections**, choose **ElevenLabs** and sign in with your ElevenLabs account. You
+Choose **ElevenLabs** and sign in with your ElevenLabs account. You
 approve what Ringkeeper may do on ElevenLabs' page, and there's no key to paste: ElevenLabs'
 server doesn't accept API keys. Connect one account per client, or your own.
 

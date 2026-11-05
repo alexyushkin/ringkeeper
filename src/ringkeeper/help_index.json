@@ -553,9 +553,9 @@
 },
 {
 "doc": "services/elevenlabs",
-"anchor": "connect-it",
-"title": "Connect it",
-"text": "Under **Connections**, choose **ElevenLabs** and sign in with your ElevenLabs account. You approve what Ringkeeper may do on ElevenLabs' page, and there's no key to paste: ElevenLabs' server doesn't accept API keys. Connect one account per client, or your own. Sign-in works from the desktop app. A server install can't use this connection, because ElevenLabs only sends a sign-in back to the fixed address on this computer. Workspaces in ElevenLabs' EU, India and Singapore environments aren't on this tile yet."
+"anchor": "sign-in",
+"title": "Sign in",
+"text": "Choose **ElevenLabs** and sign in with your ElevenLabs account. You approve what Ringkeeper may do on ElevenLabs' page, and there's no key to paste: ElevenLabs' server doesn't accept API keys. Connect one account per client, or your own. Sign-in works from the desktop app. A server install can't use this connection, because ElevenLabs only sends a sign-in back to the fixed address on this computer. Workspaces in ElevenLabs' EU, India and Singapore environments aren't on this tile yet."
 },
 {
 "doc": "services/elevenlabs",
