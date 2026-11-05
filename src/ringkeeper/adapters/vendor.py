@@ -34,7 +34,16 @@ from ringkeeper.adapters.base import (
     Undoer,
     read,
 )
-from ringkeeper.adapters.vendor_spec import FINAL, PLACEHOLDER, READ, Auth, Money, Op, Vendor
+from ringkeeper.adapters.vendor_spec import (
+    FINAL,
+    PLACEHOLDER,
+    READ,
+    Auth,
+    Money,
+    Op,
+    Snapshot,
+    Vendor,
+)
 from ringkeeper.adapters.vendors import ALL
 from ringkeeper.models import Env, InstanceType
 
@@ -342,6 +351,12 @@ def money_card(args: JSON) -> Card | None:
     )
 
 
+def _snapshot(op: Op) -> Snapshot:
+    if op.undo is None:
+        raise ToolError(f"'{op.name}' can't be undone here")
+    return op.undo
+
+
 class OperationUndo(Undoer):
     """Takes back an edit whose operation says how (Op.undo)."""
 
@@ -356,8 +371,7 @@ class OperationUndo(Undoer):
 
     async def before(self, target: Target, args: JSON) -> JSON:
         vendor, op, fields = _own(target, args)
-        snapshot = op.undo
-        assert snapshot is not None  # why_not said so
+        snapshot = _snapshot(op)
         path = cast(JSON, args.get("path") or {})
         reader = next(o for o in vendor.ops if o.name == snapshot.read)
         found = await run(vendor, reader, fields, path, account=args.get("account"))
@@ -373,8 +387,7 @@ class OperationUndo(Undoer):
 
     async def current(self, target: Target, kept: JSON) -> JSON:
         vendor, op, fields = _own(target, kept)
-        snapshot = op.undo
-        assert snapshot is not None
+        snapshot = _snapshot(op)
         reader = next(o for o in vendor.ops if o.name == snapshot.read)
         found = await run(
             vendor, reader, fields, cast(JSON, kept["path"]), account=kept.get("account")
@@ -383,11 +396,9 @@ class OperationUndo(Undoer):
         return {"fields": {k: record.get(k) for k in snapshot.keep}}
 
     async def restore(self, target: Target, kept: JSON) -> JSON:
-        vendor, _op, fields = _own(target, {"operation": kept["restore"]})
-        found = operation(str(kept["restore"]))
-        assert found is not None
+        vendor, restore, fields = _own(target, {"operation": kept["restore"]})
         return await run(
-            vendor, found[1], fields, cast(JSON, kept["path"]),
+            vendor, restore, fields, cast(JSON, kept["path"]),
             body={k: v for k, v in cast(JSON, kept["fields"]).items() if v is not None},
             account=kept.get("account"),
         )  # fmt: skip
