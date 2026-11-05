@@ -3,15 +3,22 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.20 (2026-11-05)
 
-- **Business systems.** CRM, field service, accounting, CMS and payment services, plus
-  Clerk. Each has only the actions Ringkeeper knows, so what isn't listed can't be called.
+- **Business systems.** HubSpot, Salesforce, Pipedrive, Keap, Jobber, Housecall Pro,
+  ServiceTitan, QuickBooks, Xero, Wave, Business Central, BILL, Shopify, Ghost, Square,
+  Helcim, Lemon Squeezy, Clover, Braintree, Plaid and Clerk, plus official servers for
+  Stripe, PayPal, Webflow, Sanity, Contentful and more. Each built-in one has only the
+  actions Ringkeeper knows, so what isn't listed can't be called.
+- **Microsoft accounts.** Mail, calendar, OneDrive and SharePoint files, through your own
+  Entra app, with the same holds as Google.
 - **Settings › Developer apps** holds your own registered apps for Google, Microsoft,
   HubSpot, Salesforce, Xero, Intuit and Jobber, with the steps, the address to paste, the
   scopes and a live check. Many accounts sign in through one app.
-- **Trusting an action for an hour now covers that one action.** On an add-on tool or a
-  business system it used to cover everything the connection could do.
+- **Trusting an action for an hour now covers that one action.** On an add-on tool it used
+  to cover everything else that connection could do without the name typed.
+- **An approval that moves money shows it in large text:** amount, currency, counterparty
+  and account, as written in the call.
 - **Rules that can't be loosened.** On CRM, accounting, CMS and payment servers a per-tool
   setting can make a tool stricter, never looser. Nothing on an accounting connection runs
   by itself.
