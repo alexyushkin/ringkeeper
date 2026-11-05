@@ -12,6 +12,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 from sqlalchemy import select
 from typer.testing import CliRunner
 
+from ringkeeper.adapters import ADAPTERS
 from ringkeeper.cli.main import app
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
@@ -48,17 +49,7 @@ async def test_health(gateway: str) -> None:
         response = await http.get(f"{gateway}/health")
     assert response.json() == {
         "status": "ok",
-        "services": [
-            "airtable",
-            "github",
-            "gmail",
-            "google",
-            "mcp",
-            "n8n",
-            "supabase",
-            "twilio",
-            "vercel",
-        ],
+        "services": sorted(ADAPTERS),
     }
 
 
