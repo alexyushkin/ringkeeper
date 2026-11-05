@@ -22,11 +22,13 @@ from ringkeeper.services import (
     admin_audit,
     attachments,
     bindings,
+    cli_logins,
     decisions,
     digest,
     env_scan,
     health,
     instances,
+    project_servers,
     projects,
     secrets_in,
     tasks,
@@ -40,6 +42,7 @@ router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 OWNER = "owner"
 PREFS_KEY = "ui.prefs"
 SKIPPED_KEY = "scan.skipped"
+LOGINS_SKIPPED_KEY = "logins_skipped"
 
 
 # --- Files on a request ---
@@ -238,7 +241,7 @@ def scan_project(name: str, session: SessionDep) -> dict[str, Any]:
         return {"folder": None, "found": []}
     skipped = _skipped(session, name)
     titles = {i.title for i in instances.list_instances(session)}
-    found = [f for f, _, _ in env_scan.scan(folder) if f.id not in skipped]
+    found = [f for f, _, _ in project_servers.everything(folder) if f.id not in skipped]
     return {
         "folder": str(folder),
         "found": [
@@ -258,9 +261,8 @@ class ScanConnectIn(Input):
 def connect_found(name: str, data: ScanConnectIn, session: WriteSessionDep) -> dict[str, str]:
     """Connect one finding, confirmed: its value is read again from the project's file."""
     project = projects.get_project(session, name)
-    match = next(
-        (m for m in env_scan.scan(_folder(project)) if m[0].id == data.id and m[0].usable), None
-    )
+    found = project_servers.everything(_folder(project))
+    match = next((m for m in found if m[0].id == data.id and m[0].usable), None)
     if match is None:
         raise HTTPException(409, detail="That key isn't in the project's files any more.")
     finding, secret, address = match
@@ -270,7 +272,7 @@ def connect_found(name: str, data: ScanConnectIn, session: WriteSessionDep) -> d
         session,
         InstanceIn(
             name=data.name, title=data.title, type=kind, env=data.env, secret_ref=ref,
-            owner=project.owner, base_url=address,
+            owner=project.owner, base_url=address, config=_found_config(finding),
         ),
     )  # fmt: skip
     bindings.set_binding(session, BindingIn(project=name, instance=data.name))
@@ -280,6 +282,90 @@ def connect_found(name: str, data: ScanConnectIn, session: WriteSessionDep) -> d
         by=OWNER, project=name, instance=data.name,
     )  # fmt: skip
     return {"name": data.name}
+
+
+def _found_config(finding: env_scan.Finding) -> dict[str, Any]:
+    """An MCP server found in a project says where it came from, with its secrets masked."""
+    if finding.service != InstanceType.MCP.value:
+        return {}
+    return {"source": "project", "file": finding.file, "preview": finding.masked}
+
+
+# --- Logins on this computer, offered as your own connections ---
+
+
+def _on_this_computer() -> bool:
+    return get_settings().mode == "desktop"
+
+
+def _skipped_logins(session: Session) -> list[str]:
+    row = session.get(Setting, LOGINS_SKIPPED_KEY)
+    return list(row.value.get("skipped", [])) if row else []
+
+
+@router.get("/logins")
+def list_logins(session: SessionDep) -> dict[str, Any]:
+    """Who's signed in on this computer: never a token. Desktop only: it's this computer's."""
+    if not _on_this_computer():
+        return {"found": []}
+    skipped = _skipped_logins(session)
+    titles = {i.title for i in instances.list_instances(session)}
+    return {
+        "found": [
+            {**vars(login), "added": login.title in titles and login.usable}
+            for login in cli_logins.find()
+            if login.id not in skipped
+        ]
+    }
+
+
+class LoginConnectIn(Input):
+    id: Annotated[str, Field(min_length=8, max_length=32)]
+    name: Slug
+    title: Title
+
+
+@router.post("/logins/connect", status_code=201, dependencies=[RecentAuth])
+def connect_login(data: LoginConnectIn, session: WriteSessionDep) -> dict[str, str]:
+    """Connect one login, confirmed, as your own tool. Production: every change asks."""
+    if not _on_this_computer():
+        raise HTTPException(404, detail="Only the desktop app can see logins on this computer.")
+    login = next((x for x in cli_logins.find() if x.id == data.id and x.usable), None)
+    if login is None:
+        raise HTTPException(409, detail="That login isn't on this computer any more.")
+    try:
+        token = cli_logins.token_of(login)
+        kind = InstanceType(login.service)
+        ref = secrets_in.store_connection(session, get_settings(), data.name, kind, token)
+    except RuleViolationError as error:
+        raise HTTPException(422, detail=str(error)) from None
+    instances.create_instance(
+        session,
+        InstanceIn(
+            name=data.name, title=data.title, type=kind, env=Env.PROD, secret_ref=ref,
+            owner=instances.SHARED_OWNER, shared=True, base_url=login.host or None,
+        ),
+    )  # fmt: skip
+    admin_audit.record(
+        session, "connection.create", f"added {login.tool}'s login as {data.name}",
+        by=OWNER, instance=data.name,
+    )  # fmt: skip
+    return {"name": data.name}
+
+
+class LoginSkipIn(Input):
+    id: Annotated[str, Field(min_length=8, max_length=32)]
+
+
+@router.post("/logins/skip", status_code=204)
+def skip_login(data: LoginSkipIn, session: WriteSessionDep) -> None:
+    """Don't offer this one again."""
+    row = session.get(Setting, LOGINS_SKIPPED_KEY)
+    value = {"skipped": sorted({*_skipped_logins(session), data.id})}
+    if row is None:
+        session.add(Setting(key=LOGINS_SKIPPED_KEY, value=value))
+    else:
+        row.value = value
 
 
 class ScanSkipIn(Input):

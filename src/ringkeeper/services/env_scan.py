@@ -2,8 +2,10 @@
 
 When a project is added (or on demand) its folder's .env files and config files are
 read for known keys: DATABASE_URL, AIRTABLE_*, N8N_*, VERCEL_TOKEN, TWILIO_*,
-GITHUB_TOKEN and the like. Each is offered as a connection for that client, masked,
-and connected only when you confirm that one. Nothing is imported by itself.
+GITHUB_TOKEN, SMTP_*, IMAP_*, RESEND_*, FOF_*, DATAFORSEO_*, R2_*, AWS_* and the like. Each
+is offered as a connection for that client, masked, and connected only when you confirm
+that one. Nothing is imported by itself. A key for a service Ringkeeper has no connection
+for yet (STRIPE_*, HUBSPOT_*...) is listed, and can't be connected.
 
 Only the named files in the project's folder and its config/ folder are read, never
 through a link that leaves the folder. A value never leaves the server: what you see
@@ -15,6 +17,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlsplit
 
 MAX_BYTES = 256_000
@@ -25,6 +28,13 @@ CONFIG_FILES = ("config.json", "config.local.json", "settings.json", "secrets.js
 _LINE = re.compile(
     r"""^\s*(?:export\s+)?["']?([A-Za-z][A-Za-z0-9_]*)["']?\s*[=:]\s*(.*?)\s*,?\s*$"""
 )
+FORMS_ON_FIRE = "https://secure.formsonfire.com/api/v2"
+DATAFORSEO = "https://api.dataforseo.com/v3"
+NOT_YET = (
+    ("Stripe", ("STRIPE_",)), ("PayPal", ("PAYPAL_",)), ("Square", ("SQUARE_",)),
+    ("HubSpot", ("HUBSPOT_",)), ("QuickBooks", ("QUICKBOOKS_", "QBO_", "INTUIT_")),
+    ("Xero", ("XERO_",)), ("WordPress", ("WP_", "WORDPRESS_")),
+)  # fmt: skip
 PLACEHOLDER = re.compile(r"^(<.*>|\$\{.*\}|your[-_ ].*|xxx+|changeme|todo|example.*)$", re.I)
 
 
@@ -39,6 +49,7 @@ class Finding:
     title: str
     usable: bool = True
     why: str = ""  # why it can't be connected as it is
+    warning: str = ""  # connectable, with something to know first
 
 
 def mask(value: str) -> str:
@@ -49,7 +60,7 @@ def mask(value: str) -> str:
     return f"{value[:4]}…{value[-2:]}" if len(value) > 10 else "…"
 
 
-def _inside(folder: Path, path: Path) -> bool:
+def inside(folder: Path, path: Path) -> bool:
     try:
         return path.is_file() and path.resolve().is_relative_to(folder.resolve())
     except OSError:
@@ -59,7 +70,7 @@ def _inside(folder: Path, path: Path) -> bool:
 def files_in(folder: Path) -> list[Path]:
     names = [folder / n for n in (*ENV_FILES, *CONFIG_FILES)]
     names += [folder / "config" / n for n in (*ENV_FILES, *CONFIG_FILES)]
-    return [p for p in names if _inside(folder, p) and p.stat().st_size <= MAX_BYTES]
+    return [p for p in names if inside(folder, p) and p.stat().st_size <= MAX_BYTES]
 
 
 def _flatten(data: object, found: dict[str, str]) -> None:
@@ -94,12 +105,152 @@ def values_in(path: Path) -> dict[str, str]:
     return {k: v for k, v in found.items() if v and not PLACEHOLDER.match(v)}
 
 
-def _id(file: str, service: str, keys: list[str]) -> str:
+def finding_id(file: str, service: str, keys: list[str]) -> str:
     return hashlib.sha256(f"{file}|{service}|{','.join(keys)}".encode()).hexdigest()[:16]
 
 
 def _first(values: dict[str, str], *names: str) -> tuple[str, str] | None:
     return next(((n, values[n]) for n in names if n in values), None)
+
+
+class Add(Protocol):
+    def __call__(
+        self, service: str, label: str, keys: list[str], secret: str, *, title: str,
+        address: str | None = None, shown: str | None = None, why: str = "",
+    ) -> None: ...  # fmt: skip
+
+
+def _named(*found: tuple[str, str] | None) -> list[str]:
+    return [item[0] for item in found if item]
+
+
+def _sender(values: dict[str, str], *more: str) -> tuple[str, str] | None:
+    return _first(values, *more, "SMTP_FROM", "MAIL_FROM", "MAIL_FROM_ADDRESS", "EMAIL_FROM",
+                  "FROM_EMAIL", "DEFAULT_FROM_EMAIL", "SENDER_EMAIL")  # fmt: skip
+
+
+def _email(values: dict[str, str], add: Add) -> None:
+    host = _first(values, "SMTP_HOST", "SMTP_SERVER", "MAIL_HOST", "EMAIL_HOST")
+    user = _first(values, "SMTP_USER", "SMTP_USERNAME", "MAIL_USERNAME", "EMAIL_HOST_USER")
+    password = _first(values, "SMTP_PASS", "SMTP_PASSWORD", "MAIL_PASSWORD",
+                      "EMAIL_HOST_PASSWORD")  # fmt: skip
+    port = _first(values, "SMTP_PORT", "MAIL_PORT", "EMAIL_PORT")
+    if host and password:
+        sender = _sender(values)
+        address = sender[1] if sender else user[1] if user and "@" in user[1] else ""
+        fields = {"host": host[1], "port": port[1] if port else "",
+                  "security": "ssl" if port and port[1] == "465" else "starttls",
+                  "username": user[1] if user else "", "password": password[1],
+                  "from_address": address}  # fmt: skip
+        add(
+            "smtp", "Email sending", _named(host, user, password, port, sender),
+            json.dumps(fields), title=f"Email · {address or host[1]}", shown=host[1],
+            why="" if address else "It needs a From address (SMTP_FROM).",
+        )  # fmt: skip
+    imap = _first(values, "IMAP_HOST", "IMAP_SERVER")
+    imap_user = _first(values, "IMAP_USER", "IMAP_USERNAME", "IMAP_EMAIL")
+    imap_password = _first(values, "IMAP_PASS", "IMAP_PASSWORD")
+    if imap and imap_user and imap_password:
+        sending = host[1] if host else imap[1].replace("imap.", "smtp.", 1)
+        fields = {"preset": "custom", "address": imap_user[1], "password": imap_password[1],
+                  "imap_host": imap[1], "smtp_host": sending,
+                  "smtp_port": port[1] if port else "",
+                  "smtp_security": "starttls" if port and port[1] == "587" else "ssl"}  # fmt: skip
+        add("mailbox", "Mailbox", _named(imap, imap_user, imap_password), json.dumps(fields),
+            title=f"Mailbox · {imap_user[1]}", shown=imap_user[1])  # fmt: skip
+    resend = _first(values, "RESEND_API_KEY", "RESEND_KEY")
+    if resend:
+        sender = _sender(values, "RESEND_FROM", "RESEND_FROM_EMAIL")
+        fields = {"api_key": resend[1], "from_address": sender[1] if sender else ""}
+        add(
+            "resend", "Resend", _named(resend, sender), json.dumps(fields), title="Resend",
+            shown=mask(resend[1]), why="" if sender else "It needs a From address (RESEND_FROM).",
+        )  # fmt: skip
+
+
+def _apis(values: dict[str, str], add: Add) -> None:
+    forms = _first(values, "FOF_API_KEY", "FOF_KEY", "FOF_TOKEN", "FORMSONFIRE_API_KEY",
+                   "APPENATE_API_KEY")  # fmt: skip
+    if forms:
+        address = _first(values, "FOF_BASE_URL", "FOF_URL", "FOF_API_URL", "APPENATE_URL")
+        add("http", "Forms On Fire", _named(forms, address),
+            json.dumps({"auth": "bearer", "token": forms[1]}), title="Forms On Fire",
+            address=address[1] if address else FORMS_ON_FIRE, shown=mask(forms[1]))  # fmt: skip
+    login = _first(values, "DATAFORSEO_LOGIN", "DATAFORSEO_USERNAME", "DATAFORSEO_USER")
+    password = _first(values, "DATAFORSEO_PASSWORD", "DATAFORSEO_PASS", "DATAFORSEO_API_KEY")
+    if login and password:
+        fields = {"auth": "basic", "username": login[1], "password": password[1]}
+        add("http", "DataForSEO", _named(login, password), json.dumps(fields), title="DataForSEO",
+            address=DATAFORSEO, shown=login[1])  # fmt: skip
+
+
+def _storage(values: dict[str, str], add: Add) -> None:
+    key = _first(values, "R2_ACCESS_KEY_ID", "R2_ACCESS_KEY", "CLOUDFLARE_R2_ACCESS_KEY_ID")
+    secret = _first(
+        values, "R2_SECRET_ACCESS_KEY", "R2_SECRET_KEY", "CLOUDFLARE_R2_SECRET_ACCESS_KEY"
+    )
+    if key and secret:
+        account = _first(values, "R2_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID")
+        bucket = _first(values, "R2_BUCKET", "R2_BUCKET_NAME")
+        fields = {
+            "provider": "r2",
+            "account_id": account[1] if account else "",
+            "access_key": key[1],
+            "secret_key": secret[1],
+            "bucket": bucket[1] if bucket else "",
+        }
+        add(
+            "s3",
+            "Cloudflare R2",
+            _named(key, secret, account, bucket),
+            json.dumps(fields),
+            title=f"Files · {bucket[1]}" if bucket else "Files · R2",
+            shown=mask(key[1]),
+            why="" if account else "It needs the account ID too (R2_ACCOUNT_ID).",
+        )
+    key = _first(values, "AWS_ACCESS_KEY_ID")
+    secret = _first(values, "AWS_SECRET_ACCESS_KEY")
+    if key and secret:
+        region = _first(values, "AWS_REGION", "AWS_DEFAULT_REGION", "S3_REGION")
+        bucket = _first(
+            values, "S3_BUCKET", "AWS_S3_BUCKET", "AWS_BUCKET", "AWS_BUCKET_NAME", "S3_BUCKET_NAME"
+        )
+        fields = {
+            "provider": "aws",
+            "access_key": key[1],
+            "secret_key": secret[1],
+            "region": region[1] if region else "",
+            "bucket": bucket[1] if bucket else "",
+        }
+        add(
+            "s3",
+            "AWS S3",
+            _named(key, secret, region, bucket),
+            json.dumps(fields),
+            title=f"Files · {bucket[1]}" if bucket else "Files · AWS",
+            shown=mask(key[1]),
+        )
+    blob = _first(values, "BLOB_READ_WRITE_TOKEN")
+    if blob:
+        add(
+            "s3",
+            "Vercel Blob",
+            [blob[0]],
+            json.dumps({"provider": "vercel_blob", "token": blob[1]}),
+            title="Files · Vercel Blob",
+            shown=mask(blob[1]),
+        )
+
+
+def _not_yet(values: dict[str, str], add: Add) -> None:
+    """Services with no connection yet: named, so you know it was seen, and left alone."""
+    for label, words in NOT_YET:
+        keys = sorted(k for k in values if k.startswith(words))
+        if keys:
+            add(
+                "http", label, keys, values[keys[0]], title=label, shown=mask(values[keys[0]]),
+                why=f"Ringkeeper has no {label} connection yet, so this stays in the file.",
+            )  # fmt: skip
 
 
 def _in_file(file: str, values: dict[str, str]) -> list[tuple[Finding, str, str | None]]:
@@ -110,8 +261,9 @@ def _in_file(file: str, values: dict[str, str]) -> list[tuple[Finding, str, str 
         service: str, label: str, keys: list[str], secret: str, *, title: str,
         address: str | None = None, shown: str | None = None, why: str = "",
     ) -> None:  # fmt: skip
+        identity = finding_id(file, service, keys)
         finding = Finding(
-            _id(file, service, keys), file, service, label, keys, shown or mask(secret), title,
+            identity, file, service, label, keys, shown or mask(secret), title,
             usable=not why, why=why,
         )  # fmt: skip
         found.append((finding, secret, address))
@@ -160,6 +312,10 @@ def _in_file(file: str, values: dict[str, str]) -> list[tuple[Finding, str, str 
     github = _first(values, "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT")
     if github:
         add("github", "GitHub", [github[0]], github[1], title="GitHub")
+    _email(values, add)
+    _apis(values, add)
+    _storage(values, add)
+    _not_yet(values, add)
     return found
 
 
