@@ -11,11 +11,15 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::logic::{CheckReport, Runtime, Status};
+use crate::logic::{other_version, CheckReport, Runtime, Status};
 
 const RUNTIME_FILE: &str = "desktop.json";
+/// The app's version, for the backend (and for telling one backend from another).
+pub const APP_VERSION: &str = "RINGKEEPER_APP_VERSION";
 /// The backend's exit code when another one already holds the data folder.
 const ALREADY_RUNNING: i32 = 3;
+/// How long a backend from another version gets to finish before it's killed.
+const REPLACE_GRACE: Duration = Duration::from_secs(60);
 /// First start migrates the database and makes the master key: give it time.
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 
@@ -31,6 +35,11 @@ pub struct Launcher {
 }
 
 impl Launcher {
+    fn app_version(&self) -> Option<&str> {
+        let found = self.env.iter().find(|(name, _)| name == APP_VERSION);
+        found.map(|(_, value)| value.as_str())
+    }
+
     /// The installed app runs its embedded Python from the app's resources
     /// (laid out by the packaging step). A debug build runs the repository's
     /// own `.venv`, so `cargo run` works after `uv sync`.
@@ -298,10 +307,19 @@ impl Backend {
         stop: &dyn Fn() -> bool,
     ) -> Result<Backend, String> {
         if let Some(runtime) = attach(agent, &launcher.data_dir) {
-            return Ok(Backend {
+            let running = runtime.version.clone();
+            let found = Backend {
                 runtime,
                 child: None,
-            });
+            };
+            if !other_version(running.as_deref(), launcher.app_version()) {
+                return Ok(found);
+            }
+            log(
+                &launcher.data_dir,
+                &format!("replacing a backend from another version: {running:?}"),
+            );
+            found.stop(agent, &launcher.data_dir, REPLACE_GRACE);
         }
         // Nothing answered for desktop.json: it's left over from a backend that
         // crashed (or hangs). From here on, a desktop.json that answers is our

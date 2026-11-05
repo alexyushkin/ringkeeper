@@ -46,6 +46,7 @@ def desktop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[st
     monkeypatch.setenv("RINGKEEPER_WORKSPACES_ROOT", str(workspaces))
     monkeypatch.setenv("RINGKEEPER_WORKER_STUB", json.dumps({"write": {"NOTES.md": "desktop\n"}}))
     monkeypatch.setenv("RINGKEEPER_MANAGER_POLL_SECONDS", "0.2")
+    monkeypatch.setenv("RINGKEEPER_APP_VERSION", "0.1.0-test")
     previous = keyring.get_keyring()
     keyring.set_keyring(MemoryKeyring())
     data_dir = tmp_path / "Ringkeeper"
@@ -671,6 +672,11 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
     listing = ToolCall(caller, InstanceType.MCP, "list_tools", "notes", {})
     assert len(asyncio.run(run_call(listing, vault))["tools"]) == 4
     assert run("read_notes")["structured"] == {"result": ["first note"]}
+
+
+def test_desktop_json_says_which_version_is_running(desktop: dict[str, Any]) -> None:
+    """The app shell replaces a backend left running by another version."""
+    assert desktop["version"] == "0.1.0-test"
 
 
 def test_personal_subscription_mode_is_off_until_turned_on(

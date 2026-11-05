@@ -446,7 +446,7 @@ def run(  # noqa: PLR0915 (the whole start-up, in order)
                 runtime = _write_runtime(
                     data_dir,
                     {"url": f"http://127.0.0.1:{api_port}", "secret": launch.secret,
-                     "pid": os.getpid()},
+                     "pid": os.getpid(), "version": settings.app_version},
                 )  # fmt: skip
                 logger.info("Ringkeeper is running at http://127.0.0.1:%d", api_port)
                 if ready is not None:

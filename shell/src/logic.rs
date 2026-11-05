@@ -13,6 +13,16 @@ pub struct Runtime {
     pub url: String,
     pub secret: String,
     pub pid: u32,
+    /// The app version that started it. Versions before beta.19 don't say.
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// Whether a running backend belongs to another version of the app: it would go on
+/// running that version's code. One that doesn't say is older. A debug build (no
+/// version of its own) uses whatever it finds.
+pub fn other_version(running: Option<&str>, ours: Option<&str>) -> bool {
+    ours.is_some() && running != ours
 }
 
 /// One decision waiting for the user (GET /desktop/status).
@@ -289,6 +299,21 @@ impl Crashes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_backend_from_another_version_is_not_ours() {
+        assert!(!other_version(Some("0.1.0-beta.19"), Some("0.1.0-beta.19")));
+        assert!(other_version(Some("0.1.0-beta.18"), Some("0.1.0-beta.19")));
+        assert!(other_version(None, Some("0.1.0-beta.19")));
+        assert!(!other_version(None, None));
+        assert!(!other_version(Some("0.1.0-beta.18"), None));
+    }
+
+    #[test]
+    fn desktop_json_from_an_older_backend_still_reads() {
+        let old = r#"{"url": "http://127.0.0.1:1", "secret": "s", "pid": 1}"#;
+        assert_eq!(serde_json::from_str::<Runtime>(old).unwrap().version, None);
+    }
 
     fn waiting(id: &str, kind: &str, project: Option<&str>) -> Waiting {
         Waiting {

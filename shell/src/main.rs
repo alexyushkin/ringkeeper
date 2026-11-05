@@ -215,17 +215,35 @@ fn main() {
         .expect("couldn't start Ringkeeper's window");
 
     app.run(|app, event| {
-        // The window only hides, but keep running even if it's gone: the tray
-        // is how to quit, and Quit exits with a code.
-        if let RunEvent::ExitRequested {
-            api, code: None, ..
-        } = event
-        {
-            if !app.state::<Shell>().quitting.load(Ordering::SeqCst) {
-                api.prevent_exit();
+        match event {
+            // The window only hides, but keep running even if it's gone: the tray
+            // is how to quit, and Quit exits with a code.
+            RunEvent::ExitRequested {
+                api, code: None, ..
+            } => {
+                if !app.state::<Shell>().quitting.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                }
             }
+            RunEvent::Exit => stop_backend_on_exit(app),
+            _ => {}
         }
     });
+}
+
+/// Cmd+Q on a Mac ends the app without going through Quit. The backend would stay
+/// behind, so ask it to stop: it finishes on its own, the shell can't wait here.
+fn stop_backend_on_exit(app: &AppHandle) {
+    let shell = app.state::<Shell>();
+    if shell.quitting.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let runtime = shell.runtime.lock().ok().and_then(|found| found.clone());
+    if let Some(runtime) = runtime {
+        let asked = backend::shutdown(&shell.agent, &runtime);
+        let said = format!("ended without Quit; asked the backend to stop: {asked}");
+        backend::log(&shell.data_dir, &said);
+    }
 }
 
 #[tauri::command]
@@ -659,9 +677,7 @@ fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: boo
     {
         Ok(mut launcher) => {
             let version = app.package_info().version.to_string();
-            launcher
-                .env
-                .push(("RINGKEEPER_APP_VERSION".into(), version));
+            launcher.env.push((backend::APP_VERSION.into(), version));
             launcher
         }
         Err(error) => {
