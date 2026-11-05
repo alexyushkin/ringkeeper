@@ -36,6 +36,8 @@ from ringkeeper.storage import events
 MIN_ID_PREFIX = 8
 # New decisions of every kind are announced here (Telegram listens).
 DECISIONS_CHANNEL = "ringkeeper_decisions"
+# Where a notification or chat answers: never enough for what needs the name typed.
+CHAT_APPS = ("telegram", "slack", "discord")
 # The session manager's channel (services.tasks): a decided held call may let a
 # waiting task go on (services.holds).
 TASKS_CHANNEL = "ringkeeper_tasks"
@@ -219,11 +221,11 @@ def confirmation_needed(decision: Decision) -> str | None:
 
 
 def check_confirmation(decision: Decision, confirm: str | None, via: str) -> None:
-    """A write that needs confirmation: never from Telegram, and only with the name typed."""
+    """A write that needs confirmation: never from a chat app, and only with the name typed."""
     why = confirmation_needed(decision)
     if why is None:
         return
-    if via == "telegram":
+    if via in CHAT_APPS:
         raise RuleViolationError(
             f"This change {why}. Approve it in the Ringkeeper app, where you can see all of it."
         )

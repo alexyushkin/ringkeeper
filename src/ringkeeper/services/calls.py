@@ -29,7 +29,7 @@ import anyio.to_thread
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper import remote
+from ringkeeper import remote, sensitive
 from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
@@ -348,6 +348,16 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         raise
     is_write = spec.kind is ToolKind.WRITE
 
+    if what := sensitive.find(call.args):
+        # Before anything can keep the arguments. The audit row keeps them masked.
+        reason = f"the arguments contain {what}"
+        await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.REFUSED, reason=reason))
+        raise RefusalError(
+            f"The arguments contain {what}, and Ringkeeper never handles those. Nothing was "
+            "sent. Use the service's own hosted page for this, or a token or ID it issued.",
+            reason,
+        )
+
     try:
         target = _target(vault, adapter, auth, call.caller.project)
     except ToolError as error:
@@ -380,7 +390,8 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved
     )
     trusted = False
-    if held and not runs_without_asking(auth.config, call.tool):
+    # A call that needs the name typed always asks: `trusts` refuses it too.
+    if held and (spec.typed is not None or not runs_without_asking(auth.config, call.tool)):
         trusted = await _db(
             partial(
                 trusts.allows, project=call.caller.project or "", instance=target.name,

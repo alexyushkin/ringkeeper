@@ -15,7 +15,7 @@ so `UPDATE notes SET body = 'drop table'` is ordinary and
 import re
 from typing import Any, cast
 
-from ringkeeper.adapters import github, google, mcp
+from ringkeeper.adapters import ADAPTERS, github, google, mcp
 from ringkeeper.models import InstanceType
 from ringkeeper.sql_text import (
     CALL,
@@ -129,6 +129,10 @@ def reason(  # noqa: PLR0911 (one return per kind of tool)
         return sql_reason(sql) if isinstance(sql, str) else "has no SQL to check"
     if (service, tool) in SAFE_TOOLS:
         return None
+    if service is not None and service in ADAPTERS and tool is not None:
+        found = next((t for t in ADAPTERS[service].tools if t.name == tool), None)
+        if found is not None and found.typed is not None:
+            return found.typed(args)
     if service is InstanceType.MCP and tool == "call_tool":
         # Held unless it reads; the typed name is for the ones marked or sounding final.
         name = str(args.get("tool", ""))

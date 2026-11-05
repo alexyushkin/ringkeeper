@@ -9,7 +9,7 @@ runs every policy check before a handler is ever called.
 
 import enum
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ringkeeper.errors import RingkeeperError
@@ -97,6 +97,11 @@ class ToolSpec:
     classify: Classifier | None = None
     # How the write is taken back; None: it can't be (services.undo says why).
     undo: Undoer | None = None
+    # Why this call needs the connection's name typed, or None if approving is enough.
+    # Set by `held` and `final`, the two kinds of write a new connection type uses;
+    # without it, ringkeeper.destructive decides. A call that needs the name always
+    # asks: no test data, no trust, no per-tool setting lets it run by itself.
+    typed: Callable[[JSON], str | None] | None = None
 
 
 def _spec(
@@ -129,6 +134,28 @@ def always_held(fn: Handler) -> ToolSpec:
 def draft(fn: Handler) -> ToolSpec:
     """A write only the user sees (a saved draft): never held, still audited."""
     return _spec(ToolKind.WRITE, fn, None, Hold.NEVER)
+
+
+def _never_typed(_args: JSON) -> str | None:
+    return None
+
+
+def held(fn: Handler) -> ToolSpec:
+    """A write that always waits for approval, and needs nothing more (a draft, an edit)."""
+    return replace(_spec(ToolKind.WRITE, fn, None, Hold.ALWAYS), typed=_never_typed)
+
+
+def final(why: str | Callable[[JSON], str | None]) -> Callable[[Handler], ToolSpec]:
+    """A write that also needs the connection's name typed, in the app itself: it sends to
+    real people in bulk, publishes, posts, moves money, deletes, changes who has access or
+    adds ongoing cost. `why` finishes "This change ...", or decides from the call's
+    arguments (None: approving is enough for this one)."""
+    typed: Callable[[JSON], str | None] = (lambda _args: why) if isinstance(why, str) else why
+
+    def decorate(fn: Handler) -> ToolSpec:
+        return replace(_spec(ToolKind.WRITE, fn, None, Hold.ALWAYS), typed=typed)
+
+    return decorate
 
 
 def guarded_write(

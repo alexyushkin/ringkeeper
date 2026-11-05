@@ -2,13 +2,16 @@
 
 Every resolved secret registers its fragments (the value itself plus pieces an
 adapter knows can leak separately, like the password inside a DSN). Tool
-results, errors, audit rows and log records all pass through `scrub`.
+results, errors, audit rows and log records all pass through `scrub`, which also
+takes out card and bank numbers (ringkeeper.sensitive).
 """
 
 import logging
 import threading
 from collections.abc import Callable
 from typing import Any, cast
+
+from ringkeeper import sensitive
 
 REDACTED = "[redacted]"
 MIN_FRAGMENT_LENGTH = 4  # shorter fragments would mangle ordinary text
@@ -38,7 +41,7 @@ def scrub(text: str) -> str:
     for fragment in _snapshot():
         if fragment in text:
             text = text.replace(fragment, REDACTED)
-    return text
+    return sensitive.mask(text)
 
 
 def scrub_obj(value: object) -> Any:
@@ -47,7 +50,10 @@ def scrub_obj(value: object) -> Any:
         return scrub(value)
     if isinstance(value, dict):
         items = cast(dict[object, object], value).items()
-        return {scrub_obj(k): scrub_obj(v) for k, v in items}
+        return {
+            scrub_obj(k): sensitive.MASK if sensitive.field_holds(str(k), v) else scrub_obj(v)
+            for k, v in items
+        }
     if isinstance(value, list | tuple):
         return [scrub_obj(v) for v in cast(list[object], value)]
     return value

@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import String, cast, select
 from sqlalchemy.orm import Session
 
+from ringkeeper import sensitive
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Message, MessageRole, Thread
 from ringkeeper.services.decisions import MIN_ID_PREFIX
@@ -82,6 +83,7 @@ def post_message(
         raise RuleViolationError(f"unknown message source '{source}'")
     if input_kind not in INPUTS:
         raise RuleViolationError(f"unknown message input '{input_kind}'")
+    body = sensitive.mask(body)
     if thread is None:
         title = body.splitlines()[0][:TITLE_CHARS]
         target = Thread(title=title, source=source, origin_chat_id=origin_chat_id)
@@ -109,7 +111,8 @@ def add_reply(
     routing: dict[str, Any] | None = None,
 ) -> Message:
     message = Message(
-        thread_id=thread_id, role=role, author="ringkeeper", source="system", body=body,
+        thread_id=thread_id, role=role, author="ringkeeper", source="system",
+        body=sensitive.mask(body),
         routing=routing,
     )  # fmt: skip
     session.add(message)
