@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.22 (2026-11-05)
 
 - **Scanned PDFs and pictures can be read.** The first time a task meets one, the app offers
   the scan reader, a one-time download. It reads English, on this computer, and nothing leaves
