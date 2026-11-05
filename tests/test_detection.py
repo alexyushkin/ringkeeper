@@ -191,6 +191,7 @@ def test_connecting_a_found_server_links_it_to_the_project(
     owner: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     write(tmp_path, ".mcp.json", {"mcpServers": {"one": {"url": "https://one.example/mcp"}}})
+
     def the_folder(_project: object) -> Path:
         return tmp_path
 

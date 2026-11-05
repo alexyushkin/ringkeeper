@@ -13,4 +13,6 @@ regexes = [
   '''^--api-key=abc123$''',  # a fake CLI argument
   '''^xapp-1-A111-2222-fakeapptokenvalue$''',  # the fake Slack app token (fake_chat)
   '''^n8n-key-1234567890$''',  # the fake n8n key in a project's .env (test_conveniences)
+  '''^fof-key-123456$''',  # a fake Forms On Fire key in a .env (test_detection)
+  '''^sk_live_fake123456$''',  # a fake Stripe key in a .env (test_detection)
 ]
