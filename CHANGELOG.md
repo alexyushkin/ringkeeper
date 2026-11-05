@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.19 (2026-11-05)
 
 - **More connections.** Email sending through any SMTP provider or Resend, any mailbox
   (Gmail, Outlook, Zoho, Yahoo or your own IMAP server), any HTTP API (with Forms On Fire
