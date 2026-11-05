@@ -17,4 +17,5 @@ regexes = [
   '''^sk_live_fake123456$''',  # a fake Stripe key in a .env (test_detection)
   '''^sk_live_clerkfake123456$''',  # a fake Clerk key (test_vendors)
   '''^sk_test_clerkfake123456$''',  # a fake Clerk key (test_vendors)
+  '''^a1b2c3d4e5f6a7b8c9d0e1f2a3b4$''',  # a fake key in a Zoho address (test_guards)
 ]
