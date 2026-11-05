@@ -1,4 +1,4 @@
-# Google (Gmail, Calendar, Drive, Sheets)
+# Google (Gmail, Calendar, Drive, Sheets, Search Console, Analytics)
 
 Google accounts sign in through **your own Google app**: you make it once, for
 free, and then add as many clients' Google accounts as you need. This is in the
@@ -40,3 +40,13 @@ without asking.
 - An account stops working if its password changes (for mail), if it's unused
   for six months, or if its owner removes Ringkeeper. Sign in again then.
 - A client's Workspace admin may need to trust your app's client ID.
+
+## Search Console and Analytics
+
+Choose **Search Console: read** and **Analytics: read** when you sign in, or later with
+Change access. Both only read: search clicks, impressions and positions, and Analytics
+reports. If your Google app was made before these were added, first turn on the
+[Search Console](https://console.cloud.google.com/apis/library/searchconsole.googleapis.com),
+[Analytics Data](https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com)
+and [Analytics Admin](https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com)
+APIs, and add the `webmasters.readonly` and `analytics.readonly` scopes under Data Access.

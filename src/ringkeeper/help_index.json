@@ -31,6 +31,12 @@
 },
 {
 "doc": "connections",
+"anchor": "all-of-a-clients-projects",
+"title": "All of a client's projects",
+"text": "A connection can go to all of its client's projects, and to projects added later. When you add one and the client has more than one project, that's what the success card suggests; untick any project to leave it out, or choose **Choose projects instead**. To change it later, open the connection's card: Details › All … projects. The card says what it reaches, like \"All Acme projects except Website\". Each project's link can still be narrowed under Details, to one base, branch or site. A client's connection never reaches another client's projects."
+},
+{
+"doc": "connections",
 "anchor": "your-own-tools-shared-tools",
 "title": "Your own tools (shared tools)",
 "text": "A shared tool is yours and holds no client's data: a browser like Playwright, files on this computer, public documentation. **Connectors › Add your own tool**, search for it, then choose **For all projects** or link it to some. To leave a client or project out, open its card: Details › All projects › Except…."
@@ -75,7 +81,7 @@
 "doc": "approvals",
 "anchor": "approving",
 "title": "Approving",
-"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. A held action expires after 24 hours if nobody answers. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster."
+"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. The same goes for what can't be taken back on the newer connections: sending to many people at once, deleting a file or an email, a DELETE through an API. These always ask, even on test data; they can't be trusted for an hour, and no per-tool setting lets them run by themselves. **Card and bank numbers never go through.** A tool call that carries one is refused before it's sent, and they're removed from logs, conversations, a task's events and the audit log. Use the service's own hosted page, or a token it issued. A held action expires after 24 hours if nobody answers. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster."
 },
 {
 "doc": "approvals",
@@ -590,7 +596,7 @@
 {
 "doc": "services/google",
 "anchor": "",
-"title": "Google (Gmail, Calendar, Drive, Sheets)",
+"title": "Google (Gmail, Calendar, Drive, Sheets, Search Console, Analytics)",
 "text": "Google accounts sign in through **your own Google app**: you make it once, for free, and then add as many clients' Google accounts as you need. This is in the desktop app."
 },
 {
@@ -616,6 +622,12 @@
 "anchor": "good-to-know",
 "title": "Good to know",
 "text": "- An unverified app can sign in up to 100 accounts over its whole life. - An account stops working if its password changes (for mail), if it's unused for six months, or if its owner removes Ringkeeper. Sign in again then. - A client's Workspace admin may need to trust your app's client ID."
+},
+{
+"doc": "services/google",
+"anchor": "search-console-and-analytics",
+"title": "Search Console and Analytics",
+"text": "Choose **Search Console: read** and **Analytics: read** when you sign in, or later with Change access. Both only read: search clicks, impressions and positions, and Analytics reports. If your Google app was made before these were added, first turn on the Search Console, Analytics Data and Analytics Admin APIs, and add the `webmasters.readonly` and `analytics.readonly` scopes under Data Access."
 },
 {
 "doc": "services/n8n",

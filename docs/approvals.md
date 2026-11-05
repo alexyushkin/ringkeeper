@@ -31,6 +31,15 @@ dropping or altering tables, anything the check can't read for certain. These
 can't be approved from Telegram, Slack or Discord: those say *Open in
 Ringkeeper*.
 
+The same goes for what can't be taken back on the newer connections: sending to many
+people at once, deleting a file or an email, a DELETE through an API. These always ask,
+even on test data; they can't be trusted for an hour, and no per-tool setting lets them
+run by themselves.
+
+**Card and bank numbers never go through.** A tool call that carries one is refused
+before it's sent, and they're removed from logs, conversations, a task's events and the
+audit log. Use the service's own hosted page, or a token it issued.
+
 A held action expires after 24 hours if nobody answers.
 
 J, K, A and D work on the Approvals page, and one action can be trusted for an hour:

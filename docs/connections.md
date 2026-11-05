@@ -40,6 +40,17 @@ projects, and narrow each if you like. On a project's Connections tab, **Link a
 connection** lists the client's connections that aren't linked yet and your own tools.
 A client with no projects says so, with **Add project** and **From Claude**.
 
+## All of a client's projects
+
+A connection can go to all of its client's projects, and to projects added later. When
+you add one and the client has more than one project, that's what the success card
+suggests; untick any project to leave it out, or choose **Choose projects instead**. To
+change it later, open the connection's card: Details › All … projects. The card says what
+it reaches, like "All Acme projects except Website".
+
+Each project's link can still be narrowed under Details, to one base, branch or site. A
+client's connection never reaches another client's projects.
+
 ## Your own tools (shared tools)
 
 A shared tool is yours and holds no client's data: a browser like Playwright, files on
