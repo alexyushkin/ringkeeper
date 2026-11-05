@@ -177,6 +177,7 @@ interface Tile {
   sub: string;
   open: "form" | "google" | "remote";
   words: string[]; // what a search for it might say
+  badge?: string; // instead of "Built in"
   category: Category;
 }
 
@@ -194,7 +195,7 @@ const BUILT_IN: Tile[] = [
   { key: "vercel", label: "Vercel", sub: "Deployments", open: "form", category: "Dev tools", words: ["vercel", "deploy", "hosting"] },
   { key: "n8n", label: "n8n", sub: "Automations", open: "form", category: "Dev tools", words: ["n8n", "workflow", "workflows", "automation"] },
   { key: "http", label: "Any API", sub: "An address and a key", open: "form", category: "Other", words: ["api", "rest", "http", "https", "openapi", "swagger", "webhook"] },
-  { key: "formsonfire", label: "Forms On Fire", sub: "Forms and data sources", open: "form", category: "Other", words: ["forms", "formsonfire", "fof", "appenate", "truecontext"] },
+  { key: "formsonfire", label: "Forms On Fire", sub: "Forms and data sources", open: "form", category: "Other", badge: "Unverified", words: ["forms", "formsonfire", "fof", "appenate", "truecontext"] },
   { key: "dataforseo", label: "DataForSEO", sub: "SEO data", open: "form", category: "Other", words: ["dataforseo", "seo", "keywords", "serp", "backlinks"] },
 ];
 // Sign-in services shown as built-in tiles instead (Airtable: the built-in one has undo).
@@ -248,7 +249,7 @@ function TileButton({ mark, label, sub, badge, onClick, database = false }: { ma
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2">
           <span className="font-medium">{label}</span>
-          <Badge tone={badge === "Built in" ? "good" : undefined}>{badge}</Badge>
+          <Badge tone={badge === "Built in" ? "good" : badge === "Unverified" ? "warn" : undefined}>{badge}</Badge>
         </span>
         <span className="block truncate text-xs text-muted">{sub}</span>
       </span>
@@ -302,7 +303,7 @@ export function Catalog(target: Target) {
   // Every service, by what people look for: built in (Ringkeeper's own rules) and the
   // service's own server you sign in to.
   const tiles = [
-    ...BUILT_IN.map((tile) => ({ key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: "Built in", words: tile.words, open: () => setOpened({ tile }) })),
+    ...BUILT_IN.map((tile) => ({ key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: tile.badge ?? "Built in", words: tile.words, open: () => setOpened({ tile }) })),
     ...signIn.map((service) => ({
       key: service.key,
       label: service.name,
@@ -492,7 +493,7 @@ function CatalogSearch({ featured = [], onFeatured, onTyped, ...target }: Target
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{f.label}</span>
-                    <Badge tone={f.badge === "Built in" ? "good" : undefined}>{f.badge}</Badge>
+                    <Badge tone={f.badge === "Built in" ? "good" : f.badge === "Unverified" ? "warn" : undefined}>{f.badge}</Badge>
                   </span>
                   <span className="block truncate text-xs text-muted">{f.sub}</span>
                 </span>

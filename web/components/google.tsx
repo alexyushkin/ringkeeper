@@ -51,6 +51,7 @@ interface GoogleTool {
   description: string;
   allowed: boolean;
   rule: "ask" | "run" | null;
+  fixed: boolean;
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -474,7 +475,8 @@ export function GoogleAccount({ name, onChange }: { name: string; onChange: () =
                 {!t.allowed ? <Badge>Not given</Badge> : null}
               </div>
               <p className="text-xs text-muted">{t.description}</p>
-              {t.kind === "write" && t.allowed ? (
+              {t.kind === "write" && t.allowed && t.fixed ? <p className="text-xs text-muted">Always asks you first. More than 10 people at once needs the name typed.</p> : null}
+              {t.kind === "write" && t.allowed && !t.fixed ? (
                 <Toggle label="Run without asking" checked={t.rule === "run"} onChange={(on) => void rule(t.name, on)} hint={t.rule === "run" ? "Runs and is logged; you're not asked." : "Asks you first."} />
               ) : null}
             </li>

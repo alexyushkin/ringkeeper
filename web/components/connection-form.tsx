@@ -309,7 +309,7 @@ export const SERVICES: Record<string, ServiceInfo> = {
     label: "Forms On Fire",
     example: "General Informatics forms",
     get: [],
-    steps: "Your API details are in your Forms On Fire account. Check the address and how it signs in there: other regions and Appenate use their own address.",
+    steps: "Unverified: this address and sign-in haven't been confirmed against Forms On Fire's own documentation. Check both in your Forms On Fire account: other regions and Appenate use their own address.",
     address: { label: "API address", placeholder: "https://secure.formsonfire.com/api/v2", value: "https://secure.formsonfire.com/api/v2" },
     defaults: { auth: "header" },
     secret: API_FIELDS,

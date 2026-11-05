@@ -39,14 +39,13 @@ SAFE_TOOLS = {
     (InstanceType.VERCEL, "redeploy"),
     (InstanceType.VERCEL, "promote"),
     (InstanceType.VERCEL, "rollback"),
-    # Sends can't be undone, but they destroy nothing: the approval itself is the
-    # check, and Telegram may give it.
+    # A text can't be undone, but it destroys nothing: the approval itself is the check,
+    # and Telegram may give it. Email follows adapters.mail, through the tool's own rule.
     (InstanceType.TWILIO, "send_sms"),
-    (InstanceType.GMAIL, "send_email"),
     (InstanceType.GMAIL, "create_draft"),
     # Google: each write waits for approval (unless the owner lets that tool run);
     # the trash keeps mail 30 days, and nothing else removes anything.
-    *((InstanceType.GOOGLE, tool) for tool in google.WRITES),
+    *((InstanceType.GOOGLE, tool) for tool in google.WRITES if tool not in google.ALWAYS_ASKS),
     # GitHub: each write waits for approval; a push never forces. A merge is the one that
     # needs the name typed.
     *((InstanceType.GITHUB, tool) for tool in github.WRITES if tool != "merge_pull"),

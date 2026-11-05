@@ -6,7 +6,9 @@ says which account it is (`email`) and what it may be used for (`access`).
 Every write waits for the user's approval by default, even on test data:
 sending, sharing, invites, edits, uploads, drafts, the trash. The owner can
 let a tool run without asking, per connection (`write_rules`, see
-services.calls). Reading runs.
+services.calls), except sending: it follows the rule for every email connection
+(adapters.mail), so it always asks and a mailing needs the name typed. Reading
+runs.
 
 A tool whose access the connection wasn't given says so instead of calling
 Google: the owner adds it by signing in again with more ticked.
@@ -32,8 +34,10 @@ from ringkeeper.adapters.base import (
     ToolKind,
     ToolSpec,
     always_held,
+    final,
     read,
 )
+from ringkeeper.adapters.mail import bulk_reason
 from ringkeeper.models import InstanceType
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -256,7 +260,7 @@ ReplyTo = Annotated[
 ]
 
 
-@always_held
+@final(bulk_reason)
 async def send_mail(
     target: Target,
     to: Addresses,
@@ -701,3 +705,5 @@ ADAPTER = Adapter(
     secret_fragments=secret_fragments,
 )  # fmt: skip
 WRITES = tuple(t.name for t in ADAPTER.tools if t.kind is ToolKind.WRITE)
+# Writes that always ask: no per-account setting lets them run by themselves.
+ALWAYS_ASKS = tuple(t.name for t in ADAPTER.tools if t.typed is not None)

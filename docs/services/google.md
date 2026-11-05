@@ -32,7 +32,8 @@ files, sheets) when you add it.
 
 Reading runs. Every write (sending, sharing, invites, edits, uploads, drafts,
 moving to the trash) asks you first. Per account, you can later let a tool run
-without asking.
+without asking, except sending: an email always asks, and more than 10 people at once
+needs the connection's name typed, in the app itself.
 
 ## Good to know
 

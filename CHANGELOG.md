@@ -3,6 +3,15 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Gmail and Google accounts follow the same email rule as every other connection.**
+  One email waits for your approval, and more than 10 people at once needs the connection's
+  name typed, never from a chat app. A Google account can no longer let sending run without
+  asking; a setting that did stops counting.
+- **The Forms On Fire tile is marked Unverified** until its address and sign-in are
+  confirmed.
+
 ## 0.1.0-beta.19 (2026-11-05)
 
 - **More connections.** Email sending through any SMTP provider or Resend, any mailbox

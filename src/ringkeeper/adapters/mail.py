@@ -11,8 +11,8 @@ from typing import Annotated, Any, cast
 from pydantic import Field
 
 from ringkeeper.adapters.base import JSON, ToolError
-from ringkeeper.adapters.gmail import ADDRESS_PATTERN
 
+ADDRESS_PATTERN = r"^[^@\s<>\"]+@[^@\s<>\"]+\.[^@\s<>\"]+$"
 BULK = 10  # more recipients than this, on one message, is a mailing
 MOST = 500
 Address = Annotated[str, Field(pattern=ADDRESS_PATTERN)]

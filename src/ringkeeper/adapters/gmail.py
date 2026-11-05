@@ -8,8 +8,9 @@ Advanced Protection or security-key-only sign-in, and a Workspace admin can
 turn them off. Login errors say which case it looks like.
 
 Reading never marks mail as read (BODY.PEEK). Saving a draft only the user
-sees runs without asking; sending always waits for approval. Mailboxes are
-found by their role (\\Drafts, \\Sent, \\All), so a Gmail in another language
+sees runs without asking; sending always waits for approval, and more than
+adapters.mail.BULK people at once needs the name typed. Mailboxes are found by
+their role (\\Drafts, \\Sent, \\All), so a Gmail in another language
 works too.
 """
 
@@ -28,7 +29,8 @@ from typing import Annotated, Any, Literal, cast
 import anyio.to_thread
 from pydantic import Field
 
-from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, draft, read, send
+from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, draft, final, read
+from ringkeeper.adapters.mail import ADDRESS_PATTERN, bulk_reason
 from ringkeeper.models import InstanceType
 
 IMAP_HOST = "imap.gmail.com"
@@ -47,7 +49,6 @@ def smtp_factory() -> smtplib.SMTP:
     return smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=TIMEOUT)
 
 
-ADDRESS_PATTERN = r"^[^@\s<>\"]+@[^@\s<>\"]+\.[^@\s<>\"]+$"
 Address = Annotated[str, Field(pattern=ADDRESS_PATTERN)]
 Addresses = Annotated[list[Address], Field(min_length=1, max_length=50)]
 Mailbox = Literal["inbox", "sent", "drafts", "all"]
@@ -302,7 +303,7 @@ async def create_draft(
     return await _blocking(run)
 
 
-@send
+@final(bulk_reason)
 async def send_email(
     target: Target,
     to: Addresses,

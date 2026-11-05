@@ -271,15 +271,25 @@ def test_every_write_asks_first_unless_the_owner_lets_it_run(
     tools = {t["name"]: t for t in owner.get("/connections/acme-info/google").json()["tools"]}
     assert (tools["send_mail"]["rule"], tools["send_mail"]["allowed"]) == ("ask", True)
     assert (tools["trash_mail"]["allowed"], tools["search_mail"]["rule"]) == (False, None)
+    assert tools["send_mail"]["fixed"] is True
+    # Sending follows the rule for every email connection: nothing lets it run by itself.
     let = owner.put("/connections/acme-info/write-rules", json={"rules": {"send_mail": "run"}})
+    assert let.status_code == 409, let.text
+    with session_scope() as session:  # set before that was so: it stops counting
+        found = instances.get_instance(session, "acme-info")
+        found.config = {**found.config, "write_rules": {"send_mail": "run"}}
+    assert call("acme-web", "send_mail", "acme-info", **email)["status"] == "held_for_approval"
+    assert fake.sent == []
+    # Any other write can run, on this account only.
+    with session_scope() as session:
+        for name in ("acme-info", "acme-ops"):
+            found = instances.get_instance(session, name)
+            found.config = {**found.config, "access": [*found.config["access"], "mail_trash"]}
+    let = owner.put("/connections/acme-info/write-rules", json={"rules": {"trash_mail": "run"}})
     assert let.status_code == 200, let.text
-    sent = call("acme-web", "send_mail", "acme-info", **email)
-    assert sent["sent"] is True
-    assert fake.sent == [
-        ("info@acme.example", {"from": "info@acme.example", "to": "anna@client.example"})
-    ]
-    # Only this account's send runs; the others still ask.
-    assert call("acme-web", "send_mail", "acme-ops", **email)["status"] == "held_for_approval"
+    assert call("acme-web", "trash_mail", "acme-info", message_id="m-info1")["trashed"]
+    held = call("acme-web", "trash_mail", "acme-ops", message_id="m-info1")
+    assert held["status"] == "held_for_approval"
     reads = owner.put("/connections/acme-info/write-rules", json={"rules": {"search_mail": "run"}})
     assert reads.status_code == 409  # only writes have a rule
     back = owner.put("/connections/acme-info/write-rules", json={"rules": {}})

@@ -12,7 +12,10 @@ that matters.
 
 Reads never wait. Changes on staging and development connections run straight
 away and are logged. A Google account can let a single tool run without asking
-(per account, in its settings).
+(per account, in its settings), except sending email.
+
+An email to more than 10 people at once needs the connection's name typed, on every email
+connection, and can't be approved from Telegram, Slack or Discord.
 
 ## Approving
 

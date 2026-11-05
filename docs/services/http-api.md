@@ -6,8 +6,9 @@ address. If the API publishes an OpenAPI file, add its address too, and the AI c
 what the API offers.
 
 **Forms On Fire** and **DataForSEO** have their own tiles, with the address filled in.
-Check the address and sign-in in your Forms On Fire account: other regions and Appenate
-use their own.
+The Forms On Fire tile is marked **Unverified**: its address and sign-in haven't been
+confirmed against Forms On Fire's own documentation, so check both in your account. Other
+regions and Appenate use their own.
 
 ## What it can do
 
