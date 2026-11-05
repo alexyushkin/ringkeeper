@@ -236,6 +236,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           python3 shell/scripts/release.py notes "$version" > notes.md
+          # For the download page only: latest.json builds its own notes for installed apps.
+          cat shell/scripts/release-page-note.md >> notes.md
           # Signed update files mean installed apps expect latest.json: no release without it.
           if find dist -name '*.sig' | grep -q .; then
             python3 shell/scripts/release.py manifest --version "$version" --artifacts dist \
