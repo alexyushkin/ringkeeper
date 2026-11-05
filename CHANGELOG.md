@@ -10,6 +10,9 @@ publishes it as the release notes and the app shows it with the update.
 - **Cmd+Q stops all of Ringkeeper on a Mac.** The background part kept running, so a newly
   installed version could connect to it and go on showing the old version number. A new
   version now also replaces whatever an older one left running.
+- **Opening it on a Mac.** The app isn't signed yet, so the first time, in Finder, choose
+  Go › Applications, right-click Ringkeeper, and choose Open. The install guide and the
+  download page now say so.
 
 ## 0.1.0-beta.18 (2026-11-04)
 

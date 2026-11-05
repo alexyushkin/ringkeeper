@@ -17,6 +17,10 @@ project's connections, and anything that changes live data waits for your OK.
 · Windows 10/11 · free and open source (MIT) · beta: SmartScreen will warn,
 click **More info › Run anyway**.
 
+On a Mac (macOS 12 or newer) there's an experimental build. It isn't signed yet, so the
+first time, in Finder, choose **Go › Applications**, right-click **Ringkeeper**, and choose
+**Open**. [Install steps](docs/install-desktop.md#mac-experimental).
+
 ![You ask, Ringkeeper finds the right project, Claude does the work, live changes wait for your OK, and it reports back](docs/images/how-it-works.svg)
 
 | Ask in plain words | Approve what matters | Undo for 7 days |
@@ -32,7 +36,7 @@ click **More info › Run anyway**.
 - Approve from Telegram, Slack or Discord; back up and move to a new computer
 
 **Learn more:** [User guide](docs/README.md) · [Concepts](docs/concepts.md) ·
-[Install on Windows](docs/install-desktop.md) · [Server (Docker)](docs/install-server.md) ·
+[Install on Windows or Mac](docs/install-desktop.md) · [Server (Docker)](docs/install-server.md) ·
 [Security](docs/security.md) · [FAQ](docs/faq.md) ·
 [For developers](docs/developers.md) · [Contributing](CONTRIBUTING.md) ·
 [Changelog](CHANGELOG.md)

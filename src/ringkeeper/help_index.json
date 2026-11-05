@@ -351,13 +351,19 @@
 "doc": "faq",
 "anchor": "",
 "title": "Mac or Linux?",
-"text": "The desktop app is made for Windows 10 and 11. For Apple Silicon Macs there's an experimental build: unsigned, not yet tested on a real Mac, reports welcome (how to install it). On Linux, the server install runs in Docker."
+"text": "The desktop app is made for Windows 10 and 11. For Macs with macOS 12 or newer, Apple Silicon or Intel, there's an experimental unsigned build, reports welcome (how to install it). On Linux, the server install runs in Docker."
 },
 {
 "doc": "faq",
 "anchor": "",
 "title": "Why does Windows warn about the installer?",
 "text": "The beta isn't code-signed yet. Click **More info › Run anyway**."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Why won't my Mac open it?",
+"text": "The Mac build isn't signed yet. The first time, in Finder, choose **Go › Applications**, right-click **Ringkeeper**, and choose **Open**. See how to install it."
 },
 {
 "doc": "faq",
@@ -429,7 +435,7 @@
 "doc": "install-desktop",
 "anchor": "mac-experimental",
 "title": "Mac, experimental",
-"text": "**Experimental: unsigned, not yet tested on a real Mac — reports welcome.** Each release also has two Mac downloads, for macOS 12 or newer. To see which is yours, open the Apple menu › **About This Mac**: - **Chip: Apple M1** or newer: `Ringkeeper_<version>_aarch64.dmg` - **Processor: Intel**: `Ringkeeper_<version>_x64.dmg` 1. Download the `.dmg` from the latest release, open it, and drag **Ringkeeper** into **Applications**. 2. Open Ringkeeper from Applications. macOS says it can't check the app for malware, because it isn't signed yet. Click **Done**. 3. Open **System Settings › Privacy & Security**, scroll down to **Security**, and next to \"Ringkeeper was blocked…\" click **Open Anyway**. Confirm with your password or Touch ID, then click **Open**. macOS remembers this, so you only do it once. If macOS instead says the app \"is damaged and can't be opened\", that's the same missing signature. In Terminal, run `xattr -dr com.apple.quarantine /Applications/Ringkeeper.app`, then open it again. Your data goes in `~/Library/Application Support/Ringkeeper`, the master key in your Keychain, and new projects in `Documents/Ringkeeper`. Updates install from inside the app, as on Windows. Something not working on your Mac? Please open an issue: that's how the Mac build gets tested."
+"text": "**Experimental and unsigned: reports welcome.** Each release also has two Mac downloads, for macOS 12 or newer. To see which is yours, open the Apple menu › **About This Mac**: - **Chip: Apple M1** or newer: `Ringkeeper_<version>_aarch64.dmg` - **Processor: Intel**: `Ringkeeper_<version>_x64.dmg` 1. Download the `.dmg` from the latest release, open it, and drag **Ringkeeper** into **Applications**. 2. **Don't double-click it the first time:** the app isn't signed yet, so macOS won't open it that way. In Finder, choose **Go › Applications** from the menu bar, right-click **Ringkeeper** (or hold Control and click it), and choose **Open**. 3. macOS asks if you're sure. Click **Open**. It remembers this, so you only do it once. If that message has no **Open** button (macOS 15 or newer), click **Done**. Then open **System Settings › Privacy & Security**, scroll down to **Security**, and next to \"Ringkeeper was blocked…\" click **Open Anyway**. Confirm with your password or Touch ID, then click **Open**. If macOS instead says the app \"is damaged and can't be opened\", that's the same missing signature. In Terminal, run `xattr -dr com.apple.quarantine /Applications/Ringkeeper.app`, then open it again. Your data goes in `~/Library/Application Support/Ringkeeper`, the master key in your Keychain, and new projects in `Documents/Ringkeeper`. Updates install from inside the app, as on Windows. Something not working on your Mac? Please open an issue: that's how the Mac build gets tested."
 },
 {
 "doc": "install-desktop",

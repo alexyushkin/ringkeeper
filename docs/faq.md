@@ -7,13 +7,17 @@
 no account and no server of ours. See [Security](security.md) for what leaves
 your computer, and where it goes.
 
-**Mac or Linux?** The desktop app is made for Windows 10 and 11. For Apple
-Silicon Macs there's an experimental build: unsigned, not yet tested on a real
-Mac, reports welcome ([how to install it](install-desktop.md#mac-apple-silicon-experimental)).
+**Mac or Linux?** The desktop app is made for Windows 10 and 11. For Macs
+with macOS 12 or newer, Apple Silicon or Intel, there's an experimental unsigned
+build, reports welcome ([how to install it](install-desktop.md#mac-experimental)).
 On Linux, the [server install](install-server.md) runs in Docker.
 
 **Why does Windows warn about the installer?** The beta isn't code-signed yet.
 Click **More info › Run anyway**.
+
+**Why won't my Mac open it?** The Mac build isn't signed yet. The first time, in
+Finder, choose **Go › Applications**, right-click **Ringkeeper**, and choose
+**Open**. See [how to install it](install-desktop.md#mac-experimental).
 
 **Where do I see what a task changed?** Open the task from Tasks: Data it changed
 lists what it did on connections, with Revert, and Changes shows its files.
