@@ -33,6 +33,7 @@ from ringkeeper.services import (
     admin_audit,
     bundles,
     catalog,
+    developer_apps,
     google_connections,
     google_oauth,
     instances,
@@ -424,6 +425,27 @@ def catalog_updates(session: SessionDep) -> list[dict[str, Any]]:
     return found
 
 
+def _finish_developer_app(state: str, code: str, error: str, realm: str) -> HTMLResponse:
+    """A sign-in through one of your apps (services.developer_apps)."""
+    found = developer_apps.take(state)
+    if error:
+        said = "You cancelled on the service's page." if "denied" in error else error[:200]
+        developer_apps.refused(state, said)
+        return _page("Not connected", f"{said} Try again from Ringkeeper.", False)
+    try:
+        with session_scope() as session:
+            name = developer_apps.finish(
+                session, get_settings(), found, state, code, {"realmId": realm}
+            )
+    except (developer_apps.SignInError, RuleViolationError) as failed:
+        return _page("Not connected", str(failed), False)
+    return _page(
+        "Connected",
+        f"Ringkeeper is connected as '{name}'. You can close this tab and go back to Ringkeeper.",
+        True,
+    )
+
+
 def _finish_google(state: str, code: str, error: str) -> HTMLResponse:
     """A Google account's sign-in (services.google_connections)."""
     found = google_oauth.take(state)
@@ -457,10 +479,16 @@ def _page(title: str, text: str, ok: bool) -> HTMLResponse:
 
 @callback.get(CALLBACK_PATH, include_in_schema=False)
 def finish_signin(
-    state: str = "", code: str = "", error: str = "", error_description: str = ""
+    state: str = "",
+    code: str = "",
+    error: str = "",
+    error_description: str = "",
+    realmId: str = "",  # noqa: N803 (Intuit's name for it)
 ) -> HTMLResponse:
     if google_oauth.pending(state):
         return _finish_google(state, code, error)
+    if developer_apps.pending(state):
+        return _finish_developer_app(state, code, error or error_description, realmId)
     if error:
         with contextlib.suppress(mcp_oauth.SignInError):
             mcp_oauth.take(state)  # spent either way

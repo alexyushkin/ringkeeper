@@ -176,7 +176,7 @@ def app_of(instance: Instance, first: str | None) -> str | None:
 
 
 def accounts(session: Session, settings: Settings) -> list[dict[str, Any]]:
-    """Every Google account, for Settings > Google app: whose, which address, which app."""
+    """Every Google account, for Settings > Developer apps: whose, which address, which app."""
     apps = google_oauth.list_apps(settings)
     first = apps[0].id if apps else None
     return [

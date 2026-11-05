@@ -318,8 +318,15 @@ async def _call_operation(
     return _limited(await run(vendor, op, fields, path, query, body, account))
 
 
+def _at(value: JSON, dotted: str) -> Any:
+    found: Any = value
+    for part in dotted.split("."):
+        found = cast(JSON, found).get(part) if isinstance(found, dict) else None
+    return found
+
+
 def _picked(fields: tuple[str, ...], value: JSON) -> Any:
-    return next((value[f] for f in fields if value.get(f) not in (None, "")), None)
+    return next((_at(value, f) for f in fields if _at(value, f) not in (None, "")), None)
 
 
 @dataclass(frozen=True)
@@ -337,8 +344,11 @@ def money_card(args: JSON) -> Card | None:
     found = operation(str(args.get("operation") or ""))
     if found is None or found[1].money is None:
         return None
-    rule: Money = found[1].money
     body = {**cast(JSON, args.get("path") or {}), **cast(JSON, args.get("body") or {})}
+    return card_of(found[1].money, body)
+
+
+def card_of(rule: Money, body: JSON) -> Card:
     amount, currency = _picked(rule.amount, body), _picked(rule.currency, body)
     shown = "not stated"
     if amount is not None:

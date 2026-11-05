@@ -292,7 +292,9 @@ def _not_yet_line(section: Section, question: str) -> str | None:
 # The next step, by guide page. Each opens a page; none changes anything by itself.
 ACTIONS: dict[str, list[dict[str, str]]] = {
     "connections": [{"label": "Browse connectors", "href": "/connections/new"}],
-    "services/google": [{"label": "Open Settings \u203a Google", "href": "/settings#google"}],
+    "services/google": [
+        {"label": "Open Settings \u203a Developer apps", "href": "/settings#developer-apps"}
+    ],
     "services/add-on-tools": [
         {"label": "Add your own tool", "href": "/connections/new?kind=shared"}
     ],

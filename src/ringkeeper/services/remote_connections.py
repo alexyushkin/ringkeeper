@@ -20,9 +20,11 @@ server that holds no client's data) to you, for any client's projects; with
 `project`, it's linked to that project too.
 """
 
+import base64
 import json
 from dataclasses import dataclass, replace
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
@@ -79,11 +81,16 @@ def service(key: str) -> remote.Remote:
 def resolve(new: NewConnection) -> NewConnection:
     """The connection with its address checked, and a known service recognized by it."""
     if new.remote:
-        return replace(new, url=service(new.remote).url)
+        known = service(new.remote)
+        if not known.url_label:
+            return replace(new, url=known.url)
+        if not new.url:
+            raise RuleViolationError(f"Give {known.url_label.lower()}.")
+        return replace(new, url=catalog.check_remote_url(new.url))
     if not new.url:
         raise RuleViolationError("Give the MCP server's address (https://...).")
     url = catalog.check_remote_url(new.url)
-    known = next((r for r in remote.CATALOG if catalog.same_url(url, r.url)), None)
+    known = next((r for r in remote.CATALOG if r.url and catalog.same_url(url, r.url)), None)
     if known is not None:
         return replace(new, remote=known.key, url=known.url)
     if new.scope:
@@ -127,14 +134,18 @@ def token_secret(new: NewConnection, token: str) -> str:
     """A pasted token, sent the way the service expects (Authorization: Bearer ...)."""
     new = resolve(new)
     scheme = "Bearer"
+    token = "".join(token.split())
+    if not token:
+        raise RuleViolationError("The token is empty.")
     if new.remote:
         found = service(new.remote)
         if found.paste is None:
             raise RuleViolationError(f"{found.name} connects by signing in only.")
         scheme = found.auth_scheme
-    token = "".join(token.split())
-    if not token:
-        raise RuleViolationError("The token is empty.")
+        if found.basic:
+            if ":" not in token:
+                raise RuleViolationError("Give it as user:password.")
+            scheme, token = "Basic", base64.b64encode(token.encode()).decode()
     return json.dumps({"url": new.url, "headers": {"Authorization": f"{scheme} {token}"}})
 
 
@@ -154,6 +165,13 @@ def open_secret(new: NewConnection) -> str:
     return json.dumps({"url": resolve(new).url, "headers": {}})
 
 
+def _shown(new: NewConnection) -> str | None:
+    """The address as it's shown: a customer's own one may hold a key, so only its host."""
+    if new.remote and service(new.remote).url_label:
+        return urlsplit(new.url or "").hostname
+    return new.url
+
+
 def create(
     session: Session, settings: Settings, new: NewConnection, secret: str, *, how: str
 ) -> Instance:
@@ -161,7 +179,7 @@ def create(
     open (nothing needed)."""
     new = check(session, new)
     ref = secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
-    config: dict[str, Any] = {"source": how, "preview": new.url}
+    config: dict[str, Any] = {"source": how, "preview": _shown(new)}
     if new.remote:
         config["remote"] = new.remote
         label = service(new.remote).name
@@ -210,7 +228,8 @@ def catalog_shelf() -> list[dict[str, Any]]:
             "key": r.key, "name": r.name, "url": r.url, "signin": r.signin, "paste": r.paste,
             "paste_url": r.paste_url, "paste_steps": r.paste_steps, "note": r.note,
             "scope": [{"key": f.key, "label": f.label, "hint": f.hint} for f in r.scope],
-            "sql": bool(r.sql_tools),
+            "sql": bool(r.sql_tools), "category": r.category, "url_label": r.url_label,
+            "url_hint": r.url_hint,
         }
         for r in remote.CATALOG
         if r.shelf

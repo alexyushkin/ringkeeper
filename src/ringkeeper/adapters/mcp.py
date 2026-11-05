@@ -33,6 +33,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, cast
+from urllib.parse import urlsplit
 
 from fastmcp import Client
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
@@ -104,6 +105,8 @@ def secret_fragments(value: str) -> list[str]:
     except ToolError:
         return []
     found = [*spec.get("env", {}).values(), *spec.get("headers", {}).values()]
+    # A key in the address itself (Zoho's): a long path segment.
+    found += [p for p in urlsplit(str(spec.get("url") or "")).path.split("/") if len(p) >= 24]
     found += [h.split(" ", 1)[1] for h in spec.get("headers", {}).values() if " " in h]
     oauth: object = json.loads(value).get("oauth")
     if isinstance(oauth, dict):
@@ -168,6 +171,7 @@ LEVELS = (READ, APPROVE, CONFIRM)
 BY_USER, BY_ANNOTATIONS, BY_NAME, BY_DEFAULT = "you", "annotations", "name", "default"
 BY_SQL = "sql"  # a remote service's SQL tool: the statement decides (ringkeeper.destructive)
 BY_SERVICE = "service"  # what Ringkeeper knows of a Recommended service's tools (ringkeeper.remote)
+BY_GUARD = "guard"  # the rules for this kind of service: the per-tool setting can't lower them
 # An API endpoint that only reads, by its name (getAgent, list_calls, retrieve_phone_number).
 READ_ENDPOINT = re.compile(r"^(get|list|retrieve|search|fetch)([_A-Z]|$)")
 # A tool whose name says it deletes or resets something, when its server doesn't say.
@@ -231,8 +235,28 @@ def default_rule(hints: JSON | None, tool: str) -> Rule:
     return Rule(APPROVE, BY_DEFAULT)
 
 
+def floor(service: remote.Remote | None, tool: str) -> Rule | None:
+    """The least this service's kind allows for `tool`, or None if it sets none."""
+    guard = remote.GUARDS.get(service.guard) if service is not None else None
+    if service is None or guard is None:
+        return None
+    words = set(name_words(tool))
+    if tool in service.opaque_tools or (words & guard.final and not words & guard.unless):
+        return Rule(CONFIRM, BY_GUARD)
+    return None if reads_by_name(tool) else Rule(APPROVE, BY_GUARD)
+
+
 def rule(config: Mapping[str, Any], tool: str) -> Rule:
-    """What a call to `tool` needs: the user's choice, else the default."""
+    """What a call to `tool` needs: the stricter of its own rule and its service's floor."""
+    found = _own_rule(config, tool)
+    least = floor(remote.BY_KEY.get(str(config.get("remote") or "")), tool)
+    if least is not None and LEVELS.index(least.level) > LEVELS.index(found.level):
+        return least
+    return found
+
+
+def _own_rule(config: Mapping[str, Any], tool: str) -> Rule:
+    """The user's choice, else the default."""
     chosen = cast(JSON, config.get("tool_rules") or {}).get(tool)
     if chosen in LEVELS:
         return Rule(str(chosen), BY_USER)
@@ -292,7 +316,7 @@ async def list_tools(target: Target) -> JSON:
     listed: list[JSON] = []
     for t in tools:
         now, default = rule(config, t.name), default_rule(hints[t.name], t.name)
-        if now.source in (BY_SQL, BY_SERVICE):
+        if now.source in (BY_SQL, BY_SERVICE, BY_GUARD):
             default = now  # a Recommended service's rules: the statement or endpoint decides
         listed.append(
             {
@@ -303,6 +327,7 @@ async def list_tools(target: Target) -> JSON:
                 "read_only": now.level == READ,
                 "rule": now.level,
                 "rule_from": now.source,
+                "locked": now.source == BY_GUARD,
                 "hints": hints[t.name],
                 "default": default.level,
                 "default_from": default.source,

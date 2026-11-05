@@ -35,7 +35,7 @@ def grant(session: Session, decision: Decision, *, by: str, hours: int = HOURS) 
     why = destructive.reason(decision.service, decision.tool, args, config)
     if why is not None:
         raise RuleViolationError(f"This change {why}, so it always asks.")
-    if destructive.never_trusted(decision.service, decision.tool, args):
+    if destructive.never_trusted(decision.service, decision.tool, args, config):
         raise RuleViolationError("This service's changes always ask: nothing runs by itself.")
     now = datetime.now(UTC)
     session.execute(delete(Trust).where(Trust.expires_at <= now))
@@ -79,7 +79,9 @@ def allows(
     args: dict[str, Any],
 ) -> bool:
     """Whether this very call may run without asking."""
-    if tool == REVERT_TOOL or destructive.never_trusted(service, tool, args):
+    if tool == REVERT_TOOL:
+        return False
+    if destructive.never_trusted(service, tool, args, _config(session, instance)):
         return False
     found = session.scalar(
         select(Trust).where(

@@ -369,7 +369,7 @@ export function GoogleConnect({
   if (!data.configured) {
     return (
       <p className="text-sm text-muted">
-        First set up your Google app: <Link href="/settings#google" className="text-accent underline">Settings › Google app</Link>.
+        First set up your Google app: <Link href="/settings#developer-apps" className="text-accent underline">Settings › Developer apps</Link>.
       </p>
     );
   }

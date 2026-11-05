@@ -46,7 +46,7 @@ export function fuzzy(query: string, text: string): number | null {
 const SETTINGS: [string, string][] = [
   ["claude", "Claude"],
   ["models", "Models and effort"],
-  ...(DESKTOP ? ([["google", "Google app"]] as [string, string][]) : []),
+  ...(DESKTOP ? ([["developer-apps", "Developer apps"]] as [string, string][]) : []),
   ["notifications", "Notifications (Telegram, Slack, Discord)"],
   ...(DESKTOP ? ([["backup", "Backup and restore"]] as [string, string][]) : []),
   ["advanced", "Advanced"],

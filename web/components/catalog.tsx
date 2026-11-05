@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ConnectRemote, type RemoteService } from "@/components/connection-library";
 import { ConnectionForm, defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { GoogleConnect } from "@/components/google";
+import { VendorConnect, type VendorInfo } from "@/components/vendor-connect";
 import { KindChoice, type Kind } from "@/components/shared-tools";
 import { Alert, Badge, Button, Details, Field, Select, Spinner, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -257,10 +258,11 @@ function TileButton({ mark, label, sub, badge, onClick, database = false }: { ma
   );
 }
 
-type Opened = { tile: Tile } | { service: RemoteService };
+type Opened = { tile: Tile } | { service: RemoteService } | { vendor: VendorInfo };
 
 export function Catalog(target: Target) {
   const services = useApi<RemoteService[]>("remote-services");
+  const vendors = useApi<VendorInfo[]>("vendors");
   const [opened, setOpened] = useState<Opened | null>(null);
   const [searching, setSearching] = useState(false);
   const shared = target.kind === "shared";
@@ -268,8 +270,10 @@ export function Catalog(target: Target) {
   const openKey = (key: string) => {
     const tile = BUILT_IN.find((t) => t.key === key);
     const service = (services.data ?? []).find((s) => s.key === key);
+    const vendor = (vendors.data ?? []).find((v) => v.key === key);
     if (tile) setOpened({ tile });
     else if (service) setOpened({ service });
+    else if (vendor) setOpened({ vendor });
   };
 
   if (opened) {
@@ -278,16 +282,19 @@ export function Catalog(target: Target) {
         ‹ All connectors
       </Button>
     );
-    const service = "service" in opened ? opened.service : opened.tile.open === "remote" ? (services.data ?? []).find((s) => s.key === opened.tile.key) : undefined;
+    const vendor = "vendor" in opened ? opened.vendor : null;
+    const service = "service" in opened ? opened.service : "tile" in opened && opened.tile.open === "remote" ? (services.data ?? []).find((s) => s.key === opened.tile.key) : undefined;
     const tile = "tile" in opened ? opened.tile : null;
     return (
       <div className="space-y-3">
         {back}
         <div className="flex items-center gap-3">
-          <ServiceMark id={tile?.key ?? service?.key ?? ""} database={tile?.key === "supabase"} />
-          <h3 className="font-semibold">Connect {tile?.label ?? service?.name}</h3>
+          <ServiceMark id={tile?.key ?? service?.key ?? vendor?.key ?? ""} database={tile?.key === "supabase"} />
+          <h3 className="font-semibold">Connect {tile?.label ?? service?.name ?? vendor?.name}</h3>
         </div>
-        {tile?.open === "form" ? (
+        {vendor ? (
+          <VendorConnect vendor={vendor} client={target.client} project={target.project} shared={shared} onAdded={target.onAdded} />
+        ) : tile?.open === "form" ? (
           <ConnectionForm client={shared ? undefined : target.client} project={target.project} shared={shared} type={tile.key} onSaved={(c) => target.onAdded(c.name)} />
         ) : tile?.open === "google" ? (
           <GoogleConnect owner={shared ? undefined : target.client} shared={shared} project={target.project} onAdded={target.onAdded} />
@@ -307,11 +314,20 @@ export function Catalog(target: Target) {
     ...signIn.map((service) => ({
       key: service.key,
       label: service.name,
-      sub: service.signin ? "Sign in" : "Paste a token",
-      category: SIGN_IN_CATEGORY[service.key] ?? ("Other" as Category),
+      sub: service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token",
+      category: SIGN_IN_CATEGORY[service.key] ?? ((service.category || "Other") as Category),
       badge: "Official",
       words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/)],
       open: () => setOpened({ service }),
+    })),
+    ...(vendors.data ?? []).map((vendor) => ({
+      key: vendor.key,
+      label: vendor.name,
+      sub: vendor.sub,
+      category: vendor.category as Category,
+      badge: vendor.unverified ? "Unverified" : "Built in",
+      words: [vendor.key, ...vendor.words],
+      open: () => setOpened({ vendor }),
     })),
   ];
   return (

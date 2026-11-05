@@ -167,8 +167,14 @@ class FrontDoor:
             elif scope["path"] == "/open" and method == "GET":
                 # A signed Open link from Slack or Discord: brings the window up there.
                 await self.api(self._to_api(scope, "/open", ""), receive, send)
+            elif scope["path"] == "/oauth/callback" and method == "GET":
+                # A sign-in through a developer app: vendors want one exact address, and
+                # this one doesn't change. The sign-in's own one-time state is the check.
+                await self.api(self._to_api(scope, "/oauth/callback", ""), receive, send)
             else:
-                await self._plain(404, "Only routines' webhooks answer here.")(scope, receive, send)
+                await self._plain(404, "Only webhooks and sign-ins answer here.")(
+                    scope, receive, send
+                )
             return
         if host not in self.hosts:
             await self._plain(421, "This address isn't one Ringkeeper answers on.")(

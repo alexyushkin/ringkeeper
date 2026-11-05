@@ -1,4 +1,4 @@
-"""Google accounts: the owner's Google apps (Settings > Google app), signing in an
+"""Google accounts: the owner's Google apps (Settings > Developer apps), signing in an
 account (a client's or your own) through one of them, and each account's write rules.
 
 The desktop app only, for now: its sign-in comes back to the app's own loopback

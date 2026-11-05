@@ -115,7 +115,7 @@ Checked: `geninfos-website` has it, `demo-shop` (Demo Co) doesn't.
 
 ## d) Two Google accounts for two clients, the right one sends a draft
 
-Settings › Google app is the one-time setup, with **Add a Google account** and each
+Settings › Developer apps is the one-time setup, with **Add a Google account** and each
 account's client and projects right there:
 
 ![Google settings](ux-walkthrough/d05-settings-google-accounts.png)

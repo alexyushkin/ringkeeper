@@ -16,12 +16,14 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
-from ringkeeper.adapters import vendor
+from ringkeeper import remote
+from ringkeeper.adapters import mcp, vendor
+from ringkeeper.adapters.vendor_spec import Money
 from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
@@ -506,10 +508,35 @@ def _op(decision: Decision) -> str:
 
 def money(decision: Decision) -> dict[str, str] | None:
     """Amount, currency, counterparty and account of a held call that moves money."""
-    if decision.kind is not DecisionKind.APPROVE or decision.service is not InstanceType.VENDOR:
+    if decision.kind is not DecisionKind.APPROVE:
         return None
-    card = vendor.money_card(decision.args or {})
+    args = decision.args or {}
+    if decision.service is InstanceType.MCP and decision.tool == "call_tool":
+        return _mcp_money(decision, args)
+    if decision.service is not InstanceType.VENDOR:
+        return None
+    card = vendor.money_card(args)
     return vars(card) if card else None
+
+
+def _mcp_money(decision: Decision, args: dict[str, Any]) -> dict[str, str] | None:
+    """A payments server's call that needs the name typed: what it says, as written."""
+    session = object_session(decision)
+    instance = (
+        session.scalar(select(Instance).where(Instance.name == decision.instance))
+        if session is not None
+        else None
+    )
+    found = remote.BY_KEY.get(str((instance.config if instance else {}).get("remote") or ""))
+    if found is None or found.guard != "payments":
+        return None
+    if (
+        mcp.call_rule(instance.config if instance else {}, str(args.get("tool")), None).level
+        != mcp.CONFIRM
+    ):
+        return None
+    given = cast(dict[str, Any], args.get("arguments") or {})
+    return vars(vendor.card_of(Money(minor_units=False), given))
 
 
 def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)

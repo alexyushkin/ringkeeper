@@ -32,6 +32,9 @@ export interface RemoteService {
   paste_steps: string;
   note: string;
   scope: ScopeField[];
+  category?: string;
+  url_label?: string;
+  url_hint?: string;
 }
 
 export interface LinkInfo {
@@ -459,6 +462,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   const [env, setEnv] = useState("");
   const [scope, setScope] = useState<Record<string, string>>({});
   const [token, setToken] = useState("");
+  const [url, setUrl] = useState("");
   const [pasting, setPasting] = useState(!service.signin);
   const [waiting, setWaiting] = useState<string | null>(null); // the name sent, until it's there
   const [busy, setBusy] = useState(false);
@@ -466,7 +470,9 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   const taken = useTakenNames();
   const title = typed ?? defaultTitle(service.name, "", shared ? undefined : client);
   const name = nameFor(title, shared ? undefined : client, taken);
-  const body = { remote: service.key, name, title: title.trim(), owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
+  const body = { remote: service.key, url: url.trim() || null, name, title: title.trim(), owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
+  const needsUrl = Boolean(service.url_label) && !url.trim();
+  const nothingElse = !service.signin && !service.paste; // the address is all it takes
 
   // After the service's page opens: the connection appears once its sign-in finishes.
   useEffect(() => {
@@ -503,7 +509,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
     setBusy(true);
     setError(null);
     try {
-      await api("connections/remote", { json: { ...body, token } });
+      await api("connections/remote", { json: nothingElse ? { ...body, open: true } : { ...body, token } });
       setToken("");
       onAdded(name);
     } catch (err) {
@@ -518,12 +524,13 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
       {service.note ? <p className="text-sm text-muted">{service.note}</p> : null}
       <EnvChoice value={env} onChange={setEnv} tool />
       <Field label="Name" value={title} onChange={setTyped} hint="As it shows in Ringkeeper. Change it if you like." />
+      {service.url_label ? <Field label={service.url_label} value={url} onChange={setUrl} hint={service.url_hint} /> : null}
       {project ? <ScopeInputs fields={service.scope} value={scope} onChange={setScope} /> : null}
       {waiting ? <Alert tone="good">Finish signing in on {service.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
       {service.signin && !pasting ? (
         <div className="flex flex-wrap gap-2">
-          <Button kind="primary" busy={busy} disabled={!title.trim() || !env} onClick={signIn}>
+          <Button kind="primary" busy={busy} disabled={!title.trim() || !env || needsUrl} onClick={signIn}>
             Sign in with {service.name}
           </Button>
           {service.paste ? (
@@ -532,6 +539,11 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
             </Button>
           ) : null}
         </div>
+      ) : null}
+      {nothingElse ? (
+        <Button kind="primary" busy={busy} disabled={!title.trim() || !env || needsUrl} onClick={paste}>
+          Connect
+        </Button>
       ) : null}
       {pasting && service.paste ? (
         <div className="space-y-2">
@@ -545,7 +557,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
           </p>
           <Field label={service.paste} type="password" value={token} onChange={setToken} />
           <div className="flex flex-wrap gap-2">
-            <Button kind="primary" busy={busy} disabled={!title.trim() || !env || !token.trim()} onClick={paste}>
+            <Button kind="primary" busy={busy} disabled={!title.trim() || !env || !token.trim() || needsUrl} onClick={paste}>
               Connect
             </Button>
             {service.signin ? (

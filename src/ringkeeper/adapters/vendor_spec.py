@@ -32,10 +32,11 @@ PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 class Money:
     """Which fields of a call say what an approval card shows in large text."""
 
-    amount: tuple[str, ...] = ("amount",)
-    currency: tuple[str, ...] = ("currency",)
-    counterparty: tuple[str, ...] = ("customer", "payee", "vendor")
-    account: tuple[str, ...] = ("account", "source", "destination")
+    # Each may be dotted: amount_money.amount.
+    amount: tuple[str, ...] = ("amount", "amount_money.amount", "total", "value")
+    currency: tuple[str, ...] = ("currency", "amount_money.currency", "currency_code")
+    counterparty: tuple[str, ...] = ("customer", "customer_id", "payee", "vendor", "email")
+    account: tuple[str, ...] = ("account", "source", "source_id", "destination", "location_id")
     # The amount is in the currency's smallest unit (cents).
     minor_units: bool = False
 

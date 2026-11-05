@@ -6,7 +6,7 @@ desktop app.
 
 ## Make the app (once, about 10 minutes)
 
-**Settings › Google app** has every step with links that open the right page:
+**Settings › Developer apps** has every step with links that open the right page:
 
 1. In the [Google Cloud console](https://console.cloud.google.com/projectcreate),
    signed in with your own account, create a project. No billing needed.
@@ -22,7 +22,7 @@ desktop app.
 
 ## Add a Google account
 
-**Settings › Google app › Add a Google account** (or the Google account tile under
+**Settings › Developer apps › Add a Google account** (or the Google account tile under
 Connectors › Browse connectors), then sign in with the client's account. Google
 will say it hasn't verified the app: click **Advanced › Go to Ringkeeper**.
 It's your own app, so that's expected. Choose what it may do (mail, calendar,

@@ -11,9 +11,10 @@ interface McpTool {
   name: string;
   description: string;
   rule: Level;
-  rule_from: "you" | "annotations" | "name" | "default" | "sql" | "service";
+  rule_from: "you" | "annotations" | "name" | "default" | "sql" | "service" | "guard";
+  locked?: boolean;
   default: Level;
-  default_from: "annotations" | "name" | "default" | "sql" | "service";
+  default_from: "annotations" | "name" | "default" | "sql" | "service" | "guard";
   hints: { read_only: boolean | null; destructive: boolean | null };
 }
 
@@ -28,6 +29,7 @@ const FROM: Record<McpTool["default_from"], string> = {
   default: "nothing declared",
   sql: "deleting or changing tables needs the name typed",
   service: "known for this service: by what each call does",
+  guard: "the rule for this kind of service",
 };
 
 /** What the server says about a tool (its MCP annotations), if anything. */
@@ -86,7 +88,7 @@ export function McpTools({ name, onChange }: { name: string; onChange: () => voi
               {hintBadge(tool)}
             </div>
             {tool.description ? <p className="text-xs text-muted">{tool.description.slice(0, 200)}</p> : null}
-            <Select
+            {tool.locked ? <p className="text-xs text-muted">{RUNS[tool.rule]}: the rule for this kind of service, so it can&apos;t be loosened.</p> : <Select
               label="When the agent calls it"
               value={chosen[tool.name] ?? ""}
               onChange={(level) => setEdited({ ...chosen, [tool.name]: level as Level | "" })}
@@ -94,7 +96,7 @@ export function McpTools({ name, onChange }: { name: string; onChange: () => voi
                 ["", `${RUNS[tool.default]} (default, ${FROM[tool.default_from]})`],
                 ...(Object.keys(RUNS) as Level[]).map((level): [string, string] => [level, RUNS[level]]),
               ]}
-            />
+            />}
           </li>
         ))}
       </ul>

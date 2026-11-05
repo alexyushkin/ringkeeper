@@ -8,7 +8,7 @@ keyed by its id), with its fields as {{event...}}.
     {"source": "airtable", "connection": "acme-airtable", "base": "app...", "table": "Leads"}
     {"source": "gmail", "connection": "acme-info", "query": "from:@acme.example"}
 
-Gmail is a Google account connection (Settings > Google app).
+Gmail is a Google account connection (Settings > Developer apps).
 """
 
 import asyncio

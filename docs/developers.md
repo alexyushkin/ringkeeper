@@ -258,7 +258,7 @@ A worker only gets the endpoints of the services its project is connected to.
   hooks off and every credential helper cleared, so your computer's own git
   credentials are never used; then `create_pull` opens the pull request.
 - **google:** a Google account (Gmail, Drive, Calendar, Sheets), signed in
-  through your own Google app (desktop app, Settings › Google app, set up
+  through your own Google app (desktop app, Settings › Developer apps, set up
   once: an OAuth "Desktop app" client in your own Google Cloud project,
   published "In production" so sign-ins don't expire weekly). There can be
   more than one app (a client's own Google Cloud project, for a Workspace

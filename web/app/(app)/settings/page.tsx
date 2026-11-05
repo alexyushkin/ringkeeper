@@ -14,7 +14,7 @@ import { applyTheme, readTheme } from "@/lib/client/theme";
 import type { Theme } from "@/lib/theme";
 import { AboutCard } from "@/components/about";
 import { BackupSettings } from "@/components/backup";
-import { GoogleSettings } from "@/components/google";
+import { DeveloperApps } from "@/components/developer-apps";
 import { HelpHint } from "@/components/help-hint";
 import { AUTO, VoiceSettings } from "@/components/voice";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
@@ -131,15 +131,15 @@ export default function SettingsPage() {
     ...(DESKTOP
       ? [
           {
-            key: "google",
-            label: "Google app",
+            key: "developer-apps",
+            label: "Developer apps",
             content: () => (
               <div className="space-y-3">
                 <p className="text-sm text-muted">
-                  Your own Google app lets clients&apos; Google accounts sign in to Ringkeeper (Gmail, Calendar, Drive, Sheets).
-                  <HelpHint doc="services/google">Google needs an app of yours to let accounts sign in. You make it once in Google Cloud (free), paste its ID and secret here, and then add each client&apos;s Google account under Connections.</HelpHint>
+                  Some services only let an app you registered yourself sign in. Set one up here once, then sign in as many accounts through it as you need.
+                  <HelpHint doc="services/developer-apps">You register a free app with the vendor, paste its client ID and secret here, and add each account under Connections. The secret stays in the vault.</HelpHint>
                 </p>
-                <GoogleSettings />
+                <DeveloperApps />
               </div>
             ),
           },

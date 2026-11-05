@@ -15,6 +15,7 @@ so `UPDATE notes SET body = 'drop table'` is ordinary and
 import re
 from typing import Any, cast
 
+from ringkeeper import remote
 from ringkeeper.adapters import ADAPTERS, github, google, mcp, vendor
 from ringkeeper.models import InstanceType
 from ringkeeper.sql_text import (
@@ -57,6 +58,7 @@ MCP_REASONS = {
     mcp.BY_ANNOTATIONS: "its server marks as destructive",
     mcp.BY_NAME: "sounds like it deletes",
     mcp.BY_SERVICE: "calls an endpoint that deletes (or doesn't say which)",
+    mcp.BY_GUARD: "needs the name typed on this kind of service",
 }
 
 _FIRST_WORD = {
@@ -108,12 +110,21 @@ def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
     return None
 
 
-def never_trusted(service: InstanceType | None, tool: str | None, args: dict[str, Any]) -> bool:
+def never_trusted(
+    service: InstanceType | None,
+    tool: str | None,
+    args: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> bool:
     """A write nothing may run by itself: every one waits for a person, even once approved
     before (accounting)."""
-    if service is not InstanceType.VENDOR or tool != "call_operation":
-        return False
-    return vendor.never_trusted(args)
+    if service is InstanceType.VENDOR and tool == "call_operation":
+        return vendor.never_trusted(args)
+    if service is InstanceType.MCP and tool == "call_tool":
+        found = remote.BY_KEY.get(str((config or {}).get("remote") or ""))
+        guard = remote.GUARDS.get(found.guard) if found is not None else None
+        return guard is not None and guard.never_trusted
+    return False
 
 
 def reason(  # noqa: PLR0911 (one return per kind of tool)

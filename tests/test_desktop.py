@@ -935,3 +935,23 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
         win.post("/bff/desktop/claude-projects/nope", json={"name": "x", "owner": "y"}).status_code
         == 404
     )
+
+
+def test_the_fixed_address_answers_sign_ins_and_nothing_else_new() -> None:
+    from starlette.applications import Starlette  # noqa: PLC0415
+    from starlette.requests import Request  # noqa: PLC0415
+    from starlette.responses import PlainTextResponse  # noqa: PLC0415
+    from starlette.routing import Route  # noqa: PLC0415
+    from starlette.testclient import TestClient  # noqa: PLC0415
+
+    async def back(request: Request) -> PlainTextResponse:
+        return PlainTextResponse(f"state={request.query_params['state']}")
+
+    api = Starlette(routes=[Route("/oauth/callback", back), Route("/settings", back)])
+    door = server.FrontDoor(api, server.Launch(), 8765, None, hooks_port=17845)
+    client = TestClient(door, base_url="http://localhost:17845")
+    assert client.get("/oauth/callback?state=abc").text == "state=abc"
+    assert client.post("/oauth/callback?state=abc").status_code == 404
+    assert client.get("/settings?state=abc").status_code == 404
+    other = {"Host": "evil.example:17845"}
+    assert client.get("/oauth/callback?state=abc", headers=other).status_code == 421

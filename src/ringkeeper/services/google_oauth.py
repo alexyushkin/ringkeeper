@@ -1,5 +1,5 @@
 """Google accounts through the owner's own Google app (an OAuth client in their own
-Google Cloud project, Settings > Google app).
+Google Cloud project, Settings > Developer apps).
 
 The app (its client ID and secret) is stored once, in the vault. There may be
 more than one: a client's own Google Cloud project (a Workspace admin who only
@@ -227,11 +227,11 @@ def _app(settings: Settings, app_id: str | None = None) -> App:
     app = load_app(settings, app_id)
     if app is None and app_id is not None and list_apps(settings):
         raise SignInError(
-            "The Google app this account signed in through was removed (Settings > Google "
-            "app). Sign it in again through another one."
+            "The Google app this account signed in through was removed (Settings > Developer "
+            "apps). Sign it in again through another one."
         )
     if app is None:
-        raise SignInError("Set up your Google app first (Settings > Google app).")
+        raise SignInError("Set up your Google app first (Settings > Developer apps).")
     return app
 
 
@@ -320,7 +320,7 @@ def _token_request(app: App, form: dict[str, str]) -> dict[str, Any]:
         if error in ("invalid_client", "unauthorized_client"):
             raise SignInError(
                 "Google didn't accept your app's client ID or secret. Check them in "
-                "Settings > Google app."
+                "Settings > Developer apps."
             )
         said = tokens.get("error_description") or error
         raise SignInError(f"Google didn't give Ringkeeper access ({said}).")
@@ -436,6 +436,10 @@ def connection_secret(vault: Vault, kind: InstanceType, name: str, ref: str) -> 
     first if it's about to expire."""
     if kind is InstanceType.GOOGLE:
         return resolve(get_settings(), vault, name, ref)
+    if kind is InstanceType.VENDOR:
+        from ringkeeper.services import developer_apps  # noqa: PLC0415 (it needs instances)
+
+        return developer_apps.resolve(vault, name, ref)
     return mcp_oauth.resolve(vault, name, ref)
 
 

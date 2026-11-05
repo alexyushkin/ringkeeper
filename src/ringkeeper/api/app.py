@@ -14,6 +14,7 @@ from ringkeeper.api import (
     channels_routes,
     convenience_routes,
     desktop_routes,
+    developer_routes,
     google_routes,
     live_routes,
     manage_routes,
@@ -181,6 +182,7 @@ def create_app() -> FastAPI:
     app.include_router(about_routes.router)
     app.include_router(remote_routes.router)
     app.include_router(remote_routes.callback)
+    app.include_router(developer_routes.router)
     app.include_router(google_routes.router)
     app.include_router(google_routes.rules_router)
     app.include_router(routines_routes.router)

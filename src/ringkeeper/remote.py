@@ -35,6 +35,113 @@ class ScopeField:
 
 
 @dataclass(frozen=True)
+class Guard:
+    """What a kind of service needs, whatever a tool's own rule says: a tool with one of
+    `final` in its name needs the connection's name typed (unless it also has one of
+    `unless`), and any tool that doesn't read by its name waits for approval. The per-tool
+    setting can make these stricter, never looser."""
+
+    final: frozenset[str] = frozenset()
+    unless: frozenset[str] = frozenset()
+    why: str = "needs the name typed on this kind of service"
+    never_trusted: bool = False  # nothing here runs by itself, even after an approval
+
+
+GUARDS: dict[str, Guard] = {
+    "crm": Guard(
+        frozenset(
+            {
+                "delete",
+                "remove",
+                "merge",
+                "bulk",
+                "batch",
+                "import",
+                "send",
+                "email",
+                "sms",
+                "message",
+                "enroll",
+                "enrol",
+                "sequence",
+                "campaign",
+                "broadcast",
+            }
+        )
+    ),
+    "accounting": Guard(
+        frozenset(
+            {
+                "post",
+                "send",
+                "void",
+                "pay",
+                "payment",
+                "payments",
+                "journal",
+                "bank",
+                "payroll",
+                "refund",
+                "delete",
+                "remove",
+                "approve",
+                "reconcile",
+                "writeoff",
+                "transfer",
+            }
+        ),
+        never_trusted=True,
+    ),
+    "cms": Guard(
+        frozenset(
+            {
+                "publish",
+                "unpublish",
+                "delete",
+                "remove",
+                "theme",
+                "plugin",
+                "settings",
+                "setting",
+                "domain",
+                "deploy",
+                "user",
+                "users",
+                "role",
+                "roles",
+                "webhook",
+            }
+        )
+    ),
+    "payments": Guard(
+        frozenset(
+            {
+                "charge",
+                "refund",
+                "capture",
+                "void",
+                "payout",
+                "transfer",
+                "subscription",
+                "dispute",
+                "pay",
+                "payment",
+                "cancel",
+                "delete",
+                "remove",
+                "send",
+                "finalize",
+                "mandate",
+            }
+        ),
+        unless=frozenset({"link"}),
+    ),
+    "ads": Guard(frozenset({"budget", "delete", "remove", "publish", "activate", "launch"})),
+    "held": Guard(),  # every change waits for approval; nothing more
+}
+
+
+@dataclass(frozen=True)
 class Remote:
     key: str
     name: str
@@ -59,6 +166,14 @@ class Remote:
     )
     note: str = ""
     extra: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    category: str = ""  # as the catalog groups it (empty: its old place)
+    guard: str = ""  # a key of GUARDS: rules the per-tool setting can't lower
+    # Tools that do anything at all behind one name: the name can't say what a call does,
+    # so each call needs the connection's name typed.
+    opaque_tools: frozenset[str] = frozenset()
+    url_label: str = ""  # each customer has their own address: what to ask for
+    url_hint: str = ""
+    basic: bool = False  # the pasted "user:password" goes as HTTP Basic
     # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
     # its own connection type, with GitHub Enterprise Server and pushes).
     shelf: bool = True
@@ -168,6 +283,159 @@ CATALOG: tuple[Remote, ...] = (
         open_tools=frozenset({"get_me", "search_code"}),
         note="GitHub doesn't let apps register themselves, so it takes a token.",
         shelf=False,
+    ),
+    # --- CRM ---
+    Remote(
+        "gohighlevel", "GoHighLevel", "https://services.leadconnectorhq.com/mcp/anthropic/v2",
+        signin=True, paste=None, category="CRM", guard="crm",
+        read_tools=frozenset({"list_locations", "search_operations", "describe_operation"}),
+        opaque_tools=frozenset({"execute_operation"}),
+        note="You pick the sub-account when you sign in. Every action goes through one tool, so "
+        "each one needs the name typed.",
+    ),
+    Remote(
+        "monday", "monday.com", "https://mcp.monday.com/mcp", signin=True, paste=None,
+        category="CRM", guard="crm", opaque_tools=frozenset({"all_monday_api"}),
+        note="monday's server is in beta. Its open GraphQL tool needs the name typed.",
+    ),
+    Remote(
+        "attio", "Attio", "https://mcp.attio.com/mcp", signin=True, paste=None, category="CRM",
+        guard="crm", note="A link reaches what your Attio user can see.",
+    ),
+    Remote(
+        "close", "Close", "https://mcp.close.com/mcp", signin=True, paste=None, category="CRM",
+        guard="crm", note="Choose what it may do when you sign in.",
+    ),
+    Remote(
+        "zoho_crm", "Zoho CRM", "", signin=False, paste=None, category="CRM", guard="crm",
+        url_label="Your Zoho MCP address", url_hint="From the Zoho MCP console: "
+        "https://<name>-<org>.zohomcp.com/mcp/<key>/message. It holds a key, so it's kept in "
+        "the vault.",
+    ),
+    # --- Accounting ---
+    Remote(
+        "freshbooks", "FreshBooks", "https://mcp.freshbooks.com/v1", signin=True, paste=None,
+        category="Accounting", guard="accounting",
+        note="FreshBooks' server only reads for now. A sign-in reaches every business on the "
+        "login.",
+    ),
+    Remote(
+        "zoho_books", "Zoho Books", "https://claude-zohobooks.zohomcp.com/mcp/message",
+        signin=True, paste=None, category="Accounting", guard="accounting",
+        note="This is Zoho's US address. No accounting change runs by itself, even on test "
+        "data.",
+    ),
+    Remote(
+        "odoo", "Odoo", "", signin=True, paste=None, category="Accounting", guard="accounting",
+        url_label="Your Odoo address", url_hint="Your database address plus /mcp, like "
+        "https://acme.odoo.com/mcp. It needs Odoo 20 or saas-19.4, with Allow Dynamic Client "
+        "Registration ticked in Odoo's MCP settings.",
+    ),
+    # --- CMS ---
+    Remote(
+        "wordpress_com", "WordPress.com", "https://public-api.wordpress.com/wpcom/v2/mcp/v1",
+        signin=True, paste=None, category="CMS", guard="cms",
+        note="One sign-in reaches every site on the account. Choose Read only at sign-in if "
+        "that's all you need.",
+    ),
+    Remote(
+        "wordpress", "WordPress (your own site)", "", signin=False,
+        paste="Username and application password, as user:password", category="CMS", guard="cms",
+        paste_url="https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/",
+        paste_steps="Install the WordPress MCP Adapter plugin (WordPress 6.9 or later). In Users, "
+        "open your profile and add an application password.",
+        url_label="Your site's MCP address",
+        url_hint="https://example.com/wp-json/mcp/mcp-adapter-default-server",
+        basic=True,
+    ),
+    Remote(
+        "webflow", "Webflow", "https://mcp.webflow.com/mcp", signin=True, paste=None,
+        category="CMS", guard="cms", note="You pick the sites when you sign in.",
+    ),
+    Remote(
+        "wix", "Wix", "https://mcp.wix.com/mcp", signin=True, paste=None, category="CMS",
+        guard="cms", opaque_tools=frozenset({"CallWixSiteAPI", "ExecuteWixAPI"}),
+        note="Wix's open API tools need the name typed.",
+    ),
+    Remote(
+        "sanity", "Sanity", "https://mcp.sanity.io", signin=True, paste=None, category="CMS",
+        guard="cms", note="Editing drafts waits for approval. Publishing needs the name typed.",
+    ),
+    Remote(
+        "contentful", "Contentful", "https://mcp.contentful.com/mcp", signin=True, paste=None,
+        category="CMS", guard="cms",
+        note="Install the Contentful MCP app in the space first. For a space in Europe, add "
+        "https://mcp.eu.contentful.com/mcp by its address.",
+    ),
+    Remote(
+        "strapi", "Strapi", "", signin=False, paste="Strapi Admin API token", category="CMS",
+        guard="cms", paste_steps="In Strapi's admin, open Settings, then API Tokens. Strapi's "
+        "MCP server needs turning on (mcp.enabled, Strapi 5.47 or later).",
+        url_label="Your Strapi MCP address", url_hint="https://cms.example.com/mcp",
+    ),
+    Remote(
+        "payload", "Payload", "", signin=False, paste="Payload user API key", category="CMS",
+        guard="cms", auth_scheme="users API-Key",
+        paste_steps="Add @payloadcms/plugin-mcp to your Payload app, and turn on an API key for "
+        "a user. This sends it as users API-Key: a different auth collection needs its own "
+        "name, so add that server by its address instead.",
+        url_label="Your Payload MCP address", url_hint="https://cms.example.com/api/mcp",
+    ),
+    # --- Payments ---
+    Remote(
+        "stripe", "Stripe", "https://mcp.stripe.com", signin=True, paste=None,
+        category="Payments", guard="payments",
+        note="You pick the account and what it may do when you sign in. Use a sandbox while "
+        "you try it.",
+    ),
+    Remote(
+        "paypal", "PayPal", "https://mcp.paypal.com/mcp", signin=True, paste=None,
+        category="Payments", guard="payments",
+    ),
+    Remote(
+        "mollie", "Mollie", "https://mcp.mollie.com/mcp", signin=True, paste=None,
+        category="Payments", guard="payments", note="Mollie's server launched in October 2026.",
+    ),
+    Remote(
+        "paddle", "Paddle", "https://mcp.paddle.com/mcp", signin=True, paste=None,
+        category="Payments", guard="payments",
+        note="Paddle starts read-only: an admin raises it under Connectors, then MCP.",
+    ),
+    Remote(
+        "gocardless", "GoCardless", "https://mcp.gocardless.com", signin=True, paste=None,
+        category="Payments", guard="payments",
+        note="You pick Sandbox or Live, and what it may do, when you sign in.",
+    ),
+    # --- Other services ---
+    Remote(
+        "apollo", "Apollo", "https://mcp.apollo.io/mcp", signin=True, paste=None,
+        category="CRM", guard="held", note="Tools that spend credits wait for your approval.",
+    ),
+    Remote(
+        "apify", "Apify", "https://mcp.apify.com", signin=True, paste=None, category="AI",
+        guard="held", note="Running an Actor costs credits, so it waits for your approval.",
+    ),
+    Remote(
+        "netlify", "Netlify", "https://mcp.netlify.com/mcp", signin=True, paste=None,
+        category="Dev tools", guard="held",
+    ),
+    Remote(
+        "posthog", "PostHog", "https://mcp.posthog.com/mcp", signin=True, paste=None,
+        category="Dev tools", guard="held",
+    ),
+    Remote(
+        "tavily", "Tavily", "https://mcp.tavily.com/mcp/", signin=True, paste=None, category="AI",
+        note="Each search uses Tavily credits.",
+    ),
+    Remote(
+        "pipeboard", "Meta Ads (Pipeboard)", "https://mcp.pipeboard.co/meta-ads-mcp",
+        signin=True, paste=None, category="Other", guard="ads",
+        note="Pipeboard is a third party, not Meta. Budgets and launching ads need the name "
+        "typed.",
+    ),
+    Remote(
+        "upwork", "Upwork", "https://mcp.upwork.com/mcp", signin=True, paste=None,
+        category="Other", guard="held", note="Proposals and messages wait for your approval.",
     ),
 )  # fmt: skip
 
