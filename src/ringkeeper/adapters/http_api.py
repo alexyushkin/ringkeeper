@@ -34,7 +34,6 @@ from ringkeeper.models import InstanceType
 # Tests swap in httpx2.MockTransport; production uses the real network.
 transport: httpx2.AsyncBaseTransport | None = None
 AUTHS = ("bearer", "header", "basic", "query", "none")
-MAX_ANSWER_CHARS = 50_000
 MAX_SPEC_BYTES = 8_000_000
 MAX_ENDPOINTS = 200
 OPENAPI_METHODS = ("get", "post", "put", "patch", "delete", "head")
@@ -133,13 +132,9 @@ def _answer(response: httpx2.Response) -> JSON:
             parsed = response.json()
         except ValueError:
             parsed = None
-        text = json.dumps(parsed)
-        if parsed is not None and len(text) <= MAX_ANSWER_CHARS:
-            return answer | {"json": parsed}
-        return answer | {"text": text[:MAX_ANSWER_CHARS], "truncated": True}
+        return answer | ({"json": parsed} if parsed is not None else {"text": response.text})
     if kind.startswith(("text/", "application/xml", "application/yaml")):
-        text = response.text
-        return answer | {"text": text[:MAX_ANSWER_CHARS], "truncated": len(text) > MAX_ANSWER_CHARS}
+        return answer | {"text": response.text}
     return answer | {"content_type": kind, "bytes": len(response.content)}
 
 

@@ -30,3 +30,9 @@ read for certain need the connection's name typed to approve.
 
 A plain `UPDATE` or `DELETE` on one table with a primary key can be reverted
 for 7 days ([Undo](../undo.md)). An `INSERT` and schema changes can't.
+
+## Long results
+
+A query returns 200 rows unless the task asks for more, up to 1,000. When there are more, the
+answer says so, with the total and where to go on, and the task runs the same query from there.
+A statement that changed something is never run again to see more of its result.

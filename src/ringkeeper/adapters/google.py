@@ -25,7 +25,7 @@ from urllib.parse import quote
 import httpx2
 from pydantic import Field
 
-from ringkeeper.adapters import rest
+from ringkeeper.adapters import extract, mail_text, rest
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -38,6 +38,14 @@ from ringkeeper.adapters.base import (
     read,
 )
 from ringkeeper.adapters.mail import bulk_reason
+from ringkeeper.adapters.mail_text import (
+    AttachmentId,
+    IncludeQuoted,
+    ThreadBody,
+    ThreadLimit,
+    ThreadOffset,
+)
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit, page
 from ringkeeper.models import InstanceType
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -51,7 +59,6 @@ ANALYTICS_DATA = "https://analyticsdata.googleapis.com/v1beta"
 # The account's address. Its own base, called with a path: an HTTP client adds a
 # slash to a base address, and Google answers .../userinfo/ with a 404.
 OPENID = "https://openidconnect.googleapis.com/v1"
-MAX_TEXT_CHARS = 20_000
 # Tests swap in httpx2.MockTransport; production talks to Google.
 transport: httpx2.AsyncBaseTransport | None = None
 
@@ -61,6 +68,9 @@ Address = Annotated[str, Field(pattern=ADDRESS_PATTERN)]
 Addresses = Annotated[list[Address], Field(min_length=1, max_length=50)]
 MessageId = Annotated[
     str, Field(description="The message id, from search_mail.", pattern=ID_PATTERN)
+]
+ThreadId = Annotated[
+    str, Field(description="The thread_id, from search_mail or read_mail.", pattern=ID_PATTERN)
 ]
 FileId = Annotated[str, Field(description="The file id, from search_files.", pattern=ID_PATTERN)]
 SheetId = Annotated[
@@ -141,8 +151,12 @@ def _headers(payload: JSON) -> dict[str, str]:
     }
 
 
+def _bytes(data: str) -> bytes:
+    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+
+
 def _decode(data: str) -> str:
-    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "replace")
+    return _bytes(data).decode("utf-8", "replace")
 
 
 def _text(payload: JSON) -> str:
@@ -158,10 +172,45 @@ def _text(payload: JSON) -> str:
             walk(child)
 
     walk(payload)
-    if "text/plain" in found:
-        return found["text/plain"].strip()
-    html = re.sub(r"<[^>]+>", " ", found.get("text/html", ""))
-    return re.sub(r"[ \t]+", " ", html).strip()
+    return mail_text.best_text(found.get("text/plain", ""), found.get("text/html", ""))
+
+
+def _attached(payload: JSON) -> list[JSON]:
+    """The parts of a message that are attachments."""
+    found: list[JSON] = []
+
+    def walk(part: JSON) -> None:
+        if part.get("filename"):
+            found.append(part)
+        for child in cast(list[JSON], part.get("parts") or []):
+            walk(child)
+
+    walk(payload)
+    return found
+
+
+def _listed(part: JSON) -> JSON:
+    """An attachment as a message lists it. Google's own attachment id changes with every read,
+    so the id here is the part's place in the message, which doesn't."""
+    body = cast(JSON, part.get("body") or {})
+    return {
+        "id": str(part.get("partId") or ""),
+        "name": str(part.get("filename")),
+        "type": str(part.get("mimeType") or ""),
+        "size": int(body.get("size") or 0),
+    }
+
+
+def _message_fields(message: JSON, offset: int, limit: int, include_quoted: bool = False) -> JSON:
+    payload = cast(JSON, message.get("payload") or {})
+    headers = _headers(payload)
+    return {
+        "id": message.get("id"),
+        "thread_id": message.get("threadId"),
+        **{k: headers.get(k, "") for k in ("from", "to", "cc", "subject", "date")},
+        **mail_text.body_fields(_text(payload), offset, limit, include_quoted),
+        "attachments": [_listed(p) for p in _attached(payload)],
+    }
 
 
 @read
@@ -196,32 +245,74 @@ async def search_mail(
 
 
 @read
-async def read_mail(target: Target, message_id: MessageId) -> JSON:
-    """Read one message: headers, its text, and attachment names. Doesn't mark it read."""
+async def read_mail(
+    target: Target,
+    message_id: MessageId,
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+    include_quoted: IncludeQuoted = False,
+) -> JSON:
+    """Read one message: headers, its whole text and its attachments. Doesn't mark it read. A
+    long message comes in parts: total_chars says how long, next_offset where the next part
+    starts. Earlier messages a reply quotes are in `quoted` (include_quoted puts them in the
+    body). read_attachment reads an attachment; get_thread reads the whole conversation."""
     _need(target, "mail_read")
     message = await _call(
         target, GMAIL, "GET", f"/messages/{message_id}", params={"format": "full"}
     )
-    payload = cast(JSON, message.get("payload") or {})
-    headers = _headers(payload)
-    body = _text(payload)
-    attachments: list[str] = []
+    return _message_fields(message, offset, limit, include_quoted) | {"id": message_id}
 
-    def walk(part: JSON) -> None:
-        if part.get("filename"):
-            attachments.append(str(part["filename"]))
-        for child in cast(list[JSON], part.get("parts") or []):
-            walk(child)
 
-    walk(payload)
-    return {
-        "id": message_id,
-        "thread_id": message.get("threadId"),
-        **{k: headers.get(k, "") for k in ("from", "to", "cc", "subject", "date")},
-        "body": body[:MAX_TEXT_CHARS],
-        "truncated": len(body) > MAX_TEXT_CHARS,
-        "attachments": attachments,
-    }
+@read
+async def read_attachment(
+    target: Target,
+    message_id: MessageId,
+    attachment_id: AttachmentId,
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+) -> JSON:
+    """Read the text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR is
+    installed. Long ones come in parts, like read_mail."""
+    _need(target, "mail_read")
+    message = await _call(
+        target, GMAIL, "GET", f"/messages/{message_id}", params={"format": "full"}
+    )
+    parts = _attached(cast(JSON, message.get("payload") or {}))
+    part = next((p for p in parts if str(p.get("partId")) == attachment_id), None)
+    if part is None:
+        raise ToolError(f"this message has no attachment {attachment_id}")
+    body = cast(JSON, part.get("body") or {})
+    data = str(body.get("data") or "")
+    if not data:
+        fetched = await _call(
+            target, GMAIL, "GET", f"/messages/{message_id}/attachments/{body.get('attachmentId')}"
+        )
+        data = str(fetched.get("data") or "")
+    content = _bytes(data)
+    found = extract.extract(str(part.get("filename")), str(part.get("mimeType") or ""), content)
+    answer = {k: v for k, v in _listed(part).items() if k != "id"} | {"size": len(content)}
+    answer |= page(found.text, offset, limit)
+    return answer | ({"read_note": found.note} if found.note else {})
+
+
+@read
+async def get_thread(
+    target: Target,
+    thread_id: ThreadId,
+    offset: ThreadOffset = 0,
+    limit: ThreadLimit = 20,
+    body_chars: ThreadBody = mail_text.THREAD_BODY_CHARS,
+) -> JSON:
+    """Read a conversation, oldest message first. Each message shows the start of its text,
+    with total_chars: read_mail reads the rest of a long one."""
+    _need(target, "mail_read")
+    thread = await _call(target, GMAIL, "GET", f"/threads/{thread_id}", params={"format": "full"})
+    messages = sorted(
+        cast(list[JSON], thread.get("messages") or []),
+        key=lambda m: int(str(m.get("internalDate") or 0)),
+    )
+    shown = [_message_fields(m, 0, body_chars) for m in messages]
+    return mail_text.thread_page(shown, offset, limit)
 
 
 async def _compose(
@@ -340,8 +431,12 @@ EXPORTS = {
 
 
 @read
-async def read_file(target: Target, file_id: FileId) -> JSON:
-    """Read a file's text: Docs and Slides as text, Sheets as CSV, text files as they are."""
+async def read_file(
+    target: Target, file_id: FileId, offset: Offset = 0, limit: PageLimit = PAGE_CHARS
+) -> JSON:
+    """Read a file's text: Docs and Slides as text, Sheets as CSV, text files as they are, and
+    the text inside PDF, Word and Excel files. A long file comes in parts: total_chars says how
+    long, next_offset where the next part starts."""
     _need(target, "drive_files", "drive_read_all")
     meta = await _call(
         target, DRIVE, "GET", f"/files/{file_id}", params={"fields": "id,name,mimeType"}
@@ -349,10 +444,8 @@ async def read_file(target: Target, file_id: FileId) -> JSON:
     mime = str(meta.get("mimeType") or "")
     if mime in EXPORTS:
         path, params = f"/files/{file_id}/export", {"mimeType": EXPORTS[mime]}
-    elif mime.startswith("text/") or mime in ("application/json", "application/csv"):
-        path, params = f"/files/{file_id}", {"alt": "media"}
     else:
-        raise ToolError(f"'{meta.get('name')}' is a {mime} file; only text can be read here")
+        path, params = f"/files/{file_id}", {"alt": "media"}
     try:
         async with _client(target, DRIVE) as http:
             response = await http.get(path, params=params)
@@ -360,11 +453,13 @@ async def read_file(target: Target, file_id: FileId) -> JSON:
         raise ToolError(f"cannot reach Google: {type(error).__name__}") from None
     if response.status_code >= 400:
         raise ToolError(f"Google returned {response.status_code}: {rest.error_message(response)}")
-    text = response.text
-    return {
-        "id": file_id, "name": meta.get("name"), "type": mime,
-        "text": text[:MAX_TEXT_CHARS], "truncated": len(text) > MAX_TEXT_CHARS,
-    }  # fmt: skip
+    name = str(meta.get("name") or "")
+    answer: JSON = {"id": file_id, "name": meta.get("name"), "type": mime}
+    if mime in EXPORTS:
+        return answer | page(response.text, offset, limit)
+    found = extract.extract(name, mime, response.content)
+    answer |= page(found.text, offset, limit)
+    return answer | ({"read_note": found.note} if found.note else {})
 
 
 @always_held
@@ -660,6 +755,8 @@ async def analytics_report(
 NEEDS: dict[str, tuple[str, ...]] = {
     "search_mail": ("mail_read",),
     "read_mail": ("mail_read",),
+    "read_attachment": ("mail_read",),
+    "get_thread": ("mail_read",),
     "send_mail": ("mail_send", "mail_drafts"),
     "create_draft": ("mail_drafts",),
     "trash_mail": ("mail_trash",),
@@ -695,7 +792,8 @@ ADAPTER = Adapter(
     tools=tuple(
         _asks_first(t) if t.kind is ToolKind.WRITE else t
         for t in (
-            search_mail, read_mail, send_mail, create_draft, trash_mail,
+            search_mail, read_mail, read_attachment, get_thread, send_mail, create_draft,
+            trash_mail,
             search_files, read_file, upload_file, share_file,
             list_events, create_event,
             read_sheet, update_sheet, append_rows,

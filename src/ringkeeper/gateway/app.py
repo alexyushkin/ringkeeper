@@ -32,7 +32,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ringkeeper import __version__
 from ringkeeper.adapters import ADAPTERS, agent_name
-from ringkeeper.adapters.base import Adapter, ToolKind, ToolSpec
+from ringkeeper.adapters.base import Adapter, ToolError, ToolKind, ToolSpec
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.errors import RingkeeperError
@@ -42,6 +43,7 @@ from ringkeeper.gateway.architect import build_architect_server
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
+from ringkeeper.services import continuations
 from ringkeeper.services.calls import (
     bound_instances,
     run_call,
@@ -188,11 +190,27 @@ def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
             raise McpToolError(scrub(str(error))) from None
         return {"instances": instances}
 
-    server.tool(
-        list_instances,
-        name="list_instances",
-        annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False),
-    )
+    async def read_more(
+        continuation: Annotated[
+            str, Field(description="From the result.", min_length=8, max_length=64)
+        ],
+        offset: Offset = 0,
+        limit: PageLimit = PAGE_CHARS,
+    ) -> dict[str, Any]:
+        """Read on in a long result. A result that says `continuation` is only part of what
+        came back: pass that value with its next_offset for the next part, until next_offset
+        is null. Works for a result from any tool, for about half an hour."""
+        try:
+            return continuations.read_more(current_caller(), continuation, offset, limit)
+        except ToolError as error:
+            raise McpToolError(scrub(str(error))) from None
+
+    for extra in (list_instances, read_more):
+        server.tool(
+            extra,
+            name=extra.__name__,
+            annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False),
+        )
     for spec in adapter.tools:
         is_read = spec.kind is ToolKind.READ
         server.tool(

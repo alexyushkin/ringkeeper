@@ -33,3 +33,14 @@ Microsoft has turned password sign-in off for IMAP there, and is doing the same 
 
 Changes to a mailbox can't be undone here. A deleted message stays in the mailbox's
 trash for as long as your provider keeps it.
+
+## Long emails and attachments
+
+A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep
+their address and tables keep their rows. A longer one comes in parts, and each part says how
+long the message is and where the next part starts. The earlier messages a reply quotes are
+kept apart from what's new, and the task can ask for them.
+
+A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole
+conversation, oldest message first. Reading text from a picture or a scanned PDF needs the
+free `tesseract` program on this computer. Without it, the task is told it couldn't be read.

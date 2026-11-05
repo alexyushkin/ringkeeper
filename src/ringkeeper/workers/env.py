@@ -20,6 +20,8 @@ FIXED_ENV = {
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "DISABLE_AUTOUPDATER": "1",
     "DISABLE_TELEMETRY": "1",
+    # A tool's answer can be a whole email (adapters.paging). Claude Code's own limit is lower.
+    "MAX_MCP_OUTPUT_TOKENS": "100000",
 }
 
 TASK_ENV = "RINGKEEPER_TASK"

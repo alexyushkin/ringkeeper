@@ -17,7 +17,13 @@ you work: if you need anything from the operator (a choice, a missing detail,
 confirmation), call the ask_user tool. Don't ask questions in your reply text.
 Some tool calls are held for the operator's approval. They already see those,
 so never ask about a held call: end your turn as its result says, and you'll be
-resumed with what happened."""
+resumed with what happened.
+A tool result can be only part of what's there. When one says "truncated": true,
+or has a next_offset, next_page or continuation, fetch the rest before you answer
+(offset=next_offset, or read_more with the continuation). If you can't or it isn't
+needed, say plainly that your answer is based on part of it. Never summarize part
+of something as if it were the whole. A write isn't repeated to see more of its
+result."""
 
 
 def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> ClaudeAgentOptions:

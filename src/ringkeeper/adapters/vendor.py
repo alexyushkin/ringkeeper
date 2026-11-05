@@ -54,7 +54,6 @@ VENDORS: dict[str, Vendor] = {v.key: v for v in ALL}
 OPERATIONS: dict[str, tuple[Vendor, Op]] = {
     f"{v.key}.{op.name}": (v, op) for v in ALL for op in v.ops
 }
-MAX_ANSWER_CHARS = 100_000
 # Currencies with no cents: an amount in them is already whole (Stripe's and Square's list).
 WHOLE_CURRENCIES = frozenset({
     "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VND",
@@ -271,13 +270,6 @@ def _client(vendor: Vendor, fields: JSON, account: str | None) -> httpx2.AsyncCl
     )  # fmt: skip
 
 
-def _limited(answer: JSON) -> JSON:
-    text = json.dumps(answer, default=str)
-    if len(text) <= MAX_ANSWER_CHARS:
-        return answer
-    return {"truncated": True, "text": text[:MAX_ANSWER_CHARS], "note": "ask for fewer at a time"}
-
-
 def _filled_url(vendor: Vendor, address: str, fields: JSON) -> str:
     patterns = {s.key: s.pattern for s in vendor.secrets}
 
@@ -379,7 +371,10 @@ async def _call_operation(
     target: Target,
     operation: OperationName,
     path: Annotated[Values, Field(description="Values for the operation's path.")] = None,
-    query: Annotated[Values, Field(description="Query values, for a read or a search.")] = None,
+    query: Annotated[
+        Values,
+        Field(description="Query values, for a read or a search, as list_operations shows."),
+    ] = None,
     body: Annotated[Values, Field(description="What to send, for a change.")] = None,
     account: Annotated[
         str | None, Field(description="Which account, where the service has several.")
@@ -389,7 +384,13 @@ async def _call_operation(
     list_operations says it runs without asking."""
     args = {"operation": operation, "path": path, "body": body}
     vendor, op, fields = _own(target, args)
-    return _limited(await run(vendor, op, fields, path, query, body, account))
+    values = dict(query or {})
+    local = {k: values.pop(k) for k in op.local if k in values}
+    if op.prepare is not None:
+        values = op.prepare(values, local)
+    answer = await run(vendor, op, fields, path, values, body, account)
+    # A long answer is read in parts: services.continuations.
+    return op.after(answer, local) if op.after is not None else answer
 
 
 def _at(value: JSON, dotted: str) -> Any:

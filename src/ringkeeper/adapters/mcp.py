@@ -382,7 +382,7 @@ async def _call_tool(
     text = "\n".join(getattr(block, "text", "") for block in result.content).strip()
     if result.is_error:
         raise ToolError(text or f"'{tool}' failed")
-    answer: JSON = {"text": text[:50_000]}
+    answer: JSON = {"text": text}  # a long one is read in parts: services.continuations
     if result.structured_content is not None:
         answer["structured"] = result.structured_content
     return answer

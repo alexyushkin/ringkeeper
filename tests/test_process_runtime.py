@@ -154,7 +154,8 @@ def test_a_worker_runs_in_the_project_folder_with_its_own_home(
     names = set(report["env_names"])
     assert not {TASK_ENV, TOKEN_ENV} & names  # popped before the agent starts
     assert {n for n in names if n.startswith("RINGKEEPER_")} == set()
-    assert names & set(BILLING_ENV_VARS) == {"ANTHROPIC_API_KEY"}  # exactly one credential
+    # The model proxy's address and a token for it: no credential.
+    assert names & set(BILLING_ENV_VARS) == {"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"}
 
     gateway = events["stub.gateway"]
     assert gateway

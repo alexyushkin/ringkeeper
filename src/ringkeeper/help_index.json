@@ -319,6 +319,12 @@
 },
 {
 "doc": "security",
+"anchor": "a-task-knows-when-it-has-only-part-of-something",
+"title": "A task knows when it has only part of something",
+"text": "A long answer never just stops. Every tool that returns part of something says how much there is and where the next part starts, and a task is told to read the rest before it answers, or to say its answer is based on part of it. A long result that can't simply be asked for again, such as the answer to an API call, is kept in memory for about half an hour, for that task only, after secrets are removed from it."
+},
+{
+"doc": "security",
 "anchor": "keys-stay-out-of-a-task",
 "title": "Keys stay out of a task",
 "text": "A task runs Claude Code with two short-lived passes for its own project, and no keys. One reaches its connections, through Ringkeeper's gateway, which checks that the project may use that connection, adds the key itself, removes any secret from the answer, and logs the call. The other reaches only the model, through Ringkeeper's model proxy, which adds your API key, subscription or cloud sign-in on the way out and counts the tokens. Both end with the session. One client's project can't reach another client's connection through these. **What this doesn't stop on the desktop.** A task runs as your own Windows or Mac user, so it isn't walled off from what that user can reach. No key is in its environment or its own files, but a script written to do it could still ask the system keychain for the master key and open the vault, or read Ringkeeper's own files and act as the app. A task told to do that by something it read is the risk to think about. With Docker workers (the server install) a task has no access to the vault or the keychain at all."
@@ -588,6 +594,12 @@
 "text": "A plain `UPDATE` or `DELETE` on one table with a primary key can be reverted for 7 days (Undo). An `INSERT` and schema changes can't."
 },
 {
+"doc": "services/database",
+"anchor": "long-results",
+"title": "Long results",
+"text": "A query returns 200 rows unless the task asks for more, up to 1,000. When there are more, the answer says so, with the total and where to go on, and the task runs the same query from there. A statement that changed something is never run again to see more of its result."
+},
+{
 "doc": "services/github",
 "anchor": "where-to-get-the-key",
 "title": "Where to get the key",
@@ -648,6 +660,12 @@
 "text": "A sent email can't be unsent."
 },
 {
+"doc": "services/gmail",
+"anchor": "long-emails-and-attachments",
+"title": "Long emails and attachments",
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
+},
+{
 "doc": "services/google",
 "anchor": "",
 "title": "Google (Gmail, Calendar, Drive, Sheets, Search Console, Analytics)",
@@ -682,6 +700,12 @@
 "anchor": "search-console-and-analytics",
 "title": "Search Console and Analytics",
 "text": "Choose **Search Console: read** and **Analytics: read** when you sign in, or later with Change access. Both only read: search clicks, impressions and positions, and Analytics reports. If your Google app was made before these were added, first turn on the Search Console, Analytics Data and Analytics Admin APIs, and add the `webmasters.readonly` and `analytics.readonly` scopes under Data Access."
+},
+{
+"doc": "services/google",
+"anchor": "long-emails-and-attachments",
+"title": "Long emails and attachments",
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
 },
 {
 "doc": "services/n8n",
@@ -814,6 +838,12 @@
 "anchor": "undo",
 "title": "Undo",
 "text": "Changes to a mailbox can't be undone here. A deleted message stays in the mailbox's trash for as long as your provider keeps it."
+},
+{
+"doc": "services/mailbox",
+"anchor": "long-emails-and-attachments",
+"title": "Long emails and attachments",
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
 },
 {
 "doc": "services/smtp",
@@ -970,6 +1000,12 @@
 "anchor": "undo",
 "title": "Undo",
 "text": "An edit to a draft, an event, a message's marks, or a file's name can be undone. A sent email can't be unsent."
+},
+{
+"doc": "services/microsoft",
+"anchor": "long-emails-and-attachments",
+"title": "Long emails and attachments",
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
 },
 {
 "doc": "services/hubspot",

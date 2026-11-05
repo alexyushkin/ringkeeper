@@ -76,10 +76,28 @@ class Op:
     money: Money | None = None
     # Values added to the body from the connection, never from the AI.
     inject: tuple[str, ...] = ()
+    # A read's own query values, for `prepare` and `after`; the service never sees them.
+    local: tuple[str, ...] = ()
+    # What the service is asked, from the call's query and the `local` values.
+    prepare: Callable[[JSON, JSON], JSON] | None = None
+    # The answer, made readable, from what came back and the `local` values.
+    after: Callable[[JSON, JSON], JSON] | None = None
 
 
-def reads(name: str, path: str, says: str, *params: str, method: str = "GET") -> Op:
-    return Op(name, method, path, says, READ, params=params)
+def reads(
+    name: str,
+    path: str,
+    says: str,
+    *params: str,
+    method: str = "GET",
+    local: tuple[str, ...] = (),
+    prepare: Callable[[JSON, JSON], JSON] | None = None,
+    after: Callable[[JSON, JSON], JSON] | None = None,
+) -> Op:
+    return Op(
+        name, method, path, says, READ, params=(*params, *local), local=local, prepare=prepare,
+        after=after,
+    )  # fmt: skip
 
 
 def held(

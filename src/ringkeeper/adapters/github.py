@@ -42,12 +42,13 @@ from ringkeeper.adapters.base import (
     always_held,
     read,
 )
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit, page
 from ringkeeper.models import InstanceType
 
 PUBLIC_API = "https://api.github.com"
 PUBLIC_WEB = "https://github.com"
 BRANCH_PREFIX = "ringkeeper/"
-MAX_TEXT_CHARS = 20_000
+EACH_PAGE = 100  # GitHub's most
 GIT_TIMEOUT = 300
 # Tests swap in httpx2.MockTransport; production uses the real network.
 transport: httpx2.AsyncBaseTransport | None = None
@@ -61,6 +62,9 @@ Repo = Annotated[
 ]
 Number = Annotated[int, Field(ge=1, description="The issue or pull request number.")]
 Limit = Annotated[int, Field(ge=1, le=100)]
+ListPage = Annotated[
+    int, Field(ge=1, description=f"Which {EACH_PAGE} to read: next_page from the last part.")
+]
 Text = Annotated[str, Field(max_length=65_000)]
 Branch = Annotated[str, Field(min_length=1, max_length=250, pattern=r"^[A-Za-z0-9._/-]+$")]
 
@@ -131,6 +135,17 @@ async def probe(target: Target) -> str:
     return f"Connected to GitHub{where} as {me.get('login')}."
 
 
+def _list_part(total: int, at: int, name: str) -> JSON:
+    """How much of a long list this is: every answer that holds part of one says so."""
+    more = at * EACH_PAGE < total
+    return {
+        name: total,
+        "page": at,
+        "truncated": more or at > 1,
+        "next_page": at + 1 if more else None,
+    }
+
+
 def _issue(item: JSON) -> JSON:
     return {
         "number": item.get("number"),
@@ -182,18 +197,28 @@ async def list_issues(
 
 
 @read
-async def get_issue(target: Target, repo: Repo, number: Number) -> JSON:
-    """One issue or pull request's conversation: its text and its comments."""
+async def get_issue(
+    target: Target, repo: Repo, number: Number, comments_page: ListPage = 1
+) -> JSON:
+    """One issue or pull request's conversation: its text and its comments, oldest first. Long
+    conversations come in parts: total_comments says how many, next_page where to go on."""
     issue = await _call(target, "GET", f"{_repo(repo)}/issues/{number}")
-    comments = await _call(target, "GET", f"{_repo(repo)}/issues/{number}/comments")
-    body = str(issue.get("body") or "")
-    return _issue(issue) | {
-        "body": body[:MAX_TEXT_CHARS],
-        "comments": [
-            {"author": cast(JSON, c.get("user") or {}).get("login"), "body": c.get("body")}
-            for c in cast(list[JSON], comments.get("data") or [])
-        ],
-    }
+    comments = await _call(
+        target, "GET", f"{_repo(repo)}/issues/{number}/comments",
+        params={"per_page": EACH_PAGE, "page": comments_page},
+    )  # fmt: skip
+    total = int(issue.get("comments") or 0)
+    return (
+        _issue(issue)
+        | _list_part(total, comments_page, "total_comments")
+        | {
+            "body": str(issue.get("body") or ""),
+            "comments": [
+                {"author": cast(JSON, c.get("user") or {}).get("login"), "body": c.get("body")}
+                for c in cast(list[JSON], comments.get("data") or [])
+            ],
+        }
+    )
 
 
 @read
@@ -213,20 +238,29 @@ async def list_pulls(
 
 
 @read
-async def get_pull(target: Target, repo: Repo, number: Number) -> JSON:
-    """A pull request: its branches, whether it can merge, and the files it changes."""
+async def get_pull(target: Target, repo: Repo, number: Number, files_page: ListPage = 1) -> JSON:
+    """A pull request: its branches, whether it can merge, and the files it changes. A long
+    list comes in parts: total_files says how many, next_page where to go on."""
     pull = await _call(target, "GET", f"{_repo(repo)}/pulls/{number}")
-    files = await _call(target, "GET", f"{_repo(repo)}/pulls/{number}/files")
-    return _issue(pull) | {
-        "head": cast(JSON, pull.get("head") or {}).get("ref"),
-        "base": cast(JSON, pull.get("base") or {}).get("ref"),
-        "mergeable": pull.get("mergeable"),
-        "body": str(pull.get("body") or "")[:MAX_TEXT_CHARS],
-        "files": [
-            {"file": f.get("filename"), "status": f.get("status"), "changes": f.get("changes")}
-            for f in cast(list[JSON], files.get("data") or [])
-        ],
-    }
+    files = await _call(
+        target, "GET", f"{_repo(repo)}/pulls/{number}/files",
+        params={"per_page": EACH_PAGE, "page": files_page},
+    )  # fmt: skip
+    total = int(pull.get("changed_files") or 0)
+    return (
+        _issue(pull)
+        | _list_part(total, files_page, "total_files")
+        | {
+            "head": cast(JSON, pull.get("head") or {}).get("ref"),
+            "base": cast(JSON, pull.get("base") or {}).get("ref"),
+            "mergeable": pull.get("mergeable"),
+            "body": str(pull.get("body") or ""),
+            "files": [
+                {"file": f.get("filename"), "status": f.get("status"), "changes": f.get("changes")}
+                for f in cast(list[JSON], files.get("data") or [])
+            ],
+        }
+    )
 
 
 @read
@@ -237,8 +271,11 @@ async def get_file(
     ref: Annotated[
         str | None, Field(max_length=250, description="A branch, tag or commit.")
     ] = None,
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
 ) -> JSON:
-    """A file's text from a repository (a folder: its entries)."""
+    """A file's text from a repository (a folder: its entries). A long file comes in parts:
+    total_chars says how long, next_offset where the next part starts."""
     found = await _call(
         target, "GET", f"{_repo(repo)}/contents/{quote(path.strip('/'))}", params={"ref": ref}
     )
@@ -249,11 +286,7 @@ async def get_file(
             "entries": [{"name": e.get("name"), "type": e.get("type")} for e in entries],
         }
     content = base64.b64decode(str(found.get("content") or "")).decode("utf-8", "replace")
-    return {
-        "path": path,
-        "text": content[:MAX_TEXT_CHARS],
-        "truncated": len(content) > MAX_TEXT_CHARS,
-    }
+    return {"path": path} | page(content, offset, limit)
 
 
 @read

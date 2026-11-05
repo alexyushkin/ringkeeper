@@ -15,6 +15,14 @@ Ringkeeper server: nothing about your clients goes to the people who make it.
 | Project folders | Wherever you chose (new ones in `Documents\Ringkeeper`) | Your Windows account. |
 | Backups you make | Where you save them | Encrypted with the password you chose ([Backup](backup.md)). |
 
+## A task knows when it has only part of something
+
+A long answer never just stops. Every tool that returns part of something says how much there
+is and where the next part starts, and a task is told to read the rest before it answers, or
+to say its answer is based on part of it. A long result that can't simply be asked for again,
+such as the answer to an API call, is kept in memory for about half an hour, for that task
+only, after secrets are removed from it.
+
 ## Keys stay out of a task
 
 A task runs Claude Code with two short-lived passes for its own project, and no

@@ -293,7 +293,7 @@ def test_every_write_asks_first_unless_the_owner_lets_it_run(
     reads = owner.put("/connections/acme-info/write-rules", json={"rules": {"search_mail": "run"}})
     assert reads.status_code == 409  # only writes have a rule
     back = owner.put("/connections/acme-info/write-rules", json={"rules": {}})
-    assert back.json()["tools"][2]["rule"] == "ask"
+    assert {t["name"]: t for t in back.json()["tools"]}["send_mail"]["rule"] == "ask"
     assert call("acme-web", "send_mail", "acme-info", **email)["status"] == "held_for_approval"
 
 

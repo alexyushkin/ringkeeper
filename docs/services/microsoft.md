@@ -27,3 +27,14 @@ It can't upload a file, set a mail rule or auto-reply, or reach another person's
 
 An edit to a draft, an event, a message's marks, or a file's name can be undone. A sent email
 can't be unsent.
+
+## Long emails and attachments
+
+A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep
+their address and tables keep their rows. A longer one comes in parts, and each part says how
+long the message is and where the next part starts. The earlier messages a reply quotes are
+kept apart from what's new, and the task can ask for them.
+
+A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole
+conversation, oldest message first. Reading text from a picture or a scanned PDF needs the
+free `tesseract` program on this computer. Without it, the task is told it couldn't be read.

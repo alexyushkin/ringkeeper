@@ -49,6 +49,7 @@ from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import (
     agents,
     audit,
+    continuations,
     decisions,
     google_oauth,
     holds,
@@ -392,7 +393,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
             # The server's hints decide later calls without starting it first.
             await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
             result = _limit_listing(result, auth)
-        return scrub_obj(result)
+        return continuations.fit(call.caller, scrub_obj(result))
 
     held = spec.hold is Hold.ALWAYS or (
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved
@@ -418,11 +419,12 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         )
         raise
     why = {"reason": "trusted for an hour"} if trusted else {}
+    shown = continuations.fit(call.caller, scrub_obj(result))
     await anyio.to_thread.run_sync(
-        partial(_record, call, AuditOutcome.EXECUTED, result=result, **why)
+        partial(_record, call, AuditOutcome.EXECUTED, result=shown, **why)
     )
     await _kept(pending, target, call, result)
-    return scrub_obj(result)
+    return shown
 
 
 async def _keep(call: ToolCall, spec: ToolSpec, target: Target) -> undo.Pending | None:
@@ -555,7 +557,8 @@ async def approve(
             partial(finish, AuditOutcome.FAILED, reason=str(error))
         )
     await _kept(pending, target, call, result)
-    return await anyio.to_thread.run_sync(partial(finish, AuditOutcome.EXECUTED, result=result))
+    shown = continuations.fit(call.caller, scrub_obj(result))
+    return await anyio.to_thread.run_sync(partial(finish, AuditOutcome.EXECUTED, result=shown))
 
 
 async def request_revert(change_id: str, vault: Vault) -> Decision:

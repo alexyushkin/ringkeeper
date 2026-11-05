@@ -40,6 +40,7 @@ import oracledb
 from pydantic import Field
 
 from ringkeeper import netpolicy
+from ringkeeper.adapters import sql_paging
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, ToolKind, read, write
 from ringkeeper.adapters.undo_sql import CantUndoError, SqlUndo, plan
 from ringkeeper.models import InstanceType
@@ -202,16 +203,23 @@ def _clean(statement: str) -> str:
     return statement.strip().rstrip(";").rstrip()
 
 
-def _rows(cursor: Any, max_rows: int, shown: Callable[[object], object] = _json_safe) -> JSON:
+def _rows(
+    cursor: Any, max_rows: int, shown: Callable[[object], object] = _json_safe, offset: int = 0
+) -> JSON:
     if cursor.description is None:
         return {"columns": [], "rows": [], "row_count": 0, "truncated": False}
+    skipped = 0
+    while skipped < offset:  # Oracle doesn't say how many rows there are until they're read
+        passed = cursor.fetchmany(min(offset - skipped, MAX_ROWS))
+        if not passed:
+            break
+        skipped += len(passed)
     fetched = cursor.fetchmany(max_rows + 1)
-    return {
-        "columns": [column[0] for column in cursor.description],
-        "rows": [[shown(v) for v in row] for row in fetched[:max_rows]],
-        "row_count": min(len(fetched), max_rows),
-        "truncated": len(fetched) > max_rows,
-    }
+    return sql_paging.rows(
+        [column[0] for column in cursor.description],
+        [[shown(v) for v in row] for row in fetched],
+        max_rows, offset, None,
+    )  # fmt: skip
 
 
 def _blocking(
@@ -220,6 +228,7 @@ def _blocking(
     read_only: bool,
     max_rows: int,
     shown: Callable[[object], object] = _json_safe,
+    offset: int = 0,
 ) -> JSON:
     """One or more statements in one transaction: all of them, or none."""
     with _connected(target) as connection:
@@ -232,13 +241,13 @@ def _blocking(
             count = 0
             for statement, params in statements:
                 cursor.execute(_clean(statement), params or [])
-                result = _rows(cursor, max_rows, shown)
+                result = _rows(cursor, max_rows, shown, offset)
                 count += max(int(cursor.rowcount or 0), 0)
             if read_only:
                 connection.rollback()
             else:
                 connection.commit()
-                result["rowcount"] = count
+                result = sql_paging.after_write(result) | {"rowcount": count}
             return result
         except oracledb.Error as error:
             connection.rollback()
@@ -255,8 +264,11 @@ async def _run(
     read_only: bool,
     max_rows: int = MAX_ROWS,
     shown: Callable[[object], object] = _json_safe,
+    offset: int = 0,
 ) -> JSON:
-    work = partial(_blocking, target, [(statement, params or [])], read_only, max_rows, shown)
+    work = partial(
+        _blocking, target, [(statement, params or [])], read_only, max_rows, shown, offset
+    )
     return await anyio.to_thread.run_sync(work)
 
 
@@ -349,15 +361,23 @@ async def describe_table(
 
 
 @read
-async def query(target: Target, sql: Sql, params: Params = None, max_rows: MaxRows = 200) -> JSON:
+async def query(
+    target: Target,
+    sql: Sql,
+    params: Params = None,
+    max_rows: MaxRows = 200,
+    offset: sql_paging.RowOffset = 0,
+) -> JSON:
     """Run one read-only statement inside a READ ONLY transaction and return its rows. A call
-    to a function Ringkeeper doesn't know is refused here: use execute, which waits."""
+    to a function Ringkeeper doesn't know is refused here: use execute, which waits. A long
+    result comes in parts: the same statement with offset=next_offset gives the next rows (use
+    ORDER BY, so they keep their order). Oracle doesn't say how many there are in all."""
     if not only_reads(sql):
         raise ToolError(
             "that isn't shown to only read: Oracle functions can write even in a read-only "
             "transaction. Use execute, which waits for approval if it has to."
         )
-    return await _run(target, sql, params, read_only=True, max_rows=max_rows)
+    return await _run(target, sql, params, read_only=True, max_rows=max_rows, offset=offset)
 
 
 @write

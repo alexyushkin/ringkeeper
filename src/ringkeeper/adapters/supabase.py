@@ -25,7 +25,7 @@ from psycopg.conninfo import conninfo_to_dict
 from pydantic import Field
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import sqlite_file
+from ringkeeper.adapters import sql_paging, sqlite_file
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, ToolKind, read, write
 from ringkeeper.adapters.undo_sql import SqlUndo
 from ringkeeper.models import InstanceType
@@ -94,20 +94,27 @@ def _json_safe(value: object) -> object:  # noqa: PLR0911 (a type switch)
     return str(value)
 
 
-def _rows(cursor: psycopg.Cursor[tuple[Any, ...]], max_rows: int) -> JSON:
+def _rows(cursor: psycopg.Cursor[tuple[Any, ...]], max_rows: int, offset: int = 0) -> JSON:
     if cursor.description is None:
         return {"columns": [], "rows": [], "row_count": 0, "truncated": False}
-    fetched = cursor.fetchmany(max_rows + 1)
-    return {
-        "columns": [column.name for column in cursor.description],
-        "rows": [[_json_safe(v) for v in row] for row in fetched[:max_rows]],
-        "row_count": min(len(fetched), max_rows),
-        "truncated": len(fetched) > max_rows,
-    }
+    total = cursor.rowcount if cursor.rowcount >= 0 else None
+    if offset and (total is None or offset < total):
+        cursor.scroll(offset)
+    fetched = [] if total is not None and offset >= total else cursor.fetchmany(max_rows + 1)
+    return sql_paging.rows(
+        [column.name for column in cursor.description],
+        [[_json_safe(v) for v in row] for row in fetched],
+        max_rows, offset, total,
+    )  # fmt: skip
 
 
 def _run_blocking(
-    target: Target, statement: str, params: list[Any] | None, read_only: bool, max_rows: int
+    target: Target,
+    statement: str,
+    params: list[Any] | None,
+    read_only: bool,
+    max_rows: int,
+    offset: int = 0,
 ) -> JSON:
     conn = _connect(target)
     try:
@@ -120,9 +127,9 @@ def _run_blocking(
             # prepare=True: extended protocol, so exactly one statement (see module doc).
             # Agent-supplied SQL is the whole point of this tool, hence the cast.
             cursor.execute(cast(LiteralString, statement), params or None, prepare=True)
-            result = _rows(cursor, max_rows)
+            result = _rows(cursor, max_rows, offset)
             if not read_only:
-                result["rowcount"] = cursor.rowcount
+                result = sql_paging.after_write(result) | {"rowcount": cursor.rowcount}
             return result
     except psycopg.Error as error:
         raise ToolError(_message(error)) from None
@@ -131,17 +138,29 @@ def _run_blocking(
 
 
 async def _run(
-    target: Target, statement: str, params: list[Any] | None, *, read_only: bool, max_rows: int
+    target: Target,
+    statement: str,
+    params: list[Any] | None,
+    *,
+    read_only: bool,
+    max_rows: int,
+    offset: int = 0,
 ) -> JSON:
     demo = sqlite_file.path_of(target)
     if demo is not None:
         return await anyio.to_thread.run_sync(
             partial(
-                sqlite_file.run, demo, statement, params, read_only=read_only, max_rows=max_rows
+                sqlite_file.run,
+                demo,
+                statement,
+                params,
+                read_only=read_only,
+                max_rows=max_rows,
+                offset=offset,
             )
         )
     return await anyio.to_thread.run_sync(
-        partial(_run_blocking, target, statement, params, read_only, max_rows)
+        partial(_run_blocking, target, statement, params, read_only, max_rows, offset)
     )
 
 
@@ -231,9 +250,17 @@ async def describe_table(
 
 
 @read
-async def query(target: Target, sql: Sql, params: Params = None, max_rows: MaxRows = 200) -> JSON:
-    """Run one read-only statement inside a READ ONLY transaction and return its rows."""
-    return await _run(target, sql, params, read_only=True, max_rows=max_rows)
+async def query(
+    target: Target,
+    sql: Sql,
+    params: Params = None,
+    max_rows: MaxRows = 200,
+    offset: sql_paging.RowOffset = 0,
+) -> JSON:
+    """Run one read-only statement inside a READ ONLY transaction and return its rows. A long
+    result comes in parts: total_rows says how many, and the same statement with
+    offset=next_offset gives the next ones (use ORDER BY, so the rows keep their order)."""
+    return await _run(target, sql, params, read_only=True, max_rows=max_rows, offset=offset)
 
 
 @write

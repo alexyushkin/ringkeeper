@@ -17,9 +17,14 @@ Left out on purpose:
   sites this account can already see.
 """
 
+import base64
+import binascii
 from typing import Any, cast
 
+from ringkeeper.adapters import extract, mail_text
+from ringkeeper.adapters.base import ToolError
 from ringkeeper.adapters.mail import BULK
+from ringkeeper.adapters.paging import PAGE_CHARS, page
 from ringkeeper.adapters.vendor_spec import JSON, Snapshot, Vendor, final, held, reads
 
 CATEGORY = "Email"
@@ -38,6 +43,10 @@ ALWAYS = "User.Read offline_access"  # who signed in, and staying signed in
 RECIPIENTS = ("toRecipients", "ccRecipients", "bccRecipients")
 # Well-known folders a move can name. Moving to one of these is deleting.
 BIN = frozenset({"deleteditems", "recoverableitemsdeletions"})
+BODY_PAGING = ("offset", "limit", "include_quoted")
+ATTACHMENT_FIELDS = "id,name,contentType,size"
+THREAD_FIELDS = "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,body"
+MOST_IN_THREAD = 200
 ODATA = ("$select", "$filter", "$orderby", "$top", "$skip")
 DRAFT = (
     "subject", "body", "toRecipients", "ccRecipients", "bccRecipients", "replyTo", "importance",
@@ -89,6 +98,114 @@ def _move_why(args: JSON) -> str | None:
     return "moves a message to Deleted Items" if folder in BIN else None
 
 
+def _number(value: Any, default: int, most: int | None = None) -> int:
+    """A paging value from a call's query, which isn't checked by a schema."""
+    try:
+        number = max(int(value), 0) if value is not None else default
+    except (TypeError, ValueError):
+        raise ToolError(f"'{value}' isn't a number") from None
+    return min(number, most) if most is not None else number
+
+
+def _with_attachments(query: JSON, _local: JSON) -> JSON:
+    return {"$expand": f"attachments($select={ATTACHMENT_FIELDS})"} | query
+
+
+def _attachment_names(query: JSON, _local: JSON) -> JSON:
+    """Graph sends every attachment's whole content unless told not to."""
+    return query | {"$select": ATTACHMENT_FIELDS}
+
+
+def _attachment_row(found: JSON) -> JSON:
+    return {
+        "id": found.get("id"), "name": found.get("name"), "type": found.get("contentType"),
+        "size": found.get("size"),
+    }  # fmt: skip
+
+
+def _listed(answer: JSON, _local: JSON) -> JSON:
+    found = cast(list[JSON], answer.get("value") or [])
+    return {"attachments": [_attachment_row(a) for a in found]}
+
+
+def _text_of(message: JSON) -> str:
+    body = cast(JSON, message.get("body") or {})
+    content = str(body.get("content") or "")
+    html = str(body.get("contentType") or "").lower() == "html"
+    return mail_text.html_to_text(content) if html else content
+
+
+def _shown(message: JSON, offset: int, limit: int, include_quoted: bool = False) -> JSON:
+    """A message as an agent reads it: text rather than HTML, and what part of it this is."""
+    if not isinstance(message.get("body"), dict):  # a $select that left it out
+        return message
+    kept = {k: v for k, v in message.items() if k not in ("body", "bodyPreview", "attachments")}
+    attachments = cast(list[JSON], message.get("attachments") or [])
+    return kept | mail_text.body_fields(_text_of(message), offset, limit, include_quoted) | {
+        "attachments": [_attachment_row(a) for a in attachments]
+    }  # fmt: skip
+
+
+def _readable(answer: JSON, local: JSON) -> JSON:
+    return _shown(
+        answer,
+        _number(local.get("offset"), 0),
+        _number(local.get("limit"), PAGE_CHARS, PAGE_CHARS),
+        str(local.get("include_quoted")).lower() == "true",
+    )
+
+
+def _thread_query(_query: JSON, local: JSON) -> JSON:
+    """Not sorted by Graph: it refuses to sort by one field and filter by another."""
+    conversation = str(local.get("conversation_id") or "").replace("'", "''")
+    if not conversation:
+        raise ToolError("name the conversation: conversation_id, from a message")
+    return {
+        "$filter": f"conversationId eq '{conversation}'",
+        "$select": THREAD_FIELDS,
+        "$expand": f"attachments($select={ATTACHMENT_FIELDS})",
+        "$top": MOST_IN_THREAD,
+    }
+
+
+def _thread(answer: JSON, local: JSON) -> JSON:
+    found = sorted(
+        cast(list[JSON], answer.get("value") or []),
+        key=lambda m: str(m.get("receivedDateTime") or ""),
+    )
+    chars = _number(local.get("body_chars"), mail_text.THREAD_BODY_CHARS, PAGE_CHARS)
+    shown = [_shown(m, 0, chars) for m in found]
+    part = mail_text.thread_page(
+        shown, _number(local.get("offset"), 0), _number(local.get("limit"), 20, 100) or 20
+    )
+    if "@odata.nextLink" not in answer:
+        return part
+    return part | {
+        "truncated": True,
+        "read_note": f"This conversation has more than {MOST_IN_THREAD} messages: only "
+        f"{MOST_IN_THREAD} were read.",
+    }
+
+
+def _attachment(answer: JSON, local: JSON) -> JSON:
+    name = str(answer.get("name") or "attachment")
+    kind = str(answer.get("contentType") or "")
+    if not answer.get("contentBytes"):
+        raise ToolError(f"'{name}' is an attached item or a link, not a file")
+    try:
+        data = base64.b64decode(str(answer["contentBytes"]))
+    except binascii.Error:
+        raise ToolError(f"'{name}' came back damaged") from None
+    found = extract.extract(name, kind, data)
+    part = page(
+        found.text,
+        _number(local.get("offset"), 0),
+        _number(local.get("limit"), PAGE_CHARS, PAGE_CHARS) or PAGE_CHARS,
+    )
+    shown = {"name": name, "type": kind, "size": len(data)} | part
+    return shown | ({"read_note": found.note} if found.note else {})
+
+
 def _who(found: JSON) -> str:
     return str(found.get("mail") or found.get("userPrincipalName") or found.get("displayName"))
 
@@ -110,10 +227,22 @@ MICROSOFT = Vendor(
 
         # Mail. mail_read to read, mail_drafts to change, mail_send to send.
         reads("list_messages", "/me/messages", "Find messages", "$search", *ODATA),
-        reads("get_message", "/me/messages/{message_id}", "Read one message", "$select"),
+        reads("get_message", "/me/messages/{message_id}",
+              "Read one message: its whole text, in parts if it's long, and its attachments. "
+              "Earlier messages a reply quotes are in `quoted`", "$select",
+              local=BODY_PAGING, prepare=_with_attachments, after=_readable),
+        reads("get_thread", "/me/messages",
+              "A conversation, oldest message first: conversation_id from a message. Each "
+              "message shows the start of its text; get_message reads the rest",
+              local=("conversation_id", "offset", "limit", "body_chars"),
+              prepare=_thread_query, after=_thread),
         reads("list_mail_folders", "/me/mailFolders", "Mail folders", *ODATA),
         reads("list_attachments", "/me/messages/{message_id}/attachments",
-              "A message's attachments", "$select", "$top"),
+              "A message's attachments", "$top", prepare=_attachment_names, after=_listed),
+        reads("read_attachment", "/me/messages/{message_id}/attachments/{attachment_id}",
+              "The text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR "
+              "is installed, in parts if it's long", local=("offset", "limit"),
+              after=_attachment),
         final("send_mail", "POST", "/me/sendMail", "Send an email", _recipients_why, "message",
               "saveToSentItems", only=("message", "saveToSentItems")),
         final("reply", "POST", "/me/messages/{message_id}/reply", "Reply to the sender",

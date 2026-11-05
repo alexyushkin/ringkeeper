@@ -5,6 +5,12 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Long emails and files read in full.** Mail tools for Google, Microsoft, Gmail and Mailbox
+  now return the whole message, up to 200,000 characters at a time, as clean text with links
+  and tables kept, and the rest in parts. A reply's quoted messages are kept apart. Tasks can
+  read attachments (PDF, Word, Excel, CSV, and pictures with OCR) and whole conversations.
+  Long files, SQL rows and API answers come in parts too, and a task is told to read the rest
+  or to say it has only part.
 - **Tasks no longer hold a model key.** Workers call Ringkeeper's model proxy with a token
   that only reaches the model and ends with the session, and Ringkeeper adds the real key on
   the way out, whichever place Claude runs in. Each task's tokens are counted there.

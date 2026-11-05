@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ringkeeper.adapters import sql_paging
 from ringkeeper.adapters.base import JSON, Target, ToolError
 from ringkeeper.config import get_settings
 
@@ -48,7 +49,13 @@ def _value(value: object) -> object:
 
 
 def run(
-    path: Path, statement: str, params: list[Any] | None, *, read_only: bool, max_rows: int
+    path: Path,
+    statement: str,
+    params: list[Any] | None,
+    *,
+    read_only: bool,
+    max_rows: int,
+    offset: int = 0,
 ) -> JSON:
     uri = f"{path.as_uri()}?mode={'ro' if read_only else 'rw'}"
     try:
@@ -60,16 +67,13 @@ def run(
     try:
         cursor = conn.execute(_PLACEHOLDER.sub("?", statement), params or [])
         columns = [c[0] for c in cursor.description or []]
-        fetched = cursor.fetchmany(max_rows + 1) if columns else []
-        result: JSON = {
-            "columns": columns,
-            "rows": [[_value(v) for v in row] for row in fetched[:max_rows]],
-            "row_count": min(len(fetched), max_rows),
-            "truncated": len(fetched) > max_rows,
-        }
+        # A demo database: small, and counting its rows costs nothing.
+        every = cursor.fetchall() if columns else []
+        chosen = [[_value(v) for v in row] for row in every[offset : offset + max_rows + 1]]
+        result = sql_paging.rows(columns, chosen, max_rows, offset, len(every))
         if not read_only:
             conn.commit()
-            result["rowcount"] = cursor.rowcount
+            result = sql_paging.after_write(result) | {"rowcount": cursor.rowcount}
         return result
     except sqlite3.Error as error:
         raise ToolError(str(error)) from None

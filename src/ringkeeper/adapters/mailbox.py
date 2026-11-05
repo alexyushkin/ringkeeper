@@ -15,6 +15,7 @@ found by their role (\\Drafts, \\Sent, \\Trash), so any language works.
 """
 
 import email
+import email.message
 import email.policy
 import imaplib
 import json
@@ -29,7 +30,7 @@ import anyio.to_thread
 from pydantic import Field
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import mail, smtp
+from ringkeeper.adapters import mail, mail_text, smtp
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -40,11 +41,28 @@ from ringkeeper.adapters.base import (
     held,
     read,
 )
-from ringkeeper.adapters.gmail import ADDRESS_PATTERN, fetched, header_of, text_of
+from ringkeeper.adapters.gmail import (
+    ADDRESS_PATTERN,
+    attachment_text,
+    attachments_of,
+    fetched,
+    header_of,
+    text_of,
+    thread_key,
+    thread_messages,
+    thread_uids,
+)
+from ringkeeper.adapters.mail_text import (
+    AttachmentId,
+    IncludeQuoted,
+    ThreadBody,
+    ThreadLimit,
+    ThreadOffset,
+)
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit
 from ringkeeper.models import InstanceType
 
 TIMEOUT = 30
-MAX_BODY_CHARS = 20_000
 IMAP_PORT = 993
 
 
@@ -277,28 +295,78 @@ async def search_messages(
     return await _session(target, work)
 
 
+def _open(conn: imaplib.IMAP4, uid: int, folder: str) -> email.message.EmailMessage:
+    status, parts = conn.uid("FETCH", str(uid), "(BODY.PEEK[])")
+    raw = fetched(parts) if status == "OK" else None
+    if raw is None:
+        raise ToolError(f"no message with uid {uid} in {folder}")
+    return email.message_from_bytes(raw, policy=email.policy.default)
+
+
 @read
-async def get_message(target: Target, uid: Uid, folder: Folder = "INBOX") -> JSON:
-    """Read one message: headers, its text, and attachment names. Doesn't mark it read."""
+async def get_message(
+    target: Target,
+    uid: Uid,
+    folder: Folder = "INBOX",
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+    include_quoted: IncludeQuoted = False,
+) -> JSON:
+    """Read one message: headers, its whole text and its attachments. Doesn't mark it read. A
+    long message comes in parts: total_chars says how long, next_offset where the next part
+    starts. Earlier messages a reply quotes are in `quoted` (include_quoted puts them in the
+    body). read_attachment reads an attachment."""
 
     def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
         _select(conn, folder)
-        status, parts = conn.uid("FETCH", str(uid), "(BODY.PEEK[])")
-        raw = fetched(parts) if status == "OK" else None
-        if raw is None:
-            raise ToolError(f"no message with uid {uid} in {folder}")
-        message = email.message_from_bytes(raw, policy=email.policy.default)
-        body = text_of(message)
+        message = _open(conn, uid, folder)
         return {
             "uid": uid,
             **{k: header_of(message, k.title()) for k in ("from", "to", "cc", "subject", "date")},
             "message_id": header_of(message, "Message-ID"),
-            "body": body[:MAX_BODY_CHARS],
-            "truncated": len(body) > MAX_BODY_CHARS,
-            "attachments": [
-                name for part in message.iter_attachments() if (name := part.get_filename())
-            ],
+            **mail_text.body_fields(text_of(message), offset, limit, include_quoted),
+            "attachments": attachments_of(message),
         }
+
+    return await _session(target, work)
+
+
+@read
+async def read_attachment(
+    target: Target,
+    uid: Uid,
+    attachment_id: AttachmentId,
+    folder: Folder = "INBOX",
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+) -> JSON:
+    """Read the text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR is
+    installed. Long ones come in parts, like get_message."""
+
+    def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
+        _select(conn, folder)
+        return attachment_text(_open(conn, uid, folder), attachment_id, offset, limit)
+
+    return await _session(target, work)
+
+
+@read
+async def get_thread(
+    target: Target,
+    uid: Uid,
+    folder: Folder = "INBOX",
+    offset: ThreadOffset = 0,
+    limit: ThreadLimit = 20,
+    body_chars: ThreadBody = mail_text.THREAD_BODY_CHARS,
+) -> JSON:
+    """Read the conversation a message belongs to, oldest message first. Each message shows the
+    start of its text, with total_chars: get_message reads the rest of a long one. Only
+    messages in this folder are found."""
+
+    def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
+        _select(conn, folder)
+        uids = thread_uids(conn, thread_key(_open(conn, uid, folder)))
+        return thread_messages(conn, uids, offset, limit, body_chars)
 
     return await _session(target, work)
 
@@ -416,7 +484,8 @@ async def delete_message(target: Target, uid: Uid, folder: Folder = "INBOX") -> 
 ADAPTER = Adapter(
     service=InstanceType.MAILBOX,
     tools=(
-        list_folders, search_messages, get_message, create_draft, send_email, send_test_email,
+        list_folders, search_messages, get_message, read_attachment, get_thread, create_draft,
+        send_email, send_test_email,
         move_message, delete_message,
     ),
     secret_fragments=secret_fragments,

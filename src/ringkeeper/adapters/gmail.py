@@ -17,6 +17,7 @@ works too.
 import email
 import email.message
 import email.policy
+import email.utils
 import imaplib
 import json
 import re
@@ -29,14 +30,23 @@ from typing import Annotated, Any, Literal, cast
 import anyio.to_thread
 from pydantic import Field
 
+from ringkeeper.adapters import extract, mail_text
 from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, draft, final, read
 from ringkeeper.adapters.mail import ADDRESS_PATTERN, bulk_reason
+from ringkeeper.adapters.mail_text import (
+    AttachmentId,
+    IncludeQuoted,
+    ThreadBody,
+    ThreadLimit,
+    ThreadOffset,
+)
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit, page
 from ringkeeper.models import InstanceType
 
 IMAP_HOST = "imap.gmail.com"
 SMTP_HOST = "smtp.gmail.com"
 TIMEOUT = 30
-MAX_BODY_CHARS = 20_000
+MAX_THREAD_MESSAGES = 200
 APP_PASSWORDS = "https://myaccount.google.com/apppasswords"
 
 
@@ -128,15 +138,97 @@ def header_of(message: email.message.Message, name: str) -> str:
     return str(message.get(name, ""))
 
 
-def text_of(message: email.message.EmailMessage) -> str:
-    part = message.get_body(preferencelist=("plain", "html"))
+def _part_text(message: email.message.EmailMessage, kind: str) -> str:
+    part = message.get_body(preferencelist=(kind,))
     if part is None:
         return ""
-    content = str(cast(EmailMessage, part).get_content())
-    if part.get_content_type() == "text/html":
-        content = re.sub(r"<[^>]+>", " ", content)
-        content = re.sub(r"[ \t]+", " ", content)
-    return content.strip()
+    try:
+        return str(cast(EmailMessage, part).get_content())
+    except (LookupError, ValueError):  # a charset nobody knows
+        payload = cast(EmailMessage, part).get_payload(decode=True)
+        return bytes(cast(bytes, payload) or b"").decode("utf-8", "replace")
+
+
+def text_of(message: email.message.EmailMessage) -> str:
+    return mail_text.best_text(_part_text(message, "plain"), _part_text(message, "html"))
+
+
+def attachments_of(message: email.message.EmailMessage) -> list[JSON]:
+    """What's attached: read one with read_attachment, by its id."""
+    found: list[JSON] = []
+    for number, part in enumerate(message.iter_attachments(), start=1):
+        data = cast(bytes | None, part.get_payload(decode=True)) or b""
+        found.append({
+            "id": str(number),
+            "name": part.get_filename() or f"attachment {number}",
+            "type": part.get_content_type(),
+            "size": len(data),
+        })  # fmt: skip
+    return found
+
+
+def attachment_text(
+    message: email.message.EmailMessage, attachment_id: str, offset: int, limit: int
+) -> JSON:
+    """The text of one attachment, in parts."""
+    parts = list(message.iter_attachments())
+    if not attachment_id.isdigit() or not 1 <= int(attachment_id) <= len(parts):
+        raise ToolError(f"this message has no attachment {attachment_id}")
+    part = parts[int(attachment_id) - 1]
+    name = part.get_filename() or f"attachment {attachment_id}"
+    data = cast(bytes | None, part.get_payload(decode=True)) or b""
+    found = extract.extract(name, part.get_content_type(), data)
+    answer = {"name": name, "type": part.get_content_type(), "size": len(data)}
+    answer |= page(found.text, offset, limit)
+    return answer | ({"read_note": found.note} if found.note else {})
+
+
+def thread_key(message: email.message.EmailMessage) -> list[str]:
+    """The Message-IDs of a conversation, as far as this message knows it."""
+    known = f"{message.get('References', '')} {message.get('In-Reply-To', '')}"
+    known += f" {message.get('Message-ID', '')}"
+    return list(dict.fromkeys(re.findall(r"<[^<>\s]+>", known)))
+
+
+def thread_uids(conn: imaplib.IMAP4, ids: list[str]) -> list[bytes]:
+    """Every message in the selected folder that is, or refers to, one of these."""
+    found: set[bytes] = set()
+    for ident in ids[:50]:
+        quoted = ident.replace("\\", "").replace('"', "")
+        for header in ("Message-ID", "References"):
+            status, data = conn.uid("SEARCH", "HEADER", header, f'"{quoted}"')
+            if status == "OK":
+                found.update((data[0] or b"").split())
+    return sorted(found, key=int)
+
+
+def _sent_at(message: email.message.EmailMessage) -> float:
+    try:
+        return email.utils.parsedate_to_datetime(header_of(message, "Date")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def thread_messages(
+    conn: imaplib.IMAP4, uids: list[bytes], offset: int, limit: int, body_chars: int
+) -> JSON:
+    """A conversation, oldest message first, each with the start of its text."""
+    messages: list[tuple[float, JSON]] = []
+    for uid in uids[:MAX_THREAD_MESSAGES]:
+        status, parts = conn.uid("FETCH", uid.decode(), "(BODY.PEEK[])")
+        raw = fetched(parts) if status == "OK" else None
+        if raw is None:
+            continue
+        message = email.message_from_bytes(raw, policy=email.policy.default)
+        shown: JSON = {
+            "uid": int(uid),
+            **{k: header_of(message, k.title()) for k in ("from", "to", "cc", "subject", "date")},
+            **mail_text.body_fields(text_of(message), 0, body_chars),
+            "attachments": attachments_of(message),
+        }
+        messages.append((_sent_at(message), shown))
+    ordered = [m for _, m in sorted(messages, key=lambda item: item[0])]
+    return mail_text.thread_page(ordered, offset, limit)
 
 
 def fetched(parts: list[Any]) -> bytes | None:
@@ -213,20 +305,33 @@ async def search_messages(
     return await _blocking(run)
 
 
+def _open(conn: imaplib.IMAP4, uid: int, where: str) -> email.message.EmailMessage:
+    status, parts = conn.uid("FETCH", str(uid), "(BODY.PEEK[])")
+    raw = fetched(parts) if status == "OK" else None
+    if raw is None:
+        raise ToolError(f"no message with uid {uid} in {where}")
+    return email.message_from_bytes(raw, policy=email.policy.default)
+
+
 @read
-async def get_message(target: Target, uid: Uid, mailbox: Mailbox = "inbox") -> JSON:
-    """Read one message: headers, its text, and attachment names. Doesn't mark it read."""
+async def get_message(
+    target: Target,
+    uid: Uid,
+    mailbox: Mailbox = "inbox",
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+    include_quoted: IncludeQuoted = False,
+) -> JSON:
+    """Read one message: headers, its whole text and its attachments. Doesn't mark it read. A
+    long message comes in parts: total_chars says how long, next_offset where the next part
+    starts. Earlier messages a reply quotes are in `quoted` (include_quoted puts them in the
+    body). read_attachment reads an attachment."""
 
     def run() -> JSON:
         conn = _imap(target)
         try:
             _select(conn, mailbox)
-            status, parts = conn.uid("FETCH", str(uid), "(BODY.PEEK[])")
-            raw = fetched(parts) if status == "OK" else None
-            if raw is None:
-                raise ToolError(f"no message with uid {uid} in {mailbox}")
-            message = email.message_from_bytes(raw, policy=email.policy.default)
-            body = text_of(message)
+            message = _open(conn, uid, mailbox)
             return {
                 "uid": uid,
                 **{
@@ -234,12 +339,57 @@ async def get_message(target: Target, uid: Uid, mailbox: Mailbox = "inbox") -> J
                     for k in ("from", "to", "cc", "subject", "date")
                 },
                 "message_id": header_of(message, "Message-ID"),
-                "body": body[:MAX_BODY_CHARS],
-                "truncated": len(body) > MAX_BODY_CHARS,
-                "attachments": [
-                    name for part in message.iter_attachments() if (name := part.get_filename())
-                ],
+                **mail_text.body_fields(text_of(message), offset, limit, include_quoted),
+                "attachments": attachments_of(message),
             }
+        finally:
+            conn.logout()
+
+    return await _blocking(run)
+
+
+@read
+async def read_attachment(
+    target: Target,
+    uid: Uid,
+    attachment_id: AttachmentId,
+    mailbox: Mailbox = "inbox",
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+) -> JSON:
+    """Read the text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR is
+    installed. Long ones come in parts, like get_message."""
+
+    def run() -> JSON:
+        conn = _imap(target)
+        try:
+            _select(conn, mailbox)
+            return attachment_text(_open(conn, uid, mailbox), attachment_id, offset, limit)
+        finally:
+            conn.logout()
+
+    return await _blocking(run)
+
+
+@read
+async def get_thread(
+    target: Target,
+    uid: Uid,
+    mailbox: Mailbox = "inbox",
+    offset: ThreadOffset = 0,
+    limit: ThreadLimit = 20,
+    body_chars: ThreadBody = mail_text.THREAD_BODY_CHARS,
+) -> JSON:
+    """Read the conversation a message belongs to, oldest message first. Each message shows the
+    start of its text, with total_chars: get_message reads the rest of a long one. Only
+    messages in this mailbox are found."""
+
+    def run() -> JSON:
+        conn = _imap(target)
+        try:
+            _select(conn, mailbox)
+            uids = thread_uids(conn, thread_key(_open(conn, uid, mailbox)))
+            return thread_messages(conn, uids, offset, limit, body_chars)
         finally:
             conn.logout()
 
@@ -332,6 +482,6 @@ async def send_email(
 
 ADAPTER = Adapter(
     service=InstanceType.GMAIL,
-    tools=(search_messages, get_message, create_draft, send_email),
+    tools=(search_messages, get_message, read_attachment, get_thread, create_draft, send_email),
     secret_fragments=secret_fragments,
 )
