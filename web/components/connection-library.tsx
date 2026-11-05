@@ -196,13 +196,15 @@ export function LinkToProjects({ connection, projects, onDone }: { connection: L
   );
 }
 
-/** A shared tool for every project, new ones too (or only the ones it's linked to),
- * maybe except some clients (their projects, new ones too) and some projects. */
+/** A connection for every project it can reach, new ones too (or only the ones it's linked
+ * to): a shared tool, maybe except some clients (their projects, new ones too) and some
+ * projects; a client's connection, all of that client's, maybe except some of them. */
 function AllProjects({ connection, onChange }: { connection: LibraryConnection; onChange: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const all = Boolean(connection.all_projects);
   const clients = connection.except_clients ?? [];
   const projects = connection.except_projects ?? [];
+  const whose = connection.shared ? "" : `${clientName(connection.owner)} `;
   async function patch(json: Record<string, unknown>) {
     setError(null);
     try {
@@ -215,33 +217,33 @@ function AllProjects({ connection, onChange }: { connection: LibraryConnection; 
   return (
     <>
       <Toggle
-        label="All projects"
+        label={`All ${whose}projects`}
         checked={all}
         onChange={(on) => patch({ all_projects: on })}
         hint={
           !all
-            ? "Only the projects below. Turn on to give it to every project, new ones too."
+            ? `Only the projects below. Turn on to give it to all ${whose}projects, new ones too.`
             : clients.length || projects.length
-              ? `${connection.reach}. New projects get it too, unless their client is left out.`
-              : "Every project has it, and new projects get it too."
+              ? `${connection.reach}. New projects get it too${connection.shared ? ", unless their client is left out" : ""}.`
+              : `All ${whose}projects have it, and new ones get it too. A project's link can still be narrowed below.`
         }
       />
-      {all ? <Exceptions clients={clients} projects={projects} onSave={patch} /> : null}
+      {all ? <Exceptions clients={clients} projects={projects} owner={connection.shared ? undefined : connection.owner} onSave={patch} /> : null}
       {error ? <Alert>{error}</Alert> : null}
     </>
   );
 }
 
 /** "All projects except…": clients (their projects, new ones too) and projects. */
-function Exceptions({ clients, projects, onSave }: { clients: string[]; projects: string[]; onSave: (json: Record<string, unknown>) => void }) {
+function Exceptions({ clients, projects, owner, onSave }: { clients: string[]; projects: string[]; owner?: string; onSave: (json: Record<string, unknown>) => void }) {
   const known = useApi<{ name: string; owner: string }[]>("projects");
   const scope = useScope();
   const [pick, setPick] = useState("");
   const same = sameClient;
   const allClients = scope.clients.map((c) => c.slug);
-  const clientChoices = allClients.filter((c) => !clients.some((x) => same(x, c)));
+  const clientChoices = owner ? [] : allClients.filter((c) => !clients.some((x) => same(x, c)));
   // A project of a client already left out is left out anyway.
-  const projectChoices = (known.data ?? []).filter((p) => !projects.includes(p.name) && !clients.some((c) => same(c, p.owner))).map((p) => p.name);
+  const projectChoices = (known.data ?? []).filter((p) => !projects.includes(p.name) && !clients.some((c) => same(c, p.owner)) && (!owner || same(owner, p.owner))).map((p) => p.name);
   function add(value: string) {
     setPick("");
     if (value.startsWith("client:")) onSave({ except_clients: [...clients, value.slice(7)] });
@@ -277,7 +279,7 @@ function Exceptions({ clients, projects, onSave }: { clients: string[]; projects
           value={pick}
           onChange={add}
           options={[
-            ["", left.length ? "Leave out another client or project…" : "Leave out a client or a project…"],
+            ["", owner ? "Leave out a project…" : left.length ? "Leave out another client or project…" : "Leave out a client or a project…"],
             ...clientChoices.map((c): [string, string] => [`client:${c}`, `${clientName(c)} (client: all their projects, new ones too)`]),
             ...projectChoices.map((p): [string, string] => [`project:${p}`, projectName(p)]),
           ]}
@@ -404,7 +406,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
       ) : null}
       {open ? (
         <div className="space-y-3 border-t border-line pt-3">
-          {connection.shared ? <AllProjects connection={connection} onChange={onChange} /> : null}
+          <AllProjects connection={connection} onChange={onChange} />
           {links.length ? (
             <ul className="space-y-1">
               {links.map((link) => (

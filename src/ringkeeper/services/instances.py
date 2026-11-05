@@ -50,11 +50,12 @@ def _bound_titles(instance: Instance) -> str:
 
 
 def _check_kind(session: Session, data: InstanceIn, before: Instance | None = None) -> None:
-    """Any kind of connection is a client's (only their projects) or yours (a shared tool:
-    any project, or all of them, maybe except some clients and projects)."""
-    if data.all_projects and not data.shared:
+    """Any kind of connection is a client's (only their projects, maybe all of them except
+    some) or yours (a shared tool: any project, or all of them, maybe except some clients
+    and projects)."""
+    if data.except_clients and not data.shared:
         raise RuleViolationError(
-            f"'{data.name}' is a client's connection, so it can't go to all projects."
+            f"'{data.name}' is a client's connection, so it has no other clients to leave out."
         )
     if (data.except_clients or data.except_projects) and not data.all_projects:
         raise RuleViolationError(
@@ -72,19 +73,22 @@ def _check_kind(session: Session, data: InstanceIn, before: Instance | None = No
 
 
 def excluded(instance: Instance, project: Project) -> bool:
-    """A shared tool for all projects except some: whether `project` is left out,
-    by its name or its client (matched ignoring case and spaces)."""
+    """A connection for all projects except some: whether `project` is left out, by its
+    name or its client (matched ignoring case and spaces). A client's connection only
+    ever reaches that client's projects."""
     if not instance.all_projects:
         return False
     client = clients.key(project.owner)
+    if not instance.shared and client != clients.key(instance.owner):
+        return True
     return project.name in instance.except_projects or any(
         clients.key(c) == client for c in instance.except_clients
     )
 
 
 def describe_reach(instance: Instance) -> str:
-    """What it reaches, like "All projects except Acme (client), seaside-messages"
-    ("" if not for all projects)."""
+    """What it reaches, like "All projects except Acme (client), Website", or for a
+    client's connection "All Acme projects except Website" ("" if not for all projects)."""
     if not instance.all_projects:
         return ""
     session = object_session(instance)
@@ -92,13 +96,14 @@ def describe_reach(instance: Instance) -> str:
     left_out = [f"{names.get(clients.key(c), c)} (client)" for c in instance.except_clients] + [
         titles.of(session, p) for p in instance.except_projects
     ]
-    return "All projects" + (f" except {', '.join(left_out)}" if left_out else "")
+    whose = "" if instance.shared else f"{names.get(clients.key(instance.owner), instance.owner)} "
+    return f"All {whose}projects" + (f" except {', '.join(left_out)}" if left_out else "")
 
 
 def link_everywhere(session: Session, instance: Instance) -> list[str]:
-    """A shared tool for all projects: linked to every project it isn't linked to
-    yet, unless left out, and unlinked from the projects left out. Returns the
-    projects it was newly linked to."""
+    """A connection for all projects: linked to every project it reaches that it isn't
+    linked to yet, and unlinked from the projects left out. A link it already has keeps
+    its scope. Returns the projects it was newly linked to."""
     added: list[str] = []
     for project in session.scalars(select(Project).order_by(Project.name)):
         binding = next((b for b in instance.bindings if b.project_id == project.id), None)

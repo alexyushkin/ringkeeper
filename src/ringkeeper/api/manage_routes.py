@@ -520,6 +520,8 @@ class ConnectionIn(Input):
     secret: str = Field(repr=False)
     # Yours (a shared tool: any client's projects, or all of them), not a client's.
     shared: bool = False
+    # All projects it can reach, new ones too: everyone's for a shared tool, otherwise
+    # all of its client's.
     all_projects: bool = False
 
 
@@ -530,7 +532,7 @@ class ConnectionPatch(Input):
     env: Env | None = None
     owner: NonEmpty | None = None
     shared: bool | None = None  # yours (a shared tool), or a client's connection
-    all_projects: bool | None = None  # a shared tool every project gets
+    all_projects: bool | None = None  # every project it can reach gets it
     # ...except these clients' projects and these projects (only with all_projects)
     except_clients: CleanList | None = None
     except_projects: CleanList | None = None
@@ -606,6 +608,8 @@ def list_connections(session: SessionDep) -> list[ConnectionOut]:
 def create_connection(data: ConnectionIn, session: WriteSessionDep) -> ConnectionOut:
     if data.type is InstanceType.N8N and not data.base_url:
         raise HTTPException(422, detail="Add your n8n address, like https://n8n.example.com.")
+    if data.type is InstanceType.HTTP and not data.base_url:
+        raise HTTPException(422, detail="Add the API's address, like https://api.example.com/v1.")
     base_url = _checked_url(data.base_url)
     if instances.find_instance(session, data.name) is not None:
         raise HTTPException(
@@ -622,7 +626,7 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
         InstanceIn(
             name=data.name, title=data.title, type=data.type, env=data.env, secret_ref=ref,
             owner=instances.SHARED_OWNER if data.shared else data.owner, base_url=base_url,
-            shared=data.shared, all_projects=data.shared and data.all_projects,
+            shared=data.shared, all_projects=data.all_projects,
         ),
     )  # fmt: skip
     admin_audit.record(
@@ -662,14 +666,15 @@ def update_connection(
         instance.last_test_at = instance.last_test_ok = instance.last_test_message = None
     shared = changes.get("shared", instance.shared)
     owner = instances.SHARED_OWNER if shared else changes.get("owner", instance.owner)
-    everywhere = shared and changes.get("all_projects", instance.all_projects)
+    everywhere = changes.get("all_projects", instance.all_projects)
+    left_out = changes.get("except_clients", instance.except_clients)
     merged = InstanceIn(
         name=instance.name, title=changes.get("title"), type=instance.type,
         env=changes.get("env", instance.env), secret_ref=instance.secret_ref, owner=owner,
         base_url=base_url, config=_with_expiry(instance, changes), shared=shared,
         all_projects=everywhere,
         # Exceptions only mean something for all projects; turning that off drops them.
-        except_clients=changes.get("except_clients", instance.except_clients) if everywhere else [],
+        except_clients=left_out if everywhere and shared else [],
         except_projects=(
             changes.get("except_projects", instance.except_projects) if everywhere else []
         ),

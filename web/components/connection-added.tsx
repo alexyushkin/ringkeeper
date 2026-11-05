@@ -22,6 +22,8 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
   const projects = useProjects();
   const [picked, setPicked] = useState<Record<string, Record<string, string>>>({}); // project -> scope
   const [linked, setLinked] = useState<string[]>([]);
+  const [chooseSome, setChooseSome] = useState(false); // all the client's projects, unless not
+  const [leftOut, setLeftOut] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +33,22 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
   const theirs = connection ? projects.list.filter((p) => connection.shared || same(p.owner, connection.owner)) : [];
   const eligible = theirs.filter((p) => !has.has(p.name));
   const chosen = Object.keys(picked);
+  const owner = connection ? clientName(connection.owner) : "";
+  const offerAll = Boolean(connection && !connection.shared && !connection.all_projects && theirs.length > 1);
+
+  async function useInAll() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`connections/${name}`, { method: "PATCH", json: { all_projects: true, except_projects: leftOut } });
+      connections.reload();
+      onLinked?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function link() {
     setBusy(true);
@@ -59,10 +77,34 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
         {connection?.config.source === "open" ? " It needs no key." : " Its secrets are stored encrypted and won't be shown again."}
       </Alert>
       <TestButton name={name} />
-      {connection?.shared && connection.all_projects ? (
-        <p className="text-sm text-muted">Every project has it, new ones too.</p>
+      {connection?.all_projects ? (
+        <p className="text-sm text-muted">{connection.reach}, new ones too. A project&apos;s link can be narrowed under Details.</p>
       ) : connection && !projects.loading && !theirs.length ? (
         <NoProjects client={connection.shared ? undefined : connection.owner} />
+      ) : offerAll && !chooseSome ? (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Use in all of {owner}&apos;s projects</legend>
+          <p className="text-xs text-muted">Projects added later get it too. Leave out any that shouldn&apos;t have it:</p>
+          {theirs.map((p) => (
+            <label key={p.name} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!leftOut.includes(p.name)}
+                onChange={(e) => setLeftOut((all) => (e.target.checked ? all.filter((n) => n !== p.name) : [...all, p.name]))}
+                className="size-4 accent-[var(--color-accent)]"
+              />
+              {projectName(p.name)}
+            </label>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Button kind="primary" busy={busy} disabled={leftOut.length === theirs.length} onClick={useInAll}>
+              {leftOut.length ? `Use in all of ${owner}'s projects except ${leftOut.length}` : `Use in all of ${owner}'s projects`}
+            </Button>
+            <Button kind="ghost" onClick={() => setChooseSome(true)}>
+              Choose projects instead
+            </Button>
+          </div>
+        </fieldset>
       ) : eligible.length ? (
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{connection?.projects.length ? "Also use in…" : "Use in…"}</legend>

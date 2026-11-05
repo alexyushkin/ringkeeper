@@ -17,7 +17,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.schemas import ProjectIn
 from ringkeeper.services import clients, titles
-from ringkeeper.services.instances import excluded
+from ringkeeper.services.instances import excluded, link_everywhere
 
 
 def find_project(session: Session, name: str) -> Project | None:
@@ -53,8 +53,8 @@ def create_project(session: Session, data: ProjectIn) -> Project:
     )
     project = Project(**data.model_dump(), bindings=[])
     session.add(project)
-    # Shared tools for all projects come with every new one, unless they leave out
-    # its client.
+    # What's for all projects comes with every new one it reaches: shared tools, unless
+    # they leave out its client, and its client's own connections.
     for tool in session.scalars(select(Instance).where(Instance.all_projects)):
         if not excluded(tool, project):
             session.add(ProjectInstance(project=project, instance=tool))
@@ -70,9 +70,13 @@ def update_project(session: Session, data: ProjectIn) -> Project:
             "title": data.title or project.title,
         }
     )
+    moved = data.owner != project.owner
     for field, value in data.model_dump(exclude={"name"}).items():
         setattr(project, field, value)
     session.flush()
+    if moved:  # what's for all of a client's projects follows the project
+        for tool in session.scalars(select(Instance).where(Instance.all_projects)):
+            link_everywhere(session, tool)
     return project
 
 
