@@ -59,6 +59,11 @@ class InstanceType(enum.StrEnum):
     GMAIL = "gmail"  # IMAP/SMTP with an app password (the simple option)
     MCP = "mcp"  # an MCP server imported from Claude Desktop, run behind the gateway
     GITHUB = "github"  # a token, on github.com or GitHub Enterprise Server
+    SMTP = "smtp"  # sending email through any provider's SMTP server
+    RESEND = "resend"  # sending email through Resend
+    MAILBOX = "mailbox"  # any mailbox over IMAP and SMTP (presets: Gmail, Outlook, Zoho, Yahoo)
+    HTTP = "http"  # any HTTP API: an address, a way to sign in, optionally an OpenAPI file
+    S3 = "s3"  # file storage: AWS S3, Cloudflare R2, S3-compatible, Vercel Blob
 
 
 class Env(enum.StrEnum):
@@ -390,10 +395,11 @@ class Instance(TimestampMixin, Base):
     # this computer), yours, linkable to any client's projects. False: a client's
     # connection, linked only to that client's projects.
     shared: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    # A shared tool every project gets, including projects added later.
+    # Every project gets it, including projects added later: every project there is for
+    # a shared tool, every project of its client for a client's connection.
     all_projects: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    # ...except these clients' projects (a client matched ignoring case and spaces)
-    # and these projects. Only with all_projects; their projects aren't linked.
+    # ...except these clients' projects (a client matched ignoring case and spaces; a
+    # shared tool only) and these projects. Only with all_projects; they aren't linked.
     except_clients: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     except_projects: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     # Service-specific settings that aren't secret (an MCP server: how it runs, a

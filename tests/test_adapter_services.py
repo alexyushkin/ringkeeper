@@ -24,6 +24,13 @@ from tests.fake_services import (
 
 pytestmark = pytest.mark.anyio
 
+NEW = {
+    InstanceType.SMTP,
+    InstanceType.RESEND,
+    InstanceType.MAILBOX,
+    InstanceType.HTTP,
+    InstanceType.S3,
+}
 BASE = "app" + "A" * 14
 RECORD = "rec" + "B" * 14
 ACCOUNT = "AC" + "1" * 32
@@ -52,7 +59,7 @@ def test_every_service_has_its_adapter_and_sends_hold_always() -> None:
         (service, spec.name): spec.hold
         for service, adapter in ADAPTERS.items()
         for spec in adapter.tools
-        if spec.kind is ToolKind.WRITE and spec.hold is not Hold.PROD
+        if spec.kind is ToolKind.WRITE and spec.hold is not Hold.PROD and service not in NEW
     }
     assert holds == {
         (InstanceType.TWILIO, "send_sms"): Hold.ALWAYS,

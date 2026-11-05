@@ -460,7 +460,10 @@ def _one_line(text: str, limit: int) -> str:
 
 
 DATA_SERVICES = (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.AIRTABLE)
-SENDS = (InstanceType.TWILIO, InstanceType.GMAIL)
+SENDS = (
+    InstanceType.TWILIO, InstanceType.GMAIL, InstanceType.SMTP, InstanceType.RESEND,
+    InstanceType.MAILBOX,
+)  # fmt: skip
 GITHUB_HEADINGS = {
     "push_branch": "A push to GitHub",
     "create_pull": "A pull request on GitHub",

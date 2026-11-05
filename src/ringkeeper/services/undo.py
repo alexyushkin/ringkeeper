@@ -46,6 +46,11 @@ REVERT_TOOL = "revert_change"
 CANT: dict[InstanceType, str] = {
     InstanceType.GMAIL: "A sent email can't be unsent.",
     InstanceType.TWILIO: "A text or a call can't be taken back.",
+    InstanceType.SMTP: "A sent email can't be unsent.",
+    InstanceType.RESEND: "A sent email can't be unsent.",
+    InstanceType.MAILBOX: "Changes to a mailbox can't be undone here.",
+    InstanceType.HTTP: "Ringkeeper can't undo what an API call does.",
+    InstanceType.S3: "Uploads and deletes can't be undone here.",
     InstanceType.VERCEL: (
         "A deploy can't be undone here; put the earlier deployment live in Vercel if you need to."
     ),

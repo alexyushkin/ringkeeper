@@ -123,11 +123,11 @@ def _select(conn: imaplib.IMAP4, which: str) -> None:
         raise ToolError(f"couldn't open the {which} mailbox")
 
 
-def _header(message: email.message.Message, name: str) -> str:
+def header_of(message: email.message.Message, name: str) -> str:
     return str(message.get(name, ""))
 
 
-def _text(message: email.message.EmailMessage) -> str:
+def text_of(message: email.message.EmailMessage) -> str:
     part = message.get_body(preferencelist=("plain", "html"))
     if part is None:
         return ""
@@ -138,7 +138,7 @@ def _text(message: email.message.EmailMessage) -> str:
     return content.strip()
 
 
-def _fetched(parts: list[Any]) -> bytes | None:
+def fetched(parts: list[Any]) -> bytes | None:
     """The message bytes in an IMAP FETCH answer (the (envelope, bytes) item)."""
     for part in parts:
         if isinstance(part, tuple) and len(cast(tuple[Any, ...], part)) > 1:
@@ -199,11 +199,11 @@ async def search_messages(
                 _, parts = conn.uid(
                     "FETCH", uid.decode(), "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])"
                 )
-                raw = _fetched(parts) or b""
+                raw = fetched(parts) or b""
                 headers = email.message_from_bytes(raw, policy=email.policy.default)
                 found.append(
                     {"uid": int(uid)}
-                    | {k: _header(headers, k.title()) for k in ("from", "to", "subject", "date")}
+                    | {k: header_of(headers, k.title()) for k in ("from", "to", "subject", "date")}
                 )
             return {"messages": found}
         finally:
@@ -221,15 +221,18 @@ async def get_message(target: Target, uid: Uid, mailbox: Mailbox = "inbox") -> J
         try:
             _select(conn, mailbox)
             status, parts = conn.uid("FETCH", str(uid), "(BODY.PEEK[])")
-            raw = _fetched(parts) if status == "OK" else None
+            raw = fetched(parts) if status == "OK" else None
             if raw is None:
                 raise ToolError(f"no message with uid {uid} in {mailbox}")
             message = email.message_from_bytes(raw, policy=email.policy.default)
-            body = _text(message)
+            body = text_of(message)
             return {
                 "uid": uid,
-                **{k: _header(message, k.title()) for k in ("from", "to", "cc", "subject", "date")},
-                "message_id": _header(message, "Message-ID"),
+                **{
+                    k: header_of(message, k.title())
+                    for k in ("from", "to", "cc", "subject", "date")
+                },
+                "message_id": header_of(message, "Message-ID"),
                 "body": body[:MAX_BODY_CHARS],
                 "truncated": len(body) > MAX_BODY_CHARS,
                 "attachments": [
@@ -242,7 +245,7 @@ async def get_message(target: Target, uid: Uid, mailbox: Mailbox = "inbox") -> J
     return await _blocking(run)
 
 
-def _compose(
+def compose(
     sender: str,
     to: list[str],
     subject: str,
@@ -285,7 +288,7 @@ async def create_draft(
         conn = _imap(target)
         try:
             sender = credentials(target.secret.reveal())[0]
-            message = _compose(sender, to, subject, body, cc, in_reply_to)
+            message = compose(sender, to, subject, body, cc, in_reply_to)
             status, _ = conn.append(
                 _mailbox(conn, "drafts"), "(\\Draft)", imaplib.Time2Internaldate(time.time()),
                 message.as_bytes(),
@@ -312,7 +315,7 @@ async def send_email(
 
     def run() -> JSON:
         address, password = credentials(target.secret.reveal())
-        message = _compose(address, to, subject, body, cc, in_reply_to)
+        message = compose(address, to, subject, body, cc, in_reply_to)
         try:
             with smtp_factory() as smtp:
                 smtp.login(address, password)

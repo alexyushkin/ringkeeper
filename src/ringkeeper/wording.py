@@ -41,6 +41,11 @@ SERVICES = {
     InstanceType.GMAIL: "Gmail",
     InstanceType.MCP: "add-on tool",
     InstanceType.GITHUB: "GitHub",
+    InstanceType.SMTP: "email sending",
+    InstanceType.RESEND: "Resend",
+    InstanceType.MAILBOX: "mailbox",
+    InstanceType.HTTP: "API",
+    InstanceType.S3: "file storage",
 }
 
 APPS = {"slack": "Slack", "discord": "Discord", "telegram": "Telegram", "web": "the app"}

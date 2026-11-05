@@ -85,6 +85,8 @@ ACCESS = {
         Access("calendar_write", "Calendar: add and change events", G + "calendar.events"),
         Access("sheets_read", "Sheets: read", G + "spreadsheets.readonly"),
         Access("sheets_write", "Sheets: read and edit", G + "spreadsheets"),
+        Access("search_console_read", "Search Console: read", G + "webmasters.readonly"),
+        Access("analytics_read", "Analytics: read", G + "analytics.readonly"),
     )
 }  # fmt: skip
 IDENTITY = ("openid", "email")

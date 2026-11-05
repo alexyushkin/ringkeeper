@@ -5,8 +5,13 @@ from ringkeeper.adapters import (
     github,
     gmail,
     google,
+    http_api,
+    mailbox,
     mcp,
     n8n,
+    resend,
+    smtp,
+    storage,
     supabase,
     twilio,
     vercel,
@@ -16,7 +21,22 @@ from ringkeeper.models import InstanceType
 
 ADAPTERS: dict[InstanceType, Adapter] = {
     module.ADAPTER.service: module.ADAPTER
-    for module in (supabase, n8n, airtable, vercel, twilio, gmail, google, github, mcp)
+    for module in (
+        supabase,
+        n8n,
+        airtable,
+        vercel,
+        twilio,
+        gmail,
+        google,
+        github,
+        mcp,
+        smtp,
+        resend,
+        mailbox,
+        http_api,
+        storage,
+    )
 }
 
 # What the agent calls a service, where its type's name would mislead: the

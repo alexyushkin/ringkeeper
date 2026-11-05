@@ -20,6 +20,7 @@ import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import unquote
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,9 @@ class ScopeField:
     label: str
     args: tuple[str, ...]  # the argument names that carry it
     hint: str = ""
+    # A folder or path: a call must stay under it, rather than name exactly it. It stands
+    # on its own, without the field before it.
+    prefix: bool = False
 
 
 @dataclass(frozen=True)
@@ -197,6 +201,29 @@ NATIVE: dict[str, ScopeSpec] = {
         "GitHub",
         (ScopeField("repo", "Repository", ("repo",), "owner/name, like acme-inc/website."),),
     ),
+    # A folder or API path: the call has to stay under it.
+    "http": ScopeSpec(
+        "this API",
+        (
+            ScopeField(
+                "path", "Path", ("path",), "Only under this path, like /v1/forms.", prefix=True
+            ),
+        ),
+        frozenset({"list_endpoints"}),
+    ),
+    "s3": ScopeSpec(
+        "this storage",
+        (
+            ScopeField("bucket", "Bucket", ("bucket",), "One bucket's name."),
+            ScopeField(
+                "folder",
+                "Folder",
+                ("key", "prefix"),
+                "Optional: only under this folder, like clients/acme/.",
+                prefix=True,
+            ),
+        ),
+    ),
     "vercel": ScopeSpec(
         "Vercel",
         (
@@ -227,9 +254,19 @@ def check_scope(spec: ScopeSpec | None, scope: Mapping[str, Any]) -> dict[str, s
         what = spec.name if spec is not None else "This connection"
         raise ScopeError(f"{what} can't be narrowed by {', '.join(unknown)}")
     for before, f in itertools.pairwise(fields):
-        if f.key in cleaned and before.key not in cleaned:
+        if f.key in cleaned and before.key not in cleaned and not f.prefix:
             raise ScopeError(f"Set the {before.label} before the {f.label}.")
     return cleaned
+
+
+def under(wanted: str, value: str) -> bool:
+    """Whether a path stays under a folder: /v1/forms covers /v1/forms/3, not /v1/forms-old
+    or /v1/forms/../users. Encoded dots count as dots."""
+    decoded = unquote(unquote(value)).split("?", 1)[0]
+    if ".." in decoded.replace("\\", "/").split("/"):
+        return False
+    base = wanted.rstrip("/")
+    return decoded == base or decoded.startswith(base + "/")
 
 
 def narrow(
@@ -255,7 +292,8 @@ def narrow(
             continue
         given = [a for a in f.args if result.get(a) is not None]
         for arg in given:
-            if str(result[arg]) != wanted:
+            fits = under(wanted, str(result[arg])) if f.prefix else str(result[arg]) == wanted
+            if not fits:
                 raise ScopeError(
                     f"this project's link to {spec.name} is limited to {f.label.lower()} "
                     f"'{wanted}'; '{tool}' was given {arg}='{result[arg]}'"

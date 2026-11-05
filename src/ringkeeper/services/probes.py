@@ -19,8 +19,13 @@ from ringkeeper.adapters import (
     github,
     gmail,
     google,
+    http_api,
+    mailbox,
     mcp,
     n8n,
+    resend,
+    smtp,
+    storage,
     supabase,
     twilio,
     vercel,
@@ -45,7 +50,7 @@ class ProbeResult:
     message: str
 
 
-async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911 (one per service)
+async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, PLR0912 (one per service)
     match kind:
         case InstanceType.SUPABASE:
             result: JSON = await supabase.list_tables.handler(target, schema=None)
@@ -69,6 +74,16 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911 (o
             return await google.probe(target)
         case InstanceType.GITHUB:
             return await github.probe(target)
+        case InstanceType.SMTP:
+            return await smtp.probe(target)
+        case InstanceType.RESEND:
+            return await resend.probe(target)
+        case InstanceType.MAILBOX:
+            return await mailbox.probe(target)
+        case InstanceType.HTTP:
+            return await http_api.probe(target)
+        case InstanceType.S3:
+            return await storage.probe(target)
         case InstanceType.MCP:
             listed = await mcp.list_tools.handler(target)
             mcp_tools.remember(target.name, listed)

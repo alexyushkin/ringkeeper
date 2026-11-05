@@ -41,6 +41,9 @@ DRIVE = "https://www.googleapis.com/drive/v3"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 CALENDAR = "https://www.googleapis.com/calendar/v3"
 SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
+SEARCH_CONSOLE = "https://www.googleapis.com/webmasters/v3"
+ANALYTICS_ADMIN = "https://analyticsadmin.googleapis.com/v1beta"
+ANALYTICS_DATA = "https://analyticsdata.googleapis.com/v1beta"
 # The account's address. Its own base, called with a path: an HTTP client adds a
 # slash to a base address, and Google answers .../userinfo/ with a 404.
 OPENID = "https://openidconnect.googleapis.com/v1"
@@ -537,6 +540,118 @@ def secret_fragments(value: str) -> list[str]:
     return [str(fields[k]) for k in ("refresh_token", "access_token") if fields.get(k)]
 
 
+# --- Search Console and Analytics (read-only) ---
+
+
+Day = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="YYYY-MM-DD.")]
+AnalyticsDay = Annotated[
+    str,
+    Field(
+        pattern=r"^(\d{4}-\d{2}-\d{2}|today|yesterday|\d{1,4}daysAgo)$",
+        description="YYYY-MM-DD, today, yesterday or NdaysAgo.",
+    ),
+]
+Names = Annotated[list[Annotated[str, Field(max_length=100)]], Field(max_length=10)]
+ReportRows = Annotated[int, Field(ge=1, le=1000)]
+
+
+@read
+async def list_search_sites(target: Target) -> JSON:
+    """The sites this account can see in Search Console, and its access to each."""
+    _need(target, "search_console_read")
+    listed = await _call(target, SEARCH_CONSOLE, "GET", "/sites")
+    entries = cast(list[JSON], listed.get("siteEntry") or [])
+    return {
+        "sites": [{"site": s.get("siteUrl"), "access": s.get("permissionLevel")} for s in entries]
+    }
+
+
+@read
+async def search_performance(
+    target: Target,
+    site: Annotated[str, Field(max_length=300, description="From list_search_sites.")],
+    start: Day,
+    end: Day,
+    dimensions: Names | None = None,
+    limit: ReportRows = 100,
+) -> JSON:
+    """Clicks, impressions, CTR and position from Search Console. `dimensions`: query, page,
+    country, device, date."""
+    _need(target, "search_console_read")
+    body: JSON = {"startDate": start, "endDate": end, "dimensions": dimensions or ["query"],
+                  "rowLimit": limit}  # fmt: skip
+    found = await _call(
+        target, SEARCH_CONSOLE, "POST",
+        f"/sites/{quote(site, safe='')}/searchAnalytics/query", json=body,
+    )  # fmt: skip
+    return {"rows": found.get("rows") or []}
+
+
+@read
+async def list_analytics_properties(target: Target) -> JSON:
+    """The Google Analytics accounts and properties this account can read."""
+    _need(target, "analytics_read")
+    found = await _call(target, ANALYTICS_ADMIN, "GET", "/accountSummaries")
+    accounts = cast(list[JSON], found.get("accountSummaries") or [])
+    return {
+        "accounts": [
+            {
+                "account": a.get("displayName"),
+                "properties": [
+                    {"property": p.get("property"), "name": p.get("displayName")}
+                    for p in cast(list[JSON], a.get("propertySummaries") or [])
+                ],
+            }
+            for a in accounts
+        ]
+    }
+
+
+@read
+async def analytics_report(
+    target: Target,
+    property_id: Annotated[
+        str, Field(pattern=r"^(properties/)?\d+$", description="From list_analytics_properties.")
+    ],
+    start: AnalyticsDay,
+    end: AnalyticsDay,
+    metrics: Names,
+    dimensions: Names | None = None,
+    limit: ReportRows = 100,
+) -> JSON:
+    """A Google Analytics report, like metrics ["sessions", "totalUsers"] by dimensions
+    ["date"]. Names are GA4's own."""
+    _need(target, "analytics_read")
+    number = property_id.rsplit("/", 1)[-1]
+    body: JSON = {
+        "dateRanges": [{"startDate": start, "endDate": end}],
+        "metrics": [{"name": m} for m in metrics],
+        "dimensions": [{"name": d} for d in dimensions or []],
+        "limit": limit,
+    }
+    found = await _call(
+        target, ANALYTICS_DATA, "POST", f"/properties/{number}:runReport", json=body
+    )
+    columns = [
+        str(h.get("name"))
+        for h in (
+            *cast(list[JSON], found.get("dimensionHeaders") or []),
+            *cast(list[JSON], found.get("metricHeaders") or []),
+        )
+    ]
+    rows = [
+        dict(zip(columns, [
+            v.get("value")
+            for v in (
+                *cast(list[JSON], r.get("dimensionValues") or []),
+                *cast(list[JSON], r.get("metricValues") or []),
+            )
+        ], strict=False))
+        for r in cast(list[JSON], found.get("rows") or [])
+    ]  # fmt: skip
+    return {"rows": rows, "row_count": found.get("rowCount", len(rows))}
+
+
 # Which accesses each tool can use (any one of them).
 NEEDS: dict[str, tuple[str, ...]] = {
     "search_mail": ("mail_read",),
@@ -553,6 +668,10 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "read_sheet": ("sheets_read", "sheets_write"),
     "update_sheet": ("sheets_write",),
     "append_rows": ("sheets_write",),
+    "list_search_sites": ("search_console_read",),
+    "search_performance": ("search_console_read",),
+    "list_analytics_properties": ("analytics_read",),
+    "analytics_report": ("analytics_read",),
 }
 
 
@@ -576,6 +695,7 @@ ADAPTER = Adapter(
             search_files, read_file, upload_file, share_file,
             list_events, create_event,
             read_sheet, update_sheet, append_rows,
+            list_search_sites, search_performance, list_analytics_properties, analytics_report,
         )
     ),
     secret_fragments=secret_fragments,

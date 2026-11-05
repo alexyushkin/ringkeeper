@@ -19,7 +19,7 @@ import anthropic
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import gmail, mcp, twilio
+from ringkeeper.adapters import gmail, http_api, mailbox, mcp, resend, smtp, storage, twilio
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.claude_auth import WORKSPACE_HEADER, check_format, credential_ref, normalize
 from ringkeeper.config import Settings
@@ -120,6 +120,32 @@ def store_telegram(session: Session, settings: Settings, token: str) -> str:
 GITHUB_TOKENS = ("github_pat_", "ghp_", "gho_", "ghu_", "ghs_")
 
 
+# JSON with the parts (the app's form builds it), checked like the adapter reads it.
+PARTS = {
+    InstanceType.TWILIO: twilio.credentials,
+    InstanceType.GMAIL: gmail.credentials,
+    InstanceType.SMTP: smtp.settings,
+    InstanceType.RESEND: resend.settings,
+    InstanceType.MAILBOX: mailbox.settings,
+    InstanceType.HTTP: http_api.settings,
+    InstanceType.S3: storage.settings,
+}
+
+
+def _check_addresses(kind: InstanceType, parts: object) -> None:
+    """A server the owner typed: not this computer, nor Ringkeeper itself."""
+    fields = cast(dict[str, Any], parts) if isinstance(parts, dict) else {}
+    if kind is InstanceType.SMTP:
+        netpolicy.check_host(str(fields["host"]))
+    elif kind is InstanceType.MAILBOX:
+        netpolicy.check_host(str(fields["imap_host"]))
+        netpolicy.check_host(str(fields["smtp"]["host"]))
+    elif kind is InstanceType.S3 and fields.get("endpoint"):
+        netpolicy.check_url(str(fields["endpoint"]))
+    elif kind is InstanceType.HTTP and fields.get("spec_url"):
+        netpolicy.check_url(str(fields["spec_url"]))
+
+
 def check_connection_secret(kind: InstanceType, secret: str) -> str:
     secret = secret.strip()
     if not secret:
@@ -150,9 +176,9 @@ def check_connection_secret(kind: InstanceType, secret: str) -> str:
             mcp.server_spec(secret)
         except ToolError as error:
             raise RuleViolationError(str(error)) from None
-    elif kind in (InstanceType.TWILIO, InstanceType.GMAIL):
-        try:  # JSON with the parts (the app's form builds it); checked like the adapter reads it
-            (twilio.credentials if kind is InstanceType.TWILIO else gmail.credentials)(secret)
+    elif kind in PARTS:
+        try:
+            _check_addresses(kind, PARTS[kind](secret))
         except ToolError as error:
             message = str(error)
             raise RuleViolationError(message[:1].upper() + message[1:] + ".") from None
