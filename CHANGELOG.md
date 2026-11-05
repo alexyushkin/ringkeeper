@@ -3,6 +3,12 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Help > Ask is a conversation.** Ask a follow-up about an answer, or press New question to
+  start again. It stays while you open a page from an answer and come back; reloading or
+  signing out ends it.
+
 ## 0.1.0-beta.22 (2026-11-05)
 
 - **Scanned PDFs and pictures can be read.** The first time a task meets one, the app offers
