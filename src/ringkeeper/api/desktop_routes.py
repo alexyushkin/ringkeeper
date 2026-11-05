@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import Field
 from sqlalchemy import func, select
 
-from ringkeeper import voice_local
+from ringkeeper import ocr_local, voice_local
 from ringkeeper.api import manage_routes
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
@@ -337,6 +337,36 @@ def voice_choose(body: VoiceChoiceIn) -> dict[str, Any]:
 @router.delete("/voice", status_code=204)
 def voice_remove() -> None:
     voice_local.model(get_settings()).remove()
+
+
+# --- Reading scans on this computer ---
+
+
+@router.get("/ocr")
+def ocr_status() -> dict[str, Any]:
+    """Whether scans can be read here, and whether a task has just needed that."""
+    return ocr_local.model(get_settings()).status()
+
+
+@router.post("/ocr/download", status_code=202)
+def ocr_download() -> dict[str, Any]:
+    """Fetch the scan reader, once. The app polls GET /desktop/ocr for progress."""
+    found = ocr_local.model(get_settings())
+    found.start()
+    return found.status()
+
+
+@router.post("/ocr/decline")
+def ocr_decline() -> dict[str, Any]:
+    """Not now: the offer goes, and the download stays in Settings."""
+    found = ocr_local.model(get_settings())
+    found.decline()
+    return found.status()
+
+
+@router.delete("/ocr", status_code=204)
+def ocr_remove() -> None:
+    ocr_local.model(get_settings()).remove()
 
 
 # --- Backup (services.backup) ---

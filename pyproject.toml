@@ -43,6 +43,9 @@ dependencies = [
 # AWS Secrets Manager (aws-sm:// secrets), for servers: the Docker image installs
 # it; the desktop app doesn't need it.
 aws = ["boto3>=1.43.118"]
+# Reading scans in the desktop app: Tesseract inside tesserocr's wheel, and Pillow to get
+# the pictures out of a PDF. Downloaded when you say yes (ocr_local), never in the installer.
+ocr = ["tesserocr==2.12.0", "pillow==13.0.0"]
 # Voice in the desktop app: the same engine as the stt service (stt/Dockerfile),
 # run in-process. The model itself is downloaded on first use.
 # Its newest transitive releases were under two weeks old: these are held back.

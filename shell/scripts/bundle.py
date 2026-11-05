@@ -6,7 +6,8 @@
             and the stt modules, and the Claude Code CLI that comes inside the
             Agent SDK, unmodified; plus voice-packages.json, the voice extra's
             wheels (address, size, hash), which the app downloads only when
-            voice is first used (ringkeeper.voice_engine). Not on Intel Macs:
+            voice is first used (ringkeeper.voice_engine), and ocr-packages.json,
+            the same for the scan reader (ringkeeper.ocr_local). Voice isn't on Intel Macs:
             onnxruntime has no build for them, and the app says voice isn't there
 - web/      the static web app (web/scripts/build-desktop.mjs)
 - mingit/   git for the workers, on Windows (fetch-mingit.ps1)
@@ -35,6 +36,8 @@ SHELL = REPO / "shell"
 OUT = SHELL / "resources"
 # The voice wheels' license files, for the notices (beside the bundle, not in it).
 VOICE_LICENSES = SHELL / "target" / "voice-licenses"
+OCR_LICENSES = SHELL / "target" / "ocr-licenses"
+OCR_PACKAGES = ("pillow", "tesserocr")
 WINDOWS = sys.platform == "win32"
 INTEL_MAC = sys.platform == "darwin" and host.machine() == "x86_64"
 OLDEST_INTEL_MACOS = 12
@@ -232,6 +235,51 @@ def voice_wheels(work: Path, root: Path, base: list[str]) -> Path:
     return listed
 
 
+def ocr_wheels(root: Path) -> Path:
+    """The scan reader's two wheels, by name from uv.lock. uv wouldn't pick tesserocr's for a
+    Mac: they need macOS 15, newer than the app's oldest. The list says so, and the app
+    doesn't offer the download to an older Mac."""
+    cpython = "cp" + "".join(PYTHON_VERSION.split(".")[:2])
+    ending = "win_amd64" if sys.platform == "win32" else "x86_64" if INTEL_MAC else "arm64"
+    family = "win" if sys.platform == "win32" else "macosx"
+    packages = tomllib.loads((REPO / "uv.lock").read_text(encoding="utf-8"))["package"]
+    wheels = []
+    macos = 0
+    for name in OCR_PACKAGES:
+        [entry] = [p for p in packages if normalized(p["name"]) == name]
+        [chosen] = [
+            w
+            for w in entry["wheels"]
+            if (file := w["url"].rsplit("/", 1)[-1]).endswith(f"{ending}.whl")
+            and f"-{cpython}-{cpython}-{family}" in file
+        ]
+        algorithm, digest = chosen["hash"].split(":", 1)
+        if algorithm != "sha256":
+            sys.exit(f"{entry['name']}: uv.lock has a {algorithm} hash, not sha256")
+        if needs := re.search(r"macosx_(\d+)_", chosen["url"].rsplit("/", 1)[-1]):
+            macos = max(macos, int(needs[1]))
+        wheels.append(
+            {
+                "name": entry["name"],
+                "version": entry["version"],
+                "url": chosen["url"],
+                "sha256": digest,
+                "size": chosen["size"],
+            }
+        )
+    listed = root / "ocr-packages.json"
+    listed.write_text(
+        json.dumps(
+            {"python": PYTHON_VERSION.rsplit(".", 1)[0], "macos": macos, "wheels": wheels},
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    total = sum(w["size"] for w in wheels)
+    print(f"scan reader: {len(wheels)} wheels, {total / 1e6:.1f} MB to download when wanted")
+    return listed
+
+
 def build_python(work: Path) -> Path:
     """A standalone CPython (from uv) with everything installed into it."""
     installs = work / "pythons"
@@ -288,6 +336,13 @@ def build_python(work: Path) -> Path:
     # PyPI, as a user's would be), checked by importing the engine.
     listed = voice_wheels(work, target, base)
     run(python_exe(target), "-I", "-m", "ringkeeper.voice_engine", listed, work / "voice-check")
+    # The scan reader the same way, checked by reading a scan. Its licenses go in the notices.
+    listed = ocr_wheels(target)
+    run(python_exe(target), "-I", "-m", "ringkeeper.ocr_local", listed, work / "ocr-check")
+    remove(OCR_LICENSES)
+    OCR_LICENSES.mkdir(parents=True)
+    for info in (work / "ocr-check").glob("ocr/engine-*/*.dist-info"):
+        shutil.copytree(info, OCR_LICENSES / info.name)
     return target
 
 
@@ -438,6 +493,12 @@ def web_components() -> list[dict]:
 
 # Copied into web/lib/client/logos.ts rather than installed, so npm doesn't list it.
 SIMPLE_ICONS_VERSION = "16.35.0"
+TESSERACT_NOTICE = """\
+Tesseract (https://github.com/tesseract-ocr/tesseract) and its language data
+(https://github.com/tesseract-ocr/tessdata_fast) are released under the Apache License 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). Tesserocr's wheel carries Tesseract, Leptonica
+and the image libraries they use; on Windows their licenses are listed with it above.
+"""
 SIMPLE_ICONS_NOTICE = """\
 The service logos come from Simple Icons, https://simpleicons.org, released under
 CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/).
@@ -518,6 +579,16 @@ def write_notices(python_root: Path, mingit_version: str | None) -> None:
         )
     components += python_components(site)
     components += python_components(VOICE_LICENSES, "Python package, downloaded for voice")
+    components += python_components(OCR_LICENSES, "Python package, downloaded for reading scans")
+    components.append(
+        {
+            "name": "Tesseract and its English language data",
+            "version": "5.5",
+            "license": "Apache-2.0",
+            "kind": "downloaded for reading scans",
+            "texts": [("Tesseract", TESSERACT_NOTICE)],
+        }
+    )
     components += rust_components() + web_components()
     components.append(
         {

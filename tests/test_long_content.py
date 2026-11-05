@@ -296,8 +296,8 @@ def test_a_picture_says_what_it_needs_when_ocr_isnt_there(
     monkeypatch.setattr(extract.shutil, "which", lambda _name: None)
     found = extract.extract("scan.png", "image/png", b"\x89PNG")
     assert found.text == ""
-    assert found.note
-    assert "tesseract" in found.note
+    assert found.note == extract.NO_OCR
+    assert "Don't guess" in found.note
 
 
 def test_a_picture_is_read_when_ocr_is_there(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,12 +311,10 @@ def test_a_picture_is_read_when_ocr_is_there(monkeypatch: pytest.MonkeyPatch) ->
     assert extract.extract("scan.png", "image/png", b"\x89PNG").text == "Invoice 42"
 
 
-def test_a_scanned_pdf_says_some_pages_couldnt_be_read(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_pdf_says_some_pages_couldnt_be_read(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(extract.shutil, "which", lambda _name: None)
-    found = extract.extract("scan.pdf", "application/pdf", pdf_of("Text here", ""))
-    assert found.note
-    assert "1 of 2 pages" in found.note
-    assert "tesseract" in found.note
+    found = extract.extract("a.pdf", "application/pdf", pdf_of("Text here", ""))
+    assert found.note == "1 of 2 pages had no text that could be read."
 
 
 @pytest.mark.parametrize(

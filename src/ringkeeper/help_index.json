@@ -333,13 +333,13 @@
 "doc": "security",
 "anchor": "keys-stay-out-of-a-task",
 "title": "Keys stay out of a task",
-"text": "A task runs Claude Code with two short-lived passes for its own project, and no keys. One reaches its connections, through Ringkeeper's gateway, which checks that the project may use that connection, adds the key itself, removes any secret from the answer, and logs the call. The other reaches only the model, through Ringkeeper's model proxy, which adds your API key, subscription or cloud sign-in on the way out and counts the tokens. Both end with the session. One client's project can't reach another client's connection through these. **What this doesn't stop on the desktop.** A task runs as your own Windows or Mac user, so it isn't walled off from what that user can reach. No key is in its environment or its own files, but a script written to do it could still ask the system keychain for the master key and open the vault, or read Ringkeeper's own files and act as the app. A task told to do that by something it read is the risk to think about. With Docker workers (the server install) a task has no access to the vault or the keychain at all."
+"text": "A task runs Claude Code with two short-lived passes for its own project, and no keys. One reaches its connections, through Ringkeeper's gateway, which checks that the project may use that connection, adds the key itself, removes any secret from the answer, and logs the call. The other reaches only the model, through Ringkeeper's model proxy, which adds your API key, subscription or cloud sign-in on the way out and counts the tokens. Both end with the session. One client's project can't reach another client's connection through these. **The desktop app isn't a sandbox.** On the desktop, the AI runs as your Windows or Mac user. Ringkeeper's holds and gateway control what it does through connections, but they don't wall it off from your computer. No key is in its environment or its own files, yet a script written to do it could still reach anything your user can: your files, the system keychain and the master key in it, and Ringkeeper's own files. A task told to do that by something it read is the risk to think about. For strong isolation, use server mode. With Docker workers, a task has no access to the vault, the keychain or the rest of the computer. An optional desktop mode that runs tasks as a separate local account is planned, but it isn't here yet."
 },
 {
 "doc": "security",
 "anchor": "what-leaves-your-computer",
 "title": "What leaves your computer",
-"text": "- **To Anthropic:** your requests, and what tasks read and do, so Claude can work on them (with your API key or subscription, under Anthropic's terms). - **To the services you connect:** the calls tasks make (Airtable, your database, GitHub, Google, and so on), with their keys. - **To Telegram, Slack or Discord, if you set them up:** short summaries of approvals and finished tasks (never keys, code or full SQL). - **To GitHub:** the update check (`latest.json` from the releases page) and the update download. - **To the MCP registry and Hugging Face, only when you use them:** catalog searches, and the download of the on-device voice model. Nothing else: no analytics, no usage statistics, no crash reports. A problem report only leaves when you send it yourself, after reading it."
+"text": "- **To Anthropic:** your requests, and what tasks read and do, so Claude can work on them (with your API key or subscription, under Anthropic's terms). - **To the services you connect:** the calls tasks make (Airtable, your database, GitHub, Google, and so on), with their keys. - **To Telegram, Slack or Discord, if you set them up:** short summaries of approvals and finished tasks (never keys, code or full SQL). - **To GitHub:** the update check (`latest.json` from the releases page) and the update download. - **To the MCP registry and Hugging Face, only when you use them:** catalog searches, and the download of the on-device voice model. - **To PyPI and GitHub, only if you download the scan reader:** the request for its files. Scans themselves are read on this computer and never sent. Nothing else: no analytics, no usage statistics, no crash reports. A problem report only leaves when you send it yourself, after reading it."
 },
 {
 "doc": "security",
@@ -488,6 +488,18 @@
 {
 "doc": "faq",
 "anchor": "",
+"title": "Is the desktop app a sandbox?",
+"text": "No. On the desktop, the AI runs as your Windows or Mac user. Ringkeeper's holds and gateway control what it does through connections, but it isn't a sandbox: a task can reach what your user can reach on this computer, including your files. For strong isolation, use server mode, where tasks run in Docker workers. See Security."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "Can a task read scanned PDFs and pictures?",
+"text": "Yes, in the desktop app, after a one-time download. The first time a task meets a scan it can't read, the app offers the scan reader at the top of the window. If you choose Not now, it's in Settings › Reading scans. It reads English, on this computer, and nothing leaves it. On a Mac it needs macOS 15 or later. A server install doesn't read scans yet."
+},
+{
+"doc": "faq",
+"anchor": "",
 "title": "Something's wrong. Where do I start?",
 "text": "Troubleshooting, then Help › Report a problem in the app."
 },
@@ -495,7 +507,7 @@
 "doc": "faq",
 "anchor": "what-ringkeeper-doesnt-do-yet",
 "title": "What Ringkeeper doesn't do yet",
-"text": "- **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles. - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser. - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages. - **Billing:** no invoices, time tracking or client billing. - **Exporting tasks to spreadsheets:** there's no export of tasks to Excel. The Activity page can download its log as CSV, and a backup is a whole copy, for restoring."
+"text": "- **A separate account for tasks on the desktop:** an optional mode that runs tasks as a separate local account, so they can't reach your own files, is planned. Until then, use server mode for strong isolation. - **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles. - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser. - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages. - **Billing:** no invoices, time tracking or client billing. - **Exporting tasks to spreadsheets:** there's no export of tasks to Excel. The Activity page can download its log as CSV, and a backup is a whole copy, for restoring."
 },
 {
 "doc": "install-desktop",
@@ -687,7 +699,7 @@
 "doc": "services/gmail",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
 },
 {
 "doc": "services/google",
@@ -729,7 +741,7 @@
 "doc": "services/google",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
 },
 {
 "doc": "services/n8n",
@@ -867,7 +879,7 @@
 "doc": "services/mailbox",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
 },
 {
 "doc": "services/smtp",
@@ -1029,7 +1041,7 @@
 "doc": "services/microsoft",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the free `tesseract` program on this computer. Without it, the task is told it couldn't be read."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
 },
 {
 "doc": "services/hubspot",

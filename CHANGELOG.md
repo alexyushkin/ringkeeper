@@ -3,6 +3,15 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Scanned PDFs and pictures can be read.** The first time a task meets one, the app offers
+  the scan reader, a one-time download. It reads English, on this computer, and nothing leaves
+  it. If you say Not now, it's in Settings > Reading scans. On a Mac it needs macOS 15 or later.
+  Before this, a scanned PDF couldn't be read even with Tesseract installed.
+- **Security and Help say plainly** that the desktop app isn't a sandbox: the AI runs as your
+  Windows or Mac user, and server mode is the choice for strong isolation.
+
 ## 0.1.0-beta.21 (2026-11-05)
 
 - **ElevenLabs,** through its official hosted server. Signing in is all it takes. Reads run;

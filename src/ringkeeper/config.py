@@ -182,6 +182,7 @@ class Settings(BaseSettings):
     # The voice engine's wheel list (voice_engine); by default, beside the
     # installed app's Python.
     voice_packages: Path | None = None
+    ocr_packages: Path | None = None
     # The MCP Registry the catalog searches (services.catalog); None: the official one.
     mcp_registry_url: str | None = None
 

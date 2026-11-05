@@ -1,9 +1,10 @@
 """The text inside a file: an attachment, or something in Drive.
 
-PDF, Word, Excel, CSV and text are read here. A picture, or a scanned PDF, needs OCR, which
-needs the `tesseract` program on this computer; without it the answer says so rather than
-returning nothing. These files come from outside, so a size that doesn't match what's inside,
-or an XML entity, ends the reading.
+PDF, Word, Excel, CSV and text are read here. A picture, or a scanned PDF, needs OCR: the
+desktop app's scan reader (ocr_local), an optional download, or a `tesseract` program on this
+computer. Without one the answer says so rather than returning nothing, and the desktop app
+offers the download. These files come from outside, so a size that doesn't match what's
+inside, or an XML entity, ends the reading.
 """
 
 import csv
@@ -13,9 +14,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -23,8 +26,10 @@ from xml.etree import ElementTree as ET
 import pypdf
 from pypdf.errors import PyPdfError
 
+from ringkeeper import ocr_local
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.adapters.mail_text import html_to_text
+from ringkeeper.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +38,19 @@ MAX_UNPACKED_BYTES = 200_000_000
 MAX_TEXT_CHARS = 5_000_000
 MAX_PDF_PAGES = 2000
 OCR_SECONDS = 60
+OCR_BUDGET_SECONDS = 180  # a whole file: a long scan shouldn't hold a task up for an hour
 NO_OCR = (
-    "This is a picture, and reading text from one needs the tesseract program, which isn't "
-    "installed on this computer."
+    "This has pictures or scanned pages, and reading text from those needs the tesseract "
+    "program, which isn't installed here. Don't guess at what they say."
+)
+OFFERED = (
+    "This has pictures or scanned pages, and Ringkeeper can't read those until its scan reader "
+    "is downloaded. The app is offering that download now: tell the person, and don't guess at "
+    "what they say. Once it's in, this can be read again."
+)
+NOT_DOWNLOADED = (
+    "This has pictures or scanned pages, and Ringkeeper can't read those without its scan "
+    "reader, an optional download in Settings > Reading scans. Don't guess at what they say."
 )
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 S = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -193,11 +208,31 @@ def _xlsx(data: bytes) -> str:
     return written.getvalue().strip()
 
 
+def _local() -> ocr_local.LocalOcr:
+    return ocr_local.model(get_settings())
+
+
 def ocr_available() -> bool:
-    return shutil.which("tesseract") is not None
+    return _local().ready() or shutil.which("tesseract") is not None
+
+
+def scans_readable() -> bool:
+    """Getting a picture out of a PDF takes Pillow, which comes with the scan reader."""
+    return ocr_available() and find_spec("PIL") is not None
+
+
+def _no_ocr() -> str:
+    """Why a picture wasn't read, and the desktop app's offer of the reader, the first time."""
+    local = _local()
+    if not local.available():
+        return NO_OCR
+    return OFFERED if local.missed() else NOT_DOWNLOADED
 
 
 def _ocr(data: bytes, suffix: str) -> str:
+    local = _local()
+    if local.ready():
+        return local.read(data, suffix)
     program = shutil.which("tesseract")
     if program is None:
         return ""
@@ -212,6 +247,13 @@ def _ocr(data: bytes, suffix: str) -> str:
         except (OSError, subprocess.TimeoutExpired):
             return ""
     return done.stdout.decode("utf-8", "replace").strip() if done.returncode == 0 else ""
+
+
+def _has_pictures(page: Any) -> bool:
+    try:
+        return bool(page.images.keys())
+    except Exception:
+        return False
 
 
 def _pdf_page_pictures(page: Any) -> str:
@@ -235,21 +277,30 @@ def _pdf(data: bytes) -> Extracted:
     except (PyPdfError, ValueError, OSError, KeyError):
         raise ToolError("that PDF is damaged and can't be read") from None
     written: list[str] = []
-    empty = 0
+    empty = late = pictured = 0
+    scans = scans_readable()
+    deadline = time.monotonic() + OCR_BUDGET_SECONDS
     for number, page in enumerate(pages[:MAX_PDF_PAGES], start=1):
         try:
             text = (page.extract_text() or "").strip()
         except Exception:
             logger.info("a page of a PDF couldn't be read")
             text = ""
-        if not text:
-            text = _pdf_page_pictures(page) if ocr_available() else ""
+        if not text and _has_pictures(page):
+            pictured += 1
+            if scans and time.monotonic() < deadline:
+                text = _pdf_page_pictures(page)
+            elif scans:
+                late += 1
         empty += 0 if text else 1
         written.append(f"[Page {number} of {len(pages)}]\n{text}")
     notes: list[str] = []
     if empty:
-        fix = "" if ocr_available() else " They may be scans, which need the tesseract program."
-        notes.append(f"{empty} of {len(pages)} pages had no text that could be read.{fix}")
+        notes.append(f"{empty} of {len(pages)} pages had no text that could be read.")
+    if late:
+        notes.append(f"{late} scanned pages weren't read, for lack of time. Say so in your answer.")
+    if pictured and not scans:
+        notes.append(_no_ocr())
     if len(pages) > MAX_PDF_PAGES:
         notes.append(f"Only the first {MAX_PDF_PAGES} of {len(pages)} pages were read.")
     return Extracted("\n\n".join(written), "pdf", " ".join(notes) or None)
@@ -274,7 +325,7 @@ def kind_of(name: str, mime: str) -> str:
 
 def _picture(name: str, data: bytes) -> Extracted:
     if not ocr_available():
-        return Extracted("", "image", NO_OCR)
+        return Extracted("", "image", _no_ocr())
     text = _ocr(data, Path(name).suffix or ".png")
     return Extracted(text, "image", None if text else "No text could be read from this picture.")
 
