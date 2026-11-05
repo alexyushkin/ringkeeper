@@ -15,6 +15,13 @@ Ringkeeper server: nothing about your clients goes to the people who make it.
 | Project folders | Wherever you chose (new ones in `Documents\Ringkeeper`) | Your Windows account. |
 | Backups you make | Where you save them | Encrypted with the password you chose ([Backup](backup.md)). |
 
+## Signed links are taken out
+
+Some web addresses work for whoever holds them, like a Lemon Squeezy customer portal link or
+an S3 or Azure download link. Ringkeeper keeps where such a link points and removes the rest
+from logs, the audit log, tool results and conversations. A task can't pass one on: a tool call
+that carries one is refused. To send someone a link like that, use the service itself.
+
 ## A task knows when it has only part of something
 
 A long answer never just stops. Every tool that returns part of something says how much there

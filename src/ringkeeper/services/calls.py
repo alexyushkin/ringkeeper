@@ -29,7 +29,7 @@ import anyio.to_thread
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper import remote, sensitive
+from ringkeeper import remote, sensitive, signed_links
 from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
@@ -342,6 +342,27 @@ def token_revoked(jti: str) -> bool:
         return revocations.is_revoked(session, jti)
 
 
+async def _refuse_what_cant_be_kept(call: ToolCall) -> None:
+    """Before anything can keep the arguments: a held call keeps them as they are. The audit
+    row keeps them masked."""
+    if what := sensitive.find(call.args):
+        reason = f"the arguments contain {what}"
+        said = (
+            f"The arguments contain {what}, and Ringkeeper never handles those. Nothing was "
+            "sent. Use the service's own hosted page for this, or a token or ID it issued."
+        )
+    elif signed_links.found(call.args):
+        reason = "the arguments contain a signed link"
+        said = (
+            "The arguments contain a signed link, which works for whoever holds it, so Ringkeeper "
+            "doesn't keep or pass one on. Nothing was sent. Use the service's own ID for it."
+        )
+    else:
+        return
+    await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.REFUSED, reason=reason))
+    raise RefusalError(said, reason)
+
+
 async def run_call(call: ToolCall, vault: Vault) -> JSON:
     """Run one gateway tool call through every check. Returns a scrubbed result."""
     adapter = ADAPTERS[call.service]
@@ -357,15 +378,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         raise
     is_write = spec.kind is ToolKind.WRITE
 
-    if what := sensitive.find(call.args):
-        # Before anything can keep the arguments. The audit row keeps them masked.
-        reason = f"the arguments contain {what}"
-        await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.REFUSED, reason=reason))
-        raise RefusalError(
-            f"The arguments contain {what}, and Ringkeeper never handles those. Nothing was "
-            "sent. Use the service's own hosted page for this, or a token or ID it issued.",
-            reason,
-        )
+    await _refuse_what_cant_be_kept(call)
 
     try:
         target = _target(vault, adapter, auth, call.caller.project)

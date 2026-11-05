@@ -3,7 +3,8 @@
 Every resolved secret registers its fragments (the value itself plus pieces an
 adapter knows can leak separately, like the password inside a DSN). Tool
 results, errors, audit rows and log records all pass through `scrub`, which also
-takes out card and bank numbers (ringkeeper.sensitive).
+takes out card and bank numbers (ringkeeper.sensitive) and signed links
+(ringkeeper.signed_links).
 """
 
 import logging
@@ -11,7 +12,7 @@ import threading
 from collections.abc import Callable
 from typing import Any, cast
 
-from ringkeeper import sensitive
+from ringkeeper import sensitive, signed_links
 
 REDACTED = "[redacted]"
 MIN_FRAGMENT_LENGTH = 4  # shorter fragments would mangle ordinary text
@@ -41,7 +42,7 @@ def scrub(text: str) -> str:
     for fragment in _snapshot():
         if fragment in text:
             text = text.replace(fragment, REDACTED)
-    return sensitive.mask(text)
+    return signed_links.mask(sensitive.mask(text))
 
 
 def scrub_obj(value: object) -> Any:

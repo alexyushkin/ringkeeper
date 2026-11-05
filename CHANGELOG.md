@@ -5,6 +5,8 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Signed links are removed** from logs, the audit log, tool results and conversations:
+  Lemon Squeezy customer portal links, S3, Google Cloud and Azure download links, and the like.
 - **Long emails and files read in full.** Mail tools for Google, Microsoft, Gmail and Mailbox
   now return the whole message, up to 200,000 characters at a time, as clean text with links
   and tables kept, and the rest in parts. A reply's quoted messages are kept apart. Tasks can

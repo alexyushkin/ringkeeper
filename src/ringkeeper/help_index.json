@@ -319,6 +319,12 @@
 },
 {
 "doc": "security",
+"anchor": "signed-links-are-taken-out",
+"title": "Signed links are taken out",
+"text": "Some web addresses work for whoever holds them, like a Lemon Squeezy customer portal link or an S3 or Azure download link. Ringkeeper keeps where such a link points and removes the rest from logs, the audit log, tool results and conversations. A task can't pass one on: a tool call that carries one is refused. To send someone a link like that, use the service itself."
+},
+{
+"doc": "security",
 "anchor": "a-task-knows-when-it-has-only-part-of-something",
 "title": "A task knows when it has only part of something",
 "text": "A long answer never just stops. Every tool that returns part of something says how much there is and where the next part starts, and a task is told to read the rest before it answers, or to say its answer is based on part of it. A long result that can't simply be asked for again, such as the answer to an API call, is kept in memory for about half an hour, for that task only, after secrets are removed from it."
