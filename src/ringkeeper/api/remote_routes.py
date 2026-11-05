@@ -176,7 +176,10 @@ def start_signin(data: RemoteConnectionIn, request: Request, session: SessionDep
     remote_connections.can_sign_in(new)
     settings = get_settings()
     try:
-        url = mcp_oauth.start(new.url or "", redirect_uri(request, settings), new.as_dict())
+        url = mcp_oauth.start(
+            new.url or "", redirect_uri(request, settings), new.as_dict(),
+            developer_apps.listed_redirect(settings),
+        )  # fmt: skip
     except mcp_oauth.SignInError as error:
         raise HTTPException(502, detail=str(error)) from None
     return {"url": url}

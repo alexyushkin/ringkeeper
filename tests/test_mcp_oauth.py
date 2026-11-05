@@ -149,3 +149,40 @@ def test_an_expiring_token_is_refreshed_once_and_stored(auth: FakeAuthServer) ->
 def test_servers_without_sign_in_say_so(auth: FakeAuthServer) -> None:
     with pytest.raises(mcp_oauth.SignInError, match="Paste a token"):
         mcp_oauth.start("https://mcp.example.org/mcp", REDIRECT, {})
+
+
+def test_a_server_that_takes_no_registrations_is_told_who_ringkeeper_is(
+    auth: FakeAuthServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = mcp_oauth.discover
+
+    def no_registration(url: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        resource, server = real(url)
+        server.pop("registration_endpoint")
+        return resource, server | {mcp_oauth.DOCUMENT_SUPPORTED: True}
+
+    monkeypatch.setattr(mcp_oauth, "discover", no_registration)
+    fixed = "http://localhost:17845/oauth/callback"
+    page = mcp_oauth.start(MCP_URL, "http://127.0.0.1:5000/oauth/callback", {"name": "x"}, fixed)
+    query = parse_qs(urlsplit(page).query)
+    assert query["client_id"] == [mcp_oauth.CLIENT_DOCUMENT]
+    assert query["redirect_uri"] == [fixed]  # the one address the document names
+    pending = mcp_oauth.take(query["state"][0])
+    assert pending.redirect_uri == fixed
+    with pytest.raises(mcp_oauth.SignInError, match="desktop app"):
+        mcp_oauth.start(MCP_URL, "https://server.example/oauth/callback", {"name": "x"}, None)
+
+
+def test_a_server_with_neither_says_to_paste_a_token(
+    auth: FakeAuthServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = mcp_oauth.discover
+
+    def neither(url: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        resource, server = real(url)
+        server.pop("registration_endpoint")
+        return resource, server
+
+    monkeypatch.setattr(mcp_oauth, "discover", neither)
+    with pytest.raises(mcp_oauth.SignInError, match="Paste a token"):
+        mcp_oauth.start(MCP_URL, "http://127.0.0.1:5000/oauth/callback", {"name": "x"})

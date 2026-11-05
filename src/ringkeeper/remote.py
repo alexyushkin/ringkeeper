@@ -166,6 +166,13 @@ GUARDS: dict[str, Guard] = {
         )
     ),
     "held": Guard(),  # every change waits for approval; nothing more
+    # A call rings a real person, a clone is someone's voice, and speech costs credits: all of
+    # it waits, every time.
+    "voice": Guard(
+        frozenset({"delete", "remove", "destroy", "purge", "erase", "wipe"}),
+        why="deletes something on a voice service",
+        never_trusted=True,
+    ),
 }
 
 
@@ -506,6 +513,12 @@ CATALOG: tuple[Remote, ...] = (
     Remote(
         "apollo", "Apollo", "https://mcp.apollo.io/mcp", signin=True, paste=None,
         category="CRM", guard="held", note="Tools that spend credits wait for your approval.",
+    ),
+    Remote(
+        "elevenlabs", "ElevenLabs", "https://api.elevenlabs.io/v1/mcp", signin=True, paste=None,
+        category="AI", guard="voice",
+        note="Signs in from the desktop app. Reads run; agents, calls, voice clones and speech "
+        "wait for approval, every time.",
     ),
     Remote(
         "apify", "Apify", "https://mcp.apify.com", signin=True, paste=None, category="AI",

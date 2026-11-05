@@ -546,6 +546,24 @@
 "text": "Ringkeeper can't undo what another tool's server does."
 },
 {
+"doc": "services/elevenlabs",
+"anchor": "",
+"title": "ElevenLabs",
+"text": "Voice agents, phone calls and speech, through ElevenLabs' own hosted server."
+},
+{
+"doc": "services/elevenlabs",
+"anchor": "connect-it",
+"title": "Connect it",
+"text": "Under **Connections**, choose **ElevenLabs** and sign in with your ElevenLabs account. You approve what Ringkeeper may do on ElevenLabs' page, and there's no key to paste: ElevenLabs' server doesn't accept API keys. Connect one account per client, or your own. Sign-in works from the desktop app. A server install can't use this connection, because ElevenLabs only sends a sign-in back to the fixed address on this computer. Workspaces in ElevenLabs' EU, India and Singapore environments aren't on this tile yet."
+},
+{
+"doc": "services/elevenlabs",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "The tools are ElevenLabs' own, and **Connections** lists them once you've signed in. - **Reading runs.** Listing and reading agents, voices, conversations and the like. - **Anything else waits for your approval, every time:** creating or changing agents, placing calls, cloning voices, generating speech. \"Trusted for an hour\" doesn't apply here, and generating speech uses your ElevenLabs credits. - **Deleting needs the connection's name typed,** and can't be approved from Slack, Telegram or a notification. These rules go by a tool's name. You can make a tool stricter, never looser. Ringkeeper can't undo anything on ElevenLabs, and the card says so."
+},
+{
 "doc": "services/airtable",
 "anchor": "where-to-get-the-key",
 "title": "Where to get the key",
@@ -813,7 +831,7 @@
 "doc": "services/developer-apps",
 "anchor": "where-the-sign-in-comes-back",
 "title": "Where the sign-in comes back",
-"text": "Most services want one exact address, and Ringkeeper's own port changes each launch, so they come back to a fixed address on this computer: `http://localhost:17845/oauth/callback`. It only answers on this computer. Nothing is opened to the internet. **Intuit's production keys are different.** Intuit only sends production sign-ins to an https address that isn't this computer. So the sign-in ends on Intuit's page, and you copy that page's whole address back into Ringkeeper. Intuit's development keys come back here as usual, and reach sandbox companies only."
+"text": "Most services want one exact address, and Ringkeeper's own port changes each launch, so they come back to a fixed address on this computer: `http://localhost:17845/oauth/callback`. It only answers on this computer. Nothing is opened to the internet. **Intuit, Xero, HubSpot and Salesforce** come back through a page instead: `https://yushkin.us/ringkeeper/oauth/callback`. These vendors want an https address, or won't take this computer's address for real accounts. It's a static page that passes the sign-in's code and state straight on to the address above, so Ringkeeper needs to be open on this computer. It keeps nothing, and a code can't be used without your app's secret, which stays in the vault. Ringkeeper checks the sign-in's state itself, as it does for every sign-in. On a server install, every service comes back to the server's own address."
 },
 {
 "doc": "services/developer-apps",

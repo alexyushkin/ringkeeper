@@ -213,3 +213,26 @@ def test_a_payment_servers_refund_gets_the_card_and_a_lookup_doesnt(database_url
         session.flush()
         assert inbox.money(link) is None
         session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("tool", "level"),
+    [
+        ("list_agents", mcp.READ), ("get_conversation", mcp.READ), ("search_voices", mcp.READ),
+        ("create_agent", mcp.APPROVE), ("update_agent", mcp.APPROVE),
+        ("make_outbound_call", mcp.APPROVE), ("clone_voice", mcp.APPROVE),
+        ("text_to_speech", mcp.APPROVE), ("delete_agent", mcp.CONFIRM),
+        ("remove_voice", mcp.CONFIRM),
+    ],
+)  # fmt: skip
+def test_elevenlabs_goes_by_what_a_tool_does(tool: str, level: str) -> None:
+    config = {"remote": "elevenlabs"}
+    assert mcp.rule(config, tool).level == level
+
+
+def test_elevenlabs_cant_be_loosened_or_trusted() -> None:
+    config = {"remote": "elevenlabs", "tool_rules": {"make_outbound_call": mcp.READ}}
+    assert mcp.rule(config, "make_outbound_call").level == mcp.APPROVE
+    assert remote.GUARDS["voice"].never_trusted
+    service = remote.BY_KEY["elevenlabs"]
+    assert (service.signin, service.paste) == (True, None)  # its server takes no API key

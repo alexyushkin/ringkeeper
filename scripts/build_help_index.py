@@ -18,7 +18,7 @@ PAGES = (
     "concepts", "connections", "agents-and-routines", "approvals", "undo", "notifications",
     "where-claude-runs",
     "backup", "working-faster", "security", "troubleshooting", "faq", "install-desktop",
-    "services/add-on-tools", "services/airtable", "services/database", "services/github",
+    "services/add-on-tools", "services/elevenlabs", "services/airtable", "services/database", "services/github",
     "services/gmail", "services/google", "services/n8n", "services/twilio", "services/vercel",
     "services/developer-apps", "services/mailbox", "services/smtp", "services/resend",
     "services/http-api", "services/storage", "services/clerk", "services/microsoft",

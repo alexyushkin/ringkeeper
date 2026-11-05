@@ -124,13 +124,11 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
   const [env, setEnv] = useState("");
   const [everywhere, setEverywhere] = useState(false);
   const [state, setState] = useState<string | null>(null);
-  const [paste, setPaste] = useState(false);
-  const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!state || paste) return;
+    if (!state) return;
     const deadline = Date.now() + 10 * 60_000;
     const timer = setInterval(() => {
       api<{ state: string; name: string | null; error: string | null }>(`developer-apps/signin/${state}`)
@@ -146,7 +144,7 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
         .catch(() => undefined);
     }, 2000);
     return () => clearInterval(timer);
-  }, [state, paste, onAdded]);
+  }, [state, onAdded]);
 
   if (!provider) return null;
   if (!provider.apps.length) {
@@ -166,24 +164,9 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
     setError(null);
     try {
       const body = { vendor: vendor.key, access, owner: shared ? undefined : client, shared, all_projects: shared && everywhere, env, project, app: appId || undefined };
-      const started = await api<{ url: string; state: string; paste: boolean }>("developer-apps/signin", { json: body });
+      const started = await api<{ url: string; state: string }>("developer-apps/signin", { json: body });
       window.open(started.url, "_blank", "noopener");
-      setPaste(started.paste);
       setState(started.state);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function finishPasted() {
-    setBusy(true);
-    setError(null);
-    try {
-      const done = await api<{ name: string }>(`developer-apps/signin/${state}/paste`, { json: { address: address.trim() } });
-      setAddress("");
-      onAdded(done.name);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -208,15 +191,7 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
       ) : null}
       <EnvChoice value={env} onChange={setEnv} />
       {shared ? <Toggle label="Use in all projects" checked={everywhere} onChange={setEverywhere} hint="Every client's projects, new ones too." /> : null}
-      {state && paste ? (
-        <div className="space-y-2">
-          <Alert tone="warn">Finish on {vendor.name}&apos;s page. It can&apos;t come back to this computer, so when it lands on its last page, copy that page&apos;s whole address from the browser and paste it here.</Alert>
-          <Field label="The address you landed on" value={address} onChange={setAddress} />
-          <Button kind="primary" busy={busy} disabled={address.trim().length < 10} onClick={finishPasted}>
-            Finish connecting
-          </Button>
-        </div>
-      ) : state ? (
+      {state ? (
         <Alert tone="good">Finish signing in on {vendor.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert>
       ) : (
         <Button kind="primary" busy={busy} disabled={!env || (vendor.key === provider.key && provider.access.length > 0 && !access.length)} onClick={start}>

@@ -14,6 +14,7 @@ One page per kind of connection: where to get its key, what it can do, what wait
 - [Any API (with Forms On Fire and DataForSEO)](http-api.md)
 - [Oracle Database](oracle.md)
 - [Clouds: AWS, Azure, Google Cloud and OCI](cloud.md)
+- [ElevenLabs (voice agents, calls and speech)](elevenlabs.md)
 - [Developer apps: your own registered apps](developer-apps.md)
 - [Clerk (users, sessions, organizations)](clerk.md)
 - [Microsoft account (mail, calendar, files)](microsoft.md)

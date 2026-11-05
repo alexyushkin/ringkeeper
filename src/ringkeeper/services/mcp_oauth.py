@@ -2,9 +2,11 @@
 registration, the authorization code flow with PKCE) and keeping its tokens fresh.
 
 1. `start`: find the server's authorization server (RFC 9728, then RFC 8414),
-   register Ringkeeper as a client there (RFC 7591), and return the page to
-   open. What's needed to finish (the PKCE verifier, the client) stays in this
-   process's memory for ten minutes, keyed by the unguessable `state`.
+   register Ringkeeper as a client there (RFC 7591), or, where it takes no
+   registrations, name the client by CLIENT_DOCUMENT (a client ID metadata
+   document), and return the page to open. What's needed to finish (the PKCE
+   verifier, the client) stays in this process's memory for ten minutes, keyed
+   by the unguessable `state`.
 2. The service redirects the browser to /oauth/callback; `finish` exchanges
    the code (with the `resource` indicator, RFC 8707) and stores the tokens in
    the vault as the connection's secret. Nothing is stored before that.
@@ -28,6 +30,9 @@ import httpx2
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.vault import Secret, Vault
 
+# Who Ringkeeper is, for a server that takes no registrations. Public and static, on the site.
+CLIENT_DOCUMENT = "https://yushkin.us/ringkeeper/oauth/client.json"
+DOCUMENT_SUPPORTED = "client_id_metadata_document_supported"
 PENDING_SECONDS = 600
 REFRESH_MARGIN_SECONDS = 120
 TIMEOUT = 20.0
@@ -157,19 +162,34 @@ def _register(server: dict[str, Any], redirect_uri: str, scope: str | None) -> d
     return client
 
 
+def _client(
+    server: dict[str, Any], redirect_uri: str, listed: str | None, scope: str | None
+) -> tuple[dict[str, Any], str]:
+    """(who Ringkeeper is to this server, where it comes back). A client document names one
+    address, which only the desktop app has."""
+    if server.get("registration_endpoint") or not server.get(DOCUMENT_SUPPORTED):
+        return _register(server, redirect_uri, scope), redirect_uri
+    if listed is None:
+        raise SignInError("This service only signs in from Ringkeeper's desktop app.")
+    return {"client_id": CLIENT_DOCUMENT}, listed
+
+
 def _pkce() -> tuple[str, str]:
     verifier = secrets.token_urlsafe(48)
     digest = hashlib.sha256(verifier.encode()).digest()
     return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def start(url: str, redirect_uri: str, connection: dict[str, Any]) -> str:
+def start(
+    url: str, redirect_uri: str, connection: dict[str, Any], listed: str | None = None
+) -> str:
     """Begin signing in to the MCP server at `url` (a service from ringkeeper.remote,
-    one from the catalog, or one added by its address); returns the page to open."""
+    one from the catalog, or one added by its address); returns the page to open. `listed`
+    is the address CLIENT_DOCUMENT names, if this install has it."""
     resource, server = discover(url)
     supported = cast(list[str], resource.get("scopes_supported") or [])
     scope = " ".join(supported) or None
-    client = _register(server, redirect_uri, scope)
+    client, redirect_uri = _client(server, redirect_uri, listed, scope)
     verifier, challenge = _pkce()
     state = secrets.token_urlsafe(32)
     params = {

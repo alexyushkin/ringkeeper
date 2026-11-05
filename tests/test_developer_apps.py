@@ -75,6 +75,10 @@ def settings() -> Settings:
     return get_settings().model_copy(update={"web_origin": "http://localhost:17845"})
 
 
+def on_the_desktop() -> Settings:
+    return settings().model_copy(update={"mode": "desktop", "hooks_port": 17845})
+
+
 def xero_app() -> developer_apps.App:
     return developer_apps.save_app(settings(), "xero", "Mine", "client-1", "secret-123")
 
@@ -110,14 +114,13 @@ def test_the_address_that_doesnt_change_is_on_this_computer() -> None:
         developer_apps.fixed_redirect(off)
 
 
-def _start(connection: dict[str, Any], key: str = "xero_fake") -> tuple[str, str, bool]:
+def _start(connection: dict[str, Any], key: str = "xero_fake") -> tuple[str, str]:
     return developer_apps.start(settings(), key, connection)
 
 
 def test_signing_in_stores_the_account_and_says_which(fake: FakeVendor) -> None:
     xero_app()
-    url, state, paste = _start({"owner": "acme", "env": "prod"})
-    assert not paste
+    url, state = _start({"owner": "acme", "env": "prod"})
     query = parse_qs(urlsplit(url).query)
     assert query["redirect_uri"] == ["http://localhost:17845/oauth/callback"]
     assert query["code_challenge_method"] == ["S256"]
@@ -143,7 +146,7 @@ def test_signing_in_stores_the_account_and_says_which(fake: FakeVendor) -> None:
 
 def test_a_rotated_refresh_token_is_kept_and_the_old_one_isnt(fake: FakeVendor) -> None:
     xero_app()
-    _, state, _ = _start({"owner": "acme"})
+    _, state = _start({"owner": "acme"})
     with session_scope() as session:
         name = developer_apps.finish(
             session, settings(), developer_apps.take(state), state, "code-1", {}
@@ -160,7 +163,7 @@ def test_a_rotated_refresh_token_is_kept_and_the_old_one_isnt(fake: FakeVendor) 
 
 def test_a_refused_refresh_says_to_sign_in_again(fake: FakeVendor) -> None:
     xero_app()
-    _, state, _ = _start({"owner": "acme"})
+    _, state = _start({"owner": "acme"})
     with session_scope() as session:
         name = developer_apps.finish(
             session, settings(), developer_apps.take(state), state, "code-1", {}
@@ -187,37 +190,57 @@ def intuit(environment: str) -> developer_apps.App:
     )  # fmt: skip
 
 
-def test_intuits_sandbox_comes_back_here_and_production_cant(fake: FakeVendor) -> None:
-    sandbox = intuit("sandbox")
-    url, _, paste = developer_apps.start(
-        settings(), "intuit_fake", {"owner": "a"}, app_id=sandbox.id
+@pytest.mark.parametrize("environment", ["sandbox", "production"])
+def test_intuit_has_one_way_back_in_both_environments(
+    fake: FakeVendor, monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    app = intuit(environment)
+
+    def hosted(*_args: Any) -> str:
+        return developer_apps.HOSTED_CALLBACK
+
+    monkeypatch.setattr(developer_apps, "redirect_for", hosted)
+    url, state = developer_apps.start(settings(), "intuit_fake", {"owner": "a"}, app_id=app.id)
+    assert parse_qs(urlsplit(url).query)["redirect_uri"] == [developer_apps.HOSTED_CALLBACK]
+    assert developer_apps.outcome(state) == developer_apps.Outcome("waiting")
+
+
+@pytest.mark.parametrize(
+    ("key", "hosted"),
+    [("intuit", True), ("xero", True), ("hubspot", True), ("salesforce", True),
+     ("microsoft", False), ("jobber", False)],
+)  # fmt: skip
+def test_who_comes_back_through_the_hosted_page(key: str, hosted: bool) -> None:
+    found = developer_apps.provider(key)
+    address = developer_apps.redirect_for(on_the_desktop(), found)
+    assert (address == developer_apps.HOSTED_CALLBACK) is hosted
+    assert hosted or address.startswith("http://localhost:")
+
+
+def test_a_server_comes_back_to_itself_whoever_the_vendor_is() -> None:
+    server = settings().model_copy(
+        update={"mode": "server", "web_origin": "https://ringkeeper.example.com"}
     )
-    assert not paste
-    assert "localhost" in parse_qs(urlsplit(url).query)["redirect_uri"][0]
-
-    live = intuit("production")
-    url, state, paste = developer_apps.start(
-        settings(), "intuit_fake", {"owner": "a"}, app_id=live.id
+    found = developer_apps.provider("xero")
+    assert developer_apps.redirect_for(server, found) == (
+        "https://ringkeeper.example.com/oauth/callback"
     )
-    assert paste
-    assert parse_qs(urlsplit(url).query)["redirect_uri"] == [developer_apps.INTUIT_LANDING]
-    assert developer_apps.outcome(state) == developer_apps.Outcome("paste")
 
 
-def test_a_pasted_address_must_be_this_sign_ins() -> None:
-    good = f"{developer_apps.INTUIT_LANDING}?code=abc&state=s1&realmId=123"
-    assert developer_apps.from_address("s1", good) == (
-        "abc", {"code": "abc", "state": "s1", "realmId": "123"}
-    )  # fmt: skip
-    with pytest.raises(SignInError, match="isn't the address"):
-        developer_apps.from_address("s2", good)
-    with pytest.raises(SignInError, match="no sign-in code"):
-        developer_apps.from_address("s1", f"{developer_apps.INTUIT_LANDING}?state=s1")
+def test_the_hosted_page_only_reaches_the_port_it_knows() -> None:
+    moved = on_the_desktop().model_copy(update={"hooks_port": 18000})
+    with pytest.raises(SignInError, match="port 17845"):
+        developer_apps.redirect_for(moved, developer_apps.provider("xero"))
+    assert developer_apps.listed_redirect(moved) is None
+    assert developer_apps.listed_redirect(settings()) is None  # a server has no such address
+    assert developer_apps.listed_redirect(on_the_desktop()) == (
+        "http://localhost:17845/oauth/callback"
+    )
 
 
 def test_a_production_company_uses_the_production_host(fake: FakeVendor) -> None:
     live = intuit("production")
-    _, state, _ = developer_apps.start(settings(), "intuit_fake", {"owner": "acme"}, app_id=live.id)
+    _, state = developer_apps.start(settings(), "intuit_fake", {"owner": "acme"}, app_id=live.id)
     with session_scope() as session:
         name = developer_apps.finish(
             session, settings(), developer_apps.take(state), state, "code-1", {"realmId": "123"}
@@ -229,7 +252,7 @@ def test_a_production_company_uses_the_production_host(fake: FakeVendor) -> None
 
 def test_a_company_id_that_isnt_one_is_refused(fake: FakeVendor) -> None:
     live = intuit("production")
-    _, state, _ = developer_apps.start(settings(), "intuit_fake", {"owner": "acme"}, app_id=live.id)
+    _, state = developer_apps.start(settings(), "intuit_fake", {"owner": "acme"}, app_id=live.id)
     with session_scope() as session, pytest.raises(SignInError, match="which company"):
         developer_apps.finish(
             session, settings(), developer_apps.take(state), state, "c", {"realmId": "../x"}

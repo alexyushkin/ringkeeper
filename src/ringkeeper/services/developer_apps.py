@@ -10,8 +10,10 @@ Where the vendor sends the browser back:
 - Most want the exact address registered, and the app's own port changes each launch, so
   they use the fixed address on this computer (`hooks_port`, loopback only): nothing is
   opened to the internet.
-- Intuit's production keys only redirect to an https address that isn't localhost. The app
-  gives that address, and the sign-in ends with pasting the page's address back here.
+- Some (`hosted`) want https, or won't take localhost for real accounts. They use a static
+  page at HOSTED_CALLBACK, which forwards the code and state to that same fixed address. The
+  page keeps nothing and checks nothing: the state is checked here, as it is for any sign-in,
+  and a code is no use without this app's secret and the sign-in's PKCE verifier.
 
 Each account is a `vendor` connection (adapters.vendor) whose secret holds its tokens and
 which app got them. A refresh token works only with its own app.
@@ -28,7 +30,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, cast
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import httpx2
 from sqlalchemy.orm import Session
@@ -47,8 +49,9 @@ APPS_REF = "file://ringkeeper/developer-apps/{provider}"
 PENDING_SECONDS = 600
 REFRESH_MARGIN_SECONDS = 120
 TIMEOUT = 20.0
-# Where Intuit's production keys can land, kept on every app for its OAuth Playground.
-INTUIT_LANDING = "https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl"
+# A static page: it sends the browser on to HOSTED_PORT on this computer. Its port is fixed.
+HOSTED_CALLBACK = "https://yushkin.us/ringkeeper/oauth/callback"
+HOSTED_PORT = 17845
 # Tests swap in httpx2.MockTransport; production talks to the vendor.
 transport: httpx2.BaseTransport | None = None
 
@@ -108,6 +111,8 @@ class Provider:
     # Who signed in, and anything the vendor's address needs: (account, extra fields).
     identify: Callable[["App", JSON, JSON], tuple[str, JSON]] | None = None
     note: str = ""
+    # Wants https, or won't take localhost for real accounts: comes back by HOSTED_CALLBACK.
+    hosted: bool = False
 
 
 def _http() -> httpx2.Client:
@@ -259,7 +264,7 @@ PROVIDERS: dict[str, Provider] = {
                 "HubSpot apps are made with its command line tool: follow Create a new app "
                 "using the CLI, in a free developer account.",
                 "In the app's configuration, set the auth type to OAuth and add {redirect} to "
-                "the redirect URLs. HubSpot allows http://localhost for this.",
+                "the redirect URLs.",
                 "Add the scopes listed here to the app's required scopes, and these to its "
                 f"optional scopes: {', '.join(HUBSPOT_OPTIONAL)}. Then upload it.",
                 "In HubSpot, open the project, click the app, then the Auth tab, and copy the "
@@ -274,6 +279,7 @@ PROVIDERS: dict[str, Provider] = {
             # Dropped by HubSpot for an account without these products.
             extra={"optional_scope": " ".join(HUBSPOT_OPTIONAL)},
             identify=_hubspot,
+            hosted=True,
         ),
         Provider(
             "salesforce", "Salesforce",
@@ -303,6 +309,7 @@ PROVIDERS: dict[str, Provider] = {
             identify=_salesforce,
             note="An app made this way works in the org it was made in. For a client's org, "
             "make one there and add it here as another app.",
+            hosted=True,
         ),
         Provider(
             "xero", "Xero", "https://developer.xero.com/app/manage",
@@ -326,6 +333,7 @@ PROVIDERS: dict[str, Provider] = {
             identify=_xero,
             note="Apps made since March 2026 can only use these narrower scopes. Each sign-in "
             "picks which organisations it reaches.",
+            hosted=True,
         ),
         Provider(
             "intuit", "Intuit (QuickBooks)", "https://developer.intuit.com/app/developer/dashboard",
@@ -346,17 +354,11 @@ PROVIDERS: dict[str, Provider] = {
                     "environment", "Environment", "Which keys these are.", default="sandbox",
                     choices=(("sandbox", "Development (sandbox)"), ("production", "Production")),
                 ),
-                Option(
-                    "landing", "Production landing page", "Optional: another https address "
-                    "registered on the app. Intuit won't send production sign-ins to this "
-                    "computer, so the sign-in ends with you pasting that page's address here.",
-                    pattern=r"^https://[^\s]{4,300}$",
-                ),
             ),
             basic_auth=True,
             revoke="https://developer.api.intuit.com/v2/oauth2/tokens/revoke",
             identify=_intuit,
-            note="Production sign-ins end on Intuit's page, and you paste its address back here.",
+            hosted=True,
         ),
         Provider(
             "jobber", "Jobber", "https://developer.getjobber.com/apps",
@@ -505,6 +507,12 @@ def _app(settings: Settings, key: str, app_id: str | None) -> App:
     return app
 
 
+def listed_redirect(settings: Settings) -> str | None:
+    """The one address a hosted client document can name, where this install can use it."""
+    desktop = settings.mode == "desktop" and settings.hooks_port == HOSTED_PORT
+    return fixed_redirect(settings) if desktop else None
+
+
 def fixed_redirect(settings: Settings) -> str:
     """The address on this computer that doesn't change, or the server's own."""
     if settings.mode == "desktop":
@@ -516,14 +524,16 @@ def fixed_redirect(settings: Settings) -> str:
     return settings.web_origin.rstrip("/") + CALLBACK_PATH
 
 
-def _lands_outside(found: Provider, app: App) -> bool:
-    return found.key == "intuit" and app.options.get("environment") == "production"
-
-
-def redirect_for(settings: Settings, found: Provider, app: App | None) -> str:
-    if app is not None and _lands_outside(found, app):
-        return app.options.get("landing") or INTUIT_LANDING
-    return fixed_redirect(settings)
+def redirect_for(settings: Settings, found: Provider) -> str:
+    """The address to register with this vendor. A server has its own https address."""
+    if not found.hosted or settings.mode != "desktop":
+        return fixed_redirect(settings)
+    if settings.hooks_port != HOSTED_PORT:
+        raise SignInError(
+            f"{found.name} comes back through a page that expects Ringkeeper's fixed address on "
+            f"port {HOSTED_PORT}, and this computer uses another one."
+        )
+    return HOSTED_CALLBACK
 
 
 def _filled(address: str, app: App) -> str:
@@ -569,7 +579,7 @@ def check_app(settings: Settings, key: str, app_id: str) -> str:
     app = _app(settings, key, app_id)
     return check_client(
         _filled(found.token, app), app.client_id, app.client_secret,
-        redirect_for(settings, found, app), found.basic_auth,
+        redirect_for(settings, found), found.basic_auth,
     )  # fmt: skip
 
 
@@ -617,14 +627,14 @@ def start(
     connection: JSON,
     access: list[str] | None = None,
     app_id: str | None = None,
-) -> tuple[str, str, bool]:
-    """(the consent page, its state, whether the sign-in ends by pasting an address)."""
+) -> tuple[str, str]:
+    """(the consent page, its state)."""
     wanted = vendors.VENDORS.get(vendor_key)
     if wanted is None or not wanted.provider:
         raise RuleViolationError("That service doesn't sign in through a developer app.")
     found = provider(wanted.provider)
     app = _app(settings, found.key, app_id)
-    redirect = redirect_for(settings, found, app)
+    redirect = redirect_for(settings, found)
     scopes = scopes_for(found, vendor_key, list(access or []))
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
@@ -645,9 +655,8 @@ def start(
         _pending[state] = Pending(
             found.key, vendor_key, redirect, verifier, scopes, connection, app.id
         )
-        paste = _lands_outside(found, app)
-        _outcomes[state] = Outcome("paste" if paste else "waiting")
-    return f"{_filled(found.authorize, app)}?{urlencode(params)}", state, paste
+        _outcomes[state] = Outcome("waiting")
+    return f"{_filled(found.authorize, app)}?{urlencode(params)}", state
 
 
 def pending(state: str) -> bool:
@@ -804,19 +813,6 @@ def finish(
 def refused(state: str, error: str) -> None:
     """The vendor sent the browser back without access (cancelled, or an error)."""
     _ended(state, Outcome("failed", error=error))
-
-
-def from_address(state: str, address: str) -> tuple[str, JSON]:
-    """(code, what else came back) from the address of the page a sign-in ended on. Its own
-    state has to be in it, so a pasted address can't finish a different sign-in."""
-    values = {k: v[0] for k, v in parse_qs(urlsplit(address.strip()).query).items()}
-    if values.get("state") != state:
-        raise SignInError("That isn't the address this sign-in ended on. Copy it again.")
-    if error := values.get("error"):
-        raise SignInError(f"The sign-in didn't work: {error[:200]}.")
-    if not values.get("code"):
-        raise SignInError("That address has no sign-in code in it. Copy it again.")
-    return values["code"], values
 
 
 # --- Keeping the access token fresh ---

@@ -1,6 +1,6 @@
 """Settings > Developer apps: your own registered apps, and signing accounts in through them
-(services.developer_apps). The browser comes back to /oauth/callback, or (Intuit's
-production keys) the page's address is pasted here. A secret never comes back out."""
+(services.developer_apps). The browser comes back to /oauth/callback. A secret never comes
+back out."""
 
 from typing import Annotated, Any, Literal
 
@@ -10,8 +10,6 @@ from pydantic import Field
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import Settings, get_settings
-from ringkeeper.db import session_scope
-from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import Input, NonEmpty, Slug
 from ringkeeper.services import admin_audit, developer_apps, google_oauth, instances
@@ -23,16 +21,9 @@ ClientId = Annotated[str, Field(min_length=4, max_length=300)]
 ProviderKey = Literal["microsoft", "hubspot", "salesforce", "xero", "intuit", "jobber"]
 
 
-def _address(settings: Settings) -> str:
+def _redirect(settings: Settings, found: developer_apps.Provider) -> str:
     try:
-        return developer_apps.fixed_redirect(settings)
-    except developer_apps.SignInError as error:
-        return str(error)
-
-
-def _redirect(settings: Settings, found: developer_apps.Provider, app: developer_apps.App) -> str:
-    try:
-        return developer_apps.redirect_for(settings, found, app)
+        return developer_apps.redirect_for(settings, found)
     except developer_apps.SignInError as error:
         return str(error)
 
@@ -48,7 +39,7 @@ def _accounts(session: Any) -> dict[str, int]:
 
 def _shown(settings: Settings, found: developer_apps.Provider, session: Any) -> dict[str, Any]:
     counts = _accounts(session)
-    redirect = _address(settings)
+    redirect = _redirect(settings, found)
     apps = developer_apps.list_apps(settings, found.key)
     return {
         "key": found.key,
@@ -67,7 +58,7 @@ def _shown(settings: Settings, found: developer_apps.Provider, session: Any) -> 
         "apps": [
             {
                 "id": a.id, "name": a.name, "client_id": a.client_id, "options": dict(a.options),
-                "redirect": _redirect(settings, found, a),
+                "redirect": redirect,
                 "accounts": counts.get(a.id, 0),
             }
             for a in apps
@@ -181,12 +172,12 @@ def start_signin(data: SignInIn, session: SessionDep) -> dict[str, Any]:
     )
     developer_apps.check_start(session, connection, data.vendor)
     try:
-        url, state, paste = developer_apps.start(
+        url, state = developer_apps.start(
             get_settings(), data.vendor, connection, data.access, data.app
         )
     except developer_apps.SignInError as error:
         raise HTTPException(409, detail=str(error)) from None
-    return {"url": url, "state": state, "paste": paste}
+    return {"url": url, "state": state}
 
 
 @router.get("/signin/{state}")
@@ -195,20 +186,3 @@ def signin_status(state: str) -> dict[str, Any]:
     if found is None:
         raise HTTPException(404, detail="No sign-in like that here.")
     return {"state": found.state, "name": found.name, "error": found.error}
-
-
-class PasteIn(Input):
-    address: Annotated[str, Field(min_length=10, max_length=3000, repr=False)]
-
-
-@router.post("/signin/{state}/paste", dependencies=[RecentAuth])
-def finish_pasted(state: str, data: PasteIn) -> dict[str, Any]:
-    """The address of the page a sign-in ended on, for a vendor that can't come back here."""
-    try:
-        code, back = developer_apps.from_address(state, data.address)
-        found = developer_apps.take(state)
-        with session_scope() as session:
-            name = developer_apps.finish(session, get_settings(), found, state, code, back)
-    except (developer_apps.SignInError, RuleViolationError) as error:
-        raise HTTPException(409, detail=str(error)) from None
-    return {"state": "done", "name": name}

@@ -26,10 +26,14 @@ Most services want one exact address, and Ringkeeper's own port changes each lau
 they come back to a fixed address on this computer: `http://localhost:17845/oauth/callback`.
 It only answers on this computer. Nothing is opened to the internet.
 
-**Intuit's production keys are different.** Intuit only sends production sign-ins to an
-https address that isn't this computer. So the sign-in ends on Intuit's page, and you copy
-that page's whole address back into Ringkeeper. Intuit's development keys come back here as
-usual, and reach sandbox companies only.
+**Intuit, Xero, HubSpot and Salesforce** come back through a page instead:
+`https://yushkin.us/ringkeeper/oauth/callback`. These vendors want an https address, or won't
+take this computer's address for real accounts. It's a static page that passes the sign-in's
+code and state straight on to the address above, so Ringkeeper needs to be open on this
+computer. It keeps nothing, and a code can't be used without your app's secret, which stays in
+the vault. Ringkeeper checks the sign-in's state itself, as it does for every sign-in.
+
+On a server install, every service comes back to the server's own address.
 
 ## Good to know
 

@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **ElevenLabs,** through its official hosted server. Signing in is all it takes. Reads run;
+  agents, calls, voice clones and speech wait for approval; deleting needs the name typed.
+- **Intuit, Xero, HubSpot and Salesforce sign-ins** now come back through
+  `https://yushkin.us/ringkeeper/oauth/callback`, a static page that hands the browser to
+  Ringkeeper on this computer. Add that address to your app at the vendor before signing in
+  again. Intuit's production keys no longer end with pasting an address. Accounts already
+  connected keep working.
 - **Signed links are removed** from logs, the audit log, tool results and conversations:
   Lemon Squeezy customer portal links, S3, Google Cloud and Azure download links, and the like.
 - **Long emails and files read in full.** Mail tools for Google, Microsoft, Gmail and Mailbox
