@@ -6,7 +6,8 @@
 smtp_port, smtp_security. Most providers want an app password here.
 
 Microsoft: Exchange Online turned password sign-in off for IMAP, so a work or school
-Microsoft 365 mailbox can't be read this way (the login error says so).
+Microsoft 365 mailbox can't be read this way. The Microsoft account tile is the way in
+(the form and the login error say so).
 
 Reading runs and never marks mail as read. A draft, moving a message and sending wait
 for approval; many recipients at once and deleting need the name typed. Folders are
@@ -60,9 +61,9 @@ PRESETS = {
     "gmail": Preset("imap.gmail.com", "smtp.gmail.com",
                     help="Gmail wants an app password: myaccount.google.com/apppasswords."),
     "outlook": Preset("outlook.office365.com", "smtp.office365.com", 587, "starttls",
-                      help="Microsoft has turned password sign-in off for IMAP on Microsoft 365, "
-                      "and is doing the same for SMTP. A mailbox that needs Microsoft's own "
-                      "sign-in can't connect this way yet."),
+                      help="For Microsoft 365, use the Microsoft account tile instead: "
+                      "Microsoft has turned password sign-in off for IMAP there, and is doing "
+                      "the same for SMTP."),
     "zoho": Preset("imap.zoho.com", "smtp.zoho.com",
                    help="Zoho wants an app password if two-factor sign-in is on, and IMAP "
                    "turned on in Mail settings."),

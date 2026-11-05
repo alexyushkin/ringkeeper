@@ -12,9 +12,8 @@ Choose your provider and enter the address and password. Most providers want an
 - **Yahoo:** Account security › Generate app password.
 - **Another provider:** its IMAP and SMTP servers too.
 
-**Microsoft:** Microsoft has turned password sign-in off for IMAP on Microsoft 365, and
-is doing the same for SMTP. A mailbox that needs Microsoft's own sign-in can't connect
-this way yet.
+**Microsoft:** for Microsoft 365, use the [Microsoft account](microsoft.md) tile instead.
+Microsoft has turned password sign-in off for IMAP there, and is doing the same for SMTP.
 
 ## What it can do
 

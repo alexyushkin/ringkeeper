@@ -141,7 +141,7 @@ const API_FIELDS: SecretField[] = [
 const API_NOTE = "GET runs without asking. Anything else waits for your approval, even on test data. DELETE needs the name typed. Ringkeeper can't undo what an API call does.";
 const MAILBOX_NOTES: Record<string, string> = {
   gmail: "Gmail wants an app password (it needs 2-Step Verification): myaccount.google.com/apppasswords.",
-  outlook: "Microsoft has turned password sign-in off for IMAP on Microsoft 365, and is doing the same for SMTP. A mailbox that needs Microsoft's own sign-in can't connect this way yet.",
+  outlook: "For Microsoft 365, use the Microsoft account tile instead: Microsoft has turned password sign-in off for IMAP there, and is doing the same for SMTP.",
   zoho: "Zoho wants an app password if two-factor sign-in is on, and IMAP turned on in Mail settings.",
   yahoo: "Yahoo wants an app password: Account security › Generate app password.",
 };

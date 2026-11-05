@@ -31,6 +31,7 @@ export const SERVICE: Record<string, string> = {
   mailbox: "Mailbox",
   http: "API",
   s3: "File storage",
+  vendor: "Business system",
   mcp: "Add-on tool (MCP)",
 };
 
