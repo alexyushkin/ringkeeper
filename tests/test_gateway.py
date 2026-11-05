@@ -56,8 +56,14 @@ async def test_health(gateway: str) -> None:
 async def test_every_tool_takes_instance_and_declares_its_kind(gateway: str) -> None:
     async with client(gateway, token()) as mcp:
         tools = {t.name: t for t in await mcp.list_tools()}
-    assert set(tools) == {"list_tables", "describe_table", "query", "execute", "list_instances"}
+    assert set(tools) == {
+        "list_tables", "describe_table", "query", "execute", "list_instances", "read_more",
+    }  # fmt: skip
     assert tools.pop("list_instances").input_schema.get("properties", {}) == {}
+    # A kept result is the session's own, whichever instance it came from.
+    assert set(tools.pop("read_more").input_schema["properties"]) == {
+        "continuation", "offset", "limit",
+    }  # fmt: skip
     for tool in tools.values():
         assert "instance" in tool.input_schema["properties"]
         assert "instance" not in tool.input_schema.get("required", [])

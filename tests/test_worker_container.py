@@ -40,6 +40,8 @@ from ringkeeper.workers.manager import Manager
 from ringkeeper.workers.runtime import LABEL_SESSION, DockerRuntime, WorkerSpec
 from tests.conftest import CLAUDE_API_KEY, CLAUDE_OAUTH_TOKEN, free_port
 
+PROXY_VARS = ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]  # no credential: the model proxy
+
 pytestmark = pytest.mark.container
 
 ROOT = Path(__file__).parents[1]
@@ -207,7 +209,7 @@ def test_worker_sees_only_its_workspace_and_one_credential(
     assert report["forbidden_present"] == []  # no Docker socket, no data dir
     assert report["master_keys"] == []
     assert report["workspace_writable"] is True
-    assert [n for n in BILLING_ENV_VARS if n in report["env_names"]] == ["ANTHROPIC_API_KEY"]
+    assert [n for n in BILLING_ENV_VARS if n in report["env_names"]] == PROXY_VARS
 
     gateways = {e["server"]: e for e in events["stub.gateway"]}
     assert gateways["ringkeeper-database"]["ok"] is True, gateways
@@ -241,13 +243,13 @@ def test_worker_sees_only_its_workspace_and_one_credential(
     )
 
 
-def test_subscription_mode_gives_only_the_oauth_token(
+def test_subscription_mode_gives_a_worker_no_token(
     worker_setup: Callable[..., Run], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("RINGKEEPER_CLAUDE_AUTH_MODE", "subscription")
     task_id = worker_setup({}).task_id
     [report] = events_of(task_id)["stub.environment"]
-    assert [n for n in BILLING_ENV_VARS if n in report["env_names"]] == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    assert [n for n in BILLING_ENV_VARS if n in report["env_names"]] == PROXY_VARS
     assert "ANTHROPIC_API_KEY" not in report["env_names"]
 
 
