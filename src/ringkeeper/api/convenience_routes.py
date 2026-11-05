@@ -1,6 +1,7 @@
 """The conveniences: files on a request, shortcuts, Run again, trusting an action, the
 digest, what's pinned and recent, and offering a project's own keys as connections."""
 
+import json
 import threading
 import uuid
 from pathlib import Path
@@ -32,11 +33,13 @@ from ringkeeper.services import (
     instances,
     project_servers,
     projects,
+    remote_connections,
     secrets_in,
     tasks,
     trusts,
 )
 from ringkeeper.services import help as help_answers
+from ringkeeper.services.claude_desktop import missing_command
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -343,17 +346,27 @@ def connect_login(data: LoginConnectIn, session: WriteSessionDep) -> dict[str, s
     login = next((x for x in cli_logins.find() if x.id == data.id and x.usable), None)
     if login is None:
         raise HTTPException(409, detail="That login isn't on this computer any more.")
+    cloud = cli_logins.is_cloud(login)
+    config: dict[str, Any] = {}
     try:
-        token = cli_logins.token_of(login)
-        kind = InstanceType(login.service)
-        ref = secrets_in.store_connection(session, get_settings(), data.name, kind, token)
+        if cloud:
+            kind = InstanceType.MCP
+            secret = remote_connections.local_secret(login.service, dict(login.env))
+            command = str(json.loads(secret)["command"])
+            if missing := missing_command(command):
+                raise RuleViolationError(f"{login.tool} {missing}.")
+            config = {"remote": login.service, "source": "login", "preview": login.account}
+        else:
+            kind = InstanceType(login.service)
+            secret = cli_logins.token_of(login)
+        ref = secrets_in.store_connection(session, get_settings(), data.name, kind, secret)
     except RuleViolationError as error:
         raise HTTPException(422, detail=str(error)) from None
     instances.create_instance(
         session,
         InstanceIn(
             name=data.name, title=data.title, type=kind, env=Env.PROD, secret_ref=ref,
-            owner=instances.SHARED_OWNER, shared=True, base_url=login.host or None,
+            owner=instances.SHARED_OWNER, shared=True, base_url=login.host or None, config=config,
         ),
     )  # fmt: skip
     admin_audit.record(

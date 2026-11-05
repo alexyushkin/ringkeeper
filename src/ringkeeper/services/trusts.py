@@ -10,12 +10,12 @@ Every trust and every call made under one is logged.
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ringkeeper import destructive
+from ringkeeper import cloud_rules, destructive, remote
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Decision, DecisionKind, Instance, InstanceType, Trust
 from ringkeeper.services import admin_audit, titles
@@ -41,7 +41,7 @@ def grant(session: Session, decision: Decision, *, by: str, hours: int = HOURS) 
     session.execute(delete(Trust).where(Trust.expires_at <= now))
     trust = Trust(
         project=decision.project or "", instance=decision.instance,
-        tool=_what(decision.service, decision.tool, args),
+        tool=_what(decision.service, decision.tool, args, config),
         expires_at=now + timedelta(hours=hours), created_by=by,
     )  # fmt: skip
     session.add(trust)
@@ -55,11 +55,19 @@ def grant(session: Session, decision: Decision, *, by: str, hours: int = HOURS) 
     return trust
 
 
-def _what(service: InstanceType | None, tool: str, args: dict[str, Any]) -> str:
+def _what(
+    service: InstanceType | None, tool: str, args: dict[str, Any], config: dict[str, Any]
+) -> str:
     """What a trust covers. One tool that reaches many actions is trusted one action at a
     time: approving an edit says nothing about sending an invoice."""
     if service is InstanceType.MCP and tool == "call_tool":
-        return f"{tool}:{args.get('tool')}"
+        name = str(args.get("tool"))
+        found = remote.BY_KEY.get(str(config.get("remote") or ""))
+        if found is not None and name in found.command_tools:
+            given = cast(dict[str, Any], args.get("arguments") or {})
+            kind = cloud_rules.what(found.cli, given.get(found.command_tools[name]))
+            return f"{tool}:{name}:{kind}"
+        return f"{tool}:{name}"
     if service is InstanceType.VENDOR and tool == "call_operation":
         return f"{tool}:{args.get('operation')}"
     return tool
@@ -86,7 +94,7 @@ def allows(
     found = session.scalar(
         select(Trust).where(
             Trust.project == project, Trust.instance == instance,
-            Trust.tool == _what(service, tool, args),
+            Trust.tool == _what(service, tool, args, _config(session, instance)),
             Trust.expires_at > datetime.now(UTC),
         )
     )  # fmt: skip

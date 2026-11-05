@@ -39,7 +39,7 @@ from fastmcp import Client
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
 from pydantic import Field
 
-from ringkeeper import remote
+from ringkeeper import cloud_rules, remote
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -280,6 +280,11 @@ def call_rule(config: Mapping[str, Any], tool: str, arguments: Mapping[str, Any]
         sql = sql_of(arguments)
         return Rule(READ, BY_SQL) if sql and reads_only(sql) else found
     service = remote.BY_KEY.get(str(config.get("remote") or ""))
+    if service is not None and tool in service.command_tools:
+        # The command decides: what the tool's name or a setting says can only be stricter.
+        level = cloud_rules.level(service.cli, (arguments or {}).get(service.command_tools[tool]))
+        strictest = max(level, found.level, key=LEVELS.index) if found.source == BY_USER else level
+        return Rule(strictest, BY_GUARD)
     if found.source != BY_SERVICE or service is None or tool not in service.endpoint_tools:
         return found
     names = [arguments.get(a) for a in service.endpoint_tools[tool]] if arguments else []
@@ -354,6 +359,12 @@ def arguments_of(listed: JSON) -> dict[str, list[str]]:
 def _classify(target: Target, args: JSON) -> ToolKind:
     arguments = args.get("arguments")
     given = cast(JSON, arguments) if isinstance(arguments, dict) else None
+    service = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    tool = str(args.get("tool", ""))
+    if service is not None and tool in service.command_tools:
+        command = (given or {}).get(service.command_tools[tool])
+        if flag := cloud_rules.escape(service.cli, command):
+            raise ToolError(f"{flag} isn't allowed: this connection stays on its own login")
     level = call_rule(target.config, str(args.get("tool", "")), given).level
     return ToolKind.READ if level == READ else ToolKind.WRITE
 

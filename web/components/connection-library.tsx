@@ -35,6 +35,7 @@ export interface RemoteService {
   category?: string;
   url_label?: string;
   url_hint?: string;
+  local?: boolean;
 }
 
 export interface LinkInfo {
@@ -472,7 +473,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   const name = nameFor(title, shared ? undefined : client, taken);
   const body = { remote: service.key, url: url.trim() || null, name, title: title.trim(), owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
   const needsUrl = Boolean(service.url_label) && !url.trim();
-  const nothingElse = !service.signin && !service.paste; // the address is all it takes
+  const nothingElse = !service.signin && !service.paste && !service.local; // the address is all it takes
 
   // After the service's page opens: the connection appears once its sign-in finishes.
   useEffect(() => {
@@ -519,6 +520,14 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
     }
   }
 
+  if (service.local) {
+    return (
+      <div className="space-y-2 rounded-xl border border-line p-3 text-sm">
+        {service.note ? <p className="text-muted">{service.note}</p> : null}
+        <p>Sign in with {service.name}&apos;s command line tool on this computer. Then connect that login under <strong>Signed in on this computer</strong>, on the Connectors page.</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3 rounded-xl border border-line p-3">
       {service.note ? <p className="text-sm text-muted">{service.note}</p> : null}

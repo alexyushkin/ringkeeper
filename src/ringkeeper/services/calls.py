@@ -187,9 +187,17 @@ def _takes(spec: ToolSpec) -> list[str]:
     return list(inspect.signature(spec.handler).parameters)[1:]
 
 
+def _reaches_an_account(call: ToolCall, rules: remote.ScopeSpec) -> bool:
+    return call.tool == "call_tool" and str(call.args.get("tool", "")) not in rules.open_tools
+
+
 def narrowed(call: ToolCall, spec: ToolSpec, auth: Authorized) -> JSON:
     """The call's arguments inside the binding's scope (check 5). Raises RefusalError."""
     rules = remote.spec_for(call.service.value, auth.config)
+    if rules is not None and rules.required and not auth.scope and _reaches_an_account(call, rules):
+        first = rules.fields[0].label.lower()
+        why = f"this project's link to {rules.name} doesn't say which {first} it may use"
+        raise RefusalError(f"{why}: the user can set it on the link", why)
     if not auth.scope or rules is None:
         return call.args
     try:

@@ -82,6 +82,8 @@ def resolve(new: NewConnection) -> NewConnection:
     """The connection with its address checked, and a known service recognized by it."""
     if new.remote:
         known = service(new.remote)
+        if known.local:
+            raise RuleViolationError(f"{known.name} connects from your login on this computer.")
         if not known.url_label:
             return replace(new, url=known.url)
         if not new.url:
@@ -160,6 +162,13 @@ def headers_secret(new: NewConnection, headers: dict[str, str]) -> str:
     return json.dumps({"url": new.url, "headers": cleaned})
 
 
+def local_secret(key: str, env: dict[str, str]) -> str:
+    """How to start a cloud's own server on this computer, with this login."""
+    found = service(key)
+    command, *args = found.local
+    return json.dumps({"command": command, "args": args, "env": {**found.local_env, **env}})
+
+
 def open_secret(new: NewConnection) -> str:
     """A server that needs nothing: only its address."""
     return json.dumps({"url": resolve(new).url, "headers": {}})
@@ -229,7 +238,7 @@ def catalog_shelf() -> list[dict[str, Any]]:
             "paste_url": r.paste_url, "paste_steps": r.paste_steps, "note": r.note,
             "scope": [{"key": f.key, "label": f.label, "hint": f.hint} for f in r.scope],
             "sql": bool(r.sql_tools), "category": r.category, "url_label": r.url_label,
-            "url_hint": r.url_hint,
+            "url_hint": r.url_hint, "local": bool(r.local),
         }
         for r in remote.CATALOG
         if r.shelf

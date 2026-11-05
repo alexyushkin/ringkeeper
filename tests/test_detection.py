@@ -12,6 +12,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.models import Env, InstanceType
 from ringkeeper.services import cli_logins, env_scan, instances, project_servers
 from ringkeeper.services.secrets_in import check_connection_secret
+from ringkeeper.vault import get_vault
 from tests import test_web_api
 
 setup_code, admin, owner = test_web_api.setup_code, test_web_api.admin, test_web_api.owner
@@ -248,12 +249,15 @@ def test_an_ended_vercel_login_says_so(machine: Path) -> None:
     assert "vercel login" in login.why
 
 
-def test_the_clouds_are_listed_and_cant_connect_yet(machine: Path) -> None:
+def test_the_clouds_are_found_and_hold_no_key(machine: Path) -> None:
     write(machine, ".aws/config",
           "[default]\nregion=us-east-1\n[profile acme]\nsso_session=a\nregion=eu-west-1\n"
           "[sso-session a]\nsso_start_url=https://a.example\n")  # fmt: skip
     write(machine, ".aws/credentials", "[keysonly]\naws_access_key_id=AKIAFAKE\n")
-    write(machine, ".azure/azureProfile.json", {"subscriptions": [{"name": "Acme sub", "id": "1"}]})
+    write(machine, ".azure/azureProfile.json", {"subscriptions": [
+        {"name": "Acme sub", "id": "1", "user": {"name": "me@acme.example"}},
+        {"name": "Globex sub", "id": "2", "user": {"name": "me@acme.example"}},
+    ]})  # fmt: skip
     write(machine, ".config/gcloud/configurations/config_default",
           "[core]\naccount=me@acme.example\nproject=acme-prod\n")  # fmt: skip
     write(machine, ".oci/config", "[DEFAULT]\ntenancy=ocid1.t\nregion=us-ashburn-1\n")
@@ -261,11 +265,53 @@ def test_the_clouds_are_listed_and_cant_connect_yet(machine: Path) -> None:
     accounts = {login.account for login in found}
     assert "acme (SSO, eu-west-1)" in accounts
     assert "keysonly (keys)" in accounts
-    assert "Acme sub" in accounts
+    assert "me@acme.example (2 subscriptions)" in accounts  # one login: a link names which
     assert "me@acme.example (acme-prod)" in accounts
     assert "DEFAULT (us-ashburn-1)" in accounts
-    assert not any(login.usable for login in found)
+    assert all(login.usable for login in found)
     assert "AKIAFAKE" not in str(found)
+    profiles = {login.account: dict(login.env) for login in found}
+    assert profiles["acme (SSO, eu-west-1)"] == {
+        "AWS_API_MCP_PROFILE_NAME": "acme", "AWS_REGION": "eu-west-1",
+    }  # fmt: skip
+    assert profiles["DEFAULT (us-ashburn-1)"] == {"OCI_CONFIG_PROFILE": "DEFAULT"}
+
+
+def test_connecting_a_cloud_login_runs_its_own_server_and_keeps_no_key(
+    owner: TestClient, machine: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("ringkeeper.api.convenience_routes._on_this_computer", lambda: True)
+    monkeypatch.setattr("ringkeeper.api.convenience_routes.missing_command", lambda _c: None)
+    write(machine, ".aws/config", "[profile gi-prod]\nregion=us-east-1\n")
+    write(machine, ".aws/credentials", "[gi-prod]\naws_access_key_id=AKIAFAKE\n")
+    login = next(x for x in owner.get("/logins").json()["found"] if x["service"] == "aws")
+    made = owner.post(
+        "/logins/connect", json={"id": login["id"], "name": "gi-aws", "title": "AWS · gi-prod"}
+    )
+    assert made.status_code == 201, made.text
+    with session_scope() as session:
+        found = instances.get_instance(session, "gi-aws")
+        assert (found.type, found.shared) == (InstanceType.MCP, True)
+        assert found.config["remote"] == "aws"
+        stored = get_vault().resolve(found.secret_ref).reveal()
+    assert "AKIAFAKE" not in stored
+    assert json.loads(stored)["env"]["AWS_API_MCP_PROFILE_NAME"] == "gi-prod"
+
+
+def test_a_cloud_login_says_what_this_computer_is_missing(
+    owner: TestClient, machine: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("ringkeeper.api.convenience_routes._on_this_computer", lambda: True)
+    monkeypatch.setattr(
+        "ringkeeper.api.convenience_routes.missing_command", lambda _c: "needs uv (uvx)"
+    )
+    write(machine, ".aws/config", "[profile gi-prod]\nregion=us-east-1\n")
+    login = next(x for x in owner.get("/logins").json()["found"] if x["service"] == "aws")
+    made = owner.post(
+        "/logins/connect", json={"id": login["id"], "name": "gi-aws", "title": "AWS · gi-prod"}
+    )
+    assert made.status_code == 422
+    assert "needs uv" in made.text
 
 
 def test_connecting_a_login_makes_it_your_own_and_asks_for_changes(

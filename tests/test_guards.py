@@ -100,7 +100,7 @@ def test_every_guard_named_exists_and_every_opaque_tool_is_on_a_guarded_service(
     for service in remote.CATALOG:
         assert not service.guard or service.guard in remote.GUARDS, service.key
         assert not service.opaque_tools or service.guard, service.key
-        assert bool(service.url) != bool(service.url_label), service.key
+        assert sum(map(bool, (service.url, service.url_label, service.local))) == 1, service.key
 
 
 @pytest.mark.parametrize("key", [r.key for r in remote.CATALOG if r.guard == "accounting"])

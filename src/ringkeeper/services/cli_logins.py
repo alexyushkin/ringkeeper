@@ -6,8 +6,9 @@ confirm that one, as your own tool: you then choose which clients' projects use 
 shown is who the login is, never a token. Desktop mode only: these files are on this
 computer.
 
-GitHub and Vercel connect now, with the token read at that moment. The cloud logins are
-listed but can't connect yet: Ringkeeper has no connection for those clouds.
+GitHub and Vercel connect with the token read at that moment. A cloud's login connects
+without Ringkeeper ever holding it: the cloud's own server runs on this computer and uses
+your CLI's login, told only which profile (`env`).
 """
 
 import configparser
@@ -27,8 +28,8 @@ import yaml
 
 from ringkeeper.errors import RuleViolationError
 
-NO_CLOUD_YET = "Ringkeeper has no connection for this cloud yet, so it stays as it is."
 GH_TIMEOUT = 15
+CLOUDS = ("aws", "azure", "gcloud", "oci")
 GITHUB_COM = "github.com"
 
 
@@ -42,6 +43,7 @@ class Login:
     usable: bool = True
     why: str = ""
     host: str = ""  # GitHub Enterprise Server's address
+    env: tuple[tuple[str, str], ...] = ()  # a cloud's server: which profile, never a key
 
 
 def _id(tool: str, account: str) -> str:
@@ -164,6 +166,11 @@ def _vercel_token() -> str:
 # --- The clouds: listed, not connectable yet ---
 
 
+def _aws_env(profile: str, region: str | None) -> tuple[tuple[str, str], ...]:
+    named = (("AWS_API_MCP_PROFILE_NAME", profile),)
+    return (*named, ("AWS_REGION", region)) if region else named
+
+
 def _aws() -> Iterator[Login]:
     folder = Path.home() / ".aws"
     seen: set[str] = set()
@@ -176,22 +183,27 @@ def _aws() -> Iterator[Login]:
         kind = "SSO" if sso else "keys"
         where = values.get("region", "no region set")
         yield _login("AWS", f"{profile} ({kind}, {where})", "aws", f"AWS · {profile}",
-                     usable=False, why=NO_CLOUD_YET)  # fmt: skip
+                     env=_aws_env(profile, values.get("region")))  # fmt: skip
     for profile in _sections(folder / "credentials"):
         if profile not in seen and profile != "DEFAULT":
             seen.add(profile)
             yield _login("AWS", f"{profile} (keys)", "aws", f"AWS · {profile}",
-                         usable=False, why=NO_CLOUD_YET)  # fmt: skip
+                         env=_aws_env(profile, None))  # fmt: skip
 
 
 def _azure() -> Iterator[Login]:
+    """One login reaches every subscription it can see: each project's link names one."""
     profile = _read_json(Path.home() / ".azure" / "azureProfile.json")
-    for entry in cast(list[Any], profile.get("subscriptions") or []):
-        if isinstance(entry, dict):
-            fields = cast(dict[str, Any], entry)
-            name = str(fields.get("name") or fields.get("id") or "a subscription")
-            yield _login("Azure CLI", name, "azure", f"Azure · {name}",
-                         usable=False, why=NO_CLOUD_YET)  # fmt: skip
+    found = [
+        cast(dict[str, Any], e)
+        for e in cast(list[Any], profile.get("subscriptions") or [])
+        if isinstance(e, dict)
+    ]
+    if found:
+        user = cast(dict[str, Any], found[0].get("user") or {})
+        who = str(user.get("name") or "your login")
+        count = f"{len(found)} subscription{'' if len(found) == 1 else 's'}"
+        yield _login("Azure CLI", f"{who} ({count})", "azure", f"Azure · {who}")
 
 
 def _gcloud_folder() -> Path:
@@ -210,8 +222,10 @@ def _gcloud() -> Iterator[Login]:
         core = _sections(path).get("core") or {}
         if account := core.get("account"):
             project = core.get("project", "no project set")
+            name = path.name.removeprefix("config_")
             yield _login("Google Cloud CLI", f"{account} ({project})", "gcloud",
-                         f"Google Cloud · {project}", usable=False, why=NO_CLOUD_YET)  # fmt: skip
+                         f"Google Cloud · {account}",
+                         env=(("CLOUDSDK_ACTIVE_CONFIG_NAME", name),))  # fmt: skip
 
 
 def _oci() -> Iterator[Login]:
@@ -219,12 +233,16 @@ def _oci() -> Iterator[Login]:
         if values.get("tenancy"):
             region = values.get("region", "no region set")
             yield _login("Oracle Cloud (OCI)", f"{name} ({region})", "oci", f"OCI · {name}",
-                         usable=False, why=NO_CLOUD_YET)  # fmt: skip
+                         env=(("OCI_CONFIG_PROFILE", name),))  # fmt: skip
 
 
 def find() -> list[Login]:
     """Everything signed in on this computer. Reads its own files; opens no connection."""
     return [*_github(), *_vercel(), *_aws(), *_azure(), *_gcloud(), *_oci()]
+
+
+def is_cloud(login: Login) -> bool:
+    return login.service in CLOUDS
 
 
 def token_of(login: Login) -> str:

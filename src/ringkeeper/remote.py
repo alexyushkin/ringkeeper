@@ -19,8 +19,10 @@ tool name, since servers rename tools (see `narrow`):
 import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from urllib.parse import unquote
+
+from ringkeeper import cloud_rules
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,9 @@ class ScopeField:
     # A folder or path: a call must stay under it, rather than name exactly it. It stands
     # on its own, without the field before it.
     prefix: bool = False
+    # A cloud's CLI flag that carries it, in a command tool (`Remote.command_tools`).
+    flags: tuple[str, ...] = ()
+    every_command: bool = True  # every command takes the flag, so it can be added to any
 
 
 @dataclass(frozen=True)
@@ -137,6 +142,29 @@ GUARDS: dict[str, Guard] = {
         unless=frozenset({"link"}),
     ),
     "ads": Guard(frozenset({"budget", "delete", "remove", "publish", "activate", "launch"})),
+    "cloud": Guard(
+        frozenset(
+            {
+                "delete",
+                "remove",
+                "create",
+                "deploy",
+                "assign",
+                "role",
+                "policy",
+                "secret",
+                "secrets",
+                "start",
+                "restart",
+                "scale",
+                "purchase",
+                "key",
+                "keys",
+                "password",
+                "token",
+            }
+        )
+    ),
     "held": Guard(),  # every change waits for approval; nothing more
 }
 
@@ -175,6 +203,14 @@ class Remote:
     url_hint: str = ""
     basic: bool = False  # the pasted "user:password" goes as HTTP Basic
     minor_units: bool = False  # its amounts are in cents, for the approval card
+    # A server that runs on this computer with your CLI's login: how to start it.
+    local: tuple[str, ...] = ()
+    local_env: Mapping[str, str] = field(default_factory=dict[str, str])
+    # Tools that run any command of a CLI, and the argument that holds it (ringkeeper.cloud_rules).
+    cli: str = ""
+    command_tools: Mapping[str, str] = field(default_factory=dict[str, str])
+    # One login reaches many clients' accounts: a project's link has to say which.
+    scope_required: bool = False
     # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
     # its own connection type, with GitHub Enterprise Server and pushes).
     shelf: bool = True
@@ -284,6 +320,65 @@ CATALOG: tuple[Remote, ...] = (
         open_tools=frozenset({"get_me", "search_code"}),
         note="GitHub doesn't let apps register themselves, so it takes a token.",
         shelf=False,
+    ),
+    # --- Cloud: on this computer, with your own login ---
+    Remote(
+        "aws", "AWS", "", signin=False, paste=None, category="Cloud", guard="cloud", cli="aws",
+        local=("uvx", "--from", "awslabs.aws-api-mcp-server==1.5.6",
+               "awslabs.aws-api-mcp-server"),
+        local_env={"AWS_API_MCP_TELEMETRY": "false"},
+        command_tools={"call_aws": "cli_command"},
+        read_tools=frozenset({"suggest_aws_commands"}),
+        scope=(
+            ScopeField("region", "Region", ("region",), "Optional: like us-east-1.",
+                       flags=("--region",)),
+        ),
+        open_tools=frozenset({"suggest_aws_commands"}),
+        note="One connection is one AWS profile on this computer, so one account. It runs "
+        "AWS's own server with your login.",
+    ),
+    Remote(
+        "azure", "Azure", "", signin=False, paste=None, category="Cloud", guard="cloud",
+        local=("npx", "-y", "@azure/mcp@3.0.0", "server", "start", "--mode", "all"),
+        scope=(
+            ScopeField("subscription", "Azure subscription", ("subscription",),
+                       "The client's subscription ID."),
+            ScopeField("resource_group", "Resource group",
+                       ("resource-group", "resource_group", "resourceGroup"),
+                       "Optional: one resource group."),
+        ),
+        scope_required=True,
+        note="Your own Azure CLI login, so each project's link names the client's subscription. "
+        "It runs Microsoft's own server on this computer.",
+    ),
+    Remote(
+        "gcloud", "Google Cloud", "", signin=False, paste=None, category="Cloud", guard="cloud",
+        cli="gcloud", local=("npx", "-y", "@google-cloud/gcloud-mcp@0.5.3"),
+        command_tools={"run_gcloud_command": "args"},
+        scope=(
+            ScopeField("project", "Google Cloud project", ("project",), "The client's project ID.",
+                       flags=("--project",)),
+        ),
+        scope_required=True,
+        note="Your own gcloud login, so each project's link names the client's project. It runs "
+        "Google's own server on this computer.",
+    ),
+    Remote(
+        "oci", "Oracle Cloud (OCI)", "", signin=False, paste=None, category="Cloud",
+        guard="cloud", cli="oci",
+        local=("uvx", "--from", "oracle.oci-api-mcp-server==2.1.5", "oracle.oci-api-mcp-server"),
+        command_tools={"run_oci_command": "command"},
+        read_tools=frozenset({"get_oci_command_help"}),
+        scope=(
+            ScopeField("compartment", "OCI compartment", ("compartment",),
+                       "The client's compartment OCID.", flags=("--compartment-id", "-c"),
+                       every_command=False),
+        ),
+        open_tools=frozenset({"get_oci_command_help"}),
+        scope_required=True,
+        note="Your own OCI CLI login, so each project's link names the client's compartment. "
+        "A command on a project's link has to name that compartment. Oracle marks this server "
+        "as not meant for production use.",
     ),
     # --- CRM ---
     Remote(
@@ -454,6 +549,9 @@ class ScopeSpec:
     name: str
     fields: tuple[ScopeField, ...]
     open_tools: frozenset[str] = frozenset()
+    cli: str = ""
+    command_tools: Mapping[str, str] = field(default_factory=dict[str, str])
+    required: bool = False
 
 
 # Ringkeeper's own adapters that can be narrowed, by connection type. A Vercel
@@ -516,7 +614,10 @@ def spec_for(service: str, config: Mapping[str, Any] | None) -> ScopeSpec | None
         remote = BY_KEY.get(str((config or {}).get("remote") or ""))
         if remote is None or not remote.scope:
             return None
-        return ScopeSpec(remote.name, remote.scope, remote.open_tools)
+        return ScopeSpec(
+            remote.name, remote.scope, remote.open_tools, remote.cli, remote.command_tools,
+            remote.scope_required,
+        )  # fmt: skip
     return NATIVE.get(service)
 
 
@@ -560,6 +661,8 @@ def narrow(
     result = dict(arguments)
     if not scope or tool in spec.open_tools:
         return result
+    if tool in spec.command_tools:
+        return _narrow_command(spec, scope, tool, result)
     names = set(takes or [])
     for index, f in enumerate(spec.fields):
         wanted = scope.get(f.key)
@@ -591,9 +694,48 @@ def narrow(
     return result
 
 
+def _narrow_command(
+    spec: ScopeSpec, scope: Mapping[str, str], tool: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    """A command stays inside the link: its flag names the link's value, or gets it."""
+    arg = spec.command_tools[tool]
+    command: Any = arguments.get(arg)
+    words = cloud_rules.tokens(spec.cli, command)
+    if words is None:
+        raise ScopeError(f"this project's link can't check that {spec.name} command")
+    for f in spec.fields:
+        wanted = scope.get(f.key)
+        if wanted is None or not f.flags:
+            continue
+        given = cloud_rules.flag_value(words, f.flags)
+        if given is not None and given != wanted:
+            raise ScopeError(
+                f"this project's link to {spec.name} is limited to {f.label.lower()} '{wanted}'; "
+                f"that command names '{given}'"
+            )
+        if given is not None:
+            continue
+        verbs = cloud_rules.positional(words)
+        if not f.every_command and verbs[-1:] != ["list"]:
+            raise ScopeError(
+                f"this project's link to {spec.name} is limited to {f.label.lower()} '{wanted}', "
+                f"and that command doesn't name it, so it can't be checked: add {f.flags[0]}"
+            )
+        added = [f.flags[0], wanted]
+        command = (
+            [*cast(list[Any], command), *added]
+            if isinstance(command, list)
+            else (f"{command} {' '.join(added)}")
+        )
+        words = [*words, *added]
+    return {**arguments, arg: command}
+
+
 def usable(spec: ScopeSpec, scope: Mapping[str, str], tool: str, takes: list[str]) -> bool:
     """Whether a listed tool can be called through a link with this scope."""
     first = spec.fields[0] if spec.fields else None
     if first is None or first.key not in scope or tool in spec.open_tools:
+        return True
+    if tool in spec.command_tools:
         return True
     return any(a in takes for a in first.args)
