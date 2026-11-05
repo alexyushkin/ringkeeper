@@ -47,6 +47,7 @@ interface Task {
   diff: string | null;
   turns: number;
   cost_usd: number | null;
+  tokens?: { input: number; output: number; cache_read: number; cache_write: number; requests: number };
   created_at: string;
   finished_at: string | null;
   session_list: Session[];
@@ -242,6 +243,14 @@ export function TaskView({ id }: { id: string }) {
             <dt className="text-xs text-muted">Cost (estimate)</dt>
             <dd>{money(t.cost_usd)}</dd>
           </div>
+          {t.tokens?.requests ? (
+            <div>
+              <dt className="text-xs text-muted">Tokens</dt>
+              <dd>
+                {(t.tokens.input + t.tokens.cache_read + t.tokens.cache_write).toLocaleString()} in · {t.tokens.output.toLocaleString()} out
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-xs text-muted">Started</dt>
             <dd>{timeAgo(t.created_at)}</dd>

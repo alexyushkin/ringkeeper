@@ -32,10 +32,12 @@ class TokenError(RingkeeperError):
 
 
 class TokenRole(enum.StrEnum):
-    """worker: the service endpoints. architect: only /mcp/architect."""
+    """worker: the service endpoints. architect: only /mcp/architect. model: only the model
+    proxy, so what a worker can read reaches nothing but its own task's model calls."""
 
     WORKER = "worker"
     ARCHITECT = "architect"
+    MODEL = "model"
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,11 @@ class WorkerClaims:
     issued_at: datetime
     expires_at: datetime
     role: TokenRole = TokenRole.WORKER
+
+
+def model_token_id(token_id: str) -> str:
+    """A session's model token, told from its worker token: they end together."""
+    return f"{token_id}.model"
 
 
 def parse_ttl(text: str) -> timedelta:
@@ -67,6 +74,7 @@ def issue_token(
     role: TokenRole = TokenRole.WORKER,
     settings: Settings | None = None,
     now: datetime | None = None,
+    token_id: str | None = None,
 ) -> tuple[str, WorkerClaims]:
     settings = settings or get_settings()
     max_ttl = timedelta(seconds=settings.token_max_ttl_seconds)
@@ -76,7 +84,7 @@ def issue_token(
     claims = WorkerClaims(
         project=project,
         session_id=session_id or str(uuid.uuid4()),
-        token_id=str(uuid.uuid4()),
+        token_id=token_id or str(uuid.uuid4()),
         issued_at=issued,
         expires_at=issued + ttl,
         role=role,

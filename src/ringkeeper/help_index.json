@@ -177,7 +177,7 @@
 "doc": "where-claude-runs",
 "anchor": "google-vertex-ai",
 "title": "Google Vertex AI",
-"text": "Enable Vertex AI and the Claude models in Model Garden. Give the project ID, the region (`global` often works), and a service account key file with the Vertex AI User role. The key is kept in the vault. Claude Code needs it as a file, so a running task gets a copy in its own private folder, which the AI working on that task can reach."
+"text": "Enable Vertex AI and the Claude models in Model Garden. Give the project ID, the region (`global` often works), and a service account key file with the Vertex AI User role. The key is kept in the vault, and a task never gets a copy. See below."
 },
 {
 "doc": "where-claude-runs",
@@ -196,6 +196,12 @@
 "anchor": "check-it",
 "title": "Check it",
 "text": "**Check it** sends one tiny request the way a task would, so it proves the login, the region and the model together. Your cloud bills it, by a few tokens."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "what-a-task-can-see",
+"title": "What a task can see",
+"text": "A task holds no model key. Claude Code in a task talks to Ringkeeper's model proxy with a token that belongs to that task: it reaches nothing but the model, and it ends with the session. Ringkeeper adds the real key on the way out, and counts the tokens each task uses."
 },
 {
 "doc": "where-claude-runs",
@@ -313,9 +319,9 @@
 },
 {
 "doc": "security",
-"anchor": "the-ai-never-sees-a-clients-key",
-"title": "The AI never sees a client's key",
-"text": "A task runs Claude Code with only two things: its Claude credential (so it can think) and a short-lived pass for its own project. Every call to a client's service goes through Ringkeeper's gateway on your computer, which checks that the project may use that connection, adds the key itself, removes any secret from the answer, and logs the call. One client's project can never reach another client's connection, whatever the AI asks for."
+"anchor": "keys-stay-out-of-a-task",
+"title": "Keys stay out of a task",
+"text": "A task runs Claude Code with two short-lived passes for its own project, and no keys. One reaches its connections, through Ringkeeper's gateway, which checks that the project may use that connection, adds the key itself, removes any secret from the answer, and logs the call. The other reaches only the model, through Ringkeeper's model proxy, which adds your API key, subscription or cloud sign-in on the way out and counts the tokens. Both end with the session. One client's project can't reach another client's connection through these. **What this doesn't stop on the desktop.** A task runs as your own Windows or Mac user, so it isn't walled off from what that user can reach. No key is in its environment or its own files, but a script written to do it could still ask the system keychain for the master key and open the vault, or read Ringkeeper's own files and act as the app. A task told to do that by something it read is the risk to think about. With Docker workers (the server install) a task has no access to the vault or the keychain at all."
 },
 {
 "doc": "security",

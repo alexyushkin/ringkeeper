@@ -21,7 +21,7 @@ import hmac
 import json
 import re
 from typing import Annotated, Any, Literal, cast
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlsplit
 from xml.etree import ElementTree
 
 import httpx2
@@ -128,6 +128,42 @@ def signed_headers(
         "x-amz-date": stamp,
         "Authorization": (
             f"AWS4-HMAC-SHA256 Credential={fields['access_key']}/{scope}, "
+            f"SignedHeaders={names}, Signature={signature}"
+        ),
+    }
+
+
+def sign_v4(
+    access_key: str, secret_key: str, region: str, service: str, method: str, url: str,
+    body: bytes, now: datetime.datetime, session_token: str | None = None,
+) -> dict[str, str]:  # fmt: skip
+    """The headers that sign a request to any other AWS service: its path is encoded once more
+    for the signature, as every service but S3 requires."""
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    day = stamp[:8]
+    parts = urlsplit(url)
+    digest = hashlib.sha256(body).hexdigest()
+    headers = {"host": parts.netloc, "x-amz-date": stamp}
+    if session_token:
+        headers["x-amz-security-token"] = session_token
+    names = ";".join(sorted(headers))
+    lines = "".join(f"{k}:{headers[k]}\n" for k in sorted(headers))
+    path = quote(parts.path or "/", safe="/-_.~")
+    canonical_query = "&".join(
+        sorted(f"{_encoded(k)}={_encoded(v)}" for k, v in parse_qsl(parts.query, True))
+    )
+    request = "\n".join((method, path, canonical_query, lines, names, digest))
+    scope = f"{day}/{region}/{service}/aws4_request"
+    to_sign = "\n".join(
+        ("AWS4-HMAC-SHA256", stamp, scope, hashlib.sha256(request.encode()).hexdigest())
+    )
+    key = _hmac(f"AWS4{secret_key}".encode(), day)
+    for word in (region, service, "aws4_request"):
+        key = _hmac(key, word)
+    signature = hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
+    return {k: v for k, v in headers.items() if k != "host"} | {
+        "Authorization": (
+            f"AWS4-HMAC-SHA256 Credential={access_key}/{scope}, "
             f"SignedHeaders={names}, Signature={signature}"
         ),
     }

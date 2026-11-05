@@ -36,6 +36,7 @@ from ringkeeper.adapters.base import Adapter, ToolKind, ToolSpec
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.errors import RingkeeperError
+from ringkeeper.gateway import model_proxy
 from ringkeeper.gateway.approvals import approval_loop
 from ringkeeper.gateway.architect import build_architect_server
 from ringkeeper.keys import load_master_key
@@ -92,6 +93,8 @@ class WorkerTokenAuth:
                     reason = (
                         "this endpoint needs an architect token"
                         if self.role is TokenRole.ARCHITECT
+                        else "a model token can only reach the model"
+                        if claims.role is TokenRole.MODEL
                         else "an architect token can only use /mcp/architect"
                     )
                 elif await anyio.to_thread.run_sync(token_revoked, claims.token_id):
@@ -213,7 +216,7 @@ def create_app(vault: Vault | None = None) -> Starlette:
     # vault and every token. Create it on the host first (any secret/token command).
     load_master_key(get_settings(), create=False)
     vault = vault or get_vault()
-    routes: list[Route] = [Route("/health", health)]
+    routes: list[Route] = [Route("/health", health), model_proxy.make_route(vault)]
     apps: list[StarletteWithLifespan] = []
     for service, adapter in ADAPTERS.items():
         # /mcp/database, and /mcp/supabase for anything that already uses it.

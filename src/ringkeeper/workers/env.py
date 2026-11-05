@@ -1,13 +1,12 @@
 """A worker's environment, built from an allowlist. Nothing is inherited.
 
 The image adds only PATH, HOME, PYTHON* and git identity variables. On top of
-that a worker gets exactly these, plus its single Claude credential.
+that a worker gets exactly these, plus where the model proxy is and its own
+task's token for it. No model credential: the proxy attaches that.
 """
 
 import json
 from typing import Any
-
-from ringkeeper.claude_auth import ClaudeCredential
 
 WORKSPACE = "/workspace"
 STATE_DIR = "/state"
@@ -27,16 +26,9 @@ TASK_ENV = "RINGKEEPER_TASK"
 TOKEN_ENV = "RINGKEEPER_GATEWAY_TOKEN"  # noqa: S105 (an env var name)
 
 
-def worker_env(
-    credential: ClaudeCredential,
-    task: dict[str, Any],
-    gateway_token: str,
-    anthropic_base_url: str | None = None,
-) -> dict[str, str]:
+def worker_env(model: dict[str, str], task: dict[str, Any], gateway_token: str) -> dict[str, str]:
     env = dict(FIXED_ENV)
     env[TASK_ENV] = json.dumps(task, separators=(",", ":"))
     env[TOKEN_ENV] = gateway_token
-    env.update(credential.env())  # the credential (and its workspace header)
-    if anthropic_base_url:
-        env["ANTHROPIC_BASE_URL"] = anthropic_base_url
+    env.update(model)  # services.claude_place.worker_vars
     return env

@@ -29,6 +29,7 @@ class FakeAnthropic:
     def __init__(self, commands: dict[str, str]) -> None:
         self.commands = commands  # tool name -> the command to run with it
         self.requests: list[dict[str, Any]] = []
+        self.keys: list[str] = []  # the x-api-key of each request
         self.server: uvicorn.Server | None = None
         self.url = ""
 
@@ -64,6 +65,7 @@ class FakeAnthropic:
     async def messages(self, request: Request) -> Response:
         body: dict[str, Any] = await request.json()
         self.requests.append(body)
+        self.keys.append(request.headers.get("x-api-key", ""))
         blocks = self._reply(body)
         stop = "tool_use" if blocks[0]["type"] == "tool_use" else "end_turn"
         message = {

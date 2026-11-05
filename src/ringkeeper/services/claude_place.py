@@ -1,15 +1,14 @@
 """Where Claude runs: Anthropic's own service, Amazon Bedrock, Google Vertex AI or Microsoft
 Foundry. Settings > Claude picks the default, and a project can use another.
 
-Workers, the architect and the router all run Claude Code, so the place is one set of
-environment variables, built here and handed to all three (workers.env, router.model). A
-worker has its own home folder and nothing inherited, so it can't reach ~/.aws or a Google
-credentials file. That stays true: what it needs is passed in, short-lived where it can be:
+Workers and the architect hold no model credential. `worker_vars` points them at the
+gateway's model proxy, with a per-task token, and the proxy attaches the real credential
+(services.model_upstream). The router and the Help assistant run inside the backend with
+every tool off, so they get the credential directly (`credential`).
 
 - Bedrock: an API key, or an AWS profile's temporary credentials (the AWS CLI's own
-  `configure export-credentials`), read each time a session starts.
-- Vertex: a service account key. A library wants it as a file, so the worker writes it into
-  its own state folder at start (`GOOGLE_KEY_ENV`, worker/ringkeeper_worker/__main__.py).
+  `configure export-credentials`).
+- Vertex: a service account key.
 - Foundry: an API key, or an access token from the Azure CLI's login.
 
 A cloud's model IDs differ from Anthropic's, so each place can pin one per family, and
@@ -38,7 +37,7 @@ PLACES = (ANTHROPIC, BEDROCK, VERTEX, FOUNDRY)
 DEFAULT_KEY = "claude.place"
 PROJECT_KEY = "claude.place.project.{name}"
 KEY_REF = "file://ringkeeper/claude-place/{kind}"
-GOOGLE_KEY_ENV = "RINGKEEPER_GOOGLE_KEY"  # the worker writes it to a file and removes this
+GOOGLE_KEY_ENV = "RINGKEEPER_GOOGLE_KEY"  # the router writes it to a file that it removes
 FAMILIES = ("opus", "sonnet", "haiku")
 CLI_TIMEOUT = 30
 AZURE_SCOPE = "https://cognitiveservices.azure.com/.default"
@@ -195,7 +194,7 @@ def _run(command: list[str], what: str, fix: str) -> str:
     return done.stdout
 
 
-def _aws_login(profile: str) -> dict[str, str]:
+def aws_login(profile: str) -> dict[str, str]:
     out = _run(
         ["aws", "configure", "export-credentials", "--profile", profile, "--format", "process"],
         f"The AWS profile {profile}", f"Sign in again: aws sso login --profile {profile}",
@@ -210,7 +209,7 @@ def _aws_login(profile: str) -> dict[str, str]:
     return env
 
 
-def _azure_login() -> dict[str, str]:
+def azure_login() -> dict[str, str]:
     out = _run(
         ["az", "account", "get-access-token", "--scope", AZURE_SCOPE, "--output", "json"],
         "The Azure CLI login", "Sign in again: az login",
@@ -218,7 +217,7 @@ def _azure_login() -> dict[str, str]:
     return {"ANTHROPIC_FOUNDRY_AUTH_TOKEN": str(json.loads(out)["accessToken"])}
 
 
-def _key(vault: Vault, kind: str, what: str) -> str:
+def stored_key(vault: Vault, kind: str, what: str) -> str:
     try:
         return vault.resolve(KEY_REF.format(kind=kind)).reveal()
     except RingkeeperError:
@@ -234,21 +233,46 @@ def place_env(place: Place, vault: Vault) -> dict[str, str]:
     if place.kind == BEDROCK:
         env = {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_REGION": place.region}
         if place.profile:
-            env |= _aws_login(place.profile)
+            env |= aws_login(place.profile)
         else:
-            env["AWS_BEARER_TOKEN_BEDROCK"] = _key(vault, BEDROCK, "Bedrock API key")
+            env["AWS_BEARER_TOKEN_BEDROCK"] = stored_key(vault, BEDROCK, "Bedrock API key")
     elif place.kind == VERTEX:
         env = {
             "CLAUDE_CODE_USE_VERTEX": "1", "CLOUD_ML_REGION": place.region,
             "ANTHROPIC_VERTEX_PROJECT_ID": place.project,
-            GOOGLE_KEY_ENV: _key(vault, VERTEX, "Google service account key"),
+            GOOGLE_KEY_ENV: stored_key(vault, VERTEX, "Google service account key"),
         }  # fmt: skip
     else:
         env = {"CLAUDE_CODE_USE_FOUNDRY": "1", "ANTHROPIC_FOUNDRY_RESOURCE": place.resource}
         if place.use_login:
-            env |= _azure_login()
+            env |= azure_login()
         else:
-            env["ANTHROPIC_FOUNDRY_API_KEY"] = _key(vault, FOUNDRY, "Foundry API key")
+            env["ANTHROPIC_FOUNDRY_API_KEY"] = stored_key(vault, FOUNDRY, "Foundry API key")
+    return env | _pins(place)
+
+
+def worker_vars(place: Place, gateway: str, token: str) -> dict[str, str]:
+    """What a worker gets: where the model proxy is, and its own task's token. No credential."""
+    base = f"{gateway.rstrip('/')}/model/{place.kind}"
+    if place.kind == ANTHROPIC:
+        return {"ANTHROPIC_BASE_URL": base, "ANTHROPIC_AUTH_TOKEN": token}
+    if place.kind == BEDROCK:
+        env = {
+            "CLAUDE_CODE_USE_BEDROCK": "1", "AWS_REGION": place.region,
+            "ANTHROPIC_BEDROCK_BASE_URL": base, "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
+            "ANTHROPIC_AUTH_TOKEN": token,
+        }  # fmt: skip
+    elif place.kind == VERTEX:
+        env = {
+            "CLAUDE_CODE_USE_VERTEX": "1", "CLOUD_ML_REGION": place.region,
+            "ANTHROPIC_VERTEX_PROJECT_ID": place.project, "ANTHROPIC_VERTEX_BASE_URL": base,
+            "CLAUDE_CODE_SKIP_VERTEX_AUTH": "1", "ANTHROPIC_AUTH_TOKEN": token,
+        }  # fmt: skip
+    else:
+        env = {
+            "CLAUDE_CODE_USE_FOUNDRY": "1", "ANTHROPIC_FOUNDRY_BASE_URL": base,
+            "ANTHROPIC_FOUNDRY_AUTH_TOKEN": token,
+        }  # fmt: skip
     return env | _pins(place)
 
 

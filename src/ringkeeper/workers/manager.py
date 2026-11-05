@@ -52,7 +52,7 @@ from ringkeeper.services import (
     tasks,
 )
 from ringkeeper.services.runtime import current_settings
-from ringkeeper.tokens import TokenRole, issue_token
+from ringkeeper.tokens import TokenRole, issue_token, model_token_id
 from ringkeeper.vault import Vault
 from ringkeeper.workers.env import worker_env
 from ringkeeper.workers.runtime import (
@@ -437,7 +437,15 @@ class Manager:
             role=TokenRole.ARCHITECT if architect_role else TokenRole.WORKER,
             settings=settings,
         )
-        scrub.register(token)  # never store it in events, even if the agent prints env
+        model_token, _ = issue_token(
+            job.project,
+            timedelta(seconds=job.max_runtime_s),
+            session_id=str(job.session_id),
+            role=TokenRole.MODEL,
+            settings=settings,
+            token_id=model_token_id(claims.token_id),
+        )
+        scrub.register(token, model_token)  # not in events, even if the agent prints env
         base = settings.gateway_internal_url.rstrip("/")
         task: dict[str, Any] = {
             "task_id": str(job.task_id),
@@ -465,7 +473,7 @@ class Manager:
         spec = WorkerSpec(
             name=f"ringkeeper-worker-{job.session_id}",
             image=settings.worker_image,
-            env=worker_env(credential, task, token, settings.worker_anthropic_base_url),
+            env=worker_env(claude_place.worker_vars(place, base, model_token), task, token),
             workspace=workspace,
             state_volume=job.state_volume,
             network=settings.worker_network,
@@ -596,10 +604,10 @@ class Manager:
                         project=task.project,
                         task=task,
                     )
-            if jti:
+            for token_id in (jti, model_token_id(jti)) if jti else ():
                 revocations.revoke(
                     session,
-                    jti,
+                    token_id,
                     reason=f"session {job.session_id} ended ({status})",
                     by=REVOKED_BY,
                     expires_at=job.started_at + timedelta(seconds=job.max_runtime_s),

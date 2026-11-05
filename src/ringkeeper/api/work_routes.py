@@ -34,7 +34,16 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.schemas import Input, NonEmpty
-from ringkeeper.services import calls, cleanup, clients, projects, tasks, titles, undo
+from ringkeeper.services import (
+    calls,
+    cleanup,
+    clients,
+    model_usage,
+    projects,
+    tasks,
+    titles,
+    undo,
+)
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -228,6 +237,7 @@ def get_task(task_id: str, session: SessionDep) -> dict[str, Any]:
         "changed_files": task.changed_files, "auth_mode": task.auth_mode.value,
         "review_round": task.review_round, "stop_requested": task.stop_requested,
         "diff": (diff.payload.get("text") if diff else None),
+        "tokens": model_usage.totals(session, [s.id for s in rows]),
         "session_list": [
             {
                 "id": str(s.id), "ordinal": s.ordinal, "role": s.role.value, "model": s.model,

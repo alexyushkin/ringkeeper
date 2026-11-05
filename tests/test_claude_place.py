@@ -17,7 +17,6 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import claude_place
 from ringkeeper.services.claude_place import BEDROCK, FOUNDRY, GOOGLE_KEY_ENV, VERTEX, Place
 from ringkeeper.vault import Secret, Vault, get_vault
-from ringkeeper.workers.env import worker_env
 
 KEY = "fake-bedrock-key"
 GOOGLE = json.dumps({"type": "service_account", "private_key": "fake-private-key"})
@@ -86,7 +85,7 @@ def test_an_expired_profile_says_how_to_sign_in(
         credential(vault)
 
 
-def test_vertex_carries_its_key_for_the_worker_to_write(vault: Vault) -> None:
+def test_the_routers_vertex_credential_carries_its_key(vault: Vault) -> None:
     save(vault, GOOGLE, kind=VERTEX, region="global", project="acme-prod")
     env = credential(vault).env()
     assert env["CLAUDE_CODE_USE_VERTEX"] == "1"
@@ -114,14 +113,6 @@ def test_foundry_with_a_key_or_the_azure_login(
     env = credential(vault).env()
     assert env["ANTHROPIC_FOUNDRY_AUTH_TOKEN"] == "az-token"
     assert "ANTHROPIC_FOUNDRY_API_KEY" not in env
-
-
-def test_a_worker_gets_the_place_and_no_anthropic_key(vault: Vault) -> None:
-    save(vault, KEY, kind=BEDROCK, region="us-east-1")
-    env = worker_env(credential(vault), {"task_id": "1"}, "token")
-    assert env["CLAUDE_CODE_USE_BEDROCK"] == "1"
-    assert "ANTHROPIC_API_KEY" not in env
-    assert "CLAUDE_CODE_OAUTH_TOKEN" not in env
 
 
 def test_the_router_blanks_what_it_inherited_and_uses_the_place(vault: Vault) -> None:
@@ -225,29 +216,6 @@ def test_the_live_check_uses_what_a_worker_would(
     said = claude_place.check(Place(BEDROCK, region="us-east-1"), vault, get_settings())
     assert said == "It answered, using haiku."
     assert asked[0][0]["AWS_BEARER_TOKEN_BEDROCK"] == KEY
-
-
-def test_the_worker_writes_the_key_into_its_own_folder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from ringkeeper_worker.__main__ import keep_google_key  # noqa: PLC0415
-
-    ran_as_worker: list[bool] = []
-
-    def as_this_user(write: Any) -> Any:
-        ran_as_worker.append(True)
-        return write()
-
-    monkeypatch.setenv(GOOGLE_KEY_ENV, GOOGLE)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    monkeypatch.setattr("ringkeeper_worker.__main__.as_worker", as_this_user)
-    keep_google_key()
-    assert ran_as_worker
-    path = Path(str(__import__("os").environ["GOOGLE_APPLICATION_CREDENTIALS"]))
-    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS")
-    assert path.parent == tmp_path / "claude"
-    assert path.read_text(encoding="utf-8") == GOOGLE
-    assert GOOGLE_KEY_ENV not in __import__("os").environ
 
 
 def test_a_credential_built_for_a_place_has_no_key_of_its_own() -> None:

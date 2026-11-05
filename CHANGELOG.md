@@ -5,6 +5,9 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Tasks no longer hold a model key.** Workers call Ringkeeper's model proxy with a token
+  that only reaches the model and ends with the session, and Ringkeeper adds the real key on
+  the way out, whichever place Claude runs in. Each task's tokens are counted there.
 - **Where Claude runs.** Settings › Claude can run tasks, the architect and the router on
   Amazon Bedrock, Google Vertex AI or Microsoft Foundry, with a live check. A project can
   use another place.

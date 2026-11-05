@@ -15,15 +15,23 @@ Ringkeeper server: nothing about your clients goes to the people who make it.
 | Project folders | Wherever you chose (new ones in `Documents\Ringkeeper`) | Your Windows account. |
 | Backups you make | Where you save them | Encrypted with the password you chose ([Backup](backup.md)). |
 
-## The AI never sees a client's key
+## Keys stay out of a task
 
-A task runs Claude Code with only two things: its Claude credential (so it can
-think) and a short-lived pass for its own project. Every call to a client's
-service
-goes through Ringkeeper's gateway on your computer, which checks that the
-project may use that connection, adds the key itself, removes any secret from
-the answer, and logs the call. One client's project can never reach another
-client's connection, whatever the AI asks for.
+A task runs Claude Code with two short-lived passes for its own project, and no
+keys. One reaches its connections, through Ringkeeper's gateway, which checks
+that the project may use that connection, adds the key itself, removes any
+secret from the answer, and logs the call. The other reaches only the model,
+through Ringkeeper's model proxy, which adds your API key, subscription or cloud
+sign-in on the way out and counts the tokens. Both end with the session. One
+client's project can't reach another client's connection through these.
+
+**What this doesn't stop on the desktop.** A task runs as your own Windows or Mac
+user, so it isn't walled off from what that user can reach. No key is in its
+environment or its own files, but a script written to do it could still ask the
+system keychain for the master key and open the vault, or read Ringkeeper's own
+files and act as the app. A task told to do that by something it read is the risk
+to think about. With Docker workers (the server install) a task has no access to
+the vault or the keychain at all.
 
 ## What leaves your computer
 

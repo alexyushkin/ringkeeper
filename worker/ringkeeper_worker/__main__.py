@@ -16,7 +16,6 @@ from typing import Any
 from ringkeeper_worker import agent, gitguard, stub
 from ringkeeper_worker.checks import run_checks
 from ringkeeper_worker.config import (
-    GOOGLE_KEY_ENV,
     TASK_ENV,
     TOKEN_ENV,
     ConfigError,
@@ -103,24 +102,6 @@ def _finish(config: WorkerConfig, workspace: Workspace, guard: Guard) -> None:
         emit("ringkeeper.diff", text=diff)
 
 
-def keep_google_key() -> None:
-    """Vertex wants its key as a file: in this session's own state folder, not the workspace.
-    Written as the worker user, since the agent reads it and this runner can't chown."""
-    key = os.environ.pop(GOOGLE_KEY_ENV, None)
-    if key is None:
-        return
-    folder = Path(os.environ["CLAUDE_CONFIG_DIR"])
-    path = folder / "google-key.json"
-
-    def write() -> str:
-        folder.mkdir(parents=True, exist_ok=True)
-        path.write_text(key, encoding="utf-8")
-        path.chmod(0o600)
-        return str(path)
-
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = as_worker(write)
-
-
 def main() -> int:
     try:
         config = load()
@@ -131,7 +112,6 @@ def main() -> int:
     # in its MCP config).
     os.environ.pop(TASK_ENV, None)
     os.environ.pop(TOKEN_ENV, None)
-    keep_google_key()
     emit(
         "ringkeeper.start",
         task_id=config.task_id,

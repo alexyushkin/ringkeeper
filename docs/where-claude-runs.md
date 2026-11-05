@@ -24,8 +24,7 @@ either:
 Enable Vertex AI and the Claude models in Model Garden. Give the project ID, the region
 (`global` often works), and a service account key file with the Vertex AI User role.
 
-The key is kept in the vault. Claude Code needs it as a file, so a running task gets a copy
-in its own private folder, which the AI working on that task can reach.
+The key is kept in the vault, and a task never gets a copy. See below.
 
 ## Microsoft Foundry
 
@@ -43,6 +42,12 @@ Code uses its own defaults for that platform, which can bill at the Opus rate.
 
 **Check it** sends one tiny request the way a task would, so it proves the login, the region
 and the model together. Your cloud bills it, by a few tokens.
+
+## What a task can see
+
+A task holds no model key. Claude Code in a task talks to Ringkeeper's model proxy with a
+token that belongs to that task: it reaches nothing but the model, and it ends with the
+session. Ringkeeper adds the real key on the way out, and counts the tokens each task uses.
 
 ## Good to know
 

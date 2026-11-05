@@ -35,6 +35,8 @@ from tests.conftest import CLAUDE_OAUTH_TOKEN
 from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
 from tests.helpers import bind, make_instance
 
+PROXY_VARS = ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]  # no credential: the model proxy
+
 
 def manager(script: Callable[[WorkerSpec], Script] | None = None) -> tuple[Manager, FakeRuntime]:
     runtime = FakeRuntime(script)
@@ -164,26 +166,25 @@ def test_worker_gets_the_session_config() -> None:
 
 
 @pytest.mark.usefixtures("task_registry")
-def test_api_key_mode_gives_only_the_api_key() -> None:
+def test_api_key_mode_gives_a_worker_no_key() -> None:
     m, runtime = manager()
     run_task()
     m.tick()
     m.wait_idle()
     env = runtime.started[0].env
-    present = [name for name in BILLING_ENV_VARS if name in env]
-    assert present == ["ANTHROPIC_API_KEY"]
-    assert env["ANTHROPIC_API_KEY"] == API_KEY
+    assert [name for name in BILLING_ENV_VARS if name in env] == PROXY_VARS
+    assert API_KEY not in json.dumps(env)
 
 
 @pytest.mark.usefixtures("task_registry")
-def test_subscription_mode_never_includes_an_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_subscription_mode_gives_a_worker_no_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_CLAUDE_AUTH_MODE", "subscription")
     m, runtime = manager()
     run_task()
     m.tick()
     m.wait_idle()
     env = runtime.started[0].env
-    assert [name for name in BILLING_ENV_VARS if name in env] == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    assert [name for name in BILLING_ENV_VARS if name in env] == PROXY_VARS
     assert "ANTHROPIC_API_KEY" not in env
 
 
@@ -216,8 +217,8 @@ def test_subscription_chosen_in_settings_runs_a_routed_task_without_an_api_key()
     m.wait_idle()
     assert task(task_id).status is TaskStatus.SUCCEEDED, task(task_id).error
     env = fake.started[0].env
-    assert [name for name in BILLING_ENV_VARS if name in env] == ["CLAUDE_CODE_OAUTH_TOKEN"]
-    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_OAUTH_TOKEN
+    assert [name for name in BILLING_ENV_VARS if name in env] == PROXY_VARS
+    assert CLAUDE_OAUTH_TOKEN not in json.dumps(env)
     assert task_env(fake.started[0])["max_budget_usd"] is None  # no USD cap on a subscription
 
 
@@ -231,7 +232,7 @@ def test_the_mode_configured_when_it_starts_is_the_one_used() -> None:
     m.wait_idle()
     assert task(task_id).status is TaskStatus.SUCCEEDED
     env = fake.started[0].env
-    assert [name for name in BILLING_ENV_VARS if name in env] == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    assert [name for name in BILLING_ENV_VARS if name in env] == PROXY_VARS
 
 
 @pytest.mark.usefixtures("task_registry")
@@ -244,7 +245,7 @@ def test_worker_env_is_an_allowlist() -> None:
         "LANG", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
         "DISABLE_AUTOUPDATER", "DISABLE_TELEMETRY",
-        "RINGKEEPER_TASK", "RINGKEEPER_GATEWAY_TOKEN", "ANTHROPIC_API_KEY",
+        "RINGKEEPER_TASK", "RINGKEEPER_GATEWAY_TOKEN", *PROXY_VARS,
     }  # fmt: skip
 
 

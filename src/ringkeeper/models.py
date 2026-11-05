@@ -890,6 +890,28 @@ class Channel(TimestampMixin, Base):
     since: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
+class ModelUsage(Base):
+    """One model request's tokens, counted by the model proxy."""
+
+    __tablename__ = "model_usage"
+    __table_args__ = (Index("ix_model_usage_session", "session_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sessions.id", ondelete="CASCADE", name="fk_model_usage_session")
+    )
+    project: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    input_tokens: Mapped[int] = mapped_column(BigInteger)
+    output_tokens: Mapped[int] = mapped_column(BigInteger)
+    cache_read_tokens: Mapped[int] = mapped_column(BigInteger)
+    cache_write_tokens: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+
+
 class Setting(Base):
     """Small runtime state (e.g. the Telegram update offset)."""
 
