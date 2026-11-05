@@ -132,6 +132,7 @@ def _decision_out(decision: Decision, owners: dict[str, str] | None = None) -> D
             "production": inbox.production_hold(decision),
             "summary": inbox.summary(decision),
             "heading": inbox.heading(decision),
+            "money": inbox.money(decision),
             "options": inbox.options(decision),
             "approval": inbox.is_approval(decision),
             "undo": undo.note_for(decision) if decision.kind is DecisionKind.APPROVE else None,

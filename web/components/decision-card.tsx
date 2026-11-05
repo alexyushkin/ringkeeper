@@ -17,6 +17,7 @@ export interface Decision {
   status: string;
   summary: string;
   heading: string | null;
+  money?: { amount: string; counterparty: string; account: string } | null;
   options: string[];
   project: string | null;
   client: string | null;
@@ -103,6 +104,15 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
                 <Alert tone="warn">Something changed these since the original change. Reverting puts the old values back over what&apos;s there now.</Alert>
               ) : null}
             </div>
+          ) : null}
+          {decision.money ? (
+            <dl className="rounded-md border border-line p-3">
+              <dd className="text-2xl font-semibold">{decision.money.amount}</dd>
+              <dt className="mt-2 text-xs text-muted">To or from</dt>
+              <dd className="text-lg font-medium">{decision.money.counterparty}</dd>
+              <dt className="mt-2 text-xs text-muted">Account</dt>
+              <dd className="text-lg font-medium">{decision.money.account}</dd>
+            </dl>
           ) : null}
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
           {decision.undo ? (

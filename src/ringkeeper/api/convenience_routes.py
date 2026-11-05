@@ -12,6 +12,8 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ringkeeper.adapters import vendor
+from ringkeeper.adapters.base import ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import get_settings
@@ -267,12 +269,17 @@ def connect_found(name: str, data: ScanConnectIn, session: WriteSessionDep) -> d
         raise HTTPException(409, detail="That key isn't in the project's files any more.")
     finding, secret, address = match
     kind = InstanceType(finding.service)
+    if kind is InstanceType.VENDOR:
+        try:
+            vendor.check_env(secret, data.env)
+        except ToolError as error:
+            raise HTTPException(422, detail=f"{str(error).capitalize()}.") from None
     ref = secrets_in.store_connection(session, get_settings(), data.name, kind, secret)
     instances.create_instance(
         session,
         InstanceIn(
             name=data.name, title=data.title, type=kind, env=data.env, secret_ref=ref,
-            owner=project.owner, base_url=address, config=_found_config(finding),
+            owner=project.owner, base_url=address, config=_found_config(finding, secret),
         ),
     )  # fmt: skip
     bindings.set_binding(session, BindingIn(project=name, instance=data.name))
@@ -284,8 +291,11 @@ def connect_found(name: str, data: ScanConnectIn, session: WriteSessionDep) -> d
     return {"name": data.name}
 
 
-def _found_config(finding: env_scan.Finding) -> dict[str, Any]:
-    """An MCP server found in a project says where it came from, with its secrets masked."""
+def _found_config(finding: env_scan.Finding, secret: str) -> dict[str, Any]:
+    """An MCP server found in a project says where it came from, with its secrets masked;
+    a business system says which one it is."""
+    if finding.service == InstanceType.VENDOR.value:
+        return vendor.config_of(secret)
     if finding.service != InstanceType.MCP.value:
         return {}
     return {"source": "project", "file": finding.file, "preview": finding.masked}

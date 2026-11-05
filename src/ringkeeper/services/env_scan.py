@@ -17,8 +17,10 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlsplit
+
+from ringkeeper.adapters.vendors import ALL
 
 MAX_BYTES = 256_000
 ENV_FILES = (".env", ".env.local", ".env.development", ".env.development.local",
@@ -50,6 +52,7 @@ class Finding:
     usable: bool = True
     why: str = ""  # why it can't be connected as it is
     warning: str = ""  # connectable, with something to know first
+    env: str = ""  # the key itself says what it reaches: "prod", or "dev" for test data
 
 
 def mask(value: str) -> str:
@@ -116,7 +119,7 @@ def _first(values: dict[str, str], *names: str) -> tuple[str, str] | None:
 class Add(Protocol):
     def __call__(
         self, service: str, label: str, keys: list[str], secret: str, *, title: str,
-        address: str | None = None, shown: str | None = None, why: str = "",
+        address: str | None = None, shown: str | None = None, why: str = "", env: str = "",
     ) -> None: ...  # fmt: skip
 
 
@@ -242,6 +245,23 @@ def _storage(values: dict[str, str], add: Add) -> None:
         )
 
 
+def _vendors(values: dict[str, str], add: Add) -> None:
+    """Business systems: the names their own docs give their keys (Vendor.env_vars)."""
+    for vendor in ALL:
+        keys = sorted(k for k in vendor.env_vars if k in values)
+        if not keys or vendor.provider:
+            continue
+        fields: dict[str, Any] = {"vendor": vendor.key}
+        fields |= {vendor.env_vars[k]: values[k] for k in keys}
+        says = vendor.env_of(fields) if vendor.env_of else None
+        missing = [s.label for s in vendor.secrets if s.required and not fields.get(s.key)]
+        add(
+            "vendor", vendor.name, keys, json.dumps(fields), title=vendor.name,
+            shown=mask(values[keys[0]]), env=says.value if says else "",
+            why=f"It needs the {' and '.join(missing)} too." if missing else "",
+        )  # fmt: skip
+
+
 def _not_yet(values: dict[str, str], add: Add) -> None:
     """Services with no connection yet: named, so you know it was seen, and left alone."""
     for label, words in NOT_YET:
@@ -259,12 +279,12 @@ def _in_file(file: str, values: dict[str, str]) -> list[tuple[Finding, str, str 
 
     def add(
         service: str, label: str, keys: list[str], secret: str, *, title: str,
-        address: str | None = None, shown: str | None = None, why: str = "",
+        address: str | None = None, shown: str | None = None, why: str = "", env: str = "",
     ) -> None:  # fmt: skip
         identity = finding_id(file, service, keys)
         finding = Finding(
             identity, file, service, label, keys, shown or mask(secret), title,
-            usable=not why, why=why,
+            usable=not why, why=why, env=env,
         )  # fmt: skip
         found.append((finding, secret, address))
 
@@ -315,6 +335,7 @@ def _in_file(file: str, values: dict[str, str]) -> list[tuple[Finding, str, str 
     _email(values, add)
     _apis(values, add)
     _storage(values, add)
+    _vendors(values, add)
     _not_yet(values, add)
     return found
 

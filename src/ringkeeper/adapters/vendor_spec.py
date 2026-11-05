@@ -1,0 +1,198 @@
+"""How a business system is described: its address, how it signs in, and what it may do.
+
+A vendor is data, in adapters/vendors/. Its table of operations is the whole of what the
+AI can reach: anything else the vendor's API offers can't be called, which is how an
+endpoint that hands out a secret or signs in as someone else stays out of reach.
+
+Each operation says what it needs:
+
+- `reads`: runs. Reports and lookups.
+- `held`: always waits for approval, even on test data. Drafts and edits.
+- `final`: also needs the connection's name typed, in the app itself. It sends to real
+  people, publishes, posts to the books, moves money, deletes, changes who has access or
+  adds ongoing cost. No setting lets one run by itself.
+"""
+
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any
+
+from ringkeeper.models import Env
+from ringkeeper.remote import ScopeField
+
+JSON = dict[str, Any]
+READ, HELD, FINAL = "read", "held", "final"
+# What a Field's value may look like when it becomes part of the address.
+HOST_LABEL = r"^[a-z0-9][a-z0-9-]{0,62}$"
+PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+
+
+@dataclass(frozen=True)
+class Money:
+    """Which fields of a call say what an approval card shows in large text."""
+
+    amount: tuple[str, ...] = ("amount",)
+    currency: tuple[str, ...] = ("currency",)
+    counterparty: tuple[str, ...] = ("customer", "payee", "vendor")
+    account: tuple[str, ...] = ("account", "source", "destination")
+    # The amount is in the currency's smallest unit (cents).
+    minor_units: bool = False
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """How an edit is taken back: `read` (this vendor's operation, with the same path) gets
+    the record before the edit, and `restore` writes `keep` back."""
+
+    read: str
+    keep: tuple[str, ...]
+    restore: str = ""  # the operation that writes it back; empty: the edit itself
+    where: str = ""  # the record, inside what `read` answers
+    says: str = "the fields it changed"
+
+
+@dataclass(frozen=True)
+class Op:
+    name: str
+    method: str
+    path: str  # under the vendor's address, with {path_values}
+    says: str
+    level: str
+    # `final`: finishes "This change ...", or decides from the call (None: approving is
+    # enough for this call).
+    why: str | Callable[[JSON], str | None] | None = None
+    params: tuple[str, ...] = ()  # worth knowing about, for the AI
+    only: tuple[str, ...] = ()  # the only body fields it takes (empty: any)
+    graphql: str = ""  # sent as the query; the call's body is its variables
+    undo: Snapshot | None = None
+    money: Money | None = None
+
+
+def reads(name: str, path: str, says: str, *params: str, method: str = "GET") -> Op:
+    return Op(name, method, path, says, READ, params=params)
+
+
+def held(
+    name: str,
+    method: str,
+    path: str,
+    says: str,
+    *params: str,
+    only: tuple[str, ...] = (),
+    undo: Snapshot | None = None,
+    money: Money | None = None,
+) -> Op:
+    return Op(name, method, path, says, HELD, params=params, only=only, undo=undo, money=money)
+
+
+def final(
+    name: str,
+    method: str,
+    path: str,
+    says: str,
+    why: str | Callable[[JSON], str | None],
+    *params: str,
+    only: tuple[str, ...] = (),
+    undo: Snapshot | None = None,
+    money: Money | None = None,
+) -> Op:
+    return Op(
+        name, method, path, says, FINAL, why, params=params, only=only, undo=undo, money=money
+    )
+
+
+def query(name: str, says: str, text: str, *params: str) -> Op:
+    """A GraphQL read."""
+    return Op(name, "POST", "", says, READ, params=params, graphql=text)
+
+
+def mutation(
+    name: str,
+    says: str,
+    text: str,
+    *params: str,
+    why: str | Callable[[JSON], str | None] | None = None,
+    money: Money | None = None,
+) -> Op:
+    """A GraphQL change: held, or (with `why`) needing the name typed."""
+    level = FINAL if why is not None else HELD
+    return Op(name, "POST", "", says, level, why, params=params, graphql=text, money=money)
+
+
+@dataclass(frozen=True)
+class Secret:
+    """One thing the form asks for, kept in the connection's secret."""
+
+    key: str
+    label: str
+    hint: str = ""
+    hidden: bool = True  # a key, shown as dots
+    pattern: str = ""  # must match; required for anything that becomes part of the address
+    required: bool = True
+
+
+@dataclass(frozen=True)
+class Auth:
+    """How a call signs in. `bearer`: Authorization: Bearer <field>. `header`: <name>: <field>.
+    `basic`: <field> as the user, `field2` (if any) as the password. `custom`: from the
+    connection's values."""
+
+    kind: str = "bearer"
+    name: str = ""
+    field: str = "api_key"
+    field2: str = ""
+    scheme: str = "Bearer"
+    custom: Callable[[JSON], dict[str, str]] | None = None
+
+
+@dataclass(frozen=True)
+class Vendor:
+    key: str
+    name: str
+    category: str  # as the catalog groups it
+    sub: str  # the tile's second line
+    base: str  # may name a Secret, like https://{shop}/admin/api/2026-10
+    ops: tuple[Op, ...]
+    auth: Auth = Auth()
+    secrets: tuple[Secret, ...] = (Secret("api_key", "API key"),)
+    probe: str = ""  # a read the Test button runs
+    who: Callable[[JSON], str] | None = None  # says which account, from the probe's answer
+    provider: str = ""  # signs in through this Developer app instead of a pasted key
+    headers: Mapping[str, str] = field(default_factory=dict[str, str])
+    graphql_path: str = ""  # under `base`: where its GraphQL operations go
+    words: tuple[str, ...] = ()  # what a search for it might say
+    steps: str = ""  # where to get the key
+    key_url: str = ""
+    note: str = ""
+    # The key says whether it's test or live data: a connection can't claim otherwise.
+    env_of: Callable[[JSON], Env | None] | None = None
+    # A project's link can be narrowed to one of these (a company, a store, a location).
+    scope: tuple[ScopeField, ...] = ()
+    account_header: str = ""  # sends the scope's value in this header
+    env_vars: Mapping[str, str] = field(default_factory=dict[str, str])  # .env name -> Secret
+    # Every write waits for a person, whatever else allows: nothing trusts it for an hour.
+    never_trusted: bool = False
+    # Why the tile says Unverified: part of this couldn't be confirmed from the vendor's docs.
+    unverified: str = ""
+
+    def __post_init__(self) -> None:
+        names = [op.name for op in self.ops]
+        if len(names) != len(set(names)):
+            raise ValueError(f"{self.key} declares an operation twice")
+        patterned = {s.key for s in self.secrets if s.pattern}
+        for name in PLACEHOLDER.findall(self.base):
+            if name != "account" and name not in patterned:
+                raise ValueError(f"{self.key}: {name} is in the address, so it needs a pattern")
+        for op in self.ops:
+            if op.level == FINAL and op.why is None:
+                raise ValueError(f"{self.key}.{op.name} needs the name typed: say why")
+            if op.level not in (READ, HELD, FINAL):
+                raise ValueError(f"{self.key}.{op.name}: what does it need?")
+            if op.level == READ and op.method not in ("GET", "HEAD") and not self._reads(op):
+                raise ValueError(f"{self.key}.{op.name} changes something, so it can't only read")
+
+    @staticmethod
+    def _reads(op: Op) -> bool:
+        """A read sent by POST: a GraphQL query, or a search the vendor only offers that way."""
+        return bool(op.graphql) or "/search" in op.path or op.path.endswith("/query")

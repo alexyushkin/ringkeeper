@@ -15,7 +15,7 @@ so `UPDATE notes SET body = 'drop table'` is ordinary and
 import re
 from typing import Any, cast
 
-from ringkeeper.adapters import ADAPTERS, github, google, mcp
+from ringkeeper.adapters import ADAPTERS, github, google, mcp, vendor
 from ringkeeper.models import InstanceType
 from ringkeeper.sql_text import (
     CALL,
@@ -106,6 +106,14 @@ def sql_reason(sql: str) -> str | None:  # noqa: PLR0911 (one return per reason)
         if name not in HARMLESS:
             return f"calls {call.group(1)}(), whose effects can't be checked"
     return None
+
+
+def never_trusted(service: InstanceType | None, tool: str | None, args: dict[str, Any]) -> bool:
+    """A write nothing may run by itself: every one waits for a person, even once approved
+    before (accounting)."""
+    return (
+        service is InstanceType.VENDOR and tool == "call_operation" and vendor.never_trusted(args)
+    )
 
 
 def reason(  # noqa: PLR0911 (one return per kind of tool)

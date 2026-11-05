@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
+from ringkeeper.adapters import vendor
 from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
@@ -499,6 +500,18 @@ def _shown(decision: Decision) -> str | None:
     return title or decision.instance
 
 
+def _op(decision: Decision) -> str:
+    return str((decision.args or {}).get("operation") or "")
+
+
+def money(decision: Decision) -> dict[str, str] | None:
+    """Amount, currency, counterparty and account of a held call that moves money."""
+    if decision.kind is not DecisionKind.APPROVE or decision.service is not InstanceType.VENDOR:
+        return None
+    card = vendor.money_card(decision.args or {})
+    return vars(card) if card else None
+
+
 def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)
     """What a held call is, in a few words: live client data only when it is."""
     if decision.kind is not DecisionKind.APPROVE:
@@ -507,6 +520,8 @@ def heading(decision: Decision) -> str | None:  # noqa: PLR0911 (one per kind)
         return "Undoing a change"
     if decision.service in SENDS:
         return "A message to real people"
+    if decision.service is InstanceType.VENDOR and (found := vendor.operation(_op(decision))):
+        return found[1].says
     if decision.service is InstanceType.GOOGLE and decision.tool in GOOGLE_REACHES_PEOPLE:
         return GOOGLE_REACHES_PEOPLE[decision.tool]
     if decision.service is InstanceType.GITHUB and decision.tool in GITHUB_HEADINGS:

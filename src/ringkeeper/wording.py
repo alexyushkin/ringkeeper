@@ -46,6 +46,7 @@ SERVICES = {
     InstanceType.MAILBOX: "mailbox",
     InstanceType.HTTP: "API",
     InstanceType.S3: "file storage",
+    InstanceType.VENDOR: "business system",
 }
 
 APPS = {"slack": "Slack", "discord": "Discord", "telegram": "Telegram", "web": "the app"}

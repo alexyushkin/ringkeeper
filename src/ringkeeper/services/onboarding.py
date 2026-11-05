@@ -34,6 +34,7 @@ BY_SERVICE: dict[InstanceType, str] = {
     InstanceType.MAILBOX: "Summarize the unread emails in {connection}",
     InstanceType.HTTP: "List what the {connection} API offers",
     InstanceType.S3: "List the files in {connection}",
+    InstanceType.VENDOR: "List what {connection} can do for {project}",
 }
 FOLDER = "Explain what's in {project}'s folder, in a few lines"
 TASKS = "What did my tasks do this week?"

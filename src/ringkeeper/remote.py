@@ -235,8 +235,14 @@ NATIVE: dict[str, ScopeSpec] = {
 }
 
 
+# Business systems that can be narrowed, by vendor (adapters.vendor fills this in).
+VENDOR_SCOPES: dict[str, ScopeSpec] = {}
+
+
 def spec_for(service: str, config: Mapping[str, Any] | None) -> ScopeSpec | None:
     """The scope rules for a connection: its remote service's, or its adapter's."""
+    if service == "vendor":
+        return VENDOR_SCOPES.get(str((config or {}).get("vendor") or ""))
     if service == "mcp":
         remote = BY_KEY.get(str((config or {}).get("remote") or ""))
         if remote is None or not remote.scope:

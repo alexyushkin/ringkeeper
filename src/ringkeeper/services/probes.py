@@ -28,6 +28,7 @@ from ringkeeper.adapters import (
     storage,
     supabase,
     twilio,
+    vendor,
     vercel,
 )
 from ringkeeper.adapters.base import JSON, Target, ToolError
@@ -84,6 +85,8 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, P
             return await http_api.probe(target)
         case InstanceType.S3:
             return await storage.probe(target)
+        case InstanceType.VENDOR:
+            return await vendor.probe(target)
         case InstanceType.MCP:
             listed = await mcp.list_tools.handler(target)
             mcp_tools.remember(target.name, listed)

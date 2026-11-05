@@ -14,6 +14,7 @@ from ringkeeper.adapters import (
     storage,
     supabase,
     twilio,
+    vendor,
     vercel,
 )
 from ringkeeper.adapters.base import Adapter
@@ -36,13 +37,14 @@ ADAPTERS: dict[InstanceType, Adapter] = {
         mailbox,
         http_api,
         storage,
+        vendor,
     )
 }
 
 # What the agent calls a service, where its type's name would mislead: the
 # `supabase` type is any Postgres (Neon too). Its gateway path is /mcp/database
 # (and /mcp/supabase, kept for anything that already uses it).
-AGENT_NAMES = {InstanceType.SUPABASE: "database"}
+AGENT_NAMES = {InstanceType.SUPABASE: "database", InstanceType.VENDOR: "business"}
 
 
 def agent_name(service: InstanceType) -> str:

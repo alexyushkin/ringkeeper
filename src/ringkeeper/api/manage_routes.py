@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy, remote
-from ringkeeper.adapters import mcp
+from ringkeeper.adapters import mcp, vendor
 from ringkeeper.adapters.base import Target, ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import (
@@ -615,6 +615,7 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
         raise HTTPException(
             409, detail=f"There's already a connection named {data.name}. Pick another name."
         )
+    config = _vendor_config(data.type, data.secret, data.env)
     try:
         ref = secrets_in.store_connection(
             session, get_settings(), data.name, data.type, data.secret
@@ -626,7 +627,7 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
         InstanceIn(
             name=data.name, title=data.title, type=data.type, env=data.env, secret_ref=ref,
             owner=instances.SHARED_OWNER if data.shared else data.owner, base_url=base_url,
-            shared=data.shared, all_projects=data.all_projects,
+            config=config, shared=data.shared, all_projects=data.all_projects,
         ),
     )  # fmt: skip
     admin_audit.record(
@@ -634,6 +635,18 @@ def create_connection(data: ConnectionIn, session: WriteSessionDep) -> Connectio
         by=OWNER, instance=data.name,
     )  # fmt: skip
     return _connection_out(instances.get_instance(session, instance.name))
+
+
+def _vendor_config(kind: InstanceType, secret: str, env: Env) -> dict[str, Any]:
+    """A business system: which one, and that the key reaches what the connection says."""
+    if kind is not InstanceType.VENDOR:
+        return {}
+    try:
+        vendor.check_env(secret, env)
+        return vendor.config_of(secret)
+    except ToolError as error:
+        message = str(error)
+        raise HTTPException(422, detail=f"{message[:1].upper()}{message[1:]}.") from None
 
 
 def _with_expiry(instance: Instance, changes: dict[str, Any]) -> dict[str, Any]:

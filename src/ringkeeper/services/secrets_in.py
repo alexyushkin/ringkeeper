@@ -19,7 +19,17 @@ import anthropic
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import gmail, http_api, mailbox, mcp, resend, smtp, storage, twilio
+from ringkeeper.adapters import (
+    gmail,
+    http_api,
+    mailbox,
+    mcp,
+    resend,
+    smtp,
+    storage,
+    twilio,
+    vendor,
+)
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.claude_auth import WORKSPACE_HEADER, check_format, credential_ref, normalize
 from ringkeeper.config import Settings
@@ -129,6 +139,7 @@ PARTS = {
     InstanceType.MAILBOX: mailbox.settings,
     InstanceType.HTTP: http_api.settings,
     InstanceType.S3: storage.settings,
+    InstanceType.VENDOR: vendor.settings,
 }
 
 

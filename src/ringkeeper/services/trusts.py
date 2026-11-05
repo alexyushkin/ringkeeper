@@ -31,13 +31,17 @@ def grant(session: Session, decision: Decision, *, by: str, hours: int = HOURS) 
     if decision.tool == REVERT_TOOL:
         raise RuleViolationError("Undoing a change always asks.")
     config = _config(session, decision.instance)
-    why = destructive.reason(decision.service, decision.tool, decision.args or {}, config)
+    args = decision.args or {}
+    why = destructive.reason(decision.service, decision.tool, args, config)
     if why is not None:
         raise RuleViolationError(f"This change {why}, so it always asks.")
+    if destructive.never_trusted(decision.service, decision.tool, args):
+        raise RuleViolationError("This service's changes always ask: nothing runs by itself.")
     now = datetime.now(UTC)
     session.execute(delete(Trust).where(Trust.expires_at <= now))
     trust = Trust(
-        project=decision.project or "", instance=decision.instance, tool=decision.tool,
+        project=decision.project or "", instance=decision.instance,
+        tool=_what(decision.service, decision.tool, args),
         expires_at=now + timedelta(hours=hours), created_by=by,
     )  # fmt: skip
     session.add(trust)
@@ -49,6 +53,16 @@ def grant(session: Session, decision: Decision, *, by: str, hours: int = HOURS) 
         by=by, project=decision.project, instance=decision.instance,
     )  # fmt: skip
     return trust
+
+
+def _what(service: InstanceType | None, tool: str, args: dict[str, Any]) -> str:
+    """What a trust covers. One tool that reaches many actions is trusted one action at a
+    time: approving an edit says nothing about sending an invoice."""
+    if service is InstanceType.MCP and tool == "call_tool":
+        return f"{tool}:{args.get('tool')}"
+    if service is InstanceType.VENDOR and tool == "call_operation":
+        return f"{tool}:{args.get('operation')}"
+    return tool
 
 
 def _config(session: Session, instance: str) -> dict[str, Any]:
@@ -65,11 +79,12 @@ def allows(
     args: dict[str, Any],
 ) -> bool:
     """Whether this very call may run without asking."""
-    if tool == REVERT_TOOL:
+    if tool == REVERT_TOOL or destructive.never_trusted(service, tool, args):
         return False
     found = session.scalar(
         select(Trust).where(
-            Trust.project == project, Trust.instance == instance, Trust.tool == tool,
+            Trust.project == project, Trust.instance == instance,
+            Trust.tool == _what(service, tool, args),
             Trust.expires_at > datetime.now(UTC),
         )
     )  # fmt: skip

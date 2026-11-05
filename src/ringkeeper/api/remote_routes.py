@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import Field
 
-from ringkeeper.adapters import mcp
+from ringkeeper.adapters import mcp, vendor
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import Settings, get_settings
@@ -121,6 +121,25 @@ def redirect_uri(request: Request, settings: Settings) -> str:
 def list_remote_services() -> list[dict[str, Any]]:
     """The Recommended shelf: services with built-in rules."""
     return remote_connections.catalog_shelf()
+
+
+@router.get("/vendors")
+def list_vendors() -> list[dict[str, Any]]:
+    """Business systems Ringkeeper has a table for: what the catalog and the form show."""
+    return [
+        {
+            "key": v.key, "name": v.name, "category": v.category, "sub": v.sub,
+            "words": list(v.words), "steps": v.steps, "key_url": v.key_url, "note": v.note,
+            "provider": v.provider, "knows_env": v.env_of is not None,
+            "unverified": v.unverified,
+            "secrets": [
+                {"key": s.key, "label": s.label, "hint": s.hint, "hidden": s.hidden,
+                 "required": s.required}
+                for s in v.secrets
+            ],
+        }
+        for v in vendor.VENDORS.values()
+    ]  # fmt: skip
 
 
 @router.get("/catalog")
