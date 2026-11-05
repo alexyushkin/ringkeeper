@@ -4,6 +4,7 @@ Xero stands in for the vendors that come back to this computer; Intuit's product
 for the one that can't. A fake vendor table lets this run before the real ones are in."""
 
 import base64
+import hashlib
 import json
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -116,6 +117,48 @@ def test_the_address_that_doesnt_change_is_on_this_computer() -> None:
 
 def _start(connection: dict[str, Any], key: str = "xero_fake") -> tuple[str, str]:
     return developer_apps.start(settings(), key, connection)
+
+
+@pytest.mark.parametrize("key", sorted(developer_apps.PROVIDERS))
+def test_every_provider_signs_in_with_pkce_and_a_state_used_once(
+    key: str, fake: FakeVendor, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wanted = Vendor(f"{key}_any", key, "Accounting", "", "https://x.example", (READ_TEST,),
+                    provider=key)  # fmt: skip
+    monkeypatch.setitem(vendor.VENDORS, wanted.key, wanted)
+    app = developer_apps.App("a1", "Mine", "client-1", "secret-123", {"tenant": "common"})
+
+    def the_app(*_args: object) -> developer_apps.App:
+        return app
+
+    def back(*_args: object) -> str:
+        return "https://x.example/back"
+
+    monkeypatch.setattr(developer_apps, "_app", the_app)
+    monkeypatch.setattr(developer_apps, "redirect_for", back)
+    access = [a.key for a in developer_apps.provider(key).access[:1]]
+    url, state = developer_apps.start(
+        settings(), wanted.key, {"owner": "acme", "env": "dev"}, access
+    )
+    query = parse_qs(urlsplit(url).query)
+    assert query["state"] == [state]
+    assert len(state) >= 40
+    assert query["code_challenge_method"] == ["S256"]
+    sent: dict[str, str] = {}
+
+    def exchange(_found: object, _app: object, form: dict[str, str]) -> dict[str, Any]:
+        sent.update(form)
+        raise SignInError("stop here")
+
+    monkeypatch.setattr(developer_apps, "_token_request", exchange)
+    assert not developer_apps.pending("not-this-one")
+    found = developer_apps.take(state)
+    with session_scope() as session, pytest.raises(SignInError, match="stop here"):
+        developer_apps.finish(session, settings(), found, state, "code-1", {})
+    digest = hashlib.sha256(sent["code_verifier"].encode()).digest()
+    assert base64.urlsafe_b64encode(digest).rstrip(b"=").decode() == query["code_challenge"][0]
+    with pytest.raises(SignInError, match="expired or was already used"):
+        developer_apps.take(state)
 
 
 def test_signing_in_stores_the_account_and_says_which(fake: FakeVendor) -> None:
