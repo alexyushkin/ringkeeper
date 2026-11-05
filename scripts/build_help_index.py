@@ -16,6 +16,7 @@ TARGET = ROOT / "src" / "ringkeeper" / "help_index.json"
 # The user guide. Not the notes for developers and releases.
 PAGES = (
     "concepts", "connections", "agents-and-routines", "approvals", "undo", "notifications",
+    "where-claude-runs",
     "backup", "working-faster", "security", "troubleshooting", "faq", "install-desktop",
     "services/add-on-tools", "services/airtable", "services/database", "services/github",
     "services/gmail", "services/google", "services/n8n", "services/twilio", "services/vercel",

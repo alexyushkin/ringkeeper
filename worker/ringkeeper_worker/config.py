@@ -5,6 +5,7 @@ from typing import Any, cast
 
 TASK_ENV = "RINGKEEPER_TASK"
 TOKEN_ENV = "RINGKEEPER_GATEWAY_TOKEN"  # noqa: S105 (an env var name)
+GOOGLE_KEY_ENV = "RINGKEEPER_GOOGLE_KEY"  # Vertex's key, written to a file at start
 WORKSPACE = "/workspace"
 
 

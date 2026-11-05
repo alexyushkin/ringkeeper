@@ -14,6 +14,7 @@ import { applyTheme, readTheme } from "@/lib/client/theme";
 import type { Theme } from "@/lib/theme";
 import { AboutCard } from "@/components/about";
 import { BackupSettings } from "@/components/backup";
+import { ClaudePlace } from "@/components/claude-place";
 import { DeveloperApps } from "@/components/developer-apps";
 import { HelpHint } from "@/components/help-hint";
 import { AUTO, VoiceSettings } from "@/components/voice";
@@ -105,6 +106,7 @@ export default function SettingsPage() {
       label: "Claude",
       content: () => (
         <>
+          <ClaudePlace />
           <ClaudeCard settings={settings.data!} onSaved={settings.reload} />
           <PersonalMode on={v.allow_subscription} onChange={(on) => change({ allow_subscription: on })} />
         </>

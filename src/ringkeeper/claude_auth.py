@@ -7,6 +7,7 @@ key instead. Workers get an environment built from an allowlist, never an
 inherited one, so none of BILLING_ENV_VARS can sneak in.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from ringkeeper.config import Settings
@@ -35,6 +36,14 @@ BILLING_ENV_VARS = (
     "ANTHROPIC_FEDERATION_RULE_ID",
     "ANTHROPIC_ORGANIZATION_ID",
     "ANTHROPIC_CUSTOM_HEADERS",  # could name another workspace
+    "CLAUDE_CODE_USE_MANTLE",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "ANTHROPIC_FOUNDRY_API_KEY",
+    "ANTHROPIC_FOUNDRY_AUTH_TOKEN",
+    "ANTHROPIC_FOUNDRY_RESOURCE",
+    "ANTHROPIC_FOUNDRY_BASE_URL",
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+    "CLOUD_ML_REGION",
 )
 WORKSPACE_HEADER = "anthropic-workspace-id"
 
@@ -102,10 +111,13 @@ class ClaudeCredential:
     ref: str
     secret: Secret
     workspace: str | None = None  # an API key's Anthropic workspace, when it needs one
+    place: Mapping[str, str] | None = None  # a cloud's variables instead (services.claude_place)
 
     def env(self) -> dict[str, str]:
         """The credential, plus its workspace header if it has one. Callers build the
         rest of the env from an allowlist."""
+        if self.place is not None:
+            return dict(self.place)
         env = {CREDENTIAL_ENV[self.mode]: self.secret.reveal()}
         if self.mode is AuthMode.API_KEY and self.workspace:
             env["ANTHROPIC_CUSTOM_HEADERS"] = f"{WORKSPACE_HEADER}: {self.workspace}"

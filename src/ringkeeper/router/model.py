@@ -4,14 +4,17 @@ use a fake. The real one runs Claude through the Agent SDK with every tool off.
 
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 import anyio
 
-from ringkeeper.claude_auth import BILLING_ENV_VARS, ClaudeCredential, resolve
+from ringkeeper.claude_auth import BILLING_ENV_VARS, ClaudeCredential
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.vault import Vault
+
+GOOGLE_KEY_ENV = "RINGKEEPER_GOOGLE_KEY"  # services.claude_place
 
 
 class RouterModelError(RingkeeperError):
@@ -42,6 +45,17 @@ def sdk_env(
     return env
 
 
+def with_google_key(env: dict[str, str], folder: str) -> dict[str, str]:
+    """Vertex wants its key as a file: here, one that lasts as long as `folder`."""
+    key = env.pop(GOOGLE_KEY_ENV, None)
+    if key is None:
+        return env
+    path = Path(folder) / "google-key.json"
+    path.write_text(key, encoding="utf-8")
+    path.chmod(0o600)
+    return env | {"GOOGLE_APPLICATION_CREDENTIALS": str(path)}
+
+
 class AgentSdkModel:
     def __init__(self, vault: Vault, settings: Settings) -> None:
         self._vault = vault
@@ -49,10 +63,17 @@ class AgentSdkModel:
 
     def complete(self, system: str, prompt: str, model: str) -> Completion:
         # Resolved per call, so `ringkeeper auth login` needs no restart.
-        from ringkeeper.services import subscription  # noqa: PLC0415 (cycle)
+        from ringkeeper.db import session_scope  # noqa: PLC0415 (cycle)
+        from ringkeeper.services import claude_place, subscription  # noqa: PLC0415 (cycle)
 
         subscription.refresh(self._vault, self._settings)
-        credential = resolve(self._vault, self._settings)
+        with session_scope(commit=False) as session:
+            credential = claude_place.credential(session, self._vault, self._settings)
+            model = claude_place.model_for(claude_place.chosen(session), model) or model
+        return anyio.run(self._complete, credential, system, prompt, model)
+
+    def ask(self, credential: ClaudeCredential, system: str, prompt: str, model: str) -> Completion:
+        """One call with this credential, whatever is saved (the live check)."""
         return anyio.run(self._complete, credential, system, prompt, model)
 
     async def _complete(
@@ -67,6 +88,9 @@ class AgentSdkModel:
         )
 
         with tempfile.TemporaryDirectory(prefix="ringkeeper-router-") as scratch:
+            env = with_google_key(
+                sdk_env(credential, scratch, self._settings.worker_anthropic_base_url), scratch
+            )
             options = ClaudeAgentOptions(
                 system_prompt=system,
                 model=model,
@@ -76,7 +100,7 @@ class AgentSdkModel:
                 setting_sources=[],
                 strict_mcp_config=True,
                 cwd=scratch,
-                env=sdk_env(credential, scratch, self._settings.worker_anthropic_base_url),
+                env=env,
             )
             texts: list[str] = []
             result: ResultMessage | None = None

@@ -10,9 +10,10 @@ from pydantic import Field
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OWNER, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.claude_auth import credential_ref
+from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.schemas import Input
-from ringkeeper.services import admin_audit, demo, onboarding, report
+from ringkeeper.services import admin_audit, claude_place, demo, onboarding, report
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -21,6 +22,9 @@ router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
 def _claude_ready() -> bool:
     settings = current_settings()
+    with session_scope(commit=False) as session:
+        if claude_place.is_ready(session, get_vault()):
+            return True
     try:
         get_vault().resolve(credential_ref(settings, settings.claude_auth_mode))
     except RingkeeperError:

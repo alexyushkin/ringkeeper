@@ -162,6 +162,48 @@
 "text": "Messages are a short summary (no secrets, code or full SQL) with **Approve**, **Deny** and **Open** buttons: - **Approve** only appears for a safe change: not on production, and not one that needs the connection's name typed. Those say *Approve it in Ringkeeper*. - **Only you can answer.** A press from anyone else in the channel is refused with \"not allowed\". - **Open** brings the Ringkeeper window up at that page."
 },
 {
+"doc": "where-claude-runs",
+"anchor": "",
+"title": "Where Claude runs",
+"text": "By default, Claude runs on Anthropic's own service, with an API key or a Claude subscription. You can run it on **Amazon Bedrock**, **Google Vertex AI** or **Microsoft Foundry** instead, for example when a client's data has to stay in their own cloud, or their spend has to go through it. **Settings › Claude › Where Claude runs** sets the default. Tasks, the architect and the router all run there. A project can use another: open its **Settings** tab. That choice appears once a second place is set up."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "amazon-bedrock",
+"title": "Amazon Bedrock",
+"text": "In the Bedrock console, submit the Anthropic use case form once. Then give the region and either: - **a Bedrock API key**, kept in the vault; or - **an AWS profile on this computer.** Its short-lived credentials are read each time a session starts, so Ringkeeper stores no key. If they've run out, the task says to sign in again with `aws sso login`."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "google-vertex-ai",
+"title": "Google Vertex AI",
+"text": "Enable Vertex AI and the Claude models in Model Garden. Give the project ID, the region (`global` often works), and a service account key file with the Vertex AI User role. The key is kept in the vault. Claude Code needs it as a file, so a running task gets a copy in its own private folder, which the AI working on that task can reach."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "microsoft-foundry",
+"title": "Microsoft Foundry",
+"text": "Create a resource and one deployment per Claude model in the Foundry portal. Give the resource's name, and either its API key or **Use my Azure CLI login**. Foundry has no default models, so fill in your deployment names."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "models",
+"title": "Models",
+"text": "Each cloud has its own model IDs. **Models on this platform** pins one per family (Opus, Sonnet, Haiku), and Ringkeeper uses it wherever that family is chosen. Left empty, Claude Code uses its own defaults for that platform, which can bill at the Opus rate."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "check-it",
+"title": "Check it",
+"text": "**Check it** sends one tiny request the way a task would, so it proves the login, the region and the model together. Your cloud bills it, by a few tokens."
+},
+{
+"doc": "where-claude-runs",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- A task's spending cap still applies on a cloud. - The Help assistant and the router run on the default place. A project's choice covers that project's tasks. - Web search isn't available to Claude on Bedrock."
+},
+{
 "doc": "backup",
 "anchor": "",
 "title": "Backup and moving to another computer",

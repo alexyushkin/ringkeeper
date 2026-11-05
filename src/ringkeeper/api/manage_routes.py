@@ -62,6 +62,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import (
     admin_audit,
     bindings,
+    claude_place,
     clients,
     google_oauth,
     instances,
@@ -127,6 +128,68 @@ def _settings_out(request: Request, session: SessionDep) -> SettingsOut:
         },
         telegram={"token": _stored(settings.telegram_bot_token_ref)},
     )
+
+
+class PlaceIn(Input):
+    kind: Literal["anthropic", "bedrock", "vertex", "foundry"]
+    region: Annotated[str, Field(max_length=30)] = ""
+    profile: Annotated[str, Field(max_length=64)] = ""
+    project: Annotated[str, Field(max_length=63)] = ""
+    resource: Annotated[str, Field(max_length=63)] = ""
+    use_login: bool = False
+    models: dict[str, Annotated[str, Field(max_length=200)]] = Field(default_factory=dict[str, str])
+    key: str | None = Field(default=None, repr=False, max_length=20_000)
+    make_default: bool = True
+
+
+@router.get("/claude/place")
+def get_place(session: SessionDep) -> dict[str, Any]:
+    """Where Claude runs. Which keys are stored, never what they are."""
+    return {**claude_place.places(session), "stored": claude_place.stored_keys(get_vault())}
+
+
+@router.put("/claude/place", dependencies=[RecentAuth])
+def save_place(data: PlaceIn, session: WriteSessionDep) -> dict[str, Any]:
+    fields = data.model_dump(exclude={"key", "make_default"})
+    try:
+        claude_place.save(session, get_vault(), fields, data.key, data.make_default)
+    except RuleViolationError as error:
+        raise HTTPException(422, detail=str(error)) from None
+    admin_audit.record(session, "settings.claude_place", f"Claude runs in {data.kind}", by=OWNER)
+    return get_place(session)
+
+
+@router.post("/claude/place/check")
+def check_place(data: PlaceIn) -> dict[str, Any]:
+    """Live check, with what's on the form and the stored key. It sends one tiny request."""
+    fields = data.model_dump(exclude={"key", "make_default"})
+    try:
+        place = claude_place.as_place(fields)
+        return {"ok": True, "message": claude_place.check(place, get_vault(), current_settings())}
+    except (ClaudeAuthError, RuleViolationError) as error:
+        return {"ok": False, "message": str(error)}
+
+
+class ProjectPlaceIn(Input):
+    kind: Literal["anthropic", "bedrock", "vertex", "foundry"] | None = None
+
+
+@router.get("/projects/{name}/claude-place")
+def project_place(name: str, session: SessionDep) -> dict[str, Any]:
+    return {"kind": claude_place.project_choice(session, name)}
+
+
+@router.put("/projects/{name}/claude-place", dependencies=[RecentAuth])
+def set_project_place(name: str, data: ProjectPlaceIn, session: WriteSessionDep) -> dict[str, Any]:
+    try:
+        claude_place.set_project(session, name, data.kind)
+    except RuleViolationError as error:
+        raise HTTPException(422, detail=str(error)) from None
+    admin_audit.record(
+        session, "settings.claude_place", f"this project runs in {data.kind or 'the default'}",
+        by=OWNER, project=name,
+    )  # fmt: skip
+    return {"kind": data.kind}
 
 
 @router.get("/settings")

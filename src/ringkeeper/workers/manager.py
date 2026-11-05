@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from ringkeeper import scrub
 from ringkeeper.adapters import ADAPTERS, agent_name
-from ringkeeper.claude_auth import resolve as resolve_credential
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -43,6 +42,7 @@ from ringkeeper.services import (
     agents,
     architect,
     architect_loop,
+    claude_place,
     cleanup,
     holds,
     inbox,
@@ -426,7 +426,10 @@ class Manager:
         subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
         # Whichever is configured now (the Settings screen's mode), not what was set
         # when the task was queued.
-        credential = resolve_credential(self.vault, settings)
+        with session_scope(commit=False) as session:
+            credential = claude_place.credential(session, self.vault, settings, job.project)
+            place = claude_place.chosen(session, job.project)
+        model = claude_place.model_for(place, model)
         token, claims = issue_token(
             job.project,
             timedelta(seconds=job.max_runtime_s),

@@ -5,6 +5,9 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Where Claude runs.** Settings › Claude can run tasks, the architect and the router on
+  Amazon Bedrock, Google Vertex AI or Microsoft Foundry, with a live check. A project can
+  use another place.
 - **Clouds.** AWS, Azure, Google Cloud and OCI connect from the login you already have in
   their command line tools. Each runs the cloud's own server on this computer, so
   Ringkeeper holds no key. What a command needs comes from the command itself, and each
