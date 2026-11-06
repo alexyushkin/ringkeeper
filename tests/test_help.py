@@ -3,6 +3,7 @@ doesn't cover is never invented."""
 
 import importlib.util
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from fastapi.testclient import TestClient
@@ -289,7 +290,7 @@ def test_help_ask_answers_without_a_model_when_it_can(owner: TestClient) -> None
 # --- The index ---
 
 
-def index_script() -> Any:
+def index_script() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         "build_help_index", ROOT / "scripts" / "build_help_index.py"
     )
