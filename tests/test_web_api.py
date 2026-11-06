@@ -777,8 +777,9 @@ def test_voice_upload_limits(
 
 
 def test_events_stream_task_changes(owner: TestClient, task_registry: None) -> None:
-    import threading, time, traceback
+    import os, threading, time, traceback
     from ringkeeper.storage import events as probe_events
+    PROBE = os.environ.get("PROBE_LOG", "/tmp/probe.jsonl")
     log: dict[str, Any] = {}
     t0 = time.monotonic()
     mark = lambda name: log.__setitem__(name, round(time.monotonic() - t0, 3))
@@ -804,9 +805,8 @@ def test_events_stream_task_changes(owner: TestClient, task_registry: None) -> N
         except BaseException as error:
             log["create_error"] = traceback.format_exc()[-1500:]
             mark("create_failed")
-        with open("/tmp/probe.jsonl", "a") as out:
-            out.write(json.dumps(log) + "
-")
+        with open(PROBE, "a") as out:
+            out.write(json.dumps(log) + "\n")
 
     threading.Thread(target=create_later, daemon=True).start()
     try:
@@ -824,9 +824,8 @@ def test_events_stream_task_changes(owner: TestClient, task_registry: None) -> N
                     break
     finally:
         probe_events.subscribe = real
-    with open("/tmp/probe.jsonl", "a") as out:
-        out.write(json.dumps({"finished": log}) + "
-")
+    with open(PROBE, "a") as out:
+        out.write(json.dumps({"finished": log}) + "\n")
     assert received[0]["status"] == "queued"
     assert received[0]["project"] == "acme-web"
 

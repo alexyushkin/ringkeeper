@@ -32,3 +32,4 @@ jobs:
           tail -n 40 /tmp/probe.jsonl || true
           echo "=== pg"
           docker ps -q --filter ancestor=postgres:16-alpine | head -1 | xargs -r docker logs --tail 15 2>&1 || true
+          [ "$code" = 0 ] || [ "$code" = 124 ] || exit "$code"
