@@ -4,8 +4,6 @@ and (except setup and sign-in) a signed-in owner; secrets never come back."""
 
 import json
 import secrets
-import threading
-import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -780,18 +778,16 @@ def test_voice_upload_limits(
 
 def test_events_stream_task_changes(owner: TestClient, task_registry: None) -> None:
     received: list[dict[str, Any]] = []
-
-    def create_later() -> None:
-        time.sleep(1.0)
-        with session_scope() as session:
-            tasks.create_task(session, get_settings(), project="acme-web", prompt="go")
-
-    threading.Thread(target=create_later, daemon=True).start()
     with owner.stream("GET", "/events") as stream:
         assert stream.headers["content-type"].startswith("text/event-stream")
         kind = None
         for line in stream.iter_lines():
-            if line.startswith("event: "):
+            if line.startswith("retry: "):
+                # Sent once the stream is listening. Sooner, and the change goes unheard: a
+                # quiet stream only sends keep-alives, so this loop would never end.
+                with session_scope() as session:
+                    tasks.create_task(session, get_settings(), project="acme-web", prompt="go")
+            elif line.startswith("event: "):
                 kind = line.removeprefix("event: ")
             elif line.startswith("data: ") and kind == "task":
                 received.append(json.loads(line.removeprefix("data: ")))
