@@ -171,6 +171,7 @@ LEVELS = (READ, APPROVE, CONFIRM)
 BY_USER, BY_ANNOTATIONS, BY_NAME, BY_DEFAULT = "you", "annotations", "name", "default"
 BY_SQL = "sql"  # a remote service's SQL tool: the statement decides (ringkeeper.destructive)
 BY_SERVICE = "service"  # what Ringkeeper knows of a Recommended service's tools (ringkeeper.remote)
+BY_MEMORY = "memory"  # the owner's own Notion memory (services.personal_memory)
 BY_GUARD = "guard"  # the rules for this kind of service: the per-tool setting can't lower them
 # An API endpoint that only reads, by its name (getAgent, list_calls, retrieve_phone_number).
 READ_ENDPOINT = re.compile(r"^(get|list|retrieve|search|fetch)([_A-Z]|$)")
@@ -272,10 +273,33 @@ def _own_rule(config: Mapping[str, Any], tool: str) -> Rule:
     return default_rule(cast(JSON, config.get("annotations") or {}).get(tool), tool)
 
 
-def call_rule(config: Mapping[str, Any], tool: str, arguments: Mapping[str, Any] | None) -> Rule:
+def memory_call(
+    config: Mapping[str, Any], tool: str, arguments: Mapping[str, Any] | None
+) -> str | None:
+    """What this call does with the owner's Notion memory: search, read or save. Notion has no
+    save tool of its own: it's a page whose parent is "memory". None: it's not a memory call, or
+    only the guide, which is Notion's own help."""
+    if config.get("remote") != "notion":
+        return None
+    given = arguments or {}
+    if tool == "notion-memory-search":
+        return "search"
+    if tool == "notion-fetch" and given.get("id") == "memory":
+        return "read"
+    if tool == "notion-create-pages" and given.get("parent") == "memory":
+        return "save"
+    return None
+
+
+def call_rule(  # noqa: PLR0911 (one per way a call is decided)
+    config: Mapping[str, Any], tool: str, arguments: Mapping[str, Any] | None
+) -> Rule:
     """What this call needs: the tool's rule, or, for a tool that calls any endpoint of the
     service's API, the endpoint's (unless the user chose a rule for the tool)."""
     found = rule(config, tool)
+    if config.get("personal_memory") and memory_call(config, tool, arguments):
+        # They run; `_screen` has already refused what mustn't. The owner can only be stricter.
+        return found if found.source == BY_USER else Rule(READ, BY_MEMORY)
     if found.source == BY_SQL:  # a statement shown to only read runs; the rest waits
         sql = sql_of(arguments)
         return Rule(READ, BY_SQL) if sql and reads_only(sql) else found
@@ -369,6 +393,22 @@ def _classify(target: Target, args: JSON) -> ToolKind:
     return ToolKind.READ if level == READ else ToolKind.WRITE
 
 
+def _screen(target: Target, args: JSON) -> None:
+    """What's checked before a memory call, with the database to hand."""
+    tool, arguments = str(args.get("tool", "")), args.get("arguments")
+    given = cast(JSON, arguments) if isinstance(arguments, dict) else {}
+    if kind := memory_call(target.config, tool, given):
+        from ringkeeper.services import personal_memory  # noqa: PLC0415 (it needs the database)
+
+        personal_memory.check(target, kind, given)
+
+
+def _saves(target: Target, args: JSON) -> bool:
+    arguments = args.get("arguments")
+    given = cast(JSON, arguments) if isinstance(arguments, dict) else {}
+    return memory_call(target.config, str(args.get("tool", "")), given) == "save"
+
+
 async def _call_tool(
     target: Target, tool: ToolName, arguments: dict[str, Any] | None = None
 ) -> JSON:
@@ -395,6 +435,8 @@ call_tool = ToolSpec(
     handler=_call_tool,
     hold=Hold.ALWAYS,
     classify=_classify,
+    screen=_screen,
+    logged=_saves,
 )
 
 ADAPTER = Adapter(

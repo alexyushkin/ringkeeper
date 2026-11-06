@@ -178,7 +178,7 @@ def test_the_agent_s_instructions_model_and_autonomy_reach_the_worker(seaside: P
     assert "Digest for " in task["prompt"]
     assert (task["model"], task["effort"]) == ("claude-haiku-5-5", "low")
     assert task["max_turns"] == 40  # the routine's steps per run
-    assert list(task["mcp_servers"]) == ["ringkeeper-twilio"]  # only its connections' services
+    assert list(task["mcp_servers"]) == ["ringkeeper-memory", "ringkeeper-twilio"]  # its own
 
 
 # --- Routines ---

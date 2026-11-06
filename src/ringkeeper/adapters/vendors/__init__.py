@@ -9,6 +9,7 @@ from ringkeeper.adapters.vendors import (
     field_service,
     identity,
     microsoft,
+    notion,
     payments,
     social,
 )
@@ -23,4 +24,5 @@ ALL: tuple[Vendor, ...] = (
     *payments.VENDORS,
     *social.VENDORS,
     *ads.VENDORS,
+    *notion.VENDORS,
 )

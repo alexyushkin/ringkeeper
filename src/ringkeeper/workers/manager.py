@@ -46,6 +46,7 @@ from ringkeeper.services import (
     cleanup,
     holds,
     inbox,
+    personal_memory,
     projects,
     revocations,
     subscription,
@@ -421,7 +422,12 @@ class Manager:
                 model = agent.model or model
                 effort = agent.effort
                 autonomy = Autonomy(agent.autonomy) if agent.autonomy else autonomy
-            endpoints = sorted(agent_name(service) for service in served)
+            if job.role is not SessionRole.ARCHITECT and (
+                personal := personal_memory.instructions(project, agent)
+            ):
+                prompt = f"{prompt}\n\n{personal}"
+            # Memory is every worker's: it's pinned to the token's project.
+            endpoints = sorted({"memory", *(agent_name(service) for service in served)})
         architect_role = job.role is SessionRole.ARCHITECT
         subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
         # Whichever is configured now (the Settings screen's mode), not what was set

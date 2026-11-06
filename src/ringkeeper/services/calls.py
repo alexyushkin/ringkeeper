@@ -363,6 +363,29 @@ async def _refuse_what_cant_be_kept(call: ToolCall) -> None:
     raise RefusalError(said, reason)
 
 
+async def _screen(call: ToolCall, spec: ToolSpec, target: Target) -> None:
+    if spec.screen is None:
+        return
+    try:
+        await anyio.to_thread.run_sync(spec.screen, target, call.args)
+    except ToolError as error:
+        said = scrub(str(error))
+        await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.REFUSED, reason=said))
+        raise RefusalError(said, said) from None
+
+
+async def _run_unheld(call: ToolCall, spec: ToolSpec, target: Target, auth: Authorized) -> JSON:
+    """A read, or a change that runs without asking, which Activity still lists."""
+    result = await _invoke(spec.handler, target, call.args, call.tool)
+    if spec.logged is not None and spec.logged(target, call.args):
+        await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.EXECUTED))
+    if call.service is InstanceType.MCP and call.tool == "list_tools":
+        # The server's hints decide later calls without starting it first.
+        await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
+        result = _limit_listing(result, auth)
+    return continuations.fit(call.caller, scrub_obj(result))
+
+
 async def run_call(call: ToolCall, vault: Vault) -> JSON:
     """Run one gateway tool call through every check. Returns a scrubbed result."""
     adapter = ADAPTERS[call.service]
@@ -392,6 +415,8 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     if spec.classify is not None:
         is_write = spec.classify(target, call.args) is ToolKind.WRITE
 
+    await _screen(call, spec, target)
+
     if scrub_obj(call.args) != call.args:
         # Held decisions keep args verbatim, so a secret must never get in there.
         reason = "arguments contain a secret value"
@@ -401,12 +426,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         )
 
     if not is_write:
-        result = await _invoke(spec.handler, target, call.args, call.tool)
-        if call.service is InstanceType.MCP and call.tool == "list_tools":
-            # The server's hints decide later calls without starting it first.
-            await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
-            result = _limit_listing(result, auth)
-        return continuations.fit(call.caller, scrub_obj(result))
+        return await _run_unheld(call, spec, target, auth)
 
     held = spec.hold is Hold.ALWAYS or (
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved

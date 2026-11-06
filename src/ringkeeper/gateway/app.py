@@ -40,6 +40,7 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway import model_proxy
 from ringkeeper.gateway.approvals import approval_loop
 from ringkeeper.gateway.architect import build_architect_server
+from ringkeeper.gateway.memory import build_memory_server
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
@@ -251,6 +252,18 @@ def create_app(vault: Vault | None = None) -> Starlette:
                     path, endpoint=WorkerTokenAuth(app, service), methods=["GET", "POST", "DELETE"]
                 )
             )
+
+    memory_app = build_memory_server(current_caller).http_app(
+        path="/mcp/memory", stateless_http=True, json_response=True
+    )
+    apps.append(memory_app)
+    routes.append(
+        Route(
+            "/mcp/memory",
+            endpoint=WorkerTokenAuth(memory_app, None),
+            methods=["GET", "POST", "DELETE"],
+        )
+    )
 
     architect_app = build_architect_server(current_caller).http_app(
         path="/mcp/architect", stateless_http=True, json_response=True

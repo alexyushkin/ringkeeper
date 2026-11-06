@@ -11,6 +11,7 @@ import { connectionTitle } from "@/components/connection-form";
 import { ProjectScan } from "@/components/conveniences";
 import { ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { ProjectClaudePlace } from "@/components/claude-place";
+import { ProjectMemory } from "@/components/memory";
 import { Alert, Button, ConfirmButton, Details, EnvBadge, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { Agents, type AgentData } from "@/components/agents";
 import { NewRoutine, RoutineList } from "@/components/routines";
@@ -322,6 +323,7 @@ export function ProjectView({ name }: { name: string }) {
             <ProjectForm existing={about} onSaved={() => project.reload()} />
           </Section>
           <ProjectClaudePlace project={name} />
+          <ProjectMemory project={name} />
           <Section id="project-name" title="Short name" summary="Used in links and by the AI" defaultOpen={false}>
             <RenameProject name={name} />
           </Section>

@@ -227,6 +227,8 @@ class Project(TimestampMixin, Base):
     checks: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
     # Model overrides for this project: keys architect, worker, low, medium, high.
     models: Mapped[dict[str, str]] = mapped_column(Doc, server_default="{}")
+    # Where agents' notes are kept (services.memory).
+    memory: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")
     # Its routines don't run while paused (services.routines).
     paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
@@ -268,8 +270,31 @@ class Agent(TimestampMixin, Base):
     model: Mapped[str | None] = mapped_column(Text)
     effort: Mapped[str | None] = mapped_column(Text)
     autonomy: Mapped[str | None] = mapped_column(Text)
+    memory: Mapped[str | None] = mapped_column(Text)  # none: as its project does
 
     project: Mapped["Project"] = relationship()
+
+
+class MemoryNote(Base):
+    """One thing an agent or person left for later runs (services.memory). With Notion this is
+    a copy of a row there, and that row is the truth."""
+
+    __tablename__ = "memory_notes"
+    __table_args__ = (Index("ix_memory_notes_project", "project_id", "backend"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_memory_notes_project")
+    )  # none: the owner's shared notes
+    backend: Mapped[str] = mapped_column(Text)
+    agent: Mapped[str | None] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    source_task: Mapped[str | None] = mapped_column(Text)
+    external_id: Mapped[str | None] = mapped_column(Text)
+    external_seen: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
 
 class Routine(TimestampMixin, Base):
