@@ -32,7 +32,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import AuthMode, Project, Routine, RoutineRun, Task
 from ringkeeper.schedules import catch_up, describe, next_after, parse
-from ringkeeper.services import agents, projects, routine_events, tasks
+from ringkeeper.services import agents, paging, projects, routine_events, tasks
 from ringkeeper.services.runtime import effective
 
 TRIGGERS = ("schedule", "event", "manual")
@@ -513,15 +513,19 @@ class RunView:
 
 
 def history(session: Session, ident: str, limit: int = 50) -> list[RunView]:
+    return list(history_page(session, ident, limit).items)
+
+
+def history_page(
+    session: Session, ident: str, limit: int = 50, cursor: str | None = None
+) -> paging.Page[RunView]:
     routine = get_routine(session, ident)
-    rows = session.scalars(
-        select(RoutineRun)
-        .where(RoutineRun.routine_id == routine.id)
-        .order_by(RoutineRun.created_at.desc())
-        .limit(limit)
-    ).all()
+    page = paging.fetch(
+        session, select(RoutineRun).where(RoutineRun.routine_id == routine.id),
+        RoutineRun.created_at, RoutineRun.id, limit=limit, cursor=cursor,
+    )  # fmt: skip
     views: list[RunView] = []
-    for run in rows:
+    for run in page.items:
         task = session.get(Task, run.task_id) if run.task_id else None
         cost = sum(s.cost_usd or 0 for s in task.sessions) if task else None
         steps = sum(s.turns or 0 for s in task.sessions) if task else None
@@ -540,7 +544,7 @@ def history(session: Session, ident: str, limit: int = 50) -> list[RunView]:
                 task.error if task else None,
             )
         )
-    return views
+    return paging.Page(views, page.next, page.total)
 
 
 def last_runs(session: Session, routine_ids: list[uuid.UUID]) -> dict[uuid.UUID, RoutineRun]:

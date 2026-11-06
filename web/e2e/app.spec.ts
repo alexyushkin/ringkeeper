@@ -147,6 +147,9 @@ with session_scope() as session:
     tasks.add_event(session, first.id, 3, "ringkeeper.diff", {"text": "+voice works"})
     print(task.id)
 `);
+    // Load more and the counts ride on these headers, through the web server here.
+    const listed = await page.request.get("/bff/tasks?limit=1");
+    expect(listed.headers()["x-total-count"]).toBeTruthy();
     await page.goto("/tasks");
     await page.getByText("Added the line to NOTES.md.").click();
     await expect(page).toHaveURL(new RegExp(`/tasks/${taskId}$`));

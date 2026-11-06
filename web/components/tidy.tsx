@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Alert, Button, Field, Toggle } from "@/components/ui";
-import { ApiError, api } from "@/lib/client/api";
+import { ApiError, api, type PagedList } from "@/lib/client/api";
 
 /** Archiving and deleting tasks and conversations: one at a time or many at once. */
 
@@ -38,6 +38,24 @@ export function ListTools({ query, onQuery, archived, onArchived, what }: { quer
     <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
       <Field label={`Search ${what}`} value={query} onChange={onQuery} placeholder="Words from the request or result" hint={query ? "Archived ones are included." : undefined} />
       <Toggle label="Archived" checked={archived} onChange={onArchived} />
+    </div>
+  );
+}
+
+/** How many there are in all, for a search or the archived view. */
+export function ListTotal({ total, what, searching, archived }: { total: number | undefined; what: [string, string]; searching: boolean; archived: boolean }) {
+  if (total === undefined || !(searching || archived)) return null;
+  const noun = total === 1 ? what[0] : what[1];
+  return <p data-list-total className="mb-2 text-sm text-muted">{searching ? `${total.toLocaleString()} ${noun} found` : `${total.toLocaleString()} archived ${noun}`}</p>;
+}
+
+/** The end of a long list: how much is showing, and the next page. */
+export function LoadMore<T>({ list }: { list: PagedList<T> }) {
+  if (!list.more) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3">
+      <Button busy={list.loadingMore} onClick={list.loadMore}>Load more</Button>
+      {list.total !== undefined ? <span className="text-sm text-muted">Showing {(list.items?.length ?? 0).toLocaleString()} of {list.total.toLocaleString()}</span> : null}
     </div>
   );
 }

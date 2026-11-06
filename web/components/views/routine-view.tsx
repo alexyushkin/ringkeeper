@@ -9,7 +9,8 @@ import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Markdown } from "@/components/markdown";
 import { RoutineForm, RunStatus, TRIGGER, type RoutineData, type Run } from "@/components/routines";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Empty, Loading, Section, money, timeAgo } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { LoadMore } from "@/components/tidy";
+import { api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { projectHref, taskHref } from "@/lib/client/routes";
 import { place } from "@/lib/client/scope";
 
@@ -18,8 +19,8 @@ import { place } from "@/lib/client/scope";
 export function RoutineView({ id }: { id: string }) {
   const router = useRouter();
   const routine = useApi<RoutineData>(`routines/${id}`);
-  const runs = useApi<Run[]>(`routines/${id}/runs`);
-  const pending = useApi<Decision[]>("decisions", { status: "pending", limit: 200 });
+  const runs = usePaged<Run>(`routines/${id}/runs`);
+  const pending = useApi<Decision[]>(routine.data ? "decisions" : null, { status: "pending", routine: routine.data?.id, limit: 500 });
   const agents = useApi<AgentData[]>(routine.data ? `projects/${routine.data.project}/agents` : null);
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -32,8 +33,7 @@ export function RoutineView({ id }: { id: string }) {
   if (routine.error) return <Alert>{routine.error}</Alert>;
   if (!routine.data) return <Loading />;
   const r = routine.data;
-  const theirs = new Set((runs.data ?? []).map((run) => run.task_id).filter(Boolean));
-  const waiting = (pending.data ?? []).filter((d) => d.task_id && theirs.has(d.task_id));
+  const waiting = pending.data ?? [];
 
   async function act(path: string, json: unknown, done: string) {
     setError(null);
@@ -119,10 +119,10 @@ export function RoutineView({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <Section id="runs" title="Runs" summary={runs.data ? String(runs.data.length) : undefined}>
-        {runs.data && !runs.data.length ? <Empty>No runs yet. Press Test run to try it once.</Empty> : null}
+      <Section id="runs" title="Runs" summary={runs.total !== undefined ? String(runs.total) : undefined}>
+        {runs.items && !runs.items.length ? <Empty>No runs yet. Press Test run to try it once.</Empty> : null}
         <ul className="space-y-2">
-          {(runs.data ?? []).map((run) => (
+          {(runs.items ?? []).map((run) => (
             <li key={run.id} className="rounded-xl border border-line p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <RunStatus run={run} />
@@ -145,6 +145,7 @@ export function RoutineView({ id }: { id: string }) {
             </li>
           ))}
         </ul>
+        <LoadMore list={runs} />
       </Section>
 
       <Details label="Show the prompt">

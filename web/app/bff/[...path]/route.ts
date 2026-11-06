@@ -121,7 +121,7 @@ async function handle(request: NextRequest, path: string[]): Promise<Response> {
   }
 
   const headers = new Headers();
-  for (const name of ["content-type", "content-disposition", "retry-after", "cache-control", "x-ringkeeper-confirm"]) {
+  for (const name of ["content-type", "content-disposition", "retry-after", "cache-control", "x-ringkeeper-confirm", "x-next-cursor", "x-total-count"]) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }

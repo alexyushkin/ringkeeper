@@ -3,9 +3,9 @@
 import { useState } from "react";
 
 import { TaskCardView, type TaskCard } from "@/components/task-card";
-import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
+import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
 import { projectName, useScope } from "@/lib/client/scope";
 
@@ -25,7 +25,7 @@ export default function TasksPage() {
   const [status, setStatus] = useState("");
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
-  const tasks = useApi<TaskCard[]>("tasks", { ...scope.query, status, q: query.trim() || undefined, archived: archived || undefined });
+  const tasks = usePaged<TaskCard>("tasks", { ...scope.query, status, q: query.trim() || undefined, archived: archived || undefined });
   const old = useApi<{ count: number; days: number }>("cleanup/old-tasks");
   const [tidied, setTidied] = useState<string | null>(null);
   const pick = useSelection();
@@ -61,11 +61,12 @@ export default function TasksPage() {
       {tidied ? <Alert tone="good">{tidied}</Alert> : null}
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="tasks" />
       <BulkBar kind="task" ids={[...pick.selected]} archivedView={archived} onDone={tasks.reload} onClear={pick.clear} />
+      <ListTotal total={tasks.total} what={["task", "tasks"]} searching={Boolean(query.trim())} archived={archived} />
       {tasks.error ? <Alert>{tasks.error}</Alert> : null}
-      {tasks.loading && !tasks.data ? <Loading /> : null}
-      {tasks.data?.length === 0 ? <Empty>{query || archived || status ? "No tasks match. Change the status or clear the search." : "No tasks yet. Ask for something on Home and the work shows up here."}</Empty> : null}
+      {tasks.loading && !tasks.items ? <Loading /> : null}
+      {tasks.items?.length === 0 ? <Empty>{query || archived || status ? "No tasks match. Change the status or clear the search." : "No tasks yet. Ask for something on Home and the work shows up here."}</Empty> : null}
       <div className="space-y-2">
-        {tasks.data?.map((task) => (
+        {tasks.items?.map((task) => (
           <div key={task.id} className="flex items-start gap-3">
             <span className="pt-5">
               <SelectBox checked={pick.has(task.id)} onChange={() => pick.toggle(task.id)} label={`Select the ${projectName(task.project)} task`} />
@@ -76,6 +77,7 @@ export default function TasksPage() {
           </div>
         ))}
       </div>
+      <LoadMore list={tasks} />
     </>
   );
 }

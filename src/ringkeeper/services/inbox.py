@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, not_, or_, select
 from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import destructive, remote
@@ -39,6 +39,7 @@ from ringkeeper.models import (
     Instance,
     InstanceType,
     Project,
+    RoutineRun,
     SessionRole,
     Task,
     TaskKind,
@@ -46,7 +47,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import decisions, examples, projects, tasks, titles
+from ringkeeper.services import decisions, examples, paging, projects, tasks, titles
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -135,9 +136,51 @@ def list_decisions(
     limit: int = 50,
     projects: list[str] | None = None,
 ) -> Sequence[Decision]:
-    """`projects`: only decisions about these (the client/project switcher)."""
+    return page_of_decisions(
+        session, status=status, kind=kind, project=project, limit=limit, projects=projects
+    ).items
+
+
+def _approvals() -> ColumnElement[bool]:
+    """is_approval, as a query."""
+    return or_(
+        Decision.kind.in_((DecisionKind.APPROVE, DecisionKind.PLAN)),
+        and_(
+            Decision.kind == DecisionKind.QUESTION,
+            Decision.payload["budget"].as_string().is_not(None),
+        ),
+    )
+
+
+def page_of_decisions(
+    session: Session,
+    *,
+    status: DecisionStatus | None = DecisionStatus.PENDING,
+    kind: DecisionKind | None = None,
+    project: str | None = None,
+    limit: int = 50,
+    projects: list[str] | None = None,
+    approvals: bool | None = None,
+    thread: uuid.UUID | None = None,
+    task: uuid.UUID | None = None,
+    routine: uuid.UUID | None = None,
+    cursor: str | None = None,
+) -> paging.Page[Decision]:
+    """`projects`: only decisions about these (the client/project switcher). `approvals`: only
+    actions (True) or only questions (False). `thread`, `task`, `routine`: only those that
+    belong to it, directly or through its tasks."""
     expire_stale(session)
-    query = select(Decision).order_by(Decision.created_at.desc()).limit(limit)
+    query = select(Decision)
+    if approvals is not None:
+        query = query.where(_approvals() if approvals else not_(_approvals()))
+    if thread is not None:
+        theirs = select(Task.id).where(Task.thread_id == thread)
+        query = query.where(or_(Decision.thread_id == thread, Decision.task_id.in_(theirs)))
+    if task is not None:
+        query = query.where(Decision.task_id == task)
+    if routine is not None:
+        ran = select(RoutineRun.task_id).where(RoutineRun.routine_id == routine)
+        query = query.where(Decision.task_id.in_(ran))
     if projects is not None:
         query = query.where(Decision.project.in_(projects))
     if status is not None:
@@ -146,7 +189,9 @@ def list_decisions(
         query = query.where(Decision.kind == kind)
     if project is not None:
         query = query.where(Decision.project == project)
-    return session.scalars(query).all()
+    return paging.fetch(
+        session, query, Decision.created_at, Decision.id, limit=limit, cursor=cursor
+    )
 
 
 def is_approval(decision: Decision) -> bool:

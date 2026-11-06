@@ -37,7 +37,7 @@ export function ThreadView({ id }: { id: string }) {
   const router = useRouter();
   const thread = useApi<Thread>(`threads/${id}`);
   const tasks = useApi<TaskCard[]>(`threads/${id}/tasks`);
-  const pending = useApi<Decision[]>("decisions", { status: "pending", limit: 200 });
+  const pending = useApi<Decision[]>("decisions", { status: "pending", thread: id, limit: 500 });
   useLive((event) => {
     if (event.thread_id !== id) return;
     if (event.type === "message" || event.type === "message_routed") thread.reload();

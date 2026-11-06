@@ -3,6 +3,18 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Long lists have Load more.** Conversations, tasks, activity, routine runs and approvals load 50
+  at a time, and nothing is out of reach any more. Search covers everything, not just what's
+  loaded, and search and Archived say how many there are. Activity has a search box now, and
+  task search also finds the words of a task's conversation.
+- **Counts are real.** The Approvals badge and a project's task count no longer stop at 200 and
+  100.
+- **Spend cards say what it is.** A Google Ads card reads "Budget: Spring promo", "Campaign",
+  "Ad group" and "Customer", by Google's own names, with the ID in small text. Other vendors'
+  cards say "Invoice", "Transaction" or "Order" where "To or from" and "Account" were wrong.
+
 ## 0.1.0-beta.23 (2026-11-06)
 
 - **Social accounts.** Bluesky, Facebook Pages, Instagram, Threads and YouTube can read posts,

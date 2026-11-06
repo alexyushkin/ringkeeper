@@ -930,6 +930,10 @@ in or confirmed (`POST /auth/confirm`) in the last 10 minutes:
 | Connections | `GET`/`POST /connections`, `PATCH`/`DELETE /connections/{name}`, `POST /connections/{name}/test` |
 | Work | `GET /threads`, `/threads/{id}/tasks`, `/tasks`, `/tasks/{id}`, `/tasks/{id}/events`; `POST /tasks/{id}/stop`, `/tasks/{id}/resume` |
 | Activity | `GET /audit`, `GET /audit.csv` |
+
+Long lists (`/threads`, `/tasks`, `/audit`, `/decisions`, `/routines/{id}/runs`) still answer with
+a plain array. `X-Total-Count` says how many match, whatever the page. `X-Next-Cursor`, when
+there's more, goes back as `?cursor=` for the next page. `q` searches on the server.
 | Voice and live | `POST /voice/transcribe` (audio in, transcript out, nothing kept), `GET /events` (server-sent events) |
 
 ```bash
