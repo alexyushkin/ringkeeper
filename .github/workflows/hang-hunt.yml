@@ -1,18 +1,12 @@
-name: hang-hunt
-# Throwaway: never merged. Repeats the tests in the hang window on real Postgres.
+name: timeout-proof
+# Throwaway: never merged. The real pytest config against a test that never ends.
 on: pull_request
 permissions:
   contents: read
 jobs:
-  hunt:
-    name: hunt (shard ${{ matrix.shard }}, load ${{ matrix.load }})
+  proof:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
-        load: [8]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -20,15 +14,6 @@ jobs:
           enable-cache: true
           python-version: "3.13"
       - run: uv sync --locked
-      - name: repeat
+      - run: uv run pytest tests/test_hang_proof.py -v -p no:cacheprovider
         env:
-          RINGKEEPER_TEST_DB: postgres
-          LOAD: ${{ matrix.load }}
-        run: |
-          i=0
-          while [ "$i" -lt "$LOAD" ]; do (while :; do :; done) & i=$((i+1)); done
-          timeout 1500 uv run --with pytest-repeat pytest tests/test_web_api.py             -k "test_a_connection_address_can_only_change_with_its_secret or test_a_connection_is_attached_only_to_its_own_client_s_projects or test_a_forgotten_password_is_reset_from_the_cli or test_a_pasted_psql_command_gets_a_plain_hint or test_a_remote_service_with_a_pasted_token or test_a_workspace_id_is_checked_with_the_key_and_saved or test_activity_filters_and_csv_export or test_csv_cells_that_look_like_formulas_are_neutralized or test_events_stream_task_changes or test_messages_from_the_web_app_record_source_and_input or test_projects_and_connections or test_removing_a_connection_removes_its_secret or test_signing_in_to_a_remote_service_adds_a_narrowed_connection or test_tasks_transcripts_and_threads or test_telegram_token_and_chat_detection or test_the_setup_code_command or test_voice_upload_limits or test_voice_upload_returns_only_the_transcript"             --count=70 -x -q --timeout=90 --timeout-method=thread -p no:cacheprovider
-          code=$?
-          echo "pytest exit $code"
-          [ "$code" = 124 ] && exit 0
-          exit "$code"
+          RINGKEEPER_TEST_DB: sqlite
