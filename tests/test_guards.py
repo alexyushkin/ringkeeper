@@ -205,9 +205,12 @@ def test_a_payment_servers_refund_gets_the_card_and_a_lookup_doesnt(database_url
         refund = _held("create_refund", {"amount": 500, "currency": "usd", "customer": "cus_1"})
         session.add(refund)
         session.flush()
-        assert inbox.money(refund) == {
-            "amount": "5.00 USD", "counterparty": "cus_1", "account": "not stated",
-        }  # fmt: skip
+        shown = inbox.money(refund)
+        assert shown is not None
+        assert (shown["amount"], shown["counterparty"], shown["account"]) == (
+            "5.00 USD", "cus_1", "not stated",
+        )  # fmt: skip
+        assert (shown["who"], shown["which"]) == ("To or from", "Account")
         link = _held("create_payment_link", {"amount": 500})
         session.add(link)
         session.flush()

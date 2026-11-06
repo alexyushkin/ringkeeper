@@ -90,8 +90,8 @@ WAVE_CUSTOMER = (
     "currency { code } outstandingAmount { value } overdueAmount { value }"
 )
 WAVE_PAYMENT = "id paymentDate amount paymentMethod memo account { id name }"
-WAVE_PAYMENT_CARD = Money(("amount",), (), ("invoiceId",), ("paymentAccountId",))
-WAVE_MONEY_MOVES = Money(("amount",), (), ("description",), ("accountId",))
+WAVE_PAYMENT_CARD = Money(("amount",), (), ("invoiceId",), ("paymentAccountId",), who="Invoice")
+WAVE_MONEY_MOVES = Money(("amount",), (), ("description",), ("accountId",), who="For")
 
 
 def _wave_list(field: str, node: str, filters: str = "", given: str = "") -> str:
@@ -501,7 +501,8 @@ XERO_PAYMENT_CARD = Money(
 XERO_BANK_CARD = Money(("Total",), ("CurrencyCode",), ("Contact.Name", "Contact.ContactID"),
                        ("BankAccount.Code", "BankAccount.AccountID"))  # fmt: skip
 XERO_TRANSFER_CARD = Money(("Amount",), (), ("ToBankAccount.Code", "ToBankAccount.AccountID"),
-                           ("FromBankAccount.Code", "FromBankAccount.AccountID"))  # fmt: skip
+                           ("FromBankAccount.Code", "FromBankAccount.AccountID"),
+                           who="To account", which="From account")  # fmt: skip
 
 
 def _xero_status_why(args: JSON) -> str | None:
@@ -638,9 +639,11 @@ BC_PURCHASE_EDIT = ("invoiceDate", "postingDate", "dueDate", "vendorInvoiceNumbe
 BC_SALES_BACK = Snapshot("get_sales_invoice", BC_SALES_EDIT, says="the invoice's dates and details")
 BC_PURCHASE_BACK = Snapshot("get_purchase_invoice", BC_PURCHASE_EDIT,
                             says="the invoice's dates and number")  # fmt: skip
-BC_PAYMENT = Money(("amount",), (), ("customerNumber", "customerId"), ("journal_id",))
+BC_PAYMENT = Money(("amount",), (), ("customerNumber", "customerId"), ("journal_id",),
+                   who="Customer", which="Journal")  # fmt: skip
 BC_JOURNAL_LINE = Money(("amount",), (), ("accountNumber", "accountId"),
-                        ("balancingAccountNumber", "balancingAccountId"))  # fmt: skip
+                        ("balancingAccountNumber", "balancingAccountId"), who="Account",
+                        which="Balancing account")  # fmt: skip
 
 
 def _bc_who(found: JSON) -> str:

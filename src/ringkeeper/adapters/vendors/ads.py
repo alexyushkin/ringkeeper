@@ -26,7 +26,17 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 
 from ringkeeper.adapters.base import ToolError
-from ringkeeper.adapters.vendor_spec import JSON, Money, Op, Reader, Vendor, final, held, reads
+from ringkeeper.adapters.vendor_spec import (
+    JSON,
+    Money,
+    Namer,
+    Op,
+    Reader,
+    Vendor,
+    final,
+    held,
+    reads,
+)
 from ringkeeper.remote import ScopeField
 
 CATEGORY = "Ads"
@@ -38,11 +48,21 @@ MATCH_TYPES = frozenset({"EXACT", "PHRASE", "BROAD"})
 STARTS = "starts spending"
 CHANGES_SPEND = "changes what the account spends"
 CREATES = "creates something that can spend once it's started"
-DAILY = Money(("daily_amount",), ("currency",), ("budget_id", "campaign_id", "name"), ("account",),
-              per=" a day")  # fmt: skip
-BID = Money(("cpc_bid",), ("currency",), ("ad_group_id", "name"), ("account",), per=" a click")
+
+DAY, CLICK, CUSTOMER = " a day", " a click", "Customer"
+BUDGET_CARD = Money(("daily_amount",), ("currency",), ("budget_id",), ("account",), per=DAY,
+                    who="Budget", which=CUSTOMER)  # fmt: skip
+CAMPAIGN_CARD = Money(("daily_amount",), ("currency",), ("campaign_id",), ("account",), per=DAY,
+                      who="Campaign", which=CUSTOMER)  # fmt: skip
+NEW_CAMPAIGN_CARD = Money(("daily_amount",), ("currency",), ("name",), ("account",), per=DAY,
+                          who="New campaign", which=CUSTOMER)  # fmt: skip
+GROUP_CARD = Money(("cpc_bid",), ("currency",), ("ad_group_id",), ("account",), per=CLICK,
+                   who="Ad group", which=CUSTOMER)  # fmt: skip
+NEW_GROUP_CARD = Money(("cpc_bid",), ("currency",), ("name",), ("account",), per=CLICK,
+                       who="New ad group", which=CUSTOMER)  # fmt: skip
 SPEND_CHECKED = ("daily_amount", "currency")
 ACCOUNT_CURRENCY = "SELECT customer.currency_code FROM customer LIMIT 1"
+CUSTOMER_NAME = "SELECT customer.descriptive_name FROM customer LIMIT 1"
 # Google won't make a campaign without this answer, and it's the owner's to give: it's in the
 # call, so it's in what's approved, and the card says it in full.
 EU_POLITICAL = "eu_political_advertising"
@@ -235,6 +255,31 @@ async def _campaign_spend(read: Reader, path: JSON, body: JSON, _account: str | 
         )
 
 
+async def _customer_name(read: Reader, path: JSON, _body: JSON, _account: str | None) -> JSON:
+    """For a card about something new: only the customer has a name yet."""
+    rows = _rows(await read("report", path, {"query": CUSTOMER_NAME}))
+    customer = cast(JSON, rows[0].get("customer") or {}) if rows else {}
+    return {"which": customer.get("descriptiveName")}
+
+
+def _named(resource: str, field: str, key: str) -> Namer:
+    """What Google calls this and its customer, in one report: one operation."""
+
+    async def names(read: Reader, path: JSON, body: JSON, _account: str | None) -> JSON:
+        query = (
+            f"SELECT {resource}.name, customer.descriptive_name FROM {resource} "  # noqa: S608
+            f"WHERE {resource}.id = {_id(body, key)}"  # an ID of digits
+        )
+        rows = _rows(await read("report", path, {"query": query}))
+        row = rows[0] if rows else {}
+        return {
+            "who": cast(JSON, row.get(field) or {}).get("name"),
+            "which": cast(JSON, row.get("customer") or {}).get("descriptiveName"),
+        }
+
+    return names
+
+
 def _operations(_op: Op, _query: JSON, sent: JSON | None) -> int:
     """Google's count: a report or a listing is one, each change is one, and a further page of
     a report is free."""
@@ -294,14 +339,15 @@ GOOGLE_ADS = Vendor(
         final("create_campaign", "POST", f"{BASE}/googleAds:mutate",
               "Make a paused Search campaign with its daily budget", CREATES, "name",
               *SPEND_CHECKED, EU_POLITICAL, "manager",
-              only=("name", *SPEND_CHECKED, EU_POLITICAL), money=DAILY,
-              shape=_new_campaign, confirm=_in_currency, declares=DECLARES,
+              only=("name", *SPEND_CHECKED, EU_POLITICAL), money=NEW_CAMPAIGN_CARD,
+              shape=_new_campaign, confirm=_in_currency, declares=DECLARES, names=_customer_name,
               hint=f"{EU_POLITICAL} must be '{NO_EU_POLITICAL}': the owner declares that to "
               "Google by approving. If the campaign has any, don't make it here."),
         final("create_ad_group", "POST", f"{BASE}/adGroups:mutate",
               "Make a paused ad group in a campaign", CREATES, "campaign_id", "name", "cpc_bid",
               "currency", "manager", only=("campaign_id", "name", "cpc_bid", "currency"),
-              money=BID, shape=_new_ad_group, confirm=_in_currency),
+              money=NEW_GROUP_CARD, shape=_new_ad_group, confirm=_in_currency,
+              names=_customer_name),
         final("create_search_ad", "POST", f"{BASE}/adGroupAds:mutate",
               "Make a paused responsive search ad", CREATES, *GROUP, "headlines", "descriptions",
               "final_url", "manager",
@@ -312,8 +358,8 @@ GOOGLE_ADS = Vendor(
               only=(*GROUP, "keywords", "match_type"), shape=_keywords),
         final("start_campaign", "POST", f"{BASE}/campaigns:mutate",
               "Start a campaign", STARTS, *CAMPAIGN, *SPEND_CHECKED, "manager",
-              only=(*CAMPAIGN, *SPEND_CHECKED), money=DAILY, shape=_spending_campaign,
-              confirm=_campaign_spend,
+              only=(*CAMPAIGN, *SPEND_CHECKED), money=CAMPAIGN_CARD, shape=_spending_campaign,
+              confirm=_campaign_spend, names=_named("campaign", "campaign", "campaign_id"),
               hint="Say its current daily budget: the card shows it, and it's checked first."),
         final("start_ad_group", "POST", f"{BASE}/adGroups:mutate", "Start an ad group", STARTS,
               *GROUP, "manager", only=GROUP,
@@ -322,12 +368,13 @@ GOOGLE_ADS = Vendor(
               "manager", only=AD, shape=_ad_status("ENABLED")),
         final("set_daily_budget", "POST", f"{BASE}/campaignBudgets:mutate",
               "Change a budget's daily amount", CHANGES_SPEND, "budget_id", *SPEND_CHECKED,
-              "manager", only=("budget_id", *SPEND_CHECKED), money=DAILY, shape=_budget,
-              confirm=_in_currency),
+              "manager", only=("budget_id", *SPEND_CHECKED), money=BUDGET_CARD, shape=_budget,
+              confirm=_in_currency,
+              names=_named("campaign_budget", "campaignBudget", "budget_id")),
         final("set_ad_group_bid", "POST", f"{BASE}/adGroups:mutate",
               "Change an ad group's bid per click", CHANGES_SPEND, *GROUP, "cpc_bid", "currency",
-              "manager", only=(*GROUP, "cpc_bid", "currency"), money=BID, shape=_bid,
-              confirm=_in_currency),
+              "manager", only=(*GROUP, "cpc_bid", "currency"), money=GROUP_CARD, shape=_bid,
+              confirm=_in_currency, names=_named("ad_group", "adGroup", "ad_group_id")),
     ),
 )  # fmt: skip
 

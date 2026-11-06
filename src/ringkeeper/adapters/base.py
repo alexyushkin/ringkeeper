@@ -102,6 +102,8 @@ class ToolSpec:
     # without it, ringkeeper.destructive decides. A call that needs the name always
     # asks: no test data, no trust, no per-tool setting lets it run by itself.
     typed: Callable[[JSON], str | None] | None = None
+    # What the vendor calls the things this call names by ID, for its approval card.
+    names: Callable[[Target, JSON], Awaitable[JSON]] | None = None
 
 
 def _spec(

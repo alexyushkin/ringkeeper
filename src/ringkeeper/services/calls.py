@@ -479,10 +479,19 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
         except Exception:
             logger.exception("couldn't check whether %s can be undone", call.tool)
 
+    names: JSON = {}
+    if spec.names is not None:
+        try:
+            names = await spec.names(target, call.args)
+        except Exception as error:  # the card shows the IDs instead
+            logger.warning("couldn't name what %s changes: %s", call.tool, type(error).__name__)
+
     def hold(session: Session) -> tuple[str, str, str]:
         decision = decisions.hold(session, call, target.name, precondition=precondition)
         if can_undo is not None:
             decision.payload = {**(decision.payload or {}), "undo": can_undo}
+        if names:
+            decision.payload = {**(decision.payload or {}), "names": scrub_obj(names)}
         audit.record(session, call, AuditOutcome.HELD, decision_id=decision.id)
         return str(decision.id), decision.expires_at.isoformat(), holds.label(decision)
 

@@ -34,7 +34,10 @@ all, and neither are creating accounts or changing who has access.
 - **Pausing waits for your approval.** It only stops spending.
 - **Creating, starting, and changing a budget or a bid need the connection's name typed,** in the
   app itself. They can't be approved from a chat app, and nothing here can be trusted for an hour.
-- **The card shows the spend,** like `50.00 USD a day`. Just before the change runs, Ringkeeper
+- **The card shows the spend and what it's for,** like `50.00 USD a day` on **Budget: Spring promo**,
+  with Google's ID beside it. Ringkeeper asks Google for those names when the call is held, which
+  is one of the day's operations. If Google doesn't answer, the card shows the IDs. Just before
+  the change runs, Ringkeeper
   checks that currency against the account. Starting a campaign also checks its real budget. If
   either differs from the card, nothing changes.
 - **Approving a new campaign declares it has no EU political advertising.** Google won't make a
