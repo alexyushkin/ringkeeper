@@ -83,7 +83,8 @@ def _worker_ended(
     review: dict[str, Any],
 ) -> None:
     checks: dict[str, Any] | None = review.get("checks")
-    if checks is not None and not checks.get("passed", True):
+    # A plan that doesn't allow something isn't a failed attempt: a bigger model won't change it.
+    if checks is not None and not checks.get("passed", True) and not task.plan_limit:
         task.failed_check_rounds += 1
     task.review_round = min(task.review_round + 1, architect.MAX_REVIEWS)
     task.phase = ArchitectPhase.REVIEWING

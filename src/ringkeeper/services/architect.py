@@ -113,7 +113,13 @@ def review_prompt(
     ]
     if worker_result:
         parts.append("The worker's final message:\n" + _clip(worker_result, 4000))
-    if passed:
+    if task.plan_limit:
+        parts.append(
+            f"A service's plan stopped part of this: {task.plan_limit} More attempts won't change "
+            "that, so don't send the worker back for it. Call approve_work(summary) with what "
+            "was done and what couldn't be."
+        )
+    elif passed:
         parts.append("Call approve_work(summary) if this meets the plan, or continue_worker.")
     else:
         parts.append("The checks fail, so call continue_worker with what to fix.")

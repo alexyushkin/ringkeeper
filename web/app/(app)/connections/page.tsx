@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ServiceMark } from "@/components/catalog";
 import { connectionTitle } from "@/components/connection-form";
 import { FoundLogins } from "@/components/conveniences";
-import { scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
+import { planLimit, scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { HelpHint } from "@/components/help-hint";
 import { ScopeNote } from "@/components/scope-switcher";
 import { SharedTools } from "@/components/shared-tools";
@@ -132,8 +132,9 @@ export default function ConnectionsPage() {
                     {c.type === "google" ? null : <EnvBadge env={c.env} />}
                     {label(c) !== connectionTitle(c) ? <span className="text-xs text-muted">{label(c)}</span> : null}
                     {c.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
-                    {c.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
+                    {planLimit(c) ? <Badge tone="warn">Plan limit</Badge> : c.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
                   </div>
+                  {planLimit(c) ? <p className="mt-1 text-sm text-warn">{planLimit(c)}</p> : null}
                   {c.last_test_ok === false && c.last_test_message ? <p className="mt-1 text-sm text-bad">{c.last_test_message}</p> : null}
                   <p className="mt-1 text-sm">
                     {(c.links ?? []).length ? (

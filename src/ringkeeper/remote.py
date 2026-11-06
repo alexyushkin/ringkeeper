@@ -229,6 +229,11 @@ class Remote:
     # The server holds calls back itself, and takes this argument to let one through. Ringkeeper's
     # approval answers it (adapters.mcp); an agent can't.
     confirm_arg: str = ""
+    # Which plans it works on, for the catalog, and what a plan refusal should add.
+    needs: str = ""
+    plan_note: str = ""
+    # A free read of one account, to learn on Test whether the plan reaches any of it.
+    plan_probe: str = ""
     # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
     # its own connection type, with GitHub Enterprise Server and pushes).
     shelf: bool = True
@@ -532,9 +537,13 @@ CATALOG: tuple[Remote, ...] = (
         open_tools=leadfeeder.OPEN_TOOLS, read_tools=leadfeeder.FREE_READS,
         opaque_tools=leadfeeder.PRIVACY_TOOLS, credit_tools=leadfeeder.CREDIT_TOOLS,
         confirm_arg=leadfeeder.CONFIRM_ARG,
-        note="By Dealfront. Sign in with a user who has the Manage API keys and use API "
-        "permission. Reads run. Changes wait for approval, and what spends credits shows the cost "
-        "on the card. Deletes need the name typed. Each project is held to one account.",
+        needs="needs a paid Leadfeeder plan",
+        plan_note="Only sign-in and the account list work on the free plan.",
+        plan_probe="get_web_visits_tracker",
+        note="By Dealfront. On the free plan only sign-in and the account list work. Sign in with "
+        "a user who has the Manage API keys and use API permission. Reads run. Changes wait for "
+        "approval, and what spends credits shows the cost on the card. Deletes need the name "
+        "typed. Each project is held to one account.",
     ),
     Remote(
         "apollo", "Apollo", "https://mcp.apollo.io/mcp", signin=True, paste=None,

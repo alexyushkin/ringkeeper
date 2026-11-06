@@ -638,6 +638,8 @@ class Task(Base):
     phase: Mapped[ArchitectPhase | None] = mapped_column(architect_phase_enum)
     review_round: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     failed_check_rounds: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # A service's plan stopped part of this: why, and it isn't a failed attempt.
+    plan_limit: Mapped[str | None] = mapped_column(Text)
     worker_prompt: Mapped[str | None] = mapped_column(Text)
     # The project agent it runs as (its instructions, connections, model): see agents.
     agent_id: Mapped[uuid.UUID | None] = mapped_column()

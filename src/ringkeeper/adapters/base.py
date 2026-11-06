@@ -36,6 +36,18 @@ class ToolError(RingkeeperError):
     """A failure the agent should see verbatim (after scrubbing)."""
 
 
+class PlanLimitError(ToolError):
+    """The service's plan doesn't allow this (ringkeeper.plan_limits). `shown` is for the user;
+    the agent also reads that another try won't help."""
+
+    def __init__(self, shown: str) -> None:
+        super().__init__(
+            f"{shown} Don't try again or look for a way around it: tell the user, and carry on "
+            "with what doesn't need it."
+        )
+        self.shown = shown
+
+
 @dataclass(frozen=True)
 class Target:
     name: str

@@ -40,6 +40,7 @@ interface Task {
   outcome: string | null;
   summary: string | null;
   error: string | null;
+  plan_limit?: string | null;
   prompt: string;
   thread_id: string | null;
   branch: string | null;
@@ -232,6 +233,7 @@ export function TaskView({ id }: { id: string }) {
           <TidyButtons kind="task" id={id} archived={Boolean(t.archived)} status={t.status} onArchived={task.reload} onDeleted={() => router.push("/tasks")} />
         </div>
         <Markdown text={t.summary ?? t.outcome ?? t.prompt} className="text-sm" />
+        {t.plan_limit ? <Alert tone="warn">{t.plan_limit}</Alert> : null}
         {t.error && t.status !== "succeeded" ? <Alert>{t.error}</Alert> : null}
         {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">

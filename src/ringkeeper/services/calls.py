@@ -29,9 +29,18 @@ import anyio.to_thread
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper import remote, sensitive, signed_links
-from ringkeeper.adapters import ADAPTERS, agent_name
-from ringkeeper.adapters.base import JSON, Adapter, Hold, Target, ToolError, ToolKind, ToolSpec
+from ringkeeper import plan_limits, remote, sensitive, signed_links
+from ringkeeper.adapters import ADAPTERS, agent_name, vendor
+from ringkeeper.adapters.base import (
+    JSON,
+    Adapter,
+    Hold,
+    PlanLimitError,
+    Target,
+    ToolError,
+    ToolKind,
+    ToolSpec,
+)
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError, RuleViolationError
@@ -56,6 +65,7 @@ from ringkeeper.services import (
     instances,
     mcp_oauth,
     mcp_tools,
+    plan_notes,
     revocations,
     trusts,
     undo,
@@ -263,11 +273,31 @@ def _target(vault: Vault, adapter: Adapter, auth: Authorized, project: str | Non
     return Target(auth.instance, auth.env, auth.base_url, secret, auth.config, project)
 
 
+def _service_name(target: Target) -> str:
+    """The service as its plans are sold, not this connection's own name."""
+    found = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    if found is not None:
+        return found.name
+    kind = vendor.VENDORS.get(str(target.config.get("vendor") or ""))
+    return kind.name if kind is not None else target.name
+
+
+def _plan_limit(target: Target) -> PlanLimitError:
+    found = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    note = found.plan_note if found is not None else ""
+    return PlanLimitError(plan_limits.message(_service_name(target), note))
+
+
 async def _invoke(fn: Callable[..., Any], target: Target, args: dict[str, Any], tool: str) -> JSON:
     try:
         return await fn(target, **args)
+    except PlanLimitError:
+        raise
     except ToolError as error:
-        raise ToolError(scrub(str(error))) from None
+        said = scrub(str(error))
+        if plan_limits.found(said):
+            raise _plan_limit(target) from None
+        raise ToolError(said) from None
     except Exception:
         logger.exception("tool %s failed unexpectedly", tool)  # records are scrubbed
         raise ToolError(
@@ -374,9 +404,34 @@ async def _screened(call: ToolCall, spec: ToolSpec, target: Target) -> ToolCall:
         raise RefusalError(said, said) from None
 
 
+def _which(call: ToolCall) -> str:
+    """What was really called: a connection's own tool, behind the general one."""
+    return str(call.args.get("tool") or call.args.get("operation") or call.tool)
+
+
+async def _run(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
+    """Run it, keeping what its plan said: a plan refusal is noted on the connection and the
+    task, and something that worked isn't remembered as refused."""
+    try:
+        result = await _invoke(spec.handler, target, call.args, call.tool)
+    except PlanLimitError as limit:
+        await anyio.to_thread.run_sync(plan_notes.note, target.name, _which(call), limit.shown)
+        await anyio.to_thread.run_sync(plan_notes.note_task, call.caller.session_id, limit.shown)
+        raise
+    if _which(call) in cast(JSON, target.config.get(plan_notes.KEY) or {}).get("tools", []):
+        await anyio.to_thread.run_sync(plan_notes.clear, target.name, _which(call))
+    return result
+
+
 async def _run_unheld(call: ToolCall, spec: ToolSpec, target: Target, auth: Authorized) -> JSON:
     """A read, or a change that runs without asking, which Activity still lists."""
-    result = await _invoke(spec.handler, target, call.args, call.tool)
+    try:
+        result = await _run(call, spec, target)
+    except PlanLimitError as limit:
+        await anyio.to_thread.run_sync(
+            partial(_record, call, AuditOutcome.FAILED, reason=limit.shown)
+        )
+        raise
     if spec.logged is not None and spec.logged(target, call.args):
         await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.EXECUTED))
     if call.service is InstanceType.MCP and call.tool == "list_tools":
@@ -402,6 +457,10 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     is_write = spec.kind is ToolKind.WRITE
 
     await _refuse_what_cant_be_kept(call)
+
+    if said := plan_notes.blocked(auth.config, _which(call)):
+        # Just refused for its plan: asking again can't help, and shouldn't wait for approval.
+        raise PlanLimitError(said)
 
     try:
         target = _target(vault, adapter, auth, call.caller.project)
@@ -445,7 +504,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
 
     pending = await _keep(call, spec, target)
     try:
-        result = await _invoke(spec.handler, target, call.args, call.tool)
+        result = await _run(call, spec, target)
     except ToolError as error:
         await anyio.to_thread.run_sync(
             partial(_record, call, AuditOutcome.FAILED, reason=str(error))
@@ -593,7 +652,7 @@ async def approve(
                     partial(finish, AuditOutcome.REFUSED, reason=reason)
                 )
         pending = await _keep(call, spec, target)
-        result = await _invoke(spec.handler, target, call.args, call.tool)
+        result = await _run(call, spec, target)
     except ToolError as error:
         return await anyio.to_thread.run_sync(
             partial(finish, AuditOutcome.FAILED, reason=str(error))

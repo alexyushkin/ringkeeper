@@ -315,7 +315,7 @@ export function Catalog(target: Target) {
     ...signIn.map((service) => ({
       key: service.key,
       label: service.name,
-      sub: service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token",
+      sub: service.needs || (service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token"),
       category: SIGN_IN_CATEGORY[service.key] ?? ((service.category || "Other") as Category),
       badge: "Official",
       words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/)],

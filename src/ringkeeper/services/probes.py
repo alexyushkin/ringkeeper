@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
+from ringkeeper import plan_limits, remote
 from ringkeeper.adapters import (
     ADAPTERS,
     airtable,
@@ -32,12 +33,12 @@ from ringkeeper.adapters import (
     vendor,
     vercel,
 )
-from ringkeeper.adapters.base import JSON, Target, ToolError
+from ringkeeper.adapters.base import JSON, PlanLimitError, Target, ToolError
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import scrub
-from ringkeeper.services import admin_audit, google_oauth, instances, mcp_tools
+from ringkeeper.services import admin_audit, google_oauth, instances, mcp_tools, plan_notes
 from ringkeeper.vault import get_vault
 
 TIMEOUT_SECONDS = 20
@@ -101,6 +102,12 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, P
             raise ToolError(f"Testing {kind} connections isn't supported yet.")
 
 
+def _limited(name: str, shown: str) -> ProbeResult:
+    """The connection works: it's the plan that stops it, which its card says."""
+    plan_notes.note(name, None, shown)
+    return ProbeResult(True, shown)
+
+
 def test_connection(name: str, *, by: str) -> ProbeResult:
     """Read the connection, probe it with no transaction open (an MCP server may take
     a minute to start, and SQLite has one writer), then record the result."""
@@ -122,18 +129,29 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         target = Target(name, env, base_url, secret, config)
         message = asyncio.run(asyncio.wait_for(_probe(kind, target), timeout=timeout))
         result = ProbeResult(True, message)
+        plan_notes.clear(name)
         if kind is InstanceType.GITHUB:
             expires = asyncio.run(github.token_expiry(target))
+    except PlanLimitError as limit:
+        result = _limited(name, limit.shown)
     except TimeoutError:
         result = ProbeResult(False, f"No answer within {timeout} seconds. Check the address.")
     except (ToolError, RingkeeperError) as error:
         message = scrub(str(error))[:500]
+        if plan_limits.found(message):
+            service = remote.BY_KEY.get(str(config.get("remote") or ""))
+            said = plan_limits.message(service.name if service else name)
+            return _finish_test(name, _limited(name, said), None, by)
         if REFUSED.search(message):
             message = (
                 "The service didn't accept this key. Check that it was copied whole and "
                 f"hasn't expired or been revoked. ({message})"
             )
         result = ProbeResult(False, message)
+    return _finish_test(name, result, expires, by)
+
+
+def _finish_test(name: str, result: ProbeResult, expires: str | None, by: str) -> ProbeResult:
     with session_scope() as session:
         instance = instances.get_instance(session, name)
         instance.last_test_at = datetime.now(UTC)
