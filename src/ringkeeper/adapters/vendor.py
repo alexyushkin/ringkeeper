@@ -19,7 +19,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Annotated, Any, cast
 from urllib.parse import parse_qs, quote
 
@@ -492,6 +492,36 @@ class Card:
     amount: str
     counterparty: str
     account: str
+    who: str = "To or from"
+    which: str = "Account"
+    # The vendor's ID, in small text, when the name above is the vendor's own.
+    counterparty_id: str = ""
+    account_id: str = ""
+
+
+MOST_NAME_CHARS = 120
+
+
+def named(card: Card, names: JSON) -> Card:
+    """The card with the vendor's names, and the IDs it had moved down to small text."""
+    who = str(names.get("who") or "")[:MOST_NAME_CHARS]
+    which = str(names.get("which") or "")[:MOST_NAME_CHARS]
+    return replace(
+        card,
+        counterparty=who or card.counterparty,
+        counterparty_id=card.counterparty if who else "",
+        account=which or card.account,
+        account_id=card.account if which else "",
+    )
+
+
+async def _names(target: Target, args: JSON) -> JSON:
+    vendor, op, fields = _own(target, args)
+    if op.names is None:
+        return {}
+    account = cast(str | None, args.get("account"))
+    path, body = cast(JSON, args.get("path") or {}), cast(JSON, args.get("body") or {})
+    return await op.names(_reader(vendor, fields, account), path, body, account)
 
 
 def money_card(args: JSON) -> Card | None:
@@ -525,6 +555,8 @@ def card_of(rule: Money, body: JSON) -> Card:
         f"{shown} {str(currency).upper() if currency else '(currency not stated)'}{rule.per}",
         str(_picked(rule.counterparty, body) or "not stated"),
         str(_picked(rule.account, body) or "not stated"),
+        rule.who,
+        rule.which,
     )
 
 
@@ -613,6 +645,7 @@ call_operation = ToolSpec(
     classify=_classify,
     undo=OperationUndo(),
     typed=typed_reason,
+    names=_names,
 )
 
 

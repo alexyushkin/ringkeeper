@@ -33,6 +33,8 @@ class Api:
         self.requests: list[httpx2.Request] = []
         self.currency = "USD"
         self.budget = "50000000"
+        self.named: list[str] = []
+        self.nameless = False
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
@@ -42,6 +44,16 @@ class Api:
                 return httpx2.Response(200, json={"results": [
                     {"customer": {"currencyCode": self.currency}},
                 ]})  # fmt: skip
+            if "descriptive_name" in query:
+                self.named.append(query)
+                if self.nameless:
+                    return httpx2.Response(500, json={"error": {"message": "no"}})
+                return httpx2.Response(200, json={"results": [{
+                    "customer": {"descriptiveName": "General Informatics"},
+                    "campaignBudget": {"name": "Spring promo"},
+                    "campaign": {"name": "Spring"},
+                    "adGroup": {"name": "Windows"},
+                }]})  # fmt: skip
             if "amount_micros" in query:
                 return httpx2.Response(200, json={"results": [
                     {"campaignBudget": {"amountMicros": self.budget}},
@@ -157,6 +169,68 @@ def test_the_card_gets_the_spend_and_offers_no_trust(database_url: str) -> None:
     assert shown.money is not None
     assert shown.money["amount"] == "75.50 USD a day"
     assert shown.trustable is False
+
+
+NAMED = [
+    ("set_daily_budget", {"budget_id": "9", "daily_amount": 75.5, "currency": "USD"},
+     "Budget", "Spring promo", "9", "campaign_budget"),
+    ("start_campaign", {"campaign_id": "7", "daily_amount": 50, "currency": "USD"},
+     "Campaign", "Spring", "7", "FROM campaign "),
+    ("set_ad_group_bid", {"ad_group_id": "5", "cpc_bid": 1.25, "currency": "USD"},
+     "Ad group", "Windows", "5", "FROM ad_group"),
+]  # fmt: skip
+
+
+async def named_card(operation: str, body: dict[str, Any]) -> dict[str, str]:
+    """The names as a held call gets them, then the card as the API draws it."""
+    args = {"operation": f"google_ads.{operation}", "account": "1234567890", "body": body}
+    names = await vendor._names(target(), args)  # pyright: ignore[reportPrivateUsage]
+    held = ToolCall(Caller("p", "s", "t"), InstanceType.VENDOR, "call_operation", "ads", args)
+    with session_scope() as session:
+        made = decisions.hold(session, held, "ads")
+        made.payload = {**(made.payload or {}), "names": names}
+        shown = routes._decision_out(made)  # pyright: ignore[reportPrivateUsage]
+    assert shown.money is not None
+    return shown.money
+
+
+@pytest.mark.parametrize(("name", "body", "who", "called", "ident", "asked"), NAMED)
+async def test_the_card_says_what_it_is_by_googles_name(
+    api: Api, name: str, body: dict[str, Any], who: str, called: str, ident: str, asked: str
+) -> None:
+    money = await named_card(name, body)
+    assert (money["who"], money["counterparty"], money["counterparty_id"]) == (who, called, ident)
+    assert (money["which"], money["account"]) == ("Customer", "General Informatics")
+    assert money["account_id"] == "1234567890"
+    assert len(api.named) == 1  # one report, so one of the day's operations
+    assert asked in api.named[0]
+    assert f".id = {ident}" in api.named[0]
+
+
+async def test_a_new_campaign_has_only_a_customer_to_look_up(api: Api) -> None:
+    body = {**CAMPAIGN, "daily_amount": 20, "currency": "USD"}
+    money = await named_card("create_campaign", body)
+    assert (money["who"], money["counterparty"]) == ("New campaign", "Spring")
+    assert money["counterparty_id"] == ""
+    assert money["account"] == "General Informatics"
+
+
+async def test_held_with_google_unreachable_the_card_shows_the_ids(api: Api) -> None:
+    """Naming is a courtesy: the call is still held, and nothing's made up."""
+    api.nameless = True
+    args = {
+        "operation": "google_ads.set_daily_budget", "account": "1234567890",
+        "body": {"budget_id": "9", "daily_amount": 75.5, "currency": "USD"},
+    }  # fmt: skip
+    card = vendor.money_card(args)
+    assert card is not None
+    assert (card.who, card.counterparty, card.counterparty_id) == ("Budget", "9", "")
+    assert vendor.named(card, {}) == card
+
+
+def test_a_very_long_name_is_cut_short() -> None:
+    card = vendor.Card("1 USD", "9", "1234567890", "Budget", "Customer")
+    assert len(vendor.named(card, {"who": "x" * 500}).counterparty) == vendor.MOST_NAME_CHARS
 
 
 def held_card(operation: str, body: dict[str, Any]) -> Any:

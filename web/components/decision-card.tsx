@@ -17,7 +17,7 @@ export interface Decision {
   status: string;
   summary: string;
   heading: string | null;
-  money?: { amount: string; counterparty: string; account: string } | null;
+  money?: { amount: string; counterparty: string; account: string; who?: string; which?: string; counterparty_id?: string; account_id?: string } | null;
   trustable?: boolean;
   declares?: string | null;
   options: string[];
@@ -110,10 +110,16 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
           {decision.money ? (
             <dl className="rounded-md border border-line p-3">
               <dd className="text-2xl font-semibold">{decision.money.amount}</dd>
-              <dt className="mt-2 text-xs text-muted">To or from</dt>
-              <dd className="text-lg font-medium">{decision.money.counterparty}</dd>
-              <dt className="mt-2 text-xs text-muted">Account</dt>
-              <dd className="text-lg font-medium">{decision.money.account}</dd>
+              <dt className="mt-2 text-xs text-muted">{decision.money.who ?? "To or from"}</dt>
+              <dd className="text-lg font-medium">
+                {decision.money.counterparty}
+                {decision.money.counterparty_id ? <span className="ml-2 text-xs font-normal text-muted">ID {decision.money.counterparty_id}</span> : null}
+              </dd>
+              <dt className="mt-2 text-xs text-muted">{decision.money.which ?? "Account"}</dt>
+              <dd className="text-lg font-medium">
+                {decision.money.account}
+                {decision.money.account_id ? <span className="ml-2 text-xs font-normal text-muted">ID {decision.money.account_id}</span> : null}
+              </dd>
             </dl>
           ) : null}
           {decision.declares ? (

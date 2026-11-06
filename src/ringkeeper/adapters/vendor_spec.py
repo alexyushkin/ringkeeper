@@ -26,6 +26,8 @@ JSON = dict[str, Any]
 Reader = Callable[[str, JSON, JSON | None], Awaitable[JSON]]
 # A check before a change runs: (how to read, the call's path values, its body, its account).
 Confirm = Callable[[Reader, JSON, JSON, str | None], Awaitable[None]]
+# The vendor's own names for what a card shows, when the call only has IDs: `who`, `which`.
+Namer = Callable[[Reader, JSON, JSON, str | None], Awaitable[JSON]]
 READ, HELD, FINAL = "read", "held", "final"
 # What a Field's value may look like when it becomes part of the address.
 HOST_LABEL = r"^[a-z0-9][a-z0-9-]{0,62}$"
@@ -47,6 +49,9 @@ class Money:
     # The amount is in the currency's smallest unit (cents).
     minor_units: bool = False
     per: str = ""  # what the amount is for: " a day", " a click"
+    # What the card calls them, when they aren't someone paid or an account: "Budget".
+    who: str = "To or from"
+    which: str = "Account"
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,8 @@ class Op:
     confirm: Confirm | None = None
     # What approving states to the vendor in the owner's name. The card says it.
     declares: str = ""
+    # Asked once, when the call is held. If the vendor doesn't say, the card shows the IDs.
+    names: Namer | None = None
 
 
 def reads(
@@ -153,10 +160,11 @@ def final(
     inject: tuple[str, ...] = (),
     hint: str = "",
     declares: str = "",
+    names: Namer | None = None,
 ) -> Op:
     return Op(
         name, method, path, says, FINAL, why, params=params, only=only, undo=undo, money=money,
-        shape=shape, confirm=confirm, inject=inject, hint=hint, declares=declares,
+        shape=shape, confirm=confirm, inject=inject, hint=hint, declares=declares, names=names,
     )  # fmt: skip
 
 

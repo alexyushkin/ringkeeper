@@ -569,7 +569,10 @@ def money(decision: Decision) -> dict[str, str] | None:
     if decision.service is not InstanceType.VENDOR:
         return None
     card = vendor.money_card(args)
-    return vars(card) if card else None
+    if card is None:
+        return None
+    names = cast(dict[str, Any], (decision.payload or {}).get("names") or {})
+    return vars(vendor.named(card, names))
 
 
 def declares(decision: Decision) -> str | None:
