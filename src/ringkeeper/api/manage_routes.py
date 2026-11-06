@@ -9,7 +9,6 @@ recent confirmation (deps.check_recent_auth): a stolen session cookie alone
 can't point Telegram approvals at another chat or send a key elsewhere.
 """
 
-import asyncio
 import contextlib
 import re
 from pathlib import Path
@@ -27,8 +26,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy, remote
-from ringkeeper.adapters import mcp, vendor
-from ringkeeper.adapters.base import Target, ToolError
+from ringkeeper.adapters import vendor
+from ringkeeper.adapters.base import ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import (
     OWNER,
@@ -67,7 +66,6 @@ from ringkeeper.services import (
     google_oauth,
     instances,
     local_servers,
-    mcp_oauth,
     mcp_tools,
     model_list,
     probes,
@@ -824,20 +822,11 @@ def connection_tools(name: str, session: SessionDep) -> dict[str, Any]:
     instance = instances.get_instance(session, name)
     if instance.type is not InstanceType.MCP:
         raise HTTPException(409, detail="Only MCP server connections list their tools here.")
-    secret = mcp_oauth.resolve(get_vault(), instance.name, instance.secret_ref)
-    secret.also_scrub(*mcp.secret_fragments(secret.reveal()))
-    target = Target(instance.name, instance.env, None, secret, dict(instance.config or {}))
     session.close()  # no transaction while the server starts
-
-    async def ask() -> dict[str, Any]:
-        return await mcp.list_tools.handler(target)
-
     try:
-        listed = asyncio.run(ask())
-    except ToolError as error:
+        return mcp_tools.refresh(name)
+    except (ToolError, TimeoutError) as error:
         raise HTTPException(502, detail=scrub(str(error))) from None
-    mcp_tools.remember(name, listed)
-    return listed
 
 
 class ToolRulesIn(Input):

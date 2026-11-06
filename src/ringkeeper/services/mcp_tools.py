@@ -5,16 +5,37 @@ server's tools, so the gateway can decide a call without starting the server
 first. A change in them changes what runs without asking, so it is audited.
 """
 
+import asyncio
+
 from sqlalchemy.orm import Session
 
 from ringkeeper.adapters import mcp
-from ringkeeper.adapters.base import JSON
+from ringkeeper.adapters.base import JSON, Target
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import InstanceType
-from ringkeeper.services import admin_audit, instances
+from ringkeeper.services import admin_audit, instances, mcp_oauth
+from ringkeeper.vault import get_vault
 
+TIMEOUT_SECONDS = 30
 LABELS = {mcp.READ: "runs without asking", mcp.APPROVE: "waits", mcp.CONFIRM: "needs the name"}
+
+
+def refresh(name: str) -> JSON:
+    """Ask the server for its tools now, and keep what it says. A server's list can change: Notion
+    hides its memory tools when memories are off."""
+    with session_scope(commit=False) as session:
+        instance = instances.get_instance(session, name)
+        secret = mcp_oauth.resolve(get_vault(), instance.name, instance.secret_ref)
+        secret.also_scrub(*mcp.secret_fragments(secret.reveal()))
+        target = Target(instance.name, instance.env, None, secret, dict(instance.config or {}))
+
+    async def ask() -> JSON:
+        return await asyncio.wait_for(mcp.list_tools.handler(target), TIMEOUT_SECONDS)
+
+    listed = asyncio.run(ask())
+    remember(name, listed)
+    return listed
 
 
 def remember(name: str, listed: JSON) -> None:
