@@ -1,16 +1,19 @@
 """A service saying the plan doesn't include this: for any connector, it's said plainly, the call
-isn't repeated, and it doesn't count against the task."""
+isn't repeated, and that call doesn't count against the task, while everything else does."""
 
 import asyncio
 import json
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from ringkeeper import plan_limits, remote
 from ringkeeper.adapters import vendor
@@ -20,8 +23,10 @@ from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import (
     AuthMode,
+    DecisionKind,
     Env,
     InstanceType,
+    Project,
     SessionRole,
     Task,
     TaskStatus,
@@ -30,7 +35,6 @@ from ringkeeper.models import (
 from ringkeeper.schemas import BindingIn, InstanceIn
 from ringkeeper.services import (
     architect,
-    architect_loop,
     bindings,
     instances,
     mcp_tools,
@@ -41,8 +45,22 @@ from ringkeeper.services import (
 )
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import get_vault
+from ringkeeper.workers.manager import Manager
+from ringkeeper.workers.runtime import WorkerSpec
 from tests import test_web_api
+from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
 from tests.helpers import make_project
+from tests.test_architect import (
+    Director,
+    answer,
+    caller_of,
+    config_of,
+    feature,
+    load,
+    pending,
+    run,
+    submit,
+)
 
 setup_code, admin, owner = test_web_api.setup_code, test_web_api.admin, test_web_api.owner
 SERVER = Path(__file__).parent / "fixtures" / "fake_leadfeeder_mcp.py"
@@ -102,17 +120,21 @@ def add(name: str, ran: Path, plan: str = "free") -> None:
         ))  # fmt: skip
 
 
-@pytest.fixture
-def free(database_url: str, tmp_path: Path) -> Path:
-    file = tmp_path / "ran.json"
-    with session_scope() as session:
-        make_project(session, "acme-web", owner="acme")
+def connect(file: Path) -> None:
     add(NAME, file)
     with session_scope() as session:
         bindings.set_binding(session, BindingIn(
             project="acme-web", instance=NAME, scope={"account": "acc-1"},
         ))  # fmt: skip
     mcp_tools.refresh(NAME)
+
+
+@pytest.fixture
+def free(database_url: str, tmp_path: Path) -> Path:
+    file = tmp_path / "ran.json"
+    with session_scope() as session:
+        make_project(session, "acme-web", owner="acme")
+    connect(file)
     return file
 
 
@@ -229,50 +251,165 @@ def test_the_api_gives_the_card_and_task_what_they_show(owner: TestClient, free:
 # --- It doesn't count against the task ---
 
 
-def ended(plan_limit: str | None, *, passed: bool = False) -> Task:
+TESTS, LINT = "pytest -q", "ruff check ."
+SENT_BACK = "don't send the worker back"
+
+
+class Turns(Director):
+    """Worker turns as (does it make the call the plan refuses, the checks that fail)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.turns: list[tuple[bool, list[str]]] = []
+
+    def __call__(self, spec: WorkerSpec) -> Script:
+        if config_of(spec)["role"] == "architect":
+            return super().__call__(spec)
+        self.specs.append(spec)
+        calls, failing = self.turns.pop(0)
+        if calls:
+            with pytest.raises(PlanLimitError):
+                search(str(caller_of(spec).session_id))
+        results = [{"command": check, "passed": check not in failing, "output": "",
+                    "exit_code": int(check in failing)} for check in (TESTS, LINT)]  # fmt: skip
+        return Script(
+            after=[
+                result_line(session_id="work-1"),
+                workspace_line(["src/acme_web/visits.py"], branch="ringkeeper/t"),
+                line("ringkeeper.checks", passed=not failing, results=results),
+                line("ringkeeper.diff", text="+def visits(): ..."),
+            ]
+        )
+
+
+@pytest.fixture
+def looping(task_registry: None, tmp_path: Path) -> None:
     with session_scope() as session:
-        task = Task(project="acme-web", prompt="p", status=TaskStatus.RUNNING, max_turns=5,
-                    max_runtime_s=60, changed_files=[], auth_mode=AuthMode.API_KEY,
-                    plan_limit=plan_limit)  # fmt: skip
-        session.add(task)
-        session.flush()
-        session.add(WorkerSession(
-            task_id=task.id, ordinal=1, role=SessionRole.ARCHITECT, status=TaskStatus.SUCCEEDED,
-            prompt="p", state_volume="v",
-        ))  # fmt: skip
-        session.flush()
-        architect_loop._worker_ended(  # pyright: ignore[reportPrivateUsage]
-            session, get_settings(), task, TaskStatus.SUCCEEDED,
-            {"checks": {"passed": passed, "results": []}},
-        )  # fmt: skip
-        session.flush()
-        session.expunge(task)
-        return task
+        project = session.scalars(select(Project).where(Project.name == "acme-web")).one()
+        project.checks = [TESTS, LINT]
+    connect(tmp_path / "ran.json")
 
 
-def test_a_plan_limit_isnt_a_failed_check_round(free: Path) -> None:
-    assert ended(SAID).failed_check_rounds == 0
+def send_back(director: Turns, manager: Manager) -> None:
+    director.architect_steps.append(lambda a: a.continue_worker(feedback="Fix what failed."))
+    run(manager)
 
 
-def test_a_real_failure_still_counts(free: Path) -> None:
-    assert ended(None).failed_check_rounds == 1
+def play(*turns: tuple[bool, list[str]]) -> tuple[Turns, Manager, str]:
+    """A real feature task through the loop, the architect sending the worker back each time."""
+    director = Turns()
+    manager = Manager(FakeRuntime(director), get_vault())
+    task_id = feature()
+    director.architect_steps.append(submit)
+    run(manager)
+    [plan] = pending(DecisionKind.PLAN)
+    answer(plan, choice="approve")
+    director.architect_steps.append(lambda a: a.dispatch_worker(prompt="Add the visits report."))
+    run(manager)
+    for index, turn in enumerate(turns):
+        if index:
+            send_back(director, manager)
+        director.turns.append(turn)
+        run(manager)
+        run_of = load(task_id)
+        assert run_of.status is not TaskStatus.FAILED, run_of.error
+    return director, manager, task_id
 
 
-def test_the_model_doesnt_move_up_for_it() -> None:
-    from ringkeeper import model_choice  # noqa: PLC0415
-    from ringkeeper.models import Complexity  # noqa: PLC0415
-
-    # Two rounds is what moves a worker up, and a plan limit adds none.
-    assert model_choice.tier(Complexity.LOW, 0) is Complexity.LOW
-    assert model_choice.tier(Complexity.LOW, 2) is Complexity.MEDIUM
+def rounds(*turns: tuple[bool, list[str]]) -> int:
+    return load(play(*turns)[2]).failed_check_rounds
 
 
-def test_the_architect_is_told_not_to_send_the_worker_back() -> None:
+def next_worker_model(director: Turns, manager: Manager) -> str:
+    """Review 3 of 3 goes to the operator. Told to go on, the worker runs once more."""
+    send_back(director, manager)
+    [question] = pending(DecisionKind.QUESTION)
+    answer(question, text="Go on.")
+    director.architect_steps.append(lambda a: a.continue_worker(feedback="One more pass."))
+    run(manager)
+    director.turns.append((False, []))
+    run(manager)
+    return config_of(director.specs[-1])["model"]
+
+
+@pytest.mark.usefixtures("looping")
+@pytest.mark.parametrize("retrying", [False, True])
+def test_a_plan_limit_then_two_unrelated_failures_still_escalates(retrying: bool) -> None:
+    director, manager, task_id = play(
+        (True, [TESTS]), (retrying, [LINT]), (retrying, [LINT]),
+    )  # fmt: skip
+    task = load(task_id)
+    assert task.plan_limit == SAID  # the task still says why
+    assert task.failed_check_rounds == 2
+    assert next_worker_model(director, manager) == "claude-opus-5-5"
+
+
+@pytest.mark.usefixtures("looping")
+def test_the_refused_call_and_its_retries_dont_count() -> None:
+    director, manager, task_id = play((True, [TESTS]), (True, [TESTS]), (True, [TESTS]))
+    assert load(task_id).failed_check_rounds == 0
+    assert next_worker_model(director, manager) == "claude-sonnet-5-5"
+
+
+@pytest.mark.usefixtures("looping")
+def test_a_real_failure_still_counts() -> None:
+    assert rounds((False, [TESTS])) == 1
+
+
+@pytest.mark.usefixtures("looping")
+def test_the_same_check_failing_without_the_call_counts() -> None:
+    assert rounds((True, [TESTS]), (False, [TESTS])) == 1
+
+
+@pytest.mark.usefixtures("looping")
+def test_a_check_already_failing_before_the_limit_counts() -> None:
+    assert rounds((False, [TESTS]), (True, [TESTS])) == 2
+
+
+@pytest.mark.usefixtures("looping")
+def test_a_retry_with_a_new_failure_counts() -> None:
+    assert rounds((True, [TESTS]), (True, [TESTS, LINT])) == 1
+
+
+@pytest.mark.usefixtures("looping")
+def test_the_architect_only_hears_of_it_for_the_round_it_happened() -> None:
+    _, _, task_id = play((True, [TESTS]), (False, [LINT]))
+    with session_scope() as session:
+        reviews = [s.prompt for s in session.get(Task, uuid.UUID(task_id)).sessions  # type: ignore[union-attr]
+                   if s.role is SessionRole.ARCHITECT and "Checks:" in s.prompt]  # fmt: skip
+    assert SENT_BACK in reviews[0]
+    assert SAID in reviews[0]
+    assert SENT_BACK not in reviews[1]
+    assert SAID not in reviews[1]
+
+
+def turn(ordinal: int, role: SessionRole = SessionRole.WORKER, **fields: Any) -> WorkerSession:
+    return WorkerSession(ordinal=ordinal, role=role, **fields)
+
+
+def test_a_round_that_stopped_for_an_approval_keeps_its_refusal() -> None:
+    failed = {"passed": False, "results": [{"command": TESTS, "passed": False}]}
+    resumed = turn(3, checks=failed)
+    task = Task(prompt="p", sessions=[
+        turn(1, SessionRole.ARCHITECT),
+        turn(2, plan_refused={f"{NAME}/search_web_visits": SAID}),
+        resumed,
+    ])  # fmt: skip
+    assert plan_notes.explains(task, resumed)
+    assert plan_notes.refused_now(task, resumed) == SAID
+
+
+def test_the_architect_isnt_told_to_approve_what_it_cant() -> None:
     task = Task(prompt="p", review_round=1, changed_files=[], plan_limit=SAID)
-    said = architect.review_prompt(task, TaskStatus.SUCCEEDED, None, None, None, None)
-    assert "don't send the worker back" in said
-    assert SAID in said
-    assert "or continue_worker" not in said
+    review = partial(architect.review_prompt, task, TaskStatus.SUCCEEDED)
+    passed = review({"passed": True, "results": []}, None, None, None, plan_limit=SAID)
+    assert SENT_BACK in passed
+    assert "Call approve_work(summary) with what was done" in passed
+    assert "or continue_worker" not in passed
+    failed = review({"passed": False, "results": []}, None, None, None, plan_limit=SAID)
+    assert SENT_BACK in failed
+    assert "call continue_worker with what to fix without it" in failed
+    assert "approve_work" not in failed
 
 
 # --- Any connector ---

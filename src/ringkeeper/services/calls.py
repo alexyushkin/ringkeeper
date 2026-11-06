@@ -409,6 +409,12 @@ def _which(call: ToolCall) -> str:
     return str(call.args.get("tool") or call.args.get("operation") or call.tool)
 
 
+async def _note_refused(call: ToolCall, name: str, message: str) -> None:
+    await anyio.to_thread.run_sync(
+        plan_notes.note_task, call.caller.session_id, f"{name}/{_which(call)}", message
+    )
+
+
 async def _run(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
     """Run it, keeping what its plan said: a plan refusal is noted on the connection and the
     task, and something that worked isn't remembered as refused."""
@@ -416,7 +422,7 @@ async def _run(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
         result = await _invoke(spec.handler, target, call.args, call.tool)
     except PlanLimitError as limit:
         await anyio.to_thread.run_sync(plan_notes.note, target.name, _which(call), limit.shown)
-        await anyio.to_thread.run_sync(plan_notes.note_task, call.caller.session_id, limit.shown)
+        await _note_refused(call, target.name, limit.shown)
         raise
     if _which(call) in cast(JSON, target.config.get(plan_notes.KEY) or {}).get("tools", []):
         await anyio.to_thread.run_sync(plan_notes.clear, target.name, _which(call))
@@ -460,6 +466,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
 
     if said := plan_notes.blocked(auth.config, _which(call)):
         # Just refused for its plan: asking again can't help, and shouldn't wait for approval.
+        await _note_refused(call, auth.instance, said)
         raise PlanLimitError(said)
 
     try:

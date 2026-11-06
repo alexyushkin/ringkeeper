@@ -93,7 +93,10 @@ def review_prompt(
     diff: str | None,
     worker_result: str | None,
     error: str | None,
+    *,
+    plan_limit: str | None = None,
 ) -> str:
+    """`plan_limit`: what a service's plan refused in this round, not earlier in the task."""
     passed = (checks or {}).get("passed", True)
     status = f"ended with {worker_status}" + (f": {error}" if error else "")
     if worker_status is TaskStatus.SUCCEEDED:
@@ -113,14 +116,17 @@ def review_prompt(
     ]
     if worker_result:
         parts.append("The worker's final message:\n" + _clip(worker_result, 4000))
-    if task.plan_limit:
+    if plan_limit:
         parts.append(
-            f"A service's plan stopped part of this: {task.plan_limit} More attempts won't change "
-            "that, so don't send the worker back for it. Call approve_work(summary) with what "
-            "was done and what couldn't be."
+            f"A service's plan stopped part of this: {plan_limit} More attempts won't change "
+            "that, so don't send the worker back for it."
         )
+    if passed and plan_limit:
+        parts.append("Call approve_work(summary) with what was done and what couldn't be.")
     elif passed:
         parts.append("Call approve_work(summary) if this meets the plan, or continue_worker.")
+    elif plan_limit:
+        parts.append("The checks fail, so call continue_worker with what to fix without it.")
     else:
         parts.append("The checks fail, so call continue_worker with what to fix.")
     return "\n\n".join(parts)
