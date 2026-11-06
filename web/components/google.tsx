@@ -30,7 +30,18 @@ interface AccountInfo {
   app: string | null;
 }
 
+interface AdsBudget {
+  app: string;
+  name: string;
+  accounts: number;
+  level: string;
+  used: number;
+  limit: number | null;
+}
+
 interface GoogleApp {
+  ads: AdsBudget[];
+  ads_levels: { key: string; label: string; limit: number | null }[];
   configured: boolean;
   client_id: string | null;
   apps: AppInfo[];
@@ -65,6 +76,9 @@ const APIS: [string, string][] = [
   ["Search Console API", "searchconsole.googleapis.com"],
   ["Analytics Data API", "analyticsdata.googleapis.com"],
   ["Analytics Admin API", "analyticsadmin.googleapis.com"],
+  ["YouTube Data API v3", "youtube.googleapis.com"],
+  ["YouTube Analytics API", "youtubeanalytics.googleapis.com"],
+  ["Google Ads API", "googleads.googleapis.com"],
 ];
 export const DEFAULT_ACCESS = ["mail_read", "mail_send", "mail_drafts"];
 // Ringkeeper's pages, for the Branding page of your Google app.
@@ -189,6 +203,43 @@ function AppCredentials({ named = false, saveLabel, onSave, onCancel }: { named?
 /** Settings › Google app: the owner's own Google app, set up once in their own Google
  * Cloud project; every Google account (a client's or yours) signs in through it. There
  * can be more than one (a client's own project, or past Google's 100 accounts). */
+/** Google's daily allowance belongs to the Cloud project, so every client's calls share it. */
+function AdsBudgets({ data, onChange }: { data: GoogleApp; onChange: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  if (!data.ads.length) return null;
+  async function choose(app: string, level: string) {
+    setError(null);
+    try {
+      await api(`google/apps/${app}/ads-level`, { method: "PUT", json: { level } });
+      onChange();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium">Google Ads operations</h3>
+      <p className="text-xs text-muted">Google gives each Cloud project one daily allowance, shared by every client. This counts what this install sent in the last 24 hours, so Google&apos;s own count can differ. A report is one operation, each change is one, and more pages of a report are free.</p>
+      {data.ads.map((a) => {
+        const full = a.limit !== null && a.used >= a.limit * 0.8;
+        return (
+          <div key={a.app} className="space-y-2 rounded-xl border border-line p-3 text-sm">
+            <p>
+              <strong>{a.name}</strong>{" "}
+              <span className={full ? "text-bad" : "text-muted"}>
+                · {a.used.toLocaleString()} {a.limit === null ? "used, no daily limit" : `of ${a.limit.toLocaleString()} used`}
+              </span>
+              <span className="text-muted"> · {a.accounts === 1 ? "1 ad connection" : `${a.accounts} ad connections`}</span>
+            </p>
+            <Select label="Access level" value={a.level} onChange={(level) => choose(a.app, level)} options={data.ads_levels.map((l): [string, string] => [l.key, l.limit === null ? `${l.label} (no daily limit)` : `${l.label} (${l.limit.toLocaleString()} a day)`])} hint="What Google gave this project, on the Google Ads API page of your Cloud console." />
+          </div>
+        );
+      })}
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
 export function GoogleSettings() {
   const app = useApi<GoogleApp>("google/app");
   const connections = useApi<{ name: string; title?: string | null; projects: string[]; last_test_ok: boolean | null; last_test_message: string | null }[]>("connections");
@@ -221,7 +272,7 @@ export function GoogleSettings() {
       <h2 className="font-semibold">Google app (one-time setup)</h2>
       <p className="text-sm">This connects Ringkeeper to Google once. Then add each Google account, as many as you need: one per client, or your own.</p>
       <p className="text-sm text-muted">
-        Gmail, Drive, Calendar and Sheets, for your clients&apos; Google accounts and your own. They sign in through a Google app you create in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
+        Gmail, Drive, Calendar, Sheets, YouTube and Google Ads, for your clients&apos; Google accounts and your own. They sign in through a Google app you create in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
       </p>
       {data.configured ? (
         <>
@@ -294,6 +345,7 @@ export function GoogleSettings() {
               <p className="text-sm text-muted">No Google accounts yet. Add the first with Add a Google account.</p>
             )}
           </div>
+          <AdsBudgets data={data} onChange={app.reload} />
           <Details label="Add another Google app">
             <div className="space-y-3">
               <p className="text-sm text-muted">

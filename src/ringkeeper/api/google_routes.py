@@ -19,14 +19,21 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import InstanceType
 from ringkeeper.schemas import Input, NonEmpty, Slug
-from ringkeeper.services import admin_audit, google_connections, google_oauth, instances
+from ringkeeper.services import (
+    admin_audit,
+    ads_budget,
+    google_connections,
+    google_oauth,
+    instances,
+)
 
 router = APIRouter(prefix="/google", dependencies=[AdminDep, Depends(require_owner)])
 rules_router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
 AccessKey = Literal[
     "mail_read", "mail_send", "mail_drafts", "mail_trash", "drive_files", "drive_read_all",
-    "calendar_read", "calendar_write", "sheets_read", "sheets_write",
+    "calendar_read", "calendar_write", "sheets_read", "sheets_write", "search_console_read",
+    "analytics_read", "youtube_read", "youtube_upload", "youtube_manage", "youtube_analytics",
 ]  # fmt: skip
 
 
@@ -61,7 +68,41 @@ def app_status(session: SessionDep) -> dict[str, Any]:
             {"key": a.key, "label": a.label, "scope": a.scope, "note": a.note}
             for a in google_oauth.ACCESS.values()
         ],
+        "ads": _ads(session, apps),
+        "ads_levels": [
+            {"key": key, "label": label, "limit": limit}
+            for key, (label, limit) in ads_budget.LEVELS.items()
+        ],
     }
+
+
+def _ads(session: Any, apps: list[google_oauth.App]) -> list[dict[str, Any]]:
+    """Each Google app that has Google Ads accounts, and its share of Google's daily
+    operations: one allowance per Cloud project, however many clients use it."""
+    found = instances.list_instances(session, type=InstanceType.VENDOR)
+    accounts = [i for i in found if i.config.get("vendor") == "google_ads"]
+    shown: list[dict[str, Any]] = []
+    for app in apps:
+        mine = [i for i in accounts if i.config.get("app") == app.id]
+        if mine:
+            shown.append({
+                "app": app.id, "name": app.name, "accounts": len(mine),
+                **ads_budget.shown(session, app.id),
+            })  # fmt: skip
+    return shown
+
+
+class AdsLevelIn(Input):
+    level: Literal["explorer", "basic", "standard"]
+
+
+@router.put("/apps/{app_id}/ads-level")
+def set_ads_level(app_id: Slug, data: AdsLevelIn, session: WriteSessionDep) -> dict[str, Any]:
+    """Which access level Google gave this app's Cloud project: it sets the daily limit."""
+    if google_oauth.load_app(get_settings(), app_id) is None:
+        raise HTTPException(404, detail="There's no Google app like that.")
+    ads_budget.set_level(session, app_id, data.level)
+    return ads_budget.shown(session, app_id)
 
 
 class AppIn(Input):
@@ -117,7 +158,7 @@ def forget_app(app_id: Slug, session: WriteSessionDep) -> None:
 
 
 class SignInIn(Input):
-    access: Annotated[list[AccessKey], Field(min_length=1, max_length=10)]
+    access: Annotated[list[AccessKey], Field(min_length=1, max_length=20)]
     # A new account: whose (a client's, or yours: shared), and where it goes.
     owner: NonEmpty | None = None
     shared: bool = False

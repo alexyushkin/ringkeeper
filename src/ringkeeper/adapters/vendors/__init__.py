@@ -3,12 +3,14 @@
 from ringkeeper.adapters.vendor_spec import Vendor
 from ringkeeper.adapters.vendors import (
     accounting,
+    ads,
     cms,
     crm,
     field_service,
     identity,
     microsoft,
     payments,
+    social,
 )
 
 ALL: tuple[Vendor, ...] = (
@@ -19,4 +21,6 @@ ALL: tuple[Vendor, ...] = (
     *accounting.VENDORS,
     *cms.VENDORS,
     *payments.VENDORS,
+    *social.VENDORS,
+    *ads.VENDORS,
 )

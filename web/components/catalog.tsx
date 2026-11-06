@@ -168,7 +168,7 @@ function SignInBadge({ signin }: { signin: boolean | null }) {
 }
 
 /** What people look for, in the order the catalog shows it. */
-const CATEGORIES = ["Databases", "Email", "CRM", "Accounting", "Payments", "CMS", "Cloud", "Storage", "AI", "Dev tools", "Other"] as const;
+const CATEGORIES = ["Databases", "Email", "CRM", "Accounting", "Payments", "CMS", "Social", "Ads", "Cloud", "Storage", "AI", "Dev tools", "Other"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 /** A built-in service: its own form (a ConnectionForm type, Google, or a token service). */
@@ -189,7 +189,7 @@ const BUILT_IN: Tile[] = [
   { key: "mailbox", label: "Mailbox", sub: "Gmail, Outlook, Zoho, Yahoo or any IMAP", open: "form", category: "Email", words: ["mailbox", "gmail", "outlook", "office365", "microsoft", "zoho", "yahoo", "imap", "email", "mail", "inbox"] },
   { key: "smtp", label: "Email sending", sub: "SMTP, any provider", open: "form", category: "Email", words: ["smtp", "email", "mail", "send", "sendgrid", "mailgun", "postmark", "brevo", "ses", "mailchimp", "mandrill"] },
   { key: "resend", label: "Resend", sub: "Email sending", open: "form", category: "Email", words: ["resend", "email", "mail", "send"] },
-  { key: "google", label: "Google account", sub: "Gmail, Drive, Calendar, Sheets, Search Console, Analytics", open: "google", category: "Email", words: ["google", "gmail", "drive", "calendar", "sheets", "docs", "analytics", "ga4", "gsc", "seo", "search console"] },
+  { key: "google", label: "Google account", sub: "Gmail, Drive, Calendar, Sheets, YouTube, Search Console, Analytics", open: "google", category: "Email", words: ["google", "gmail", "drive", "calendar", "sheets", "docs", "analytics", "ga4", "gsc", "seo", "search console", "youtube", "videos", "social"] },
   { key: "twilio", label: "Twilio", sub: "Texts and calls", open: "form", category: "Email", words: ["twilio", "sms", "text", "texts", "call", "calls"] },
   { key: "s3", label: "File storage", sub: "AWS S3, Cloudflare R2, Vercel Blob", open: "form", category: "Storage", words: ["s3", "r2", "blob", "bucket", "aws", "amazon", "minio", "backblaze", "wasabi", "spaces", "files", "storage"] },
   { key: "retell", label: "Retell AI", sub: "Voice agents", open: "remote", category: "AI", words: ["retell", "voice", "phone"] },

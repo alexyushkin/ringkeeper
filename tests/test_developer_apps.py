@@ -96,7 +96,7 @@ def test_a_secret_stays_in_the_vault_and_a_second_app_is_kept_apart(fake: FakeVe
 
 def test_every_guide_says_where_to_paste_the_address() -> None:
     for found in developer_apps.PROVIDERS.values():
-        assert any("{redirect}" in step for step in found.steps), found.key
+        assert not found.listed or any("{redirect}" in step for step in found.steps), found.key
 
 
 def test_an_option_is_checked() -> None:
@@ -126,7 +126,8 @@ def test_every_provider_signs_in_with_pkce_and_a_state_used_once(
     wanted = Vendor(f"{key}_any", key, "Accounting", "", "https://x.example", (READ_TEST,),
                     provider=key)  # fmt: skip
     monkeypatch.setitem(vendor.VENDORS, wanted.key, wanted)
-    app = developer_apps.App("a1", "Mine", "client-1", "secret-123", {"tenant": "common"})
+    options = {"tenant": "common", "client_accounts": "approved"}
+    app = developer_apps.App("a1", "Mine", "client-1", "secret-123", options)
 
     def the_app(*_args: object) -> developer_apps.App:
         return app

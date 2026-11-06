@@ -739,6 +739,12 @@
 },
 {
 "doc": "services/google",
+"anchor": "youtube",
+"title": "YouTube",
+"text": "Choose what the account may do when you sign in, or later with Change access: **read videos and comments**, **upload videos**, **edit and delete videos, reply to comments**, and **read analytics**. First turn on the YouTube Data and YouTube Analytics APIs, and add the `youtube.readonly`, `youtube.upload`, `youtube.force-ssl` and `yt-analytics.readonly` scopes under Data Access. A sign-in reaches one channel: the one you pick on Google's page. **A video is private unless you choose otherwise.** Ringkeeper always sends its privacy, because YouTube's own default is public. - **Reading runs by itself.** - **A private video waits for your approval,** scheduled or not. A scheduled one goes public by itself at its time, and approving it is what allows that. - **Public and unlisted videos, edits, replies and deletes need the connection's name typed,** in the app itself. They can't be approved from a chat app. - **A time that has passed is refused,** even if it passed while the card waited: YouTube would publish at once. A video comes from the project's own folder. YouTube allows 100 uploads a day."
+},
+{
+"doc": "services/google",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
 "text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
@@ -844,6 +850,12 @@
 "anchor": "where-the-sign-in-comes-back",
 "title": "Where the sign-in comes back",
 "text": "Most services want one exact address, and Ringkeeper's own port changes each launch, so they come back to a fixed address on this computer: `http://localhost:17845/oauth/callback`. It only answers on this computer. Nothing is opened to the internet. **Intuit, Xero, HubSpot and Salesforce** come back through a page instead: `https://yushkin.us/ringkeeper/oauth/callback`. These vendors want an https address, or won't take this computer's address for real accounts. It's a static page that passes the sign-in's code and state straight on to the address above, so Ringkeeper needs to be open on this computer. It keeps nothing, and a code can't be used without your app's secret, which stays in the vault. Ringkeeper checks the sign-in's state itself, as it does for every sign-in. On a server install, every service comes back to the server's own address."
+},
+{
+"doc": "services/developer-apps",
+"anchor": "meta-and-threads",
+"title": "Meta and Threads",
+"text": "Meta's apps come back through the https page, like HubSpot's. Your own Pages, Instagram accounts and Threads account work with no review from Meta, as long as you have a role on the app. A client's need Meta's review first: see Facebook Pages, Instagram and Threads. Change **Client accounts** on the app here once Meta has approved it. Google Ads uses your Google app, so it isn't a separate card. See Google Ads."
 },
 {
 "doc": "services/developer-apps",

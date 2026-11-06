@@ -32,6 +32,8 @@ interface ProviderInfo {
   scopes: string[];
   options: OptionInfo[];
   note: string;
+  listed: boolean;
+  client_review: boolean;
   apps: AppInfo[];
 }
 
@@ -103,6 +105,28 @@ function AddApp({ provider, onSaved }: { provider: ProviderInfo; onSaved: () => 
   );
 }
 
+/** Whether the vendor has reviewed this app. Only that can let a client's account sign in. */
+function Review({ provider, app, onChange }: { provider: ProviderInfo; app: AppInfo; onChange: () => void }) {
+  const option = provider.options.find((o) => o.key === "client_accounts");
+  const [error, setError] = useState<string | null>(null);
+  if (!provider.client_review || !option) return null;
+  async function choose(value: string) {
+    setError(null);
+    try {
+      await api(`developer-apps/${provider.key}/apps/${app.id}/options`, { method: "PUT", json: { options: { ...app.options, client_accounts: value } } });
+      onChange();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+  return (
+    <>
+      <Select label={option.label} value={app.options.client_accounts ?? option.default} onChange={choose} options={option.choices} hint={option.hint} />
+      {error ? <Alert>{error}</Alert> : null}
+    </>
+  );
+}
+
 function Provider({ provider, onChange }: { provider: ProviderInfo; onChange: () => void }) {
   const [error, setError] = useState<string | null>(null);
   async function remove(app: AppInfo) {
@@ -132,6 +156,7 @@ function Provider({ provider, onChange }: { provider: ProviderInfo; onChange: ()
               <p className="text-xs text-muted">
                 Comes back to <code className="break-all select-all">{app.redirect}</code>
               </p>
+              <Review provider={provider} app={app} onChange={onChange} />
               <div className="flex flex-wrap items-center gap-2">
                 <Check provider={provider.key} app={app} />
                 <ConfirmButton question={app.accounts ? `Remove it? ${app.accounts} account(s) stop working at their next refresh.` : "Remove this app?"} confirm="Remove it" onConfirm={() => remove(app)}>
@@ -184,9 +209,11 @@ export function DeveloperApps() {
         <h3 className="mb-2 font-semibold">Google</h3>
         <GoogleSettings />
       </Card>
-      {(all.data?.providers ?? []).map((provider) => (
-        <Provider key={provider.key} provider={provider} onChange={all.reload} />
-      ))}
+      {(all.data?.providers ?? [])
+        .filter((provider) => provider.listed)
+        .map((provider) => (
+          <Provider key={provider.key} provider={provider} onChange={all.reload} />
+        ))}
       {all.error ? <Alert>{all.error}</Alert> : null}
     </div>
   );
