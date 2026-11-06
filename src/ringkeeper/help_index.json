@@ -1606,5 +1606,101 @@
 "anchor": "good-to-know",
 "title": "Good to know",
 "text": "- These use your login's own permissions, so give it no more than you want used. - Oracle marks its server as not meant for production use. - Versions are pinned, and change only with a Ringkeeper update."
+},
+{
+"doc": "services/bluesky",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "In Bluesky, open **Settings**, then **Privacy and security**, then App passwords, and add one. Paste it here with your handle, like `yourname.bsky.social`. Don't use your account password: Ringkeeper refuses anything that doesn't look like an app password. Add one connection per account. It's free, and there's no review."
+},
+{
+"doc": "services/bluesky",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** profiles, an account's posts with their likes, reposts and replies, a post's thread, notifications, and search. - **Post:** a post or a reply, with a link card if you want one. Links in the text become real links by themselves. - **Delete:** a post. Pictures and video aren't available yet, and neither are direct messages."
+},
+{
+"doc": "services/bluesky",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Posting, replying and deleting need the connection's name typed,** in the app itself. They can't be approved from a chat app, and nothing here can be trusted for an hour. - **Bluesky has no drafts.** A post waits on its approval card until you answer it."
+},
+{
+"doc": "services/bluesky",
+"anchor": "undo",
+"title": "Undo",
+"text": "A post can't be undone here. Delete it instead."
+},
+{
+"doc": "services/meta",
+"anchor": "",
+"title": "Facebook Pages, Instagram and Threads",
+"text": "All three sign in through an app of your own at Meta. See Developer apps for how to add one. **Your own accounts work now, with no review from Meta.** You need a role on the app, and the connection goes in as a shared tool, so it isn't tied to one client. Then pick the Page or account each project may use. **A client's account needs Meta's review first.** That means Tech Provider status, App Review and Business Verification. Until then the client's tile says **Needs Meta review** and won't sign in. Once Meta approves your app, change **Client accounts** on the app in **Settings > Developer apps**. Sign-in hasn't been tried against a real Meta app yet, so these tiles say Unverified."
+},
+{
+"doc": "services/meta",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "Add the app in **Settings > Developer apps**, then sign in from the tile: - **Facebook Pages:** pick the Pages it may reach on Meta's page. - **Instagram:** the account must be a professional one, linked to one of those Pages. - **Threads:** add the Threads use case to your app. It has its own app ID and secret."
+},
+{
+"doc": "services/meta",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "| | Facebook Pages | Instagram | Threads | |---|---|---|---| | Read | Posts, scheduled posts, comments, insights | Posts, comments, insights, posts left today | Posts, replies, insights, posts left today | | Prepare | Scheduled or unpublished posts | A post, kept unseen for a day | A post or reply, kept unseen | | Publish | Posts, comments and replies | Posts and replies | Posts and replies | | Hide | Comments | Comments | Replies | | Delete | Posts and comments | Posts and comments | Posts | Instagram and Threads fetch pictures and video from a public address. Instagram pictures must be JPEG. Neither can schedule through this API, so Facebook Pages are the only ones here that do. Direct messages aren't available yet."
+},
+{
+"doc": "services/meta",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reading runs by itself.** - **Anything nobody can see yet waits for your approval:** a scheduled or unpublished Page post, or a prepared Instagram or Threads post. Hiding a comment waits too. - **A scheduled Page post goes out by itself at its time.** Approving it is what allows that. - **Publishing, editing a post, replying and deleting need the connection's name typed,** in the app itself. They can't be approved from a chat app, and nothing here can be trusted for an hour."
+},
+{
+"doc": "services/meta",
+"anchor": "good-to-know",
+"title": "Good to know",
+"text": "- Each Page keeps its own token. A project held to one Page can't see or reach another. - A Threads sign-in lasts 60 days, and Ringkeeper renews it while it's in use. Left unused for that long, sign in again. - Meta's docs want an app's secret on a server. Here it's in your computer's vault, like every other app's."
+},
+{
+"doc": "services/meta",
+"anchor": "undo",
+"title": "Undo",
+"text": "None of these can be undone here. Delete a post instead, or edit it."
+},
+{
+"doc": "services/google-ads",
+"anchor": "",
+"title": "Google Ads",
+"text": "Google Ads signs in through your Google app, so there's no new app to add and no developer token: Google retired those on 2026-09-09. Access now belongs to the Google Cloud project that owns your app."
+},
+{
+"doc": "services/google-ads",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "1. In that project, turn on the Google Ads API. 2. On the API's overview page, open **Upgrade access level** and apply for **Explorer**. Google usually approves it by itself. Stay on Explorer or Basic: Standard adds an audit. 3. Sign in from the Google Ads tile, with a Google account that can reach the ad account. 4. On each project's link, set the **Ad account** it may use: the 10-digit customer ID. An application can be turned down if the project is on Google Cloud's Free Trial, or its billing is suspended. Google suggests upgrading or removing billing, and removing it costs nothing. A client under a manager account needs the manager's ID too, and tasks can pass it."
+},
+{
+"doc": "services/google-ads",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Read:** any report in Google Ads Query Language, and the accounts this sign-in reaches. - **Pause:** a campaign, an ad group or an ad. - **Create:** a Search campaign with its daily budget, ad groups, responsive search ads and keywords. Everything starts paused. - **Spend:** start a campaign, an ad group or an ad, and change a daily budget or a bid. Only Search campaigns can be made here for now. Payment methods and billing aren't reachable at all, and neither are creating accounts or changing who has access."
+},
+{
+"doc": "services/google-ads",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "- **Reports run by themselves.** - **Pausing waits for your approval.** It only stops spending. - **Creating, starting, and changing a budget or a bid need the connection's name typed,** in the app itself. They can't be approved from a chat app, and nothing here can be trusted for an hour. - **The card shows the spend,** like `50.00 USD a day`. Just before the change runs, Ringkeeper checks that currency against the account. Starting a campaign also checks its real budget. If either differs from the card, nothing changes. - **Approving a new campaign declares it has no EU political advertising.** Google won't make a campaign without that answer, so the card says it in full. If it isn't true, deny the card. A campaign that has any can't be made here."
+},
+{
+"doc": "services/google-ads",
+"anchor": "the-daily-operations",
+"title": "The daily operations",
+"text": "Google gives each Cloud project one daily allowance, and every client's calls share it: | Level | Operations a day | |---|---| | Explorer | 2,880 | | Basic | 15,000 | | Standard | No limit | **Settings > Developer apps** shows what's been used in the last 24 hours, under Google. Set the level there to match what Google gave you. A report is one operation, each change is one, and more pages of a report are free. Google still counts calls it refuses. This is what this install sent, so Google's own count can differ."
+},
+{
+"doc": "services/google-ads",
+"anchor": "undo",
+"title": "Undo",
+"text": "Nothing here can be undone by Ringkeeper. Pause it, or change it back with a new approval."
 }
 ]

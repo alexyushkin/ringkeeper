@@ -289,7 +289,7 @@ def test_help_ask_answers_without_a_model_when_it_can(owner: TestClient) -> None
 # --- The index ---
 
 
-def test_the_index_is_up_to_date_with_the_guide() -> None:
+def index_script() -> Any:
     spec = importlib.util.spec_from_file_location(
         "build_help_index", ROOT / "scripts" / "build_help_index.py"
     )
@@ -297,5 +297,15 @@ def test_the_index_is_up_to_date_with_the_guide() -> None:
     assert spec.loader is not None
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
+    return script
+
+
+def test_the_index_is_up_to_date_with_the_guide() -> None:
     shipped = (ROOT / "src" / "ringkeeper" / "help_index.json").read_text(encoding="utf-8")
-    assert shipped == script.build(), "run: uv run python scripts/build_help_index.py"
+    assert shipped == index_script().build(), "run: uv run python scripts/build_help_index.py"
+
+
+def test_every_service_guide_is_in_the_index() -> None:
+    """A guide left off the list is one Help can't answer from."""
+    guides = {f"services/{p.stem}" for p in (ROOT / "docs" / "services").glob("*.md")}
+    assert guides - {"services/README"} <= set(index_script().PAGES)
