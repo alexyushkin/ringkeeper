@@ -15,7 +15,7 @@
 "doc": "connections",
 "anchor": "",
 "title": "Connections and shared tools",
-"text": "A **connection** is one client's service: their database, Airtable base, n8n, Vercel, GitHub, Google account, Twilio number, or an MCP server. You add it once, link it to that client's projects, and every task in those projects can use it. A connection can't be linked to another client's project. A **shared tool** is yours, not a client's: a web browser, files on this computer, a search tool. It holds no client data, so it can go to any project, or to all of them (new ones too), with exceptions."
+"text": "A **connection** is one client's service: their database, Airtable base, n8n, Vercel, GitHub, Google account, Twilio number, or an MCP server. You add it once, link it to that client's projects, and every task in those projects can use it. A connection can't be linked to another client's project. A **shared tool** is yours, not a client's: a web browser, files on this computer, a search tool. It holds no client data, so it can go to any project, or to all of them (new ones too), with exceptions. You're asked right after adding one."
 },
 {
 "doc": "connections",
