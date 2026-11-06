@@ -1,4 +1,4 @@
-"""Google accounts (Gmail, Drive, Calendar, Sheets) through the owner's own Google
+"""Google accounts (Gmail, Drive, Calendar, Sheets, YouTube) through the owner's own Google
 app. The secret is JSON from services.google_oauth (the refresh and access
 tokens); the gateway refreshes it before each call. The connection's config
 says which account it is (`email`) and what it may be used for (`access`).
@@ -12,13 +12,26 @@ runs.
 
 A tool whose access the connection wasn't given says so instead of calling
 Google: the owner adds it by signing in again with more ticked.
+
+YouTube: reading runs. A private video, scheduled or not, waits for approval. Anything public or
+unlisted, editing a video's details, replying and deleting need the name typed. Privacy is always
+sent, and it's private unless the call says otherwise: YouTube's own default is public. A sign-in
+reaches one channel, the one picked on Google's page.
+
+A scheduled video goes public by itself at its time: that's the point of it, and approving it
+allows that. A time already past would publish at once, so it's refused, again when an approval
+runs: the time can pass while the card waits.
 """
 
+import asyncio
 import base64
 import json
+import mimetypes
 import re
 from dataclasses import replace
+from datetime import UTC, datetime
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 from urllib.parse import quote
 
@@ -56,6 +69,16 @@ SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
 SEARCH_CONSOLE = "https://www.googleapis.com/webmasters/v3"
 ANALYTICS_ADMIN = "https://analyticsadmin.googleapis.com/v1beta"
 ANALYTICS_DATA = "https://analyticsdata.googleapis.com/v1beta"
+YOUTUBE = "https://www.googleapis.com/youtube/v3"
+YOUTUBE_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos"
+YOUTUBE_ANALYTICS = "https://youtubeanalytics.googleapis.com/v2"
+# A part of a video at a time. YouTube wants a multiple of 256 KB.
+UPLOAD_CHUNK = 32 * 256 * 1024
+UPLOAD_TIMEOUT = 300.0
+UPLOAD_MORE = 308  # YouTube's answer to every part but the last
+VIDEO_TYPES = frozenset({
+    ".mp4", ".mov", ".m4v", ".avi", ".wmv", ".flv", ".webm", ".mkv", ".mpeg", ".mpg", ".3gp",
+})  # fmt: skip
 # The account's address. Its own base, called with a path: an HTTP client adds a
 # slash to a base address, and Google answers .../userinfo/ with a 404.
 OPENID = "https://openidconnect.googleapis.com/v1"
@@ -751,6 +774,283 @@ async def analytics_report(
     return {"rows": rows, "row_count": found.get("rowCount", len(rows))}
 
 
+# --- YouTube ---
+
+Privacy = Literal["private", "unlisted", "public"]
+VideoId = Annotated[str, Field(description="The video's ID.", pattern=r"^[A-Za-z0-9_\-]{6,20}$")]
+CommentId = Annotated[str, Field(description="The comment's ID.", pattern=ID_PATTERN)]
+PublishAt = Annotated[
+    str | None,
+    Field(
+        description="When a private video goes public by itself, like 2026-11-20T15:00:00-05:00. "
+        "Only with privacy private.",
+        max_length=40,
+    ),
+]
+Title = Annotated[str, Field(min_length=1, max_length=100)]
+Description = Annotated[str, Field(max_length=5000)]
+Tags = Annotated[list[Annotated[str, Field(max_length=100)]], Field(max_length=50)]
+PUBLIC_VIDEO = "makes a video visible to other people"
+EDITS_VIDEO = "changes details people may already see"
+
+
+def _check_schedule(privacy: str, publish_at: str | None) -> None:
+    """YouTube publishes a time in the past at once, so one never reaches it."""
+    if publish_at is None:
+        return
+    if privacy != "private":
+        raise ToolError("a scheduled video stays private until its time: set privacy to private")
+    try:
+        when = datetime.fromisoformat(publish_at)
+    except ValueError:
+        raise ToolError("publish_at isn't a date and time like 2026-11-20T15:00:00-05:00") from None
+    if when.tzinfo is None:
+        raise ToolError("publish_at needs its time zone, like -05:00")
+    if when <= datetime.now(UTC):
+        raise ToolError("that time has passed, and YouTube would publish at once: pick a new one")
+
+
+def _video_why(args: JSON) -> str | None:
+    return None if args.get("privacy", "private") == "private" else PUBLIC_VIDEO
+
+
+def _project_video(target: Target, file: str) -> Path:
+    """A video in the project's own folder, and nowhere else."""
+    from ringkeeper.db import session_scope  # noqa: PLC0415 (no cycle at import)
+    from ringkeeper.services import projects  # noqa: PLC0415
+
+    if target.project is None:
+        raise ToolError("a video comes from a project's folder, and this call has no project")
+    with session_scope(commit=False) as session:
+        folder = projects.get_project(session, target.project).workspace_path
+    if not folder:
+        raise ToolError(f"'{target.project}' has no folder")
+    root = Path(folder).resolve()
+    found = (root / file).resolve()
+    if not found.is_relative_to(root):
+        raise ToolError("that file isn't in the project's folder")
+    if found.suffix.lower() not in VIDEO_TYPES:
+        raise ToolError(f"YouTube won't take a {found.suffix or 'file like this'}")
+    if not found.is_file():
+        raise ToolError(f"there's no {file} in the project's folder")
+    return found
+
+
+async def _send_parts(http: httpx2.AsyncClient, address: str, path: Path, size: int) -> JSON:
+    """The video, a part at a time, so a large one is never all in memory."""
+    answer: JSON = {}
+    with path.open("rb") as video:
+        start = 0
+        while start < size:
+            data = await asyncio.to_thread(video.read, UPLOAD_CHUNK)
+            end = start + len(data) - 1
+            response = await http.put(
+                address, content=data, headers={"Content-Range": f"bytes {start}-{end}/{size}"}
+            )
+            if response.status_code >= 400:
+                raise ToolError(f"YouTube stopped the upload: {rest.error_message(response)}")
+            if response.status_code != UPLOAD_MORE:
+                answer = cast(JSON, response.json())
+            start = end + 1
+    return answer
+
+
+@read
+async def youtube_channel(target: Target) -> JSON:
+    """This account's YouTube channel: its name, its numbers and its uploads list."""
+    _need(target, "youtube_read", "youtube_manage")
+    found = await _call(
+        target, YOUTUBE, "GET", "/channels",
+        params={"part": "snippet,statistics,contentDetails", "mine": "true"},
+    )  # fmt: skip
+    items = cast(list[JSON], found.get("items") or [])
+    if not items:
+        raise ToolError("this Google account has no YouTube channel")
+    return items[0]
+
+
+@read
+async def youtube_videos(
+    target: Target,
+    limit: Limit = 25,
+    page_token: Annotated[str | None, Field(max_length=200)] = None,
+) -> JSON:
+    """The channel's videos, newest first, with their privacy and numbers."""
+    channel = await youtube_channel.handler(target)
+    details = cast(JSON, channel.get("contentDetails") or {})
+    uploads = cast(JSON, details.get("relatedPlaylists") or {}).get("uploads")
+    listed = await _call(
+        target, YOUTUBE, "GET", "/playlistItems",
+        params={"part": "contentDetails", "playlistId": uploads, "maxResults": limit,
+                "pageToken": page_token},
+    )  # fmt: skip
+    items = cast(list[JSON], listed.get("items") or [])
+    ids = [str(cast(JSON, i.get("contentDetails") or {}).get("videoId")) for i in items]
+    if not ids:
+        return {"videos": []}
+    found = await _call(
+        target, YOUTUBE, "GET", "/videos",
+        params={"part": "snippet,status,statistics", "id": ",".join(ids)},
+    )  # fmt: skip
+    return {"videos": found.get("items") or [], "next_page": listed.get("nextPageToken")}
+
+
+@read
+async def youtube_comments(
+    target: Target,
+    video_id: VideoId,
+    limit: Limit = 25,
+    page_token: Annotated[str | None, Field(max_length=200)] = None,
+) -> JSON:
+    """A video's comments and their replies."""
+    _need(target, "youtube_read", "youtube_manage")
+    found = await _call(
+        target, YOUTUBE, "GET", "/commentThreads",
+        params={"part": "snippet,replies", "videoId": video_id, "maxResults": limit,
+                "pageToken": page_token, "textFormat": "plainText"},
+    )  # fmt: skip
+    return {"comments": found.get("items") or [], "next_page": found.get("nextPageToken")}
+
+
+@read
+async def youtube_report(
+    target: Target,
+    start: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")],
+    end: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")],
+    metrics: Annotated[str, Field(max_length=300, description="Like views,likes,comments.")],
+    dimensions: Annotated[str | None, Field(max_length=100, description="Like day.")] = None,
+) -> JSON:
+    """The channel's numbers between two dates."""
+    _need(target, "youtube_analytics")
+    return await _call(
+        target, YOUTUBE_ANALYTICS, "GET", "/reports",
+        params={"ids": "channel==MINE", "startDate": start, "endDate": end, "metrics": metrics,
+                "dimensions": dimensions},
+    )  # fmt: skip
+
+
+@final(_video_why)
+async def upload_video(
+    target: Target,
+    file: Annotated[str, Field(min_length=1, max_length=500, description="In its folder.")],
+    title: Title,
+    made_for_kids: Annotated[bool, Field(description="YouTube requires an answer.")],
+    description: Description = "",
+    tags: Tags | None = None,
+    privacy: Privacy = "private",
+    publish_at: PublishAt = None,
+) -> JSON:
+    """Upload a video from the project's folder. It's private unless you say otherwise."""
+    _need(target, "youtube_upload", "youtube_manage")
+    _check_schedule(privacy, publish_at)
+    path = _project_video(target, file)
+    size = path.stat().st_size
+    status: JSON = {"privacyStatus": privacy, "selfDeclaredMadeForKids": made_for_kids}
+    if publish_at:
+        status["publishAt"] = publish_at
+    meta: JSON = {
+        "snippet": {"title": title, "description": description, "tags": tags or []},
+        "status": status,
+    }
+    kind = mimetypes.guess_type(path.name)[0] or "video/*"
+    try:
+        async with httpx2.AsyncClient(
+            headers={"Authorization": f"Bearer {access_token(target)}"},
+            timeout=UPLOAD_TIMEOUT, transport=transport,
+        ) as http:  # fmt: skip
+            opened = await http.post(
+                YOUTUBE_UPLOAD, params={"uploadType": "resumable", "part": "snippet,status"},
+                json=meta,
+                headers={"X-Upload-Content-Length": str(size), "X-Upload-Content-Type": kind},
+            )  # fmt: skip
+            if opened.status_code >= 400:
+                raise ToolError(f"YouTube refused the upload: {rest.error_message(opened)}")
+            found = await _send_parts(http, opened.headers["Location"], path, size)
+    except httpx2.HTTPError as error:
+        raise ToolError(f"cannot reach YouTube: {type(error).__name__}") from None
+    return {"video_id": found.get("id"), "status": found.get("status")}
+
+
+async def _video(target: Target, video_id: str, part: str) -> JSON:
+    found = await _call(target, YOUTUBE, "GET", "/videos", params={"part": part, "id": video_id})
+    items = cast(list[JSON], found.get("items") or [])
+    if not items:
+        raise ToolError(f"there's no video {video_id} on this channel")
+    return items[0]
+
+
+@final(EDITS_VIDEO)
+async def edit_video(
+    target: Target,
+    video_id: VideoId,
+    title: Title | None = None,
+    description: Description | None = None,
+    tags: Tags | None = None,
+) -> JSON:
+    """Change a video's title, description or tags. What isn't named stays as it is."""
+    _need(target, "youtube_manage")
+    snippet = cast(JSON, (await _video(target, video_id, "snippet")).get("snippet") or {})
+    changed = {"title": title, "description": description, "tags": tags}
+    kept = ("title", "description", "tags", "categoryId", "defaultLanguage")
+    merged = {k: snippet[k] for k in kept if k in snippet}
+    merged |= {k: v for k, v in changed.items() if v is not None}
+    return await _call(
+        target, YOUTUBE, "PUT", "/videos", params={"part": "snippet"},
+        json={"id": video_id, "snippet": merged},
+    )  # fmt: skip
+
+
+@final(_video_why)
+async def set_video_privacy(
+    target: Target,
+    video_id: VideoId,
+    privacy: Privacy,
+    publish_at: PublishAt = None,
+) -> JSON:
+    """Make a video private, unlisted or public, or set when a private one goes public."""
+    _need(target, "youtube_manage")
+    _check_schedule(privacy, publish_at)
+    status = cast(JSON, (await _video(target, video_id, "status")).get("status") or {})
+    kept = ("embeddable", "license", "publicStatsViewable", "selfDeclaredMadeForKids")
+    sent: JSON = {k: status[k] for k in kept if k in status} | {"privacyStatus": privacy}
+    if publish_at:
+        sent["publishAt"] = publish_at
+    return await _call(
+        target, YOUTUBE, "PUT", "/videos", params={"part": "status"},
+        json={"id": video_id, "status": sent},
+    )  # fmt: skip
+
+
+@final("deletes a video for good")
+async def delete_video(target: Target, video_id: VideoId) -> JSON:
+    """Delete a video. It can't be undone."""
+    _need(target, "youtube_manage")
+    await _call(target, YOUTUBE, "DELETE", "/videos", params={"id": video_id})
+    return {"deleted": video_id}
+
+
+@final("posts a reply in public")
+async def reply_to_comment(
+    target: Target,
+    comment_id: CommentId,
+    text: Annotated[str, Field(min_length=1, max_length=10_000)],
+) -> JSON:
+    """Reply to a comment, as the channel."""
+    _need(target, "youtube_manage")
+    return await _call(
+        target, YOUTUBE, "POST", "/comments", params={"part": "snippet"},
+        json={"snippet": {"parentId": comment_id, "textOriginal": text}},
+    )  # fmt: skip
+
+
+@final("deletes a comment for good")
+async def delete_comment(target: Target, comment_id: CommentId) -> JSON:
+    """Delete one of the channel's own comments or replies."""
+    _need(target, "youtube_manage")
+    await _call(target, YOUTUBE, "DELETE", "/comments", params={"id": comment_id})
+    return {"deleted": comment_id}
+
+
 # Which accesses each tool can use (any one of them).
 NEEDS: dict[str, tuple[str, ...]] = {
     "search_mail": ("mail_read",),
@@ -773,15 +1073,32 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "search_performance": ("search_console_read",),
     "list_analytics_properties": ("analytics_read",),
     "analytics_report": ("analytics_read",),
+    "youtube_channel": ("youtube_read", "youtube_manage"),
+    "youtube_videos": ("youtube_read", "youtube_manage"),
+    "youtube_comments": ("youtube_read", "youtube_manage"),
+    "youtube_report": ("youtube_analytics",),
+    "upload_video": ("youtube_upload", "youtube_manage"),
+    "edit_video": ("youtube_manage",),
+    "set_video_privacy": ("youtube_manage",),
+    "delete_video": ("youtube_manage",),
+    "reply_to_comment": ("youtube_manage",),
+    "delete_comment": ("youtube_manage",),
 }
+SCHEDULED = frozenset({"upload_video", "set_video_privacy"})
 
 
 def _asks_first(spec: ToolSpec) -> ToolSpec:
     """A write: checked for its access before it's held, so nobody approves a call that
     can only fail. (Still a write: it asks first.)"""
 
-    def classify(target: Target, _args: JSON) -> ToolKind:
+    def classify(target: Target, args: JSON) -> ToolKind:
         _need(target, *NEEDS[spec.name])
+        if spec.name in SCHEDULED:
+            _check_schedule(
+                str(args.get("privacy") or "private"), cast(str | None, args.get("publish_at"))
+            )
+        if spec.name == "upload_video":
+            _project_video(target, str(args.get("file") or ""))
         return ToolKind.WRITE
 
     return replace(spec, classify=classify)
@@ -798,6 +1115,9 @@ ADAPTER = Adapter(
             list_events, create_event,
             read_sheet, update_sheet, append_rows,
             list_search_sites, search_performance, list_analytics_properties, analytics_report,
+            youtube_channel, youtube_videos, youtube_comments, youtube_report,
+            upload_video, edit_video, set_video_privacy, delete_video, reply_to_comment,
+            delete_comment,
         )
     ),
     secret_fragments=secret_fragments,

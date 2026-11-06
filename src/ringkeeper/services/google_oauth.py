@@ -87,6 +87,13 @@ ACCESS = {
         Access("sheets_write", "Sheets: read and edit", G + "spreadsheets"),
         Access("search_console_read", "Search Console: read", G + "webmasters.readonly"),
         Access("analytics_read", "Analytics: read", G + "analytics.readonly"),
+        Access("youtube_read", "YouTube: read videos and comments", G + "youtube.readonly"),
+        Access("youtube_upload", "YouTube: upload videos", G + "youtube.upload"),
+        Access(
+            "youtube_manage", "YouTube: edit and delete videos, reply to comments",
+            G + "youtube.force-ssl",
+        ),
+        Access("youtube_analytics", "YouTube: read analytics", G + "yt-analytics.readonly"),
     )
 }  # fmt: skip
 IDENTITY = ("openid", "email")
