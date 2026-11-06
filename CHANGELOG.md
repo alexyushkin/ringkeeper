@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Leadfeeder.** Website visitors, companies, contacts and lists, through Leadfeeder's own server,
+  with each project held to one account. Reads run, changes wait for approval, and anything that
+  may spend credits waits with the cost on the card. Deletes need the name typed.
+- **"Trust for 1 hour" no longer shows** on services that can't be trusted, like ElevenLabs.
+
 ## 0.1.0-beta.25 (2026-11-06)
 
 - **Agents remember between runs.** Each project keeps notes, here by default or in a Notion

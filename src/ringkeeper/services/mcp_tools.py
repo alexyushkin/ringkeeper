@@ -38,6 +38,18 @@ def refresh(name: str) -> JSON:
     return listed
 
 
+def takes(name: str, tool: str, argument: str) -> None:
+    """Keep that a tool takes an argument, ahead of the next listing."""
+    with session_scope() as session:
+        instance = instances.find_instance(session, name)
+        if instance is None:
+            return
+        config = dict(instance.config or {})
+        known = dict(config.get("arguments") or {})
+        known[tool] = sorted({*known.get(tool, []), argument})
+        instance.config = {**config, "arguments": known}
+
+
 def remember(name: str, listed: JSON) -> None:
     """Keep the hints (and argument names) from a list_tools answer with the connection."""
     hints, arguments = mcp.annotations_of(listed), mcp.arguments_of(listed)

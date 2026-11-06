@@ -556,7 +556,13 @@ def _op(decision: Decision) -> str:
 def trustable(decision: Decision) -> bool:
     """Whether the card may offer to trust this: a service whose changes always ask can't."""
     args = decision.args or {}
-    return not destructive.never_trusted(decision.service, decision.tool, args)
+    session = object_session(decision)
+    config = (
+        session.scalar(select(Instance.config).where(Instance.name == decision.instance))
+        if session is not None
+        else None
+    )
+    return not destructive.never_trusted(decision.service, decision.tool, args, config)
 
 
 def money(decision: Decision) -> dict[str, str] | None:
@@ -583,13 +589,18 @@ def declares(decision: Decision) -> str | None:
 
 
 def _mcp_money(decision: Decision, args: dict[str, Any]) -> dict[str, str] | None:
-    """A payments server's call that needs the name typed: what it says, as written."""
+    """A payments server's call that needs the name typed: what it says, as written. Or a call
+    that may spend credits: what it will cost."""
     session = object_session(decision)
     instance = (
         session.scalar(select(Instance).where(Instance.name == decision.instance))
         if session is not None
         else None
     )
+    names = cast(dict[str, Any], (decision.payload or {}).get("names") or {})
+    estimated = cast(float | None, names.get("credits"))
+    if card := mcp.credit_card(instance.config if instance else {}, args, estimated):
+        return card
     found = remote.BY_KEY.get(str((instance.config if instance else {}).get("remote") or ""))
     if found is None or found.guard != "payments":
         return None

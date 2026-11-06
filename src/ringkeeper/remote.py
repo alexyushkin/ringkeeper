@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import unquote
 
-from ringkeeper import cloud_rules
+from ringkeeper import cloud_rules, leadfeeder
 
 
 @dataclass(frozen=True)
@@ -166,6 +166,12 @@ GUARDS: dict[str, Guard] = {
         )
     ),
     "held": Guard(),  # every change waits for approval; nothing more
+    # Credits are real money: nothing here runs by itself, even after an approval.
+    "credits": Guard(
+        frozenset({"delete", "destroy"}),
+        why="deletes something in the account",
+        never_trusted=True,
+    ),
     # A call rings a real person, a clone is someone's voice, and speech costs credits: all of
     # it waits, every time.
     "voice": Guard(
@@ -218,6 +224,11 @@ class Remote:
     command_tools: Mapping[str, str] = field(default_factory=dict[str, str])
     # One login reaches many clients' accounts: a project's link has to say which.
     scope_required: bool = False
+    # Tools that read but spend credits: they wait, and the card shows the cost.
+    credit_tools: frozenset[str] = frozenset()
+    # The server holds calls back itself, and takes this argument to let one through. Ringkeeper's
+    # approval answers it (adapters.mcp); an agent can't.
+    confirm_arg: str = ""
     # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
     # its own connection type, with GitHub Enterprise Server and pushes).
     shelf: bool = True
@@ -510,6 +521,21 @@ CATALOG: tuple[Remote, ...] = (
         note="You pick Sandbox or Live, and what it may do, when you sign in.",
     ),
     # --- Other services ---
+    Remote(
+        "leadfeeder", "Leadfeeder", "https://mcp.leadfeeder.com/mcp", signin=True, paste=None,
+        category="CRM", guard="credits", scope_required=True,
+        scope=(
+            ScopeField("account", "Leadfeeder account", ("account_id",),
+                       "The account's ID. Each account tracks one website. Test on the connection "
+                       "lists them."),
+        ),
+        open_tools=leadfeeder.OPEN_TOOLS, read_tools=leadfeeder.FREE_READS,
+        opaque_tools=leadfeeder.PRIVACY_TOOLS, credit_tools=leadfeeder.CREDIT_TOOLS,
+        confirm_arg=leadfeeder.CONFIRM_ARG,
+        note="By Dealfront. Sign in with a user who has the Manage API keys and use API "
+        "permission. Reads run. Changes wait for approval, and what spends credits shows the cost "
+        "on the card. Deletes need the name typed. Each project is held to one account.",
+    ),
     Remote(
         "apollo", "Apollo", "https://mcp.apollo.io/mcp", signin=True, paste=None,
         category="CRM", guard="held", note="Tools that spend credits wait for your approval.",
