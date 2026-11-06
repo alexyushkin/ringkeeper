@@ -777,21 +777,56 @@ def test_voice_upload_limits(
 
 
 def test_events_stream_task_changes(owner: TestClient, task_registry: None) -> None:
+    import threading, time, traceback
+    from ringkeeper.storage import events as probe_events
+    log: dict[str, Any] = {}
+    t0 = time.monotonic()
+    mark = lambda name: log.__setitem__(name, round(time.monotonic() - t0, 3))
+    real = probe_events.subscribe
+
+    def timed(url: str, channels: Any) -> Any:
+        mark("subscribe_start")
+        found = real(url, channels)
+        mark("subscribed")
+        return found
+
+    probe_events.subscribe = timed
     received: list[dict[str, Any]] = []
-    with owner.stream("GET", "/events") as stream:
-        assert stream.headers["content-type"].startswith("text/event-stream")
-        kind = None
-        for line in stream.iter_lines():
-            if line.startswith("retry: "):
-                # Sent once the stream is listening. Sooner, and the change goes unheard: a
-                # quiet stream only sends keep-alives, so this loop would never end.
-                with session_scope() as session:
-                    tasks.create_task(session, get_settings(), project="acme-web", prompt="go")
-            elif line.startswith("event: "):
-                kind = line.removeprefix("event: ")
-            elif line.startswith("data: ") and kind == "task":
-                received.append(json.loads(line.removeprefix("data: ")))
-                break
+
+    def create_later() -> None:
+        mark("thread_started")
+        time.sleep(1.0)
+        mark("create_start")
+        try:
+            with session_scope() as session:
+                tasks.create_task(session, get_settings(), project="acme-web", prompt="go")
+            mark("create_done")
+        except BaseException as error:
+            log["create_error"] = traceback.format_exc()[-1500:]
+            mark("create_failed")
+        with open("/tmp/probe.jsonl", "a") as out:
+            out.write(json.dumps(log) + "
+")
+
+    threading.Thread(target=create_later, daemon=True).start()
+    try:
+        with owner.stream("GET", "/events") as stream:
+            assert stream.headers["content-type"].startswith("text/event-stream")
+            kind = None
+            for line in stream.iter_lines():
+                if line.startswith("retry: "):
+                    mark("retry_line")
+                if line.startswith("event: "):
+                    kind = line.removeprefix("event: ")
+                elif line.startswith("data: ") and kind == "task":
+                    mark("event_seen")
+                    received.append(json.loads(line.removeprefix("data: ")))
+                    break
+    finally:
+        probe_events.subscribe = real
+    with open("/tmp/probe.jsonl", "a") as out:
+        out.write(json.dumps({"finished": log}) + "
+")
     assert received[0]["status"] == "queued"
     assert received[0]["project"] == "acme-web"
 
