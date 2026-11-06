@@ -42,6 +42,8 @@ jobs:
     # mode). Client databases for the Supabase connector are Postgres either way.
     name: tests (${{ matrix.python }}, ${{ matrix.db }})
     runs-on: ubuntu-latest
+    # A backstop: pytest-timeout stops a stuck test, but not a stuck teardown after it.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +59,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
       # testcontainers starts Postgres 16 on the runner's Docker.
-      - run: uv run pytest
+      - run: uv run pytest --durations=10
         env:
           RINGKEEPER_TEST_DB: ${{ matrix.db }}
 

@@ -70,6 +70,7 @@ dev = [
     "pre-commit>=3.7",
     "pyright>=1.1.380",
     "pytest>=8.3",
+    "pytest-timeout>=2.4",
     "ruff>=0.17",
     "testcontainers[postgres]>=4.8",
     "types-boto3[secretsmanager]>=1.43.118",
@@ -117,6 +118,8 @@ executionEnvironments = [{ root = "worker", pythonPlatform = "Linux", extraPaths
 testpaths = ["tests"]
 pythonpath = ["worker", "stt"]
 addopts = "-ra --strict-markers"
+# A stuck test fails with every thread's stack, rather than holding CI until someone looks.
+timeout = 120
 markers = [
     "container: starts real worker or stt containers (needs Docker)",
     "postgres_only: about Ringkeeper's own database being Postgres (skipped with RINGKEEPER_TEST_DB=sqlite)",
