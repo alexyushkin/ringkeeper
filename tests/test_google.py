@@ -9,7 +9,7 @@ import base64
 import json
 import time
 from email import message_from_bytes
-from typing import Any
+from typing import Any, get_args
 from urllib.parse import parse_qs, urlsplit
 
 import httpx2
@@ -41,12 +41,14 @@ ACCOUNTS = {  # the code Google gives back -> the account that signed in
     "mine": "me@gmail.com",
     "partial": "info@acme.example",  # unticked everything but reading mail
     "acme-team": "team@acme.example",
+    "no-analytics": "reports@acme.example",  # unticked Analytics on Google's page
 }
 
 
 class FakeGoogle:
     def __init__(self) -> None:
         self.sent: list[tuple[str, dict[str, Any]]] = []  # (account, message)
+        self.read: list[tuple[str, str]] = []  # (account, what it reported on)
         self.revoked: list[str] = []
         self.refreshes = 0
         self.scopes: dict[str, str] = {}  # code -> scope string asked for
@@ -73,6 +75,8 @@ class FakeGoogle:
             code = form["code"][0]
             email = ACCOUNTS[code]
             scope = "openid email " + G + "gmail.readonly" if code == "partial" else self.asked
+            if code == "no-analytics":
+                scope = "openid email " + G + "webmasters.readonly"
             self.issued[f"rt:{email}"] = client
             return httpx2.Response(200, json={
                 "access_token": f"at:{email}", "refresh_token": f"rt:{email}",
@@ -92,6 +96,26 @@ class FakeGoogle:
                 "id": path.rsplit("/", 1)[1], "threadId": "t1", "snippet": f"mail for {email}",
                 "payload": {"headers": [{"name": "To", "value": email},
                                         {"name": "Subject", "value": f"hello {email}"}]},
+            })  # fmt: skip
+        if path == "/webmasters/v3/sites":
+            self.read.append((email, path))
+            return httpx2.Response(200, json={"siteEntry": [
+                {"siteUrl": "https://geninfos.com/", "permissionLevel": "siteOwner"},
+            ]})  # fmt: skip
+        if path.endswith("/searchAnalytics/query"):
+            self.read.append((email, path))
+            return httpx2.Response(200, json={"rows": [{"keys": ["erp"], "clicks": 12}]})
+        if path == "/v1beta/accountSummaries":
+            self.read.append((email, path))
+            return httpx2.Response(200, json={"accountSummaries": [{
+                "displayName": "General Informatics",
+                "propertySummaries": [{"property": "properties/42", "displayName": "Site"}],
+            }]})  # fmt: skip
+        if path.endswith(":runReport"):
+            self.read.append((email, path))
+            return httpx2.Response(200, json={
+                "metricHeaders": [{"name": "sessions"}],
+                "rows": [{"metricValues": [{"value": "31"}]}],
             })  # fmt: skip
         if path.endswith("/messages/send"):
             raw = json.loads(request.content)["raw"]
@@ -198,6 +222,73 @@ def accounts(owner: TestClient, fake: FakeGoogle) -> TestClient:
     mine = sign_in(owner, fake, "mine", shared=True, all_projects=True)
     assert mine == {"state": "done", "name": "me-gmail", "error": None}
     return owner
+
+
+REPORTS = ["search_console_read", "analytics_read"]
+
+
+def test_the_sign_in_route_takes_everything_the_page_offers() -> None:
+    """The route has its own list: Search Console and Analytics were once left off it."""
+    assert set(get_args(google_routes.AccessKey)) == set(google_oauth.ACCESS)
+
+
+@pytest.fixture
+def reports(owner: TestClient, fake: FakeGoogle) -> TestClient:
+    owner.put("/google/app", json={"client_id": CLIENT_ID, "client_secret": "s3cret-value"})
+    assert owner.post("/projects", json={"name": "acme-web", "owner": "acme"}).status_code == 201
+    return owner
+
+
+def test_search_console_and_analytics_sign_in_and_read(
+    reports: TestClient, fake: FakeGoogle
+) -> None:
+    """The whole way: the page's choices, Google's consent, the stored account, the reports."""
+    offered = {a["key"] for a in reports.get("/google/app").json()["access"]}
+    assert set(REPORTS) <= offered
+
+    done = sign_in(reports, fake, "acme", owner="acme", project="acme-web", access=REPORTS)
+    assert done == {"state": "done", "name": "acme-info", "error": None}
+    assert fake.asked.split() == [
+        "openid", "email", G + "webmasters.readonly", G + "analytics.readonly",
+    ]  # fmt: skip
+
+    account = reports.get("/connections/acme-info/google").json()
+    assert account["access"] == REPORTS
+    tools = {t["name"]: t["allowed"] for t in account["tools"]}
+    assert tools["list_search_sites"] is True
+    assert tools["analytics_report"] is True
+    assert tools["search_mail"] is False
+
+    named = {"instance": "acme-info"}
+    sites = call("acme-web", "list_search_sites", **named)
+    assert sites["sites"] == [{"site": "https://geninfos.com/", "access": "siteOwner"}]
+    rows = call(
+        "acme-web", "search_performance", site="https://geninfos.com/", start="2026-10-01",
+        end="2026-10-31", **named,
+    )  # fmt: skip
+    assert rows["rows"][0]["clicks"] == 12
+    found = call("acme-web", "list_analytics_properties", **named)
+    assert found["accounts"][0]["properties"][0]["property"] == "properties/42"
+    report = call(
+        "acme-web", "analytics_report", property_id="properties/42", start="30daysAgo",
+        end="today", metrics=["sessions"], **named,
+    )  # fmt: skip
+    assert report["rows"] == [{"sessions": "31"}]
+    assert {who for who, _ in fake.read} == {"info@acme.example"}
+    assert len(fake.read) == 4
+
+
+def test_what_was_unticked_on_googles_page_isnt_given(
+    reports: TestClient, fake: FakeGoogle
+) -> None:
+    done = sign_in(reports, fake, "no-analytics", owner="acme", project="acme-web", access=REPORTS)
+    assert done["state"] == "done"
+    name = str(done["name"])
+    assert reports.get(f"/connections/{name}/google").json()["access"] == ["search_console_read"]
+    assert call("acme-web", "list_search_sites", instance=name)["sites"]
+    with pytest.raises(ToolError, match='wasn\'t given "Analytics: read"'):
+        call("acme-web", "list_analytics_properties", instance=name)
+    assert all("accountSummaries" not in path for _, path in fake.read)
 
 
 def test_accounts_side_by_side_never_cross(accounts: TestClient, fake: FakeGoogle) -> None:
