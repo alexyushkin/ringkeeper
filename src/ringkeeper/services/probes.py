@@ -95,7 +95,8 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, P
             mcp_tools.remember(target.name, listed)
             tools = listed["tools"]
             names = ", ".join(t["name"] for t in tools[:8]) + (", ..." if len(tools) > 8 else "")
-            return f"Connected: {len(tools)} tool{'s' if len(tools) != 1 else ''} ({names})."
+            said = f"Connected: {len(tools)} tool{'s' if len(tools) != 1 else ''} ({names})."
+            return f"{said} {await mcp.accounts(target)}".strip()
         case _:
             raise ToolError(f"Testing {kind} connections isn't supported yet.")
 

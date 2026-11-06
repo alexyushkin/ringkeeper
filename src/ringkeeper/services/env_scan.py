@@ -36,6 +36,7 @@ NOT_YET = (
     ("Stripe", ("STRIPE_",)), ("PayPal", ("PAYPAL_",)),
     ("HubSpot", ("HUBSPOT_",)), ("QuickBooks", ("QUICKBOOKS_", "QBO_", "INTUIT_")),
     ("Xero", ("XERO_",)), ("WordPress", ("WP_", "WORDPRESS_")),
+    ("Leadfeeder", ("LEADFEEDER_",)),
 )  # fmt: skip
 PLACEHOLDER = re.compile(r"^(<.*>|\$\{.*\}|your[-_ ].*|xxx+|changeme|todo|example.*)$", re.I)
 

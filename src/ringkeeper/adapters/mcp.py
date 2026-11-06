@@ -39,7 +39,7 @@ from fastmcp import Client
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
 from pydantic import Field
 
-from ringkeeper import cloud_rules, remote
+from ringkeeper import cloud_rules, leadfeeder, remote
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -244,16 +244,29 @@ def floor(service: remote.Remote | None, tool: str) -> Rule | None:
     words = set(name_words(tool))
     if tool in service.opaque_tools or (words & guard.final and not words & guard.unless):
         return Rule(CONFIRM, BY_GUARD)
-    return None if reads_by_name(tool) else Rule(APPROVE, BY_GUARD)
+    if tool in service.credit_tools:
+        return Rule(APPROVE, BY_GUARD)
+    return None if reads_by_name(tool) or tool in service.read_tools else Rule(APPROVE, BY_GUARD)
 
 
 def rule(config: Mapping[str, Any], tool: str) -> Rule:
     """What a call to `tool` needs: the stricter of its own rule and its service's floor."""
     found = _own_rule(config, tool)
-    least = floor(remote.BY_KEY.get(str(config.get("remote") or "")), tool)
+    service = remote.BY_KEY.get(str(config.get("remote") or ""))
+    least = floor(service, tool)
+    if least is None and _server_holds(service, config, tool):
+        least = Rule(APPROVE, BY_GUARD)
     if least is not None and LEVELS.index(least.level) > LEVELS.index(found.level):
         return least
     return found
+
+
+def _server_holds(service: remote.Remote | None, config: Mapping[str, Any], tool: str) -> bool:
+    """The server says so itself: this tool takes the argument that lets a held call through."""
+    if service is None or not service.confirm_arg:
+        return False
+    takes = cast(dict[str, list[str]], config.get("arguments") or {})
+    return service.confirm_arg in takes.get(tool, [])
 
 
 def _own_rule(config: Mapping[str, Any], tool: str) -> Rule:
@@ -398,11 +411,54 @@ def _screen(target: Target, args: JSON) -> JSON:
     call's arguments as they may go."""
     tool, arguments = str(args.get("tool", "")), args.get("arguments")
     given = cast(JSON, arguments) if isinstance(arguments, dict) else {}
+    service = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    if service is not None and service.confirm_arg and service.confirm_arg in given:
+        raise ToolError(
+            f"don't pass {service.confirm_arg}: Ringkeeper confirms it after your approval. Call "
+            "the tool without it"
+        )
     if kind := memory_call(target.config, tool, given):
         from ringkeeper.services import personal_memory  # noqa: PLC0415 (it needs the database)
 
         return {**args, "arguments": personal_memory.check(target, kind, given)}
     return args
+
+
+def _found_key(value: Any, key: str) -> str | None:
+    if isinstance(value, dict):
+        found = cast(JSON, value)
+        if isinstance(found.get(key), str):
+            return str(found[key])
+        value = list(found.values())
+    if isinstance(value, list):
+        for inner in cast(list[Any], value):
+            if deeper := _found_key(inner, key):
+                return deeper
+    return None
+
+
+def _answer_of(result: Any) -> Any:
+    if result.structured_content is not None:
+        return result.structured_content
+    text = "\n".join(getattr(block, "text", "") for block in result.content).strip()
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def _server_token(service: remote.Remote, result: Any) -> str | None:
+    """The token of a call the server held back, if it did."""
+    return _found_key(_answer_of(result), service.confirm_arg) if service.confirm_arg else None
+
+
+def _holds_next_time(target: Target, service: remote.Remote, tool: str) -> JSON:
+    """A tool Ringkeeper took for a read turned out to be held by the server. Nothing ran: it
+    waits for a person from now on."""
+    from ringkeeper.services import mcp_tools  # noqa: PLC0415 (it needs the database)
+
+    mcp_tools.takes(target.name, tool, service.confirm_arg)
+    raise ToolError(f"'{tool}' needs your approval first. Call it again and it will wait for that")
 
 
 def _saves(target: Target, args: JSON) -> bool:
@@ -416,9 +472,18 @@ async def _call_tool(
 ) -> JSON:
     """Call one of the server's tools (see list_tools). Waits for the user's approval unless
     list_tools says that tool runs without asking."""
+    service = remote.BY_KEY.get(str(target.config.get("remote") or ""))
     try:
         async with _client(target) as client:
             result = await client.call_tool(tool, arguments or {}, raise_on_error=False)
+            if service is not None and (token := _server_token(service, result)):
+                if call_rule(target.config, tool, arguments).level == READ:
+                    return _holds_next_time(target, service, tool)
+                # This call is what the user approved: the same call, with the server's token.
+                confirmed = {**(arguments or {}), service.confirm_arg: token}
+                result = await client.call_tool(tool, confirmed, raise_on_error=False)
+    except ToolError:
+        raise
     except Exception as error:
         raise ToolError(f"the MCP server didn't answer: {type(error).__name__}: {error}") from None
     text = "\n".join(getattr(block, "text", "") for block in result.content).strip()
@@ -430,6 +495,48 @@ async def _call_tool(
     return answer
 
 
+async def accounts(target: Target) -> str:
+    """Which accounts this sign-in reaches, for a link's scope, where the server can say."""
+    if target.config.get("remote") != "leadfeeder":
+        return ""
+    async with _client(target) as client:
+        result = await client.call_tool("get_account_info", {}, raise_on_error=False)
+    answer = _answer_of(result)
+    found = (
+        cast(list[JSON], cast(JSON, answer).get("data") or []) if isinstance(answer, dict) else []
+    )
+    shown = [f"{cast(JSON, a.get('attributes') or {}).get('name')} ({a.get('id')})" for a in found]
+    return f"Accounts: {', '.join(shown)}." if shown else ""
+
+
+async def _names(target: Target, args: JSON) -> JSON:
+    """What a job will cost, from the server's own free estimate, for the approval card."""
+    service = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    tool, arguments = str(args.get("tool", "")), cast(JSON, args.get("arguments") or {})
+    if service is None or tool not in service.credit_tools:
+        return {}
+    asked = leadfeeder.estimate(tool, arguments)
+    if asked is None:
+        return {}
+    async with _client(target) as client:
+        result = await client.call_tool(asked[0], asked[1], raise_on_error=False)
+    estimated = None if result.is_error else leadfeeder.total(_answer_of(result))
+    return {} if estimated is None else {"credits": estimated}
+
+
+def credit_card(config: Mapping[str, Any], args: JSON, estimated: float | None) -> JSON | None:
+    """What an approval card shows for a call that may spend credits, or None."""
+    service = remote.BY_KEY.get(str(config.get("remote") or ""))
+    tool, arguments = str(args.get("tool", "")), cast(JSON, args.get("arguments") or {})
+    if service is None or tool not in service.credit_tools:
+        return None
+    return {
+        "amount": leadfeeder.cost(tool, arguments, estimated), "who": "For",
+        "counterparty": leadfeeder.what(tool), "which": f"{service.name} account",
+        "account": str(arguments.get("account_id") or "not stated"),
+    }  # fmt: skip
+
+
 call_tool = ToolSpec(
     name="call_tool",
     kind=ToolKind.WRITE,  # the careful answer; _classify decides per call
@@ -439,6 +546,7 @@ call_tool = ToolSpec(
     classify=_classify,
     screen=_screen,
     logged=_saves,
+    names=_names,
 )
 
 ADAPTER = Adapter(
