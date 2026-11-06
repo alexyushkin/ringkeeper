@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ServiceMark } from "@/components/catalog";
 import { connectionTitle } from "@/components/connection-form";
 import { FoundLogins } from "@/components/conveniences";
-import { planLimit, scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
+import { markOf, planLimit, scopeText, serviceName, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { HelpHint } from "@/components/help-hint";
 import { ScopeNote } from "@/components/scope-switcher";
 import { SharedTools } from "@/components/shared-tools";
@@ -125,7 +125,7 @@ export default function ConnectionsPage() {
               .map((c) => (
                 <li key={c.name} className="rounded-2xl border border-line bg-surface p-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <ServiceMark id={typeof c.config.remote === "string" ? c.config.remote : c.type} database={c.type === "supabase"} />
+                    <ServiceMark id={markOf(c)} database={c.type === "supabase"} />
                     <Link href={`${clientHref(client)}#connections/${encodeURIComponent(c.name)}`} className="font-medium hover:text-accent">
                       {connectionTitle(c)}
                     </Link>

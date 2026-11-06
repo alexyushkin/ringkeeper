@@ -10,6 +10,8 @@ publishes it as the release notes and the app shows it with the update.
   may spend credits waits with the cost on the card. Deletes need the name typed.
 - **Add a tool to everything at once.** Right after adding one of your own tools, you can use it
   in all projects, with new clients and projects getting it too, and leave out any that shouldn't.
+- **Every service has its own mark.** More logos, and the brand's color with initials where no free
+  logo exists, in the catalog and on connection cards.
 - **Plan limits are said plainly.** When any service answers that your plan doesn't include
   something, the connection's card and the task say so, the call isn't repeated, and it doesn't
   count as a failed attempt or move the task to a bigger model.

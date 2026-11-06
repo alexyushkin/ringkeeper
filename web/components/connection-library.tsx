@@ -39,6 +39,12 @@ export interface RemoteService {
   needs?: string;
 }
 
+/** Which service's mark a connection shows. */
+export function markOf(connection: { type: string; config?: Record<string, unknown> | null }): string {
+  const { remote, vendor } = connection.config ?? {};
+  return typeof remote === "string" ? remote : typeof vendor === "string" ? vendor : connection.type;
+}
+
 /** What the service's plan doesn't allow, if it said so. */
 export function planLimit(connection: { config?: Record<string, unknown> | null }): string | null {
   const kept = connection.config?.plan_limit as { message?: string } | undefined;
@@ -321,7 +327,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
   const fromCatalog = typeof connection.config.registry === "string";
   const imported = connection.type === "mcp" && !remote && !fromCatalog;
   const kind = serviceName(connection, services);
-  const mark = remote ? String(connection.config.remote) : connection.type;
+  const mark = markOf(connection);
 
   async function patch(json: Record<string, unknown>, done: string) {
     setError(null);

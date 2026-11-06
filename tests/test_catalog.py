@@ -5,6 +5,7 @@ servers without built-in ones: unannotated tools are held."""
 
 import json
 import logging
+import re
 import sys
 import time
 from collections.abc import Iterator
@@ -16,8 +17,10 @@ import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
+from ringkeeper import remote
 from ringkeeper.adapters import mcp
 from ringkeeper.adapters.base import Target, ToolKind
+from ringkeeper.adapters.vendors import ALL
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import Env
@@ -587,3 +590,15 @@ def test_a_container_runs_pinned_to_its_digest(
     assert spec["args"] == ["run", "-i", "--rm", "-e", "SEARCH_KEY", DIGEST]
     assert spec["env"] == {"SEARCH_KEY": "search-key"}
     assert "search-key" not in json.dumps(spec["args"])
+
+
+def test_every_service_in_the_catalog_has_a_mark() -> None:
+    """A logo, or its initials on its color: not a plain letter."""
+    web = Path(__file__).parent.parent / "web"
+    logos = (web / "lib" / "client" / "logos.ts").read_text(encoding="utf-8")
+    catalog = (web / "components" / "catalog.tsx").read_text(encoding="utf-8")
+    marked = set(re.findall(r"^  ([a-z0-9_]+): \{ color", logos, re.M))
+    marked |= set(re.findall(r'^  ([a-z0-9_]+): \["', catalog, re.M))
+    tiles = set(re.findall(r'\{ key: "([a-z0-9_]+)", label', catalog))
+    shown = {r.key for r in remote.CATALOG if r.shelf} | {v.key for v in ALL} | tiles
+    assert shown - marked == set()
