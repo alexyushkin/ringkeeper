@@ -28,7 +28,8 @@ PAGES = (
     "services/quickbooks", "services/xero", "services/wave", "services/businesscentral",
     "services/bill", "services/shopify", "services/ghost", "services/square",
     "services/helcim", "services/lemonsqueezy", "services/clover", "services/braintree",
-    "services/plaid", "services/oracle", "services/cloud",
+    "services/plaid", "services/oracle", "services/cloud", "services/bluesky", "services/meta",
+    "services/google-ads",
 )  # fmt: skip
 QUESTION = re.compile(r"^\*\*(.+?\?)\*\*\s*(.*)$", re.S)
 
