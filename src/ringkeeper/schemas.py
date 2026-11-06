@@ -222,6 +222,8 @@ class DecisionOut(_Output):
     status: str
     summary: str
     heading: str | None = None  # a held call: what it is, in a few words
+    money: dict[str, str] | None = None  # a held call that spends: amount, who, which account
+    trustable: bool = True  # a held call: whether "trust this for an hour" can work
     client: str | None = None  # the project's client
     production: bool = False  # a held call on a production connection
     # An action for Approvals (a held call, a plan, more money); else a question,

@@ -21,7 +21,7 @@ from typing import Any, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
-from ringkeeper import remote
+from ringkeeper import destructive, remote
 from ringkeeper.adapters import mcp, vendor
 from ringkeeper.adapters.vendor_spec import Money
 from ringkeeper.config import Settings
@@ -506,6 +506,12 @@ def _shown(decision: Decision) -> str | None:
 
 def _op(decision: Decision) -> str:
     return str((decision.args or {}).get("operation") or "")
+
+
+def trustable(decision: Decision) -> bool:
+    """Whether the card may offer to trust this: a service whose changes always ask can't."""
+    args = decision.args or {}
+    return not destructive.never_trusted(decision.service, decision.tool, args)
 
 
 def money(decision: Decision) -> dict[str, str] | None:

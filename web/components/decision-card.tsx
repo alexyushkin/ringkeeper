@@ -18,6 +18,7 @@ export interface Decision {
   summary: string;
   heading: string | null;
   money?: { amount: string; counterparty: string; account: string } | null;
+  trustable?: boolean;
   options: string[];
   project: string | null;
   client: string | null;
@@ -144,7 +145,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
                 Deny
               </Button>
             </span>
-            {destructive || decision.tool === "revert_change" ? null : (
+            {destructive || decision.tool === "revert_change" || decision.trustable === false ? null : (
               <Button kind="ghost" busy={busy === "trust"} onClick={() => void trustAndApprove()}>
                 Approve, and trust this in {projectName(decision.project)} for 1 hour
               </Button>
