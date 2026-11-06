@@ -3,6 +3,17 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Agents remember between runs.** Each project keeps notes, here by default or in a Notion
+  database you can read and edit. An edit there wins, a deleted row is forgotten, and what you or
+  other tools add is picked up on the next run. Agents reach only their own project's notes, and
+  secrets, card numbers and email addresses are refused.
+- **Shared notes and your Notion memory.** Settings has a Memory tab for what's yours across
+  clients: a shared notes page, and Notion's own personal memory for your preferences. Nothing about
+  a client or project can be saved to Notion's memory.
+- **Tools are read again after signing in,** so what a server newly offers shows up.
+
 ## 0.1.0-beta.24 (2026-11-06)
 
 - **Long lists have Load more.** Conversations, tasks, activity, routine runs and approvals load 50

@@ -32,6 +32,7 @@ class AgentIn:
     model: str | None = None
     effort: str | None = None
     autonomy: str | None = None
+    memory: str | None = None  # none: as its project does
 
 
 def _check(project: Project, data: AgentIn) -> AgentIn:
@@ -51,9 +52,11 @@ def _check(project: Project, data: AgentIn) -> AgentIn:
         raise RuleViolationError(f"Effort is one of {', '.join(EFFORTS)}.")
     if data.autonomy is not None and data.autonomy not in {a.value for a in Autonomy}:
         raise RuleViolationError(f"Autonomy is one of {', '.join(a.value for a in Autonomy)}.")
+    if data.memory == "notion" and not (project.memory or {}).get("notion"):
+        raise RuleViolationError("Set up this project's Notion page first (its Settings).")
     return AgentIn(
         name, data.instructions.strip(), tuple(dict.fromkeys(data.connections)),
-        data.model or None, data.effort, data.autonomy,
+        data.model or None, data.effort, data.autonomy, data.memory,
     )  # fmt: skip
 
 
@@ -96,6 +99,7 @@ def create_agent(session: Session, project: str, data: AgentIn) -> Agent:
         project_id=found.id, name=data.name, instructions=data.instructions,
         connections=list(data.connections), model=data.model, effort=data.effort,
         autonomy=data.autonomy,
+        memory=data.memory,
     )  # fmt: skip
     session.add(agent)
     session.flush()
@@ -111,7 +115,7 @@ def update_agent(session: Session, project: str, name: str, data: AgentIn) -> Ag
         raise AlreadyExistsError(f"{project} already has an agent named '{data.name}'")
     agent.name, agent.instructions = data.name, data.instructions
     agent.connections, agent.model = list(data.connections), data.model
-    agent.effort, agent.autonomy = data.effort, data.autonomy
+    agent.effort, agent.autonomy, agent.memory = data.effort, data.autonomy, data.memory
     session.flush()
     return agent
 

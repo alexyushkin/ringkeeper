@@ -36,11 +36,12 @@ class AgentBody(Input):
     model: ModelId | None = None
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     autonomy: Literal["strict", "standard", "relaxed"] | None = None
+    memory: Literal["local", "notion"] | None = None
 
     def data(self) -> AgentIn:
         return AgentIn(
             self.name, self.instructions, tuple(self.connections), self.model, self.effort,
-            self.autonomy,
+            self.autonomy, self.memory,
         )  # fmt: skip
 
 
@@ -51,6 +52,7 @@ class AgentOut(BaseModel):
     model: str | None
     effort: str | None
     autonomy: str | None
+    memory: str | None = None
     routines: int = 0
     project: str = ""
     client: str = ""
@@ -59,7 +61,8 @@ class AgentOut(BaseModel):
 def _agent_out(agent: Agent, routine_count: int = 0) -> AgentOut:
     return AgentOut(
         name=agent.name, instructions=agent.instructions, connections=list(agent.connections),
-        model=agent.model, effort=agent.effort, autonomy=agent.autonomy, routines=routine_count,
+        model=agent.model, effort=agent.effort, autonomy=agent.autonomy, memory=agent.memory,
+        routines=routine_count,
     )  # fmt: skip
 
 

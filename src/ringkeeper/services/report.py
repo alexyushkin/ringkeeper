@@ -36,6 +36,7 @@ SHAPES = [
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     re.compile(r"\bpat[A-Za-z0-9]{14}\.[A-Za-z0-9]{20,}"),  # Airtable
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bntn_[A-Za-z0-9]{20,}"),  # Notion
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}"),  # JWTs
     re.compile(
         r"(?i)\b(bearer|token|api[_-]?key|password|secret)(\s*[:=]\s*|\s+)['\"]?[^\s'\",;]{6,}"

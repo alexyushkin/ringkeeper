@@ -19,6 +19,7 @@ from ringkeeper.models import (
     Complexity,
     Decision,
     DecisionKind,
+    InstanceType,
     SessionEvent,
     SessionRole,
     Task,
@@ -152,7 +153,10 @@ def test_worker_gets_the_session_config() -> None:
     assert config["resume"] is None
     assert config["disallowed_tools"] == ["WebFetch", "WebSearch"]  # standard autonomy
     # Only the services the project is connected to.
-    assert config["mcp_servers"] == {"ringkeeper-database": "http://gateway:8100/mcp/database"}
+    assert config["mcp_servers"] == {
+        "ringkeeper-database": "http://gateway:8100/mcp/database",
+        "ringkeeper-memory": "http://gateway:8100/mcp/memory",
+    }
     token = runtime.started[0].env["RINGKEEPER_GATEWAY_TOKEN"]
     from ringkeeper.tokens import verify_token  # noqa: PLC0415
 
@@ -163,6 +167,21 @@ def test_worker_gets_the_session_config() -> None:
 
 
 # --- Exactly one Claude credential ---
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_a_worker_is_told_about_the_owners_notion_memory_only_when_its_on() -> None:
+    config = {"remote": "notion", "personal_memory": True}
+    with session_scope() as session:
+        make_instance(session, "my-notion", InstanceType.MCP, shared=True, config=config)
+    bind("acme-web", "my-notion")
+    m, runtime = manager()
+    run_task()
+    m.tick()
+    m.wait_idle()
+    prompt = str(task_env(runtime.started[0])["prompt"])
+    assert "notion://docs/memory" in prompt
+    assert "Never put anything about a client or project there" in prompt
 
 
 @pytest.mark.usefixtures("task_registry")

@@ -8,6 +8,7 @@ import { ModelSettings, MoneySetting } from "@/components/model-settings";
 import { TelegramPairing } from "@/components/telegram";
 import { KindSection, TelegramPrefs, useChannels } from "@/components/channels";
 import { Alert, Button, Card, ConfirmButton, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
+import { PersonalMemory, SharedNotes } from "@/components/memory";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { applyTheme, readTheme } from "@/lib/client/theme";
@@ -243,6 +244,17 @@ export default function SettingsPage() {
             </>
           )}
         </>
+      ),
+    },
+    {
+      key: "memory",
+      label: "Memory",
+      content: () => (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">Each project keeps its own memory, in its Settings. These two are yours, across clients.</p>
+          <PersonalMemory />
+          <SharedNotes />
+        </div>
       ),
     },
     ...(DESKTOP ? [{ key: "backup", label: "Backup", content: () => <BackupSettings /> }] : []),

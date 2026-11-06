@@ -21,6 +21,7 @@ export interface AgentData {
   model: string | null;
   effort: string | null;
   autonomy: string | null;
+  memory?: string | null;
   routines: number;
   project?: string;
   client?: string;
@@ -200,6 +201,7 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
   const [model, setModel] = useState(existing?.model ?? "");
   const [effort, setEffort] = useState(existing?.effort ?? "");
   const [autonomy, setAutonomy] = useState(existing?.autonomy ?? "");
+  const [memory, setMemory] = useState(existing?.memory ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -208,7 +210,7 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
     setBusy(true);
     setError(null);
     setSaved(false);
-    const json = { name, instructions, connections: chosen, model: model.trim() || null, effort: effort || null, autonomy: autonomy || null };
+    const json = { name, instructions, connections: chosen, model: model.trim() || null, effort: effort || null, autonomy: autonomy || null, memory: memory || null };
     try {
       await (existing ? api(`projects/${project}/agents/${existing.name}`, { method: "PUT", json }) : api(`projects/${project}/agents`, { json }));
       setSaved(Boolean(existing));
@@ -251,6 +253,7 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Model (optional)" value={model} onChange={setModel} placeholder="The project's default" />
         <Select label="Effort" value={effort} onChange={setEffort} options={EFFORTS} />
+        <Select label="Where it keeps notes" value={memory} onChange={setMemory} options={[["", "The project's setting"], ["local", "Ringkeeper (local)"], ["notion", "Notion"]]} />
         <Select label="How independently it works" value={autonomy} onChange={setAutonomy} options={[["", "The project's setting"], ...Object.entries(AUTONOMY).map(([key, [label]]): [string, string] => [key, label])]} />
       </div>
       <div className="flex flex-wrap gap-2">
