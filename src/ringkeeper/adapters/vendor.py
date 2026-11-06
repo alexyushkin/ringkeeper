@@ -506,6 +506,12 @@ def money_card(args: JSON) -> Card | None:
     return card_of(found[1].money, body)
 
 
+def declaration(args: JSON) -> str | None:
+    """What approving this call states to the vendor, in the owner's name."""
+    found = operation(str(args.get("operation") or ""))
+    return (found[1].declares or None) if found else None
+
+
 def card_of(rule: Money, body: JSON) -> Card:
     amount, currency = _picked(rule.amount, body), _picked(rule.currency, body)
     shown = "not stated" if amount is None else str(amount)
