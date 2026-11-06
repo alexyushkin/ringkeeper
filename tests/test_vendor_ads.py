@@ -25,6 +25,7 @@ pytestmark = pytest.mark.anyio
 ADS = vendor.VENDORS["google_ads"]
 FIELDS = {"vendor": "google_ads", "access_token": "at-1", "app": "google-app"}
 CLIENT_ID = "1234-abc.apps.googleusercontent.com"
+CAMPAIGN = {"name": "Spring", "eu_political_advertising": "none"}
 
 
 class Api:
@@ -125,7 +126,7 @@ def test_a_project_can_be_held_to_one_ad_account() -> None:
     [
         ("set_daily_budget", {"budget_id": "9", "daily_amount": 75.5, "currency": "usd"},
          "75.50 USD a day", "9"),
-        ("create_campaign", {"name": "Spring", "daily_amount": "20", "currency": "EUR"},
+        ("create_campaign", {**CAMPAIGN, "daily_amount": "20", "currency": "EUR"},
          "20 EUR a day", "Spring"),
         ("start_campaign", {"campaign_id": "7", "daily_amount": 50.0, "currency": "USD"},
          "50.00 USD a day", "7"),
@@ -156,6 +157,36 @@ def test_the_card_gets_the_spend_and_offers_no_trust(database_url: str) -> None:
     assert shown.money is not None
     assert shown.money["amount"] == "75.50 USD a day"
     assert shown.trustable is False
+
+
+def held_card(operation: str, body: dict[str, Any]) -> Any:
+    args = {"operation": f"google_ads.{operation}", "account": "1234567890", "body": body}
+    held = ToolCall(Caller("p", "s", "t"), InstanceType.VENDOR, "call_operation", "ads", args)
+    with session_scope() as session:
+        return routes._decision_out(decisions.hold(session, held, "ads"))  # pyright: ignore[reportPrivateUsage]
+
+
+def test_the_card_for_a_new_campaign_says_what_approving_declares(database_url: str) -> None:
+    """From the API, as the card gets it. In the args too: it's in what's approved."""
+    body = {**CAMPAIGN, "daily_amount": 20, "currency": "USD"}
+    shown = held_card("create_campaign", body)
+    assert shown.declares == "This campaign doesn't contain EU political advertising."
+    assert shown.args["body"]["eu_political_advertising"] == "none"
+
+
+def test_only_a_new_campaign_declares_anything(database_url: str) -> None:
+    body = {"budget_id": "9", "daily_amount": 75.5, "currency": "USD"}
+    assert held_card("set_daily_budget", body).declares is None
+
+
+@pytest.mark.parametrize("said", [None, "", "yes", "contains", True])
+def test_a_campaign_isnt_held_without_the_declaration(said: Any) -> None:
+    """Never filled in on the way out: a call without it stops before there's a card."""
+    body = {"name": "Spring", "daily_amount": 20, "currency": "USD"}
+    if said is not None:
+        body["eu_political_advertising"] = said
+    with pytest.raises(ToolError, match="eu_political_advertising"):
+        op("create_campaign").shape(body, "1234567890")
 
 
 # --- Calls ---
@@ -225,7 +256,7 @@ async def test_starting_a_campaign_checks_the_budget_the_card_showed(api: Api) -
 
 
 async def test_a_new_campaign_starts_paused_with_its_budget(api: Api) -> None:
-    await call("create_campaign", {"name": "Spring", "daily_amount": 20, "currency": "USD"})
+    await call("create_campaign", {**CAMPAIGN, "daily_amount": 20, "currency": "USD"})
     sent = json.loads(api.changes[0].content)["mutateOperations"]
     budget = sent[0]["campaignBudgetOperation"]["create"]
     campaign = sent[1]["campaignOperation"]["create"]
@@ -233,6 +264,8 @@ async def test_a_new_campaign_starts_paused_with_its_budget(api: Api) -> None:
     assert campaign["campaignBudget"] == budget["resourceName"]
     assert campaign["status"] == "PAUSED"
     assert campaign["advertisingChannelType"] == "SEARCH"
+    wanted = "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
+    assert campaign["containsEuPoliticalAdvertising"] == wanted
 
 
 async def test_new_ad_groups_and_ads_start_paused(api: Api) -> None:

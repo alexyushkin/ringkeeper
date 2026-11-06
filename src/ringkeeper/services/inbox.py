@@ -527,6 +527,13 @@ def money(decision: Decision) -> dict[str, str] | None:
     return vars(card) if card else None
 
 
+def declares(decision: Decision) -> str | None:
+    """What approving this held call states to the vendor, in the owner's name."""
+    if decision.kind is not DecisionKind.APPROVE or decision.service is not InstanceType.VENDOR:
+        return None
+    return vendor.declaration(decision.args or {})
+
+
 def _mcp_money(decision: Decision, args: dict[str, Any]) -> dict[str, str] | None:
     """A payments server's call that needs the name typed: what it says, as written."""
     session = object_session(decision)

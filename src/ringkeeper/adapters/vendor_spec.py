@@ -97,6 +97,8 @@ class Op:
     # Checked against the vendor just before it runs, once approved: `read` runs a read of this
     # vendor by name. Raises ToolError if what the card showed isn't so.
     confirm: Confirm | None = None
+    # What approving states to the vendor in the owner's name. The card says it.
+    declares: str = ""
 
 
 def reads(
@@ -150,10 +152,11 @@ def final(
     confirm: Confirm | None = None,
     inject: tuple[str, ...] = (),
     hint: str = "",
+    declares: str = "",
 ) -> Op:
     return Op(
         name, method, path, says, FINAL, why, params=params, only=only, undo=undo, money=money,
-        shape=shape, confirm=confirm, inject=inject, hint=hint,
+        shape=shape, confirm=confirm, inject=inject, hint=hint, declares=declares,
     )  # fmt: skip
 
 

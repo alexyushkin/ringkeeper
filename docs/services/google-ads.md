@@ -25,9 +25,8 @@ client under a manager account needs the manager's ID too, and tasks can pass it
   keywords. Everything starts paused.
 - **Spend:** start a campaign, an ad group or an ad, and change a daily budget or a bid.
 
-Only Search campaigns can be made here for now. Campaigns made here are declared as not EU
-political advertising. Payment methods and billing aren't reachable at all, and neither are
-creating accounts or changing who has access.
+Only Search campaigns can be made here for now. Payment methods and billing aren't reachable at
+all, and neither are creating accounts or changing who has access.
 
 ## What's held
 
@@ -38,6 +37,9 @@ creating accounts or changing who has access.
 - **The card shows the spend,** like `50.00 USD a day`. Just before the change runs, Ringkeeper
   checks that currency against the account. Starting a campaign also checks its real budget. If
   either differs from the card, nothing changes.
+- **Approving a new campaign declares it has no EU political advertising.** Google won't make a
+  campaign without that answer, so the card says it in full. If it isn't true, deny the card.
+  A campaign that has any can't be made here.
 
 ## The daily operations
 

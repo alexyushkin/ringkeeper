@@ -14,6 +14,9 @@ publishes it as the release notes and the app shows it with the update.
 - **Google Ads.** Reports run, and pausing waits for approval. Creating, starting, and changing a
   budget or a bid need the name typed, and the card shows the spend. Settings shows the daily
   operations every client shares.
+- **A new Google Ads campaign's card shows what you declare.** Approving one tells Google it has
+  no EU political advertising, so the card says that in full. A campaign that has any can't be
+  made here.
 - **Help > Ask is a conversation.** Ask a follow-up about an answer, or press New question to
   start again. It stays while you open a page from an answer and come back; reloading or
   signing out ends it.

@@ -19,6 +19,7 @@ export interface Decision {
   heading: string | null;
   money?: { amount: string; counterparty: string; account: string } | null;
   trustable?: boolean;
+  declares?: string | null;
   options: string[];
   project: string | null;
   client: string | null;
@@ -114,6 +115,13 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
               <dt className="mt-2 text-xs text-muted">Account</dt>
               <dd className="text-lg font-medium">{decision.money.account}</dd>
             </dl>
+          ) : null}
+          {decision.declares ? (
+            <div data-declares className="rounded-md border border-line p-3">
+              <p className="text-xs text-muted">Approving declares this to the vendor, in your name</p>
+              <p className="mt-1 text-lg font-medium">{decision.declares}</p>
+              <p className="mt-1 text-xs text-muted">If that isn&apos;t true, deny this.</p>
+            </div>
           ) : null}
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
           {decision.undo ? (

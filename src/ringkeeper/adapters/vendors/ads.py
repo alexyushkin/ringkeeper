@@ -43,6 +43,11 @@ DAILY = Money(("daily_amount",), ("currency",), ("budget_id", "campaign_id", "na
 BID = Money(("cpc_bid",), ("currency",), ("ad_group_id", "name"), ("account",), per=" a click")
 SPEND_CHECKED = ("daily_amount", "currency")
 ACCOUNT_CURRENCY = "SELECT customer.currency_code FROM customer LIMIT 1"
+# Google won't make a campaign without this answer, and it's the owner's to give: it's in the
+# call, so it's in what's approved, and the card says it in full.
+EU_POLITICAL = "eu_political_advertising"
+NO_EU_POLITICAL = "none"
+DECLARES = "This campaign doesn't contain EU political advertising."
 
 
 def _id(body: JSON, key: str) -> str:
@@ -119,6 +124,12 @@ def _new_campaign(body: JSON, account: str | None) -> JSON:
     if not title:
         raise ToolError("name the campaign")
     _currency(body)
+    if body.get(EU_POLITICAL) != NO_EU_POLITICAL:
+        raise ToolError(
+            f"Google needs to know: send {EU_POLITICAL}: '{NO_EU_POLITICAL}' if this campaign "
+            "has none, and the card will ask the owner to declare it. A campaign with EU "
+            "political advertising can't be made here"
+        )
     budget = _resource(account, "campaignBudgets", "-1")
     return {"mutateOperations": [
         {"campaignBudgetOperation": {"create": {
@@ -260,7 +271,8 @@ GOOGLE_ADS = Vendor(
     "access on its overview page. Then sign in from this tile.",
     note="Reports run. Pausing waits for approval. Creating, starting, and changing a budget or "
     "a bid need the name typed, in the app itself, and the card shows the spend. Everything "
-    "starts paused. New campaigns are declared as not EU political advertising. Every client "
+    "starts paused. Approving a new campaign declares it isn't EU political advertising: the "
+    "card says so. Every client "
     "shares your Cloud project's daily operations: Settings shows what's used.",
     ops=(
         reads("list_accounts", "/customers:listAccessibleCustomers",
@@ -281,8 +293,11 @@ GOOGLE_ADS = Vendor(
         # The name typed.
         final("create_campaign", "POST", f"{BASE}/googleAds:mutate",
               "Make a paused Search campaign with its daily budget", CREATES, "name",
-              *SPEND_CHECKED, "manager", only=("name", *SPEND_CHECKED), money=DAILY,
-              shape=_new_campaign, confirm=_in_currency),
+              *SPEND_CHECKED, EU_POLITICAL, "manager",
+              only=("name", *SPEND_CHECKED, EU_POLITICAL), money=DAILY,
+              shape=_new_campaign, confirm=_in_currency, declares=DECLARES,
+              hint=f"{EU_POLITICAL} must be '{NO_EU_POLITICAL}': the owner declares that to "
+              "Google by approving. If the campaign has any, don't make it here."),
         final("create_ad_group", "POST", f"{BASE}/adGroups:mutate",
               "Make a paused ad group in a campaign", CREATES, "campaign_id", "name", "cpc_bid",
               "currency", "manager", only=("campaign_id", "name", "cpc_bid", "currency"),
