@@ -28,6 +28,35 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* A brand's own logo file: on white, as most are drawn for it, unless it has a version for dark
+   backgrounds. Then the theme picks which file shows. */
+.logo-plate {
+  background: #fff;
+}
+.logo-dark {
+  display: none;
+}
+:root[data-theme="dark"] .logo-themed {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .logo-light:has(+ .logo-dark) {
+  display: none;
+}
+:root[data-theme="dark"] .logo-dark {
+  display: block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-themed {
+    background: var(--color-surface);
+  }
+  :root:not([data-theme="light"]) .logo-light:has(+ .logo-dark) {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .logo-dark {
+    display: block;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;

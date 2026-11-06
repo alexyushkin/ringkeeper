@@ -598,7 +598,30 @@ def test_every_service_in_the_catalog_has_a_mark() -> None:
     logos = (web / "lib" / "client" / "logos.ts").read_text(encoding="utf-8")
     catalog = (web / "components" / "catalog.tsx").read_text(encoding="utf-8")
     marked = set(re.findall(r"^  ([a-z0-9_]+): \{ color", logos, re.M))
+    files = dict(re.findall(r"^  ([a-z0-9_]+): (\{[^\n]*\}),$", logos, re.M))
+    marked |= set(files)
     marked |= set(re.findall(r'^  ([a-z0-9_]+): \["', catalog, re.M))
     tiles = set(re.findall(r'\{ key: "([a-z0-9_]+)", label', catalog))
     shown = {r.key for r in remote.CATALOG if r.shelf} | {v.key for v in ALL} | tiles
     assert shown - marked == set()
+
+
+def test_every_logo_file_is_there_with_where_it_came_from() -> None:
+    web = Path(__file__).parent.parent / "web"
+    logos = (web / "lib" / "client" / "logos.ts").read_text(encoding="utf-8")
+    sources = (web / "public" / "logos" / "SOURCES.md").read_text(encoding="utf-8")
+    block = logos.split("LOGO_FILES", 1)[1].split("};", 1)[0]
+    files = dict(re.findall(r"^  ([a-z0-9_]+): (\{.*\}),$", block, re.M))
+    assert files
+    for key, shape in files.items():
+        assert (web / "public" / "logos" / f"{key}.svg").is_file(), key
+        assert f"| {key} | `{key}.svg`" in sources, key
+        if "dark" in shape:
+            assert (web / "public" / "logos" / f"{key}-dark.svg").is_file(), key
+
+
+def test_no_logo_can_run_or_fetch_anything() -> None:
+    folder = Path(__file__).parent.parent / "web" / "public" / "logos"
+    for logo in folder.glob("*.svg"):
+        body = logo.read_text(encoding="utf-8")
+        assert not re.search(r"<script|onload=|<foreignObject|href=\"http", body, re.I), logo.name

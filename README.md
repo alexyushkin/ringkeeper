@@ -45,3 +45,5 @@ Need help setting it up for your clients? <https://yushkin.us> or
 [LinkedIn](https://www.linkedin.com/in/alexey-yushkin).
 
 License: [MIT](LICENSE).
+
+Logos are trademarks of their owners, used to identify integrations; no endorsement implied.
