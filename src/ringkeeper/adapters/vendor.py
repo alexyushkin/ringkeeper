@@ -11,10 +11,12 @@ from the call alone, wherever that's decided. A call naming another vendor's ope
 refused before it's held.
 """
 
+import asyncio
 import base64
 import contextlib
 import hashlib
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -44,11 +46,15 @@ from ringkeeper.adapters.vendor_spec import (
     Auth,
     Money,
     Op,
+    Reader,
     Snapshot,
     Vendor,
 )
 from ringkeeper.adapters.vendors import ALL
 from ringkeeper.models import Env, InstanceType
+
+# The HTTP client logs each address at INFO, and Meta's tokens go in the address.
+logging.getLogger("httpx2").setLevel(logging.WARNING)
 
 VENDORS: dict[str, Vendor] = {v.key: v for v in ALL}
 OPERATIONS: dict[str, tuple[Vendor, Op]] = {
@@ -136,7 +142,9 @@ def secret_fragments(value: str) -> list[str]:
     except ToolError:
         return []
     keys = [s.key for s in vendor.secrets if s.hidden]
-    return [str(fields[k]) for k in (*keys, "access_token", "refresh_token") if fields.get(k)]
+    found = [str(fields[k]) for k in (*keys, "access_token", "refresh_token") if fields.get(k)]
+    pages = cast(list[JSON], fields.get("pages") or [])
+    return found + [str(p["token"]) for p in pages if p.get("token")]
 
 
 def config_of(value: str) -> JSON:
@@ -203,7 +211,9 @@ def _classify(target: Target, args: JSON) -> ToolKind:
     # Checked before it's held: nobody should approve a call that can only fail.
     account = args.get("account") or _fields(target.secret.reveal()).get("default_account")
     _address(op, cast(JSON, args.get("path") or {}), cast(str | None, account))
-    _checked_body(op, cast(JSON | None, args.get("body")))
+    body = _checked_body(op, cast(JSON | None, args.get("body")))
+    if op.shape is not None:
+        op.shape(body or {}, cast(str | None, account))
     return ToolKind.READ if op.level == READ else ToolKind.WRITE
 
 
@@ -223,13 +233,21 @@ def never_trusted(args: JSON) -> bool:
     return found is None or found[0].never_trusted
 
 
+def _token(vendor: Vendor, fields: JSON, account: str | None) -> str:
+    if vendor.token_of is not None:
+        return vendor.token_of(fields, account)
+    return str(fields["access_token"])
+
+
 def _headers(vendor: Vendor, fields: JSON, account: str | None) -> dict[str, str]:
     auth: Auth = vendor.auth
     headers = dict(vendor.headers)
     if vendor.account_header and account:
         headers[vendor.account_header] = account
+    if vendor.token_param:
+        return headers
     if vendor.provider:
-        return headers | {"Authorization": f"Bearer {fields['access_token']}"}
+        return headers | {"Authorization": f"Bearer {_token(vendor, fields, account)}"}
     match auth.kind:
         case "bearer":
             headers["Authorization"] = f"{auth.scheme} {fields[auth.field]}"
@@ -319,6 +337,8 @@ async def run(
     account: str | None = None,
 ) -> JSON:
     account = account or cast(str | None, fields.get("default_account"))
+    if op.answer is not None:
+        return op.answer(fields, account)
     fields = await _with_token(vendor, fields)
     client = _client(vendor, fields, account)
     if op.graphql:
@@ -330,6 +350,8 @@ async def run(
             raise ToolError(f"{vendor.name} said: {json.dumps(errors)[:500]}")
         return cast(JSON, answer.get("data") or {})
     sent = _checked_body(op, body)
+    if op.shape is not None:
+        sent = op.shape(sent or {}, account)
     if op.inject:
         sent = {**(sent or {}), **{k: fields[k] for k in op.inject}}
     # A query written in the operation's path is part of what it does (operation=void), so
@@ -338,7 +360,50 @@ async def run(
     values = {**(query or {}), **{k: v[0] for k, v in parse_qs(fixed).items()}}
     if op.method != "GET":
         client.headers.update(dict(vendor.write_headers))
-    return await rest.call(client, vendor.name, op.method, address, params=values, json=sent)
+    for header, name in vendor.path_headers.items():
+        if given := (path or {}).get(name):
+            client.headers[header] = _segment(name, given)
+    used = vendor.meter(op, values, sent) if vendor.meter else 0
+    try:
+        token = _token_for(vendor, fields, account)
+        return await _send(vendor, op, client, address, values, sent, token)
+    finally:
+        if used:
+            await _metered(fields, used)
+
+
+def _token_for(vendor: Vendor, fields: JSON, account: str | None) -> JSON:
+    return {vendor.token_param: _token(vendor, fields, account)} if vendor.token_param else {}
+
+
+async def _send(
+    vendor: Vendor,
+    op: Op,
+    client: httpx2.AsyncClient,
+    address: str,
+    values: JSON,
+    sent: JSON | None,
+    token: JSON,
+) -> JSON:
+    """One request. A token that isn't in a header goes where the vendor documents it: in the
+    form of a change, and the query of anything else."""
+    if not token:
+        return await rest.call(client, vendor.name, op.method, address, params=values, json=sent)
+    if op.method in ("GET", "DELETE"):
+        return await rest.call(client, vendor.name, op.method, address, params=values | token)
+    form = {k: _plain(v) for k, v in (sent or {}).items()} | token
+    return await rest.call(client, vendor.name, op.method, address, params=values, data=form)
+
+
+def _plain(value: Any) -> str:
+    """A form's value: JSON for anything that isn't already text."""
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+async def _metered(fields: JSON, used: int) -> None:
+    from ringkeeper.services import ads_budget  # noqa: PLC0415 (it needs the database)
+
+    await asyncio.to_thread(ads_budget.add, str(fields.get("app") or ""), used)
 
 
 @read
@@ -355,6 +420,7 @@ async def list_operations(target: Target) -> JSON:
                 "path": PLACEHOLDER.findall(op.path),
                 "takes": list(op.params),
                 "runs": RUNS[op.level],
+                **({"note": op.hint} if op.hint else {}),
             }
             for op in vendor.ops
         ],
@@ -365,6 +431,14 @@ OperationName = Annotated[
     str, Field(min_length=3, max_length=100, description="From list_operations.")
 ]
 Values = dict[str, Any] | None
+
+
+def _reader(vendor: Vendor, fields: JSON, account: str | None) -> Reader:
+    async def read_it(name: str, path: JSON, body: JSON | None) -> JSON:
+        op = next(o for o in vendor.ops if o.name == name)
+        return await run(vendor, op, fields, path, None, body, account)
+
+    return read_it
 
 
 async def _call_operation(
@@ -388,6 +462,8 @@ async def _call_operation(
     local = {k: values.pop(k) for k in op.local if k in values}
     if op.prepare is not None:
         values = op.prepare(values, local)
+    if op.confirm is not None:
+        await op.confirm(_reader(vendor, fields, account), path or {}, body or {}, account)
     answer = await run(vendor, op, fields, path, values, body, account)
     # A long answer is read in parts: services.continuations.
     return op.after(answer, local) if op.after is not None else answer
@@ -425,6 +501,8 @@ def money_card(args: JSON) -> Card | None:
     if found is None or found[1].money is None:
         return None
     body = {**cast(JSON, args.get("path") or {}), **cast(JSON, args.get("body") or {})}
+    if args.get("account"):
+        body.setdefault("account", args["account"])
     return card_of(found[1].money, body)
 
 
@@ -438,7 +516,7 @@ def card_of(rule: Money, body: JSON) -> Card:
         with contextlib.suppress(TypeError, ValueError):  # not a number: shown as written
             shown = f"{float(amount) / 100:,.2f}" if currency else f"{amount} (smallest units)"
     return Card(
-        f"{shown} {str(currency).upper() if currency else '(currency not stated)'}",
+        f"{shown} {str(currency).upper() if currency else '(currency not stated)'}{rule.per}",
         str(_picked(rule.counterparty, body) or "not stated"),
         str(_picked(rule.account, body) or "not stated"),
     )

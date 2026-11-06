@@ -35,6 +35,15 @@ the vault. Ringkeeper checks the sign-in's state itself, as it does for every si
 
 On a server install, every service comes back to the server's own address.
 
+## Meta and Threads
+
+Meta's apps come back through the https page, like HubSpot's. Your own Pages, Instagram accounts
+and Threads account work with no review from Meta, as long as you have a role on the app. A
+client's need Meta's review first: see [Facebook Pages, Instagram and Threads](meta.md). Change
+**Client accounts** on the app here once Meta has approved it.
+
+Google Ads uses your Google app, so it isn't a separate card. See [Google Ads](google-ads.md).
+
 ## Good to know
 
 - **Salesforce:** an app made in Setup works in the org it was made in. For a client's org,

@@ -34,12 +34,14 @@ export interface VendorInfo {
 interface ProviderApp {
   id: string;
   name: string;
+  options: Record<string, string>;
 }
 
 interface ProviderInfo {
   key: string;
   name: string;
   access: { key: string; label: string }[];
+  client_review: boolean;
   apps: ProviderApp[];
 }
 
@@ -175,6 +177,19 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
   }
 
   const toggle = (key: string, on: boolean) => setAccess((now) => (on ? [...now, key] : now.filter((k) => k !== key)));
+  const chosen = provider.apps.find((a) => a.id === appId) ?? provider.apps[0];
+  const needsReview = provider.client_review && !shared && chosen?.options.client_accounts !== "approved";
+  if (needsReview) {
+    return (
+      <Alert tone="warn">
+        Needs Meta review: a client&apos;s account can&apos;t sign in until Meta has reviewed your app. Add {vendor.name} as a shared tool for your own accounts. Once Meta approves the app, say so in{" "}
+        <Link href="/settings#developer-apps" className="underline">
+          Settings › Developer apps
+        </Link>
+        .
+      </Alert>
+    );
+  }
   return (
     <>
       {provider.apps.length > 1 ? <Select label="Sign in through" value={appId || (provider.apps[0]?.id ?? "")} onChange={setAppId} options={provider.apps.map((a): [string, string] => [a.id, a.name])} hint={`Which of your ${provider.name} apps.`} /> : null}

@@ -14,7 +14,7 @@ Each operation says what it needs:
 """
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +22,10 @@ from ringkeeper.models import Env
 from ringkeeper.remote import ScopeField
 
 JSON = dict[str, Any]
+# How a check reads the vendor: (the operation's name, its path values, its body).
+Reader = Callable[[str, JSON, JSON | None], Awaitable[JSON]]
+# A check before a change runs: (how to read, the call's path values, its body, its account).
+Confirm = Callable[[Reader, JSON, JSON, str | None], Awaitable[None]]
 READ, HELD, FINAL = "read", "held", "final"
 # What a Field's value may look like when it becomes part of the address.
 HOST_LABEL = r"^[a-z0-9][a-z0-9-]{0,62}$"
@@ -42,6 +46,7 @@ class Money:
     account: tuple[str, ...] = ("account", "source", "source_id", "destination", "location_id")
     # The amount is in the currency's smallest unit (cents).
     minor_units: bool = False
+    per: str = ""  # what the amount is for: " a day", " a click"
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,7 @@ class Op:
     # enough for this call).
     why: str | Callable[[JSON], str | None] | None = None
     params: tuple[str, ...] = ()  # worth knowing about, for the AI
+    hint: str = ""  # more for the AI, beyond what a card says (`says`)
     only: tuple[str, ...] = ()  # the only body fields it takes (empty: any)
     graphql: str = ""  # sent as the query; the call's body is its variables
     undo: Snapshot | None = None
@@ -82,6 +88,15 @@ class Op:
     prepare: Callable[[JSON, JSON], JSON] | None = None
     # The answer, made readable, from what came back and the `local` values.
     after: Callable[[JSON, JSON], JSON] | None = None
+    # What's sent, built from the call's plain values and its account. Raises ToolError for a
+    # call that can't be sent, before it's held: so the card shows what will really happen.
+    shape: Callable[[JSON, str | None], JSON] | None = None
+    # Answered from the connection itself, without calling the vendor (its account, if any).
+    # It must never hand back a token.
+    answer: Callable[[JSON, str | None], JSON] | None = None
+    # Checked against the vendor just before it runs, once approved: `read` runs a read of this
+    # vendor by name. Raises ToolError if what the card showed isn't so.
+    confirm: Confirm | None = None
 
 
 def reads(
@@ -93,10 +108,13 @@ def reads(
     local: tuple[str, ...] = (),
     prepare: Callable[[JSON, JSON], JSON] | None = None,
     after: Callable[[JSON, JSON], JSON] | None = None,
+    only: tuple[str, ...] = (),
+    answer: Callable[[JSON, str | None], JSON] | None = None,
+    hint: str = "",
 ) -> Op:
     return Op(
         name, method, path, says, READ, params=(*params, *local), local=local, prepare=prepare,
-        after=after,
+        after=after, only=only, answer=answer, hint=hint,
     )  # fmt: skip
 
 
@@ -109,8 +127,13 @@ def held(
     only: tuple[str, ...] = (),
     undo: Snapshot | None = None,
     money: Money | None = None,
+    shape: Callable[[JSON, str | None], JSON] | None = None,
+    hint: str = "",
 ) -> Op:
-    return Op(name, method, path, says, HELD, params=params, only=only, undo=undo, money=money)
+    return Op(
+        name, method, path, says, HELD, params=params, only=only, undo=undo, money=money,
+        shape=shape, hint=hint,
+    )  # fmt: skip
 
 
 def final(
@@ -123,10 +146,15 @@ def final(
     only: tuple[str, ...] = (),
     undo: Snapshot | None = None,
     money: Money | None = None,
+    shape: Callable[[JSON, str | None], JSON] | None = None,
+    confirm: Confirm | None = None,
+    inject: tuple[str, ...] = (),
+    hint: str = "",
 ) -> Op:
     return Op(
-        name, method, path, says, FINAL, why, params=params, only=only, undo=undo, money=money
-    )
+        name, method, path, says, FINAL, why, params=params, only=only, undo=undo, money=money,
+        shape=shape, confirm=confirm, inject=inject, hint=hint,
+    )  # fmt: skip
 
 
 def query(name: str, says: str, text: str, *params: str) -> Op:
@@ -219,6 +247,14 @@ class Vendor:
     never_trusted: bool = False
     # Why the tile says Unverified: part of this couldn't be confirmed from the vendor's docs.
     unverified: str = ""
+    # Sent as this form field and query value, as the vendor documents, not as a header.
+    token_param: str = ""
+    # Which token a call uses, for a sign-in that holds one per account (a Facebook Page).
+    token_of: Callable[[JSON, str | None], str] | None = None
+    # Path values that go in a header instead: {"login-customer-id": "manager"}.
+    path_headers: Mapping[str, str] = field(default_factory=dict[str, str])
+    # How many of the vendor's daily operations a call uses, where they're counted.
+    meter: Callable[[Op, JSON, JSON | None], int] | None = None
 
     def __post_init__(self) -> None:
         names = [op.name for op in self.ops]
@@ -239,4 +275,5 @@ class Vendor:
     @staticmethod
     def _reads(op: Op) -> bool:
         """A read sent by POST: a GraphQL query, or a search the vendor only offers that way."""
-        return bool(op.graphql) or "/search" in op.path or op.path.endswith("/query")
+        path = op.path
+        return bool(op.graphql) or "/search" in path or path.endswith(("/query", ":search"))

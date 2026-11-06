@@ -5,6 +5,15 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Social accounts.** Bluesky, Facebook Pages, Instagram, Threads and YouTube can read posts,
+  comments and insights. Anything unpublished or scheduled waits for approval. Publishing,
+  replying and deleting need the connection's name typed. Your own Meta accounts work now; a
+  client's needs Meta's review of your app, and the tile says so.
+- **YouTube videos are private unless you choose otherwise.** Ringkeeper always sends the
+  privacy, because YouTube's own default is public.
+- **Google Ads.** Reports run, and pausing waits for approval. Creating, starting, and changing a
+  budget or a bid need the name typed, and the card shows the spend. Settings shows the daily
+  operations every client shares.
 - **Help > Ask is a conversation.** Ask a follow-up about an answer, or press New question to
   start again. It stays while you open a page from an answer and come back; reloading or
   signing out ends it.

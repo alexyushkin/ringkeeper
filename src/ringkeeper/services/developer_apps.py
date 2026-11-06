@@ -17,6 +17,13 @@ Where the vendor sends the browser back:
 
 Each account is a `vendor` connection (adapters.vendor) whose secret holds its tokens and
 which app got them. A refresh token works only with its own app.
+
+Meta gives no refresh token. A Facebook sign-in keeps each Page's own token, which doesn't end;
+a Threads one keeps a 60-day token, renewed while it's in use (`renew`). Its docs want the app's
+secret on a server: here it's in this computer's vault, like every other app's.
+
+Google Ads signs in through the Google app (services.google_oauth), so there's nothing more to
+add here: `listed` keeps it off the Developer apps page.
 """
 
 import base64
@@ -40,7 +47,15 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import BindingIn, InstanceIn
-from ringkeeper.services import admin_audit, bindings, instances, mcp_oauth, projects, secrets_in
+from ringkeeper.services import (
+    admin_audit,
+    bindings,
+    google_oauth,
+    instances,
+    mcp_oauth,
+    projects,
+    secrets_in,
+)
 from ringkeeper.vault import Secret, Vault, get_vault
 
 JSON = dict[str, Any]
@@ -48,6 +63,7 @@ CALLBACK_PATH = "/oauth/callback"
 APPS_REF = "file://ringkeeper/developer-apps/{provider}"
 PENDING_SECONDS = 600
 REFRESH_MARGIN_SECONDS = 120
+RENEW_MARGIN_SECONDS = 30 * 24 * 3600  # a token that's renewed, not refreshed: well before it ends
 TIMEOUT = 20.0
 # A static page: it sends the browser on to HOSTED_PORT on this computer. Its port is fixed.
 HOSTED_CALLBACK = "https://yushkin.us/ringkeeper/oauth/callback"
@@ -113,6 +129,14 @@ class Provider:
     note: str = ""
     # Wants https, or won't take localhost for real accounts: comes back by HOSTED_CALLBACK.
     hosted: bool = False
+    token_by_get: bool = False  # the token address is asked with GET, as Meta documents
+    scope_join: str = " "
+    no_refresh_token: bool = False  # `identify` makes the sign-in last instead
+    # A token with no refresh token, made new before it ends: (the app, the token) -> tokens.
+    renew: Callable[[str], JSON] | None = None
+    # A client's account needs the vendor's review of the app, until the app says it passed.
+    client_review: bool = False
+    listed: bool = True  # shown on the Developer apps page
 
 
 def _http() -> httpx2.Client:
@@ -201,7 +225,118 @@ def _jobber(_app: App, _tokens: JSON, _back: JSON) -> tuple[str, JSON]:
     return "Jobber account", {}
 
 
+def _google(_app: App, tokens: JSON, _back: JSON) -> tuple[str, JSON]:
+    found = cast(JSON, _get(google_oauth.USERINFO, str(tokens["access_token"]), "Google"))
+    email = str(found.get("email") or "").lower()
+    if not email:
+        raise SignInError("Google didn't say which account this is. Try again.")
+    return email, {}
+
+
+def _graph(url: str, params: JSON, what: str) -> JSON:
+    """A Meta read during sign-in. The token goes in the query, as Meta documents."""
+    with _http() as http:
+        try:
+            response = http.get(url, params=params)
+            found: Any = response.json()
+        except (httpx2.HTTPError, ValueError):
+            raise SignInError(f"Couldn't ask {what}. Try again.") from None
+    if response.status_code >= 400 or not isinstance(found, dict):
+        answer = cast(JSON, found) if isinstance(found, dict) else {}
+        error = cast(JSON, answer.get("error") or {})
+        said = str(error.get("message") or response.status_code)[:200]
+        raise SignInError(f"{what} didn't answer ({said}).")
+    return cast(JSON, found)
+
+
+def _meta(app: App, tokens: JSON, back: JSON) -> tuple[str, JSON]:
+    """Who this is, and a lasting token for each Page: one made from a long-lived user token
+    doesn't end. The user token itself isn't needed again until the next sign-in."""
+    lasting = _graph(f"{GRAPH}/oauth/access_token", {
+        "grant_type": "fb_exchange_token", "client_id": app.client_id,
+        "client_secret": app.client_secret, "fb_exchange_token": tokens["access_token"],
+    }, "Meta")  # fmt: skip
+    user = str(lasting.get("access_token") or "")
+    if not user:
+        raise SignInError("Meta didn't give a lasting sign-in. Start it again.")
+    who = _graph(f"{GRAPH}/me", {"fields": "id,name", "access_token": user}, "Meta")
+    instagram = back.get("vendor") == "instagram"
+    fields = "id,name,access_token"
+    if instagram:
+        fields += ",instagram_business_account{id,username}"
+    found = _graph(f"{GRAPH}/me/accounts",
+                   {"fields": fields, "limit": 100, "access_token": user}, "Meta")  # fmt: skip
+    pages = [
+        {
+            "id": str(p.get("id")), "name": str(p.get("name")), "token": str(p["access_token"]),
+            "instagram": p.get("instagram_business_account"),
+        }
+        for p in cast(list[JSON], found.get("data") or [])
+        if p.get("access_token")
+    ]  # fmt: skip
+    if not pages:
+        raise SignInError("No Pages were allowed. Sign in again and pick at least one.")
+    extra: JSON = {"pages": pages, "access_token": user, "expires_at": _ends(lasting)}
+    if instagram:
+        linked = [cast(JSON, p["instagram"]) for p in pages if p["instagram"]]
+        if not linked:
+            raise SignInError(
+                "None of those Pages has an Instagram professional account linked to it."
+            )
+        if len(linked) == 1:
+            extra["default_account"] = str(linked[0].get("id"))
+    elif len(pages) == 1:
+        extra["default_account"] = pages[0]["id"]
+    return str(who.get("name") or who.get("id")), extra
+
+
+def _ends(tokens: JSON) -> int:
+    return int(time.time() + float(tokens.get("expires_in") or 60 * 24 * 3600))
+
+
+def _threads(app: App, tokens: JSON, _back: JSON) -> tuple[str, JSON]:
+    lasting = _graph(f"{THREADS_GRAPH}/access_token", {
+        "grant_type": "th_exchange_token", "client_secret": app.client_secret,
+        "access_token": tokens["access_token"],
+    }, "Threads")  # fmt: skip
+    token = str(lasting.get("access_token") or "")
+    if not token:
+        raise SignInError("Threads didn't give a lasting sign-in. Start it again.")
+    who = _graph(f"{THREADS_GRAPH}/v1.0/me", {"fields": "id,username", "access_token": token},
+                 "Threads")  # fmt: skip
+    return str(who.get("username") or who.get("id")), {
+        "access_token": token, "expires_at": _ends(lasting), "default_account": str(who.get("id")),
+    }  # fmt: skip
+
+
+def _threads_renew(token: str) -> JSON:
+    return _graph(f"{THREADS_GRAPH}/refresh_access_token",
+                  {"grant_type": "th_refresh_token", "access_token": token}, "Threads")  # fmt: skip
+
+
 HUBSPOT_OAUTH = "https://api.hubspot.com/oauth/2026-09"
+GRAPH = "https://graph.facebook.com/v27.0"
+THREADS_GRAPH = "https://graph.threads.com"
+META_APPS = "https://developers.facebook.com/apps"
+FACEBOOK_SCOPES = (
+    "business_management", "pages_show_list", "pages_read_engagement", "pages_manage_posts",
+    "pages_manage_engagement", "pages_read_user_content", "read_insights",
+)  # fmt: skip
+INSTAGRAM_SCOPES = (
+    "business_management", "pages_show_list", "pages_read_engagement", "instagram_basic",
+    "instagram_content_publish", "instagram_manage_comments", "instagram_manage_insights",
+)  # fmt: skip
+THREADS_SCOPES = (
+    "threads_basic", "threads_content_publish", "threads_read_replies",
+    "threads_manage_replies", "threads_manage_insights", "threads_delete",
+)  # fmt: skip
+REVIEW_OPTION = Option(
+    "client_accounts",
+    "Client accounts",
+    "Meta must review your app before a client's account can sign in. Your own accounts work now.",
+    default="needs_review",
+    choices=(("needs_review", "Needs Meta review"), ("approved", "Approved by Meta")),
+)
 HUBSPOT_OPTIONAL = (
     "automation.sequences.read", "automation.sequences.enrollments.write", "marketing-email",
     "transactional-email",
@@ -372,6 +507,57 @@ PROVIDERS: dict[str, Provider] = {
             ),
             identify=_jobber,
         ),
+        Provider(
+            "meta", "Meta (Facebook and Instagram)", META_APPS,
+            "https://www.facebook.com/v27.0/dialog/oauth", f"{GRAPH}/oauth/access_token",
+            steps=(
+                "Open My Apps on Meta for Developers and click Create app. Choose the use case "
+                "Manage everything on your Page. Add the Instagram use case too if you want it.",
+                "Under the use case's permissions, add the ones listed here.",
+                "Add Facebook Login, and paste {redirect} under Valid OAuth Redirect URIs.",
+                "Keep yourself in the app's Roles: without Meta's review, only people with a "
+                "role can sign in.",
+                "Open App settings, then Basic. The App ID is the client ID here, and the App "
+                "secret is the client secret.",
+            ),
+            scopes=tuple(dict.fromkeys((*FACEBOOK_SCOPES, *INSTAGRAM_SCOPES))),
+            vendor_scopes={"facebook": FACEBOOK_SCOPES, "instagram": INSTAGRAM_SCOPES},
+            options=(REVIEW_OPTION,),
+            identify=_meta,
+            note="Your own Pages and Instagram accounts work without Meta's review. A client's "
+            "need Tech Provider status, App Review and Business Verification first.",
+            hosted=True, token_by_get=True, scope_join=",", no_refresh_token=True,
+            client_review=True,
+        ),
+        Provider(
+            "threads", "Threads", META_APPS,
+            "https://threads.com/oauth/authorize", f"{THREADS_GRAPH}/oauth/access_token",
+            steps=(
+                "Open your Meta app, or make one, and add the Threads use case: Access the "
+                "Threads API.",
+                "Under the use case's settings, add the permissions listed here, and paste "
+                "{redirect} as the redirect callback URL.",
+                "Add your Threads account under App roles, as a Threads tester, and accept it in "
+                "Threads: open Settings, Account, Website permissions.",
+                "Copy the Threads app ID and Threads app secret from the use case's settings. "
+                "They're not the same as the Meta app's.",
+            ),
+            scopes=THREADS_SCOPES,
+            options=(REVIEW_OPTION,),
+            identify=_threads,
+            note="Your own account works without Meta's review. A client's needs App Review "
+            "first.",
+            hosted=True, scope_join=",", no_refresh_token=True, renew=_threads_renew,
+            client_review=True,
+        ),
+        Provider(
+            "google", "Google", "https://console.cloud.google.com/apis/credentials",
+            google_oauth.AUTHORIZE, google_oauth.TOKEN, steps=(),
+            scopes=google_oauth.IDENTITY,
+            vendor_scopes={"google_ads": (*google_oauth.IDENTITY, f"{google_oauth.G}adwords")},
+            extra={"access_type": "offline", "prompt": "consent select_account"},
+            identify=_google, listed=False,
+        ),
     )
 }  # fmt: skip
 
@@ -412,6 +598,11 @@ def provider(key: str) -> Provider:
 
 
 def list_apps(settings: Settings, key: str) -> list[App]:
+    if key == "google":
+        return [
+            App(a.id, a.name, a.client_id, a.client_secret)
+            for a in google_oauth.list_apps(settings)
+        ]
     try:
         value = get_vault(settings).resolve(APPS_REF.format(provider=key)).reveal()
     except RingkeeperError:
@@ -460,6 +651,8 @@ def save_app(
     """Add an app, or (with an id) replace one. Replacing its client signs its accounts
     out at their next refresh."""
     found = provider(key)
+    if not found.listed:
+        raise RuleViolationError(f"{found.name} apps are set up on their own card.")
     client_id, client_secret = client_id.strip(), "".join(client_secret.split())
     name = name.strip()
     if not client_id or not client_secret:
@@ -486,7 +679,21 @@ def save_app(
     return app
 
 
+def set_options(settings: Settings, key: str, app_id: str, options: Mapping[str, str]) -> App:
+    """Change an app's settings, keeping its client and its secret."""
+    found = provider(key)
+    apps = list_apps(settings, key)
+    app = next((a for a in apps if a.id == app_id), None)
+    if app is None or not found.listed:
+        raise RuleViolationError(f"There's no {found.name} app '{app_id}'.")
+    changed = App(app.id, app.name, app.client_id, app.client_secret, _options(found, options))
+    _store_apps(settings, key, [changed if a.id == app_id else a for a in apps])
+    return changed
+
+
 def forget_app(settings: Settings, key: str, app_id: str) -> None:
+    if not provider(key).listed:
+        raise RuleViolationError(f"{provider(key).name} apps are set up on their own card.")
     apps = list_apps(settings, key)
     if not any(a.id == app_id for a in apps):
         raise RuleViolationError(f"There's no {provider(key).name} app '{app_id}'.")
@@ -546,11 +753,14 @@ def _filled(address: str, app: App) -> str:
 def _refused(status: int, text: str) -> bool:
     """Whether a token address turned the client itself down, not the made-up code."""
     bad = ("invalid_client", "unauthorized_client", "BAD_CLIENT", "AADSTS700016", "AADSTS7000215",
-           "AADSTS7000222")  # fmt: skip
+           "AADSTS7000222", "client secret", "Invalid Client ID",
+           "Invalid application ID")  # fmt: skip
     return status == 401 or any(word in text for word in bad)
 
 
-def check_client(token: str, client_id: str, client_secret: str, redirect: str, basic: bool) -> str:
+def check_client(
+    token: str, client_id: str, client_secret: str, redirect: str, basic: bool, by_get: bool = False
+) -> str:
     """Asks the vendor about this client with a code that can't work, so nothing is
     created: turning the code down means it accepted the client."""
     form = {
@@ -566,7 +776,11 @@ def check_client(token: str, client_id: str, client_secret: str, redirect: str, 
         form |= {"client_id": client_id, "client_secret": client_secret}
     with _http() as http:
         try:
-            response = http.post(token, data=form, headers=headers)
+            response = (
+                http.get(token, params=form)
+                if by_get
+                else http.post(token, data=form, headers=headers)
+            )
         except httpx2.HTTPError:
             raise SignInError("Couldn't reach the vendor. Check this computer is online.") from None
     if _refused(response.status_code, response.text):
@@ -579,7 +793,7 @@ def check_app(settings: Settings, key: str, app_id: str) -> str:
     app = _app(settings, key, app_id)
     return check_client(
         _filled(found.token, app), app.client_id, app.client_secret,
-        redirect_for(settings, found), found.basic_auth,
+        redirect_for(settings, found), found.basic_auth, found.token_by_get,
     )  # fmt: skip
 
 
@@ -601,6 +815,14 @@ def _forget_old() -> None:
     now = time.monotonic()
     for state in [s for s, p in _pending.items() if now - p.created > PENDING_SECONDS]:
         del _pending[state]
+
+
+def needs_review(found: Provider, app: App, connection: JSON) -> bool:
+    """Whether this is a client's account, on an app the vendor hasn't reviewed. A shared tool
+    is the owner's own."""
+    if not found.client_review or app.options.get("client_accounts") == "approved":
+        return False
+    return not connection.get("shared") and not connection.get("replace")
 
 
 def check_start(session: Session, connection: JSON, vendor_key: str) -> None:
@@ -634,6 +856,12 @@ def start(
         raise RuleViolationError("That service doesn't sign in through a developer app.")
     found = provider(wanted.provider)
     app = _app(settings, found.key, app_id)
+    if needs_review(found, app, connection):
+        raise RuleViolationError(
+            f"A client's account needs Meta review of your app. Add {wanted.name} as a shared "
+            "tool for your own accounts, or, once Meta has approved the app, say so in Settings "
+            "> Developer apps."
+        )
     redirect = redirect_for(settings, found)
     scopes = scopes_for(found, vendor_key, list(access or []))
     verifier = secrets.token_urlsafe(48)
@@ -649,7 +877,7 @@ def start(
         **found.extra,
     }
     if scopes:
-        params["scope"] = " ".join(scopes)
+        params["scope"] = found.scope_join.join(scopes)
     with _lock:
         _forget_old()
         _pending[state] = Pending(
@@ -690,9 +918,14 @@ def _token_request(found: Provider, app: App, form: dict[str, str]) -> JSON:
         headers["Authorization"] = f"Basic {pair}"
     else:
         form = {**form, "client_id": app.client_id, "client_secret": app.client_secret}
+    address = _filled(found.token, app)
     with _http() as http:
         try:
-            response = http.post(_filled(found.token, app), data=form, headers=headers)
+            response = (
+                http.get(address, params=form)
+                if found.token_by_get
+                else http.post(address, data=form, headers=headers)
+            )
         except httpx2.HTTPError:
             raise SignInError(f"Couldn't reach {found.name}. Check you're online.") from None
     try:
@@ -700,6 +933,9 @@ def _token_request(found: Provider, app: App, form: dict[str, str]) -> JSON:
     except ValueError:
         tokens = {}
     if response.status_code >= 400 or not tokens.get("access_token"):
+        said_by = tokens.get("error")
+        if isinstance(said_by, dict):  # Meta's errors are objects
+            tokens = {"message": cast(JSON, said_by).get("message"), "error": "refused"}
         error = str(tokens.get("error") or tokens.get("status") or response.status_code)
         if error == "invalid_grant":
             raise SignInError(f"{found.name} no longer accepts this sign-in. Sign in again.")
@@ -796,11 +1032,11 @@ def finish(
             "redirect_uri": found.redirect_uri, "code_verifier": found.verifier,
         })  # fmt: skip
         refresh = str(tokens.get("refresh_token") or "")
-        if not refresh:
+        if not refresh and not wanted.no_refresh_token:
             raise SignInError(f"{wanted.name} didn't give a lasting sign-in. Start it again.")
         if wanted.identify is None:
             raise SignInError(f"Ringkeeper can't tell which {wanted.name} account this is.")
-        account, extra = wanted.identify(app, tokens, back)
+        account, extra = wanted.identify(app, tokens, {**back, "vendor": found.vendor})
         name = _store(session, settings, found, _secret(found, tokens, refresh, extra, account),
                       account)  # fmt: skip
     except (SignInError, RuleViolationError) as failed:
@@ -831,11 +1067,43 @@ def _needs_refresh(data: JSON) -> bool:
     return not isinstance(expires, int | float) or expires - time.time() < REFRESH_MARGIN_SECONDS
 
 
+def _renews(data: JSON) -> bool:
+    """A token that's renewed, with a month or less to go."""
+    wanted = vendors.VENDORS.get(str(data.get("vendor") or ""))
+    found = PROVIDERS.get(wanted.provider) if wanted else None
+    if found is None or found.renew is None or not data.get("access_token"):
+        return False
+    return float(data.get("expires_at") or 0) - time.time() < RENEW_MARGIN_SECONDS
+
+
+def _renewed(vault: Vault, name: str, ref: str) -> Secret:
+    """A failed renewal only matters once the token has really ended: until then, it works."""
+    with _refresh_locks.setdefault(name, threading.Lock()):
+        current = _parts(vault.resolve(ref).reveal())
+        if not _renews(current):  # renewed by another call meanwhile
+            return Secret(ref, json.dumps(current))
+        found = provider(vendors.VENDORS[str(current["vendor"])].provider)
+        renew = cast(Callable[[str], JSON], found.renew)
+        try:
+            tokens = renew(str(current["access_token"]))
+        except SignInError:
+            if float(current.get("expires_at") or 0) > time.time():
+                return Secret(ref, json.dumps(current))
+            raise
+        renewed = json.dumps({
+            **current, "access_token": tokens["access_token"], "expires_at": _ends(tokens),
+        })  # fmt: skip
+        vault.store(ref, renewed)
+        return Secret(ref, renewed)
+
+
 def resolve(vault: Vault, name: str, ref: str) -> Secret:
     """The connection's secret, its token refreshed and stored first if it's about to end. A
     pasted key has nothing to refresh. Raises SignInError when the vendor won't."""
     secret = vault.resolve(ref)
     data = _parts(secret.reveal())
+    if _renews(data):
+        return _renewed(vault, name, ref)
     if not data.get("refresh_token") or not _needs_refresh(data):
         return secret
     with _refresh_locks.setdefault(name, threading.Lock()):

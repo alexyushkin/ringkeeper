@@ -18,7 +18,9 @@ router = APIRouter(prefix="/developer-apps", dependencies=[AdminDep, Depends(req
 
 AppSecret = Annotated[str, Field(min_length=6, max_length=500, repr=False)]
 ClientId = Annotated[str, Field(min_length=4, max_length=300)]
-ProviderKey = Literal["microsoft", "hubspot", "salesforce", "xero", "intuit", "jobber"]
+ProviderKey = Literal[
+    "microsoft", "hubspot", "salesforce", "xero", "intuit", "jobber", "meta", "threads"
+]
 
 
 def _redirect(settings: Settings, found: developer_apps.Provider) -> str:
@@ -55,6 +57,8 @@ def _shown(settings: Settings, found: developer_apps.Provider, session: Any) -> 
             for o in found.options
         ],
         "note": found.note,
+        "listed": found.listed,
+        "client_review": found.client_review,
         "apps": [
             {
                 "id": a.id, "name": a.name, "client_id": a.client_id, "options": dict(a.options),
@@ -108,6 +112,24 @@ def replace_app(
     )
     admin_audit.record(
         session, "secret.developer_app", f"replaced the {provider} app {app.name} ({app.id})",
+        by="owner",
+    )  # fmt: skip
+    return _shown(settings, developer_apps.provider(provider), session)
+
+
+class OptionsIn(Input):
+    options: dict[Annotated[str, Field(max_length=40)], Annotated[str, Field(max_length=320)]]
+
+
+@router.put("/{provider}/apps/{app_id}/options", dependencies=[RecentAuth])
+def set_options(
+    provider: ProviderKey, app_id: Slug, data: OptionsIn, session: WriteSessionDep
+) -> dict[str, Any]:
+    """An app's settings, without pasting its secret again."""
+    settings = get_settings()
+    app = developer_apps.set_options(settings, provider, app_id, data.options)
+    admin_audit.record(
+        session, "secret.developer_app", f"changed the settings of the {provider} app {app.name}",
         by="owner",
     )  # fmt: skip
     return _shown(settings, developer_apps.provider(provider), session)
