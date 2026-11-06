@@ -235,6 +235,8 @@ jobs:
       - name: Release notes and latest.json
         run: |
           version="${GITHUB_REF_NAME#v}"
+          # A rerun also downloads what the first publish kept: it isn't a build of its own.
+          rm -rf dist/release
           python3 shell/scripts/release.py notes "$version" > notes.md
           # For the download page only: latest.json builds its own notes for installed apps.
           cat shell/scripts/release-page-note.md >> notes.md
@@ -256,9 +258,15 @@ jobs:
           fi
           # A normal release, not a pre-release: "latest" (which installed apps
           # check) only ever points at normal releases.
-          gh release create "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" \
-            --title "Ringkeeper ${GITHUB_REF_NAME#v}" --notes-file notes.md \
-            $(find dist -type f | sort)
+          # A rerun (a Mac build that had to wait for a runner) adds to the release that's there.
+          if gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+              $(find dist -type f | sort)
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" \
+              --title "Ringkeeper ${GITHUB_REF_NAME#v}" --notes-file notes.md \
+              $(find dist -type f | sort)
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release
