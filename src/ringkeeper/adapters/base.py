@@ -121,6 +121,9 @@ class ToolSpec:
     logged: Callable[[Target, JSON], bool] | None = None
     # What the vendor calls the things this call names by ID, for its approval card.
     names: Callable[[Target, JSON], Awaitable[JSON]] | None = None
+    # Puts a call's arguments where the tool reads them, before they're checked, so holds and
+    # approval cards see them there too.
+    tidy: Callable[[JSON], JSON] | None = None
 
 
 def _spec(

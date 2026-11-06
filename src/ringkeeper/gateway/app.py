@@ -40,6 +40,7 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway import model_proxy
 from ringkeeper.gateway.approvals import approval_loop
 from ringkeeper.gateway.architect import build_architect_server
+from ringkeeper.gateway.arguments import CheckedArguments
 from ringkeeper.gateway.memory import build_memory_server
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
@@ -181,6 +182,7 @@ def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
         ),
         mask_error_details=True,  # unexpected exceptions never reach the agent
     )
+    server.add_middleware(CheckedArguments(adapter.tools))
 
     async def list_instances() -> dict[str, Any]:
         """List the instances your project can use, on every service: name, type, env,
