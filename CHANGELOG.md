@@ -8,6 +8,9 @@ publishes it as the release notes and the app shows it with the update.
 - **Leadfeeder.** Website visitors, companies, contacts and lists, through Leadfeeder's own server,
   with each project held to one account. Reads run, changes wait for approval, and anything that
   may spend credits waits with the cost on the card. Deletes need the name typed.
+- **Plan limits are said plainly.** When any service answers that your plan doesn't include
+  something, the connection's card and the task say so, the call isn't repeated, and it doesn't
+  count as a failed attempt or move the task to a bigger model.
 - **"Trust for 1 hour" no longer shows** on services that can't be trusted, like ElevenLabs.
 
 ## 0.1.0-beta.25 (2026-11-06)

@@ -238,7 +238,7 @@ def catalog_shelf() -> list[dict[str, Any]]:
             "paste_url": r.paste_url, "paste_steps": r.paste_steps, "note": r.note,
             "scope": [{"key": f.key, "label": f.label, "hint": f.hint} for f in r.scope],
             "sql": bool(r.sql_tools), "category": r.category, "url_label": r.url_label,
-            "url_hint": r.url_hint, "local": bool(r.local),
+            "url_hint": r.url_hint, "local": bool(r.local), "needs": r.needs,
         }
         for r in remote.CATALOG
         if r.shelf

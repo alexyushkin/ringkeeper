@@ -3,6 +3,10 @@
 Leadfeeder (by Dealfront) shows which companies visit a website. It connects through Leadfeeder's
 own MCP server. You can add it for a client, or as your own shared tool.
 
+**It needs a paid Leadfeeder plan.** On the free plan only sign-in and the account list work:
+everything else comes back refused. The connection's card says so, and tasks that hit it stop
+there instead of trying again. After upgrading, press **Test**.
+
 ## Where to get the key
 
 There's no key to paste: Leadfeeder's server takes a sign-in only. The API key in your Personal

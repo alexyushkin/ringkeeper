@@ -36,6 +36,13 @@ export interface RemoteService {
   url_label?: string;
   url_hint?: string;
   local?: boolean;
+  needs?: string;
+}
+
+/** What the service's plan doesn't allow, if it said so. */
+export function planLimit(connection: { config?: Record<string, unknown> | null }): string | null {
+  const kept = connection.config?.plan_limit as { message?: string } | undefined;
+  return kept?.message ?? null;
 }
 
 export interface LinkInfo {
@@ -361,11 +368,12 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         {connection.type === "google" || connection.shared ? null : <EnvBadge env={connection.env} />}
         {kind !== connectionTitle(connection) ? <span className="text-xs text-muted">{kind}</span> : null}
         {connection.shared ? <Badge tone="accent">your tool</Badge> : null}
-        {connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
+        {planLimit(connection) ? <Badge tone="warn">Plan limit</Badge> : connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
         {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
         {left !== null && left <= 14 ? <Badge tone={left <= 7 ? "bad" : "warn"}>{left < 0 ? "key expired" : `key expires in ${left} day${left === 1 ? "" : "s"}`}</Badge> : null}
         {connection.last_test_at ? <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span> : null}
       </div>
+      {planLimit(connection) ? <Alert tone="warn">{planLimit(connection)}</Alert> : null}
       {/* Why the last test failed, without opening anything. */}
       {connection.last_test_ok === false && connection.last_test_message ? <p className="text-sm text-bad">{connection.last_test_message}</p> : null}
       <p className="text-sm">

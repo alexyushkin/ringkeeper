@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 server = FastMCP("fake-leadfeeder")
 RAN = Path(os.environ["FAKE_LEADFEEDER_RAN"])
@@ -18,7 +19,17 @@ def ran() -> list[Any]:
     return json.loads(RAN.read_text()) if RAN.exists() else []
 
 
+def free_plan() -> None:
+    """What a free account gets from every account-scoped tool, as a real one did."""
+    if os.environ.get("FAKE_LEADFEEDER_PLAN") == "free":
+        raise ToolError(
+            '{"status": 403, "code": "access_denied", "message": "Your plan doesn\'t include '
+            'access to this endpoint", "upgrade_url": "https://app.leadfeeder.com/upgrade"}'
+        )
+
+
 def confirmed(tool: str, token: str | None, **arguments: Any) -> dict[str, Any]:
+    free_plan()
     if token != f"token-for-{tool}":
         return {"status": "confirmation_required", "message": f"Run {tool}?",
                 "data": {"confirm_token": f"token-for-{tool}"}}  # fmt: skip
@@ -35,7 +46,15 @@ def get_account_info(account_id: str | None = None) -> dict[str, Any]:
 @server.tool(annotations={"readOnlyHint": True})
 def search_web_visits(account_id: str, start_date: str, end_date: str) -> dict[str, Any]:
     """Search visits."""
+    free_plan()
     return {"data": [{"account": account_id, "company": "Visitor Ltd"}]}
+
+
+@server.tool(annotations={"readOnlyHint": True})
+def get_web_visits_tracker(account_id: str) -> dict[str, Any]:
+    """The tracker."""
+    free_plan()
+    return {"data": {"attributes": {"status": "receiving_data"}}}
 
 
 @server.tool(annotations={"readOnlyHint": True})

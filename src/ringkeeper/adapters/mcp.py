@@ -39,11 +39,12 @@ from fastmcp import Client
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
 from pydantic import Field
 
-from ringkeeper import cloud_rules, leadfeeder, remote
+from ringkeeper import cloud_rules, leadfeeder, plan_limits, remote
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
     Hold,
+    PlanLimitError,
     Target,
     ToolError,
     ToolKind,
@@ -175,6 +176,7 @@ BY_MEMORY = "memory"  # the owner's own Notion memory (services.personal_memory)
 BY_GUARD = "guard"  # the rules for this kind of service: the per-tool setting can't lower them
 # An API endpoint that only reads, by its name (getAgent, list_calls, retrieve_phone_number).
 READ_ENDPOINT = re.compile(r"^(get|list|retrieve|search|fetch)([_A-Z]|$)")
+PLAN_REFUSAL_CHARS = 1000
 # A tool whose name says it deletes or resets something, when its server doesn't say.
 DESTRUCTIVE_NAME = re.compile(r"delete|drop|remove|destroy|truncate|purge|wipe|reset|erase", re.I)
 # When its server doesn't say: a name that only reads (list_issues, getPage, search) runs
@@ -424,6 +426,12 @@ def _screen(target: Target, args: JSON) -> JSON:
     return args
 
 
+def _refused_by_plan(text: str) -> bool:
+    """Some servers send a refusal as an ordinary answer. A real answer can mention a plan, so
+    it only counts when the answer is short and says it was refused."""
+    return len(text) <= PLAN_REFUSAL_CHARS and plan_limits.found(text)
+
+
 def _found_key(value: Any, key: str) -> str | None:
     if isinstance(value, dict):
         found = cast(JSON, value)
@@ -487,7 +495,7 @@ async def _call_tool(
     except Exception as error:
         raise ToolError(f"the MCP server didn't answer: {type(error).__name__}: {error}") from None
     text = "\n".join(getattr(block, "text", "") for block in result.content).strip()
-    if result.is_error:
+    if result.is_error or _refused_by_plan(text):
         raise ToolError(text or f"'{tool}' failed")
     answer: JSON = {"text": text}  # a long one is read in parts: services.continuations
     if result.structured_content is not None:
@@ -496,17 +504,31 @@ async def _call_tool(
 
 
 async def accounts(target: Target) -> str:
-    """Which accounts this sign-in reaches, for a link's scope, where the server can say."""
-    if target.config.get("remote") != "leadfeeder":
+    """Which accounts this sign-in reaches, for a link's scope, where the server can say. Raises
+    PlanLimitError if the plan reaches nothing in them, with those accounts in its message."""
+    service = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    if service is None or not service.plan_probe:
         return ""
     async with _client(target) as client:
         result = await client.call_tool("get_account_info", {}, raise_on_error=False)
-    answer = _answer_of(result)
+        answer = _answer_of(result)
+        first = _found_key(answer, "id")
+        probed = (
+            await client.call_tool(service.plan_probe, {"account_id": first}, raise_on_error=False)
+            if first
+            else None
+        )
     found = (
         cast(list[JSON], cast(JSON, answer).get("data") or []) if isinstance(answer, dict) else []
     )
     shown = [f"{cast(JSON, a.get('attributes') or {}).get('name')} ({a.get('id')})" for a in found]
-    return f"Accounts: {', '.join(shown)}." if shown else ""
+    said = f"Accounts: {', '.join(shown)}." if shown else ""
+    text = "\n".join(getattr(b, "text", "") for b in probed.content) if probed else ""
+    if plan_limits.found(text):
+        raise PlanLimitError(
+            f"{plan_limits.message(service.name, service.plan_note)} {said}".strip()
+        )
+    return said
 
 
 async def _names(target: Target, args: JSON) -> JSON:
