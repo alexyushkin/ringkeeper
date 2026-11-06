@@ -10,6 +10,13 @@ name: Release
 # them as workflow artifacts; nothing is published. macOS is built by hand only
 # when asked ("Build macOS too").
 #
+# Run by hand with "Dry release", it builds what a tag builds and puts it in a
+# draft, to try the publish job without touching a real release: rerun that job
+# alone (gh run rerun <run> --job <publish job>), then delete the draft. A draft
+# has no git tag and only the repo's writers see it, and there's no latest.json
+# in it, so installed apps and the download page don't change. Never push a tag
+# for this: a v* tag is a real release.
+#
 # Secrets (Settings > Secrets and variables > Actions):
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #       the updater key; without it there are no update files, only installers
@@ -27,6 +34,10 @@ on:
     inputs:
       macos:
         description: Build macOS too
+        type: boolean
+        default: false
+      dry_release:
+        description: Dry release, to a draft (v0.0.0-rerun-test), with macOS
         type: boolean
         default: false
 
@@ -152,7 +163,7 @@ jobs:
 
   macos:
     # Unsigned and not advertised; built on tags, or by hand when asked.
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.macos
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.macos || inputs.dry_release
     name: macos-${{ matrix.arch }}
     strategy:
       fail-fast: false
@@ -223,10 +234,15 @@ jobs:
   publish:
     needs: [windows, macos]
     # The Windows build is what matters; a failed macOS build doesn't hold it back.
-    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.windows.result == 'success'
+    if: >-
+      always() && needs.windows.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.dry_release)
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      # A dry release always goes here, whatever it was run from, so it can't reach a real one.
+      TAG: ${{ inputs.dry_release && 'v0.0.0-rerun-test' || github.ref_name }}
+      DRY_RELEASE: ${{ inputs.dry_release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -234,16 +250,21 @@ jobs:
           path: dist
       - name: Release notes and latest.json
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           # A rerun also downloads what the first publish kept: it isn't a build of its own.
           rm -rf dist/release
+          if [ "$DRY_RELEASE" = true ]; then
+            echo "A test of rerunning the publish job. Not for use: delete it." > notes.md
+            find dist -type f | sort
+            exit 0
+          fi
           python3 shell/scripts/release.py notes "$version" > notes.md
           # For the download page only: latest.json builds its own notes for installed apps.
           cat shell/scripts/release-page-note.md >> notes.md
           # Signed update files mean installed apps expect latest.json: no release without it.
           if find dist -name '*.sig' | grep -q .; then
             python3 shell/scripts/release.py manifest --version "$version" --artifacts dist \
-              --base-url "https://github.com/$RELEASES_REPO/releases/download/$GITHUB_REF_NAME" \
+              --base-url "https://github.com/$RELEASES_REPO/releases/download/$TAG" \
               > latest.json
             mv latest.json dist/latest.json
           else
@@ -259,12 +280,14 @@ jobs:
           # A normal release, not a pre-release: "latest" (which installed apps
           # check) only ever points at normal releases.
           # A rerun (a Mac build that had to wait for a runner) adds to the release that's there.
-          if gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+          if gh release view "$TAG" --repo "$RELEASES_REPO" > /dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$RELEASES_REPO" --clobber \
               $(find dist -type f | sort)
           else
-            gh release create "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" \
-              --title "Ringkeeper ${GITHUB_REF_NAME#v}" --notes-file notes.md \
+            draft=""
+            if [ "$DRY_RELEASE" = true ]; then draft="--draft"; fi
+            gh release create "$TAG" --repo "$RELEASES_REPO" $draft \
+              --title "Ringkeeper ${TAG#v}" --notes-file notes.md \
               $(find dist -type f | sort)
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
