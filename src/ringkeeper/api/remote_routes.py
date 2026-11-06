@@ -22,11 +22,12 @@ from fastapi.responses import HTMLResponse
 from pydantic import Field
 
 from ringkeeper.adapters import mcp, vendor
+from ringkeeper.adapters.base import ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.errors import RuleViolationError
+from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import Input, InstanceIn, NonEmpty, ScopeValue, Slug, Title
 from ringkeeper.services import (
@@ -39,6 +40,7 @@ from ringkeeper.services import (
     instances,
     local_servers,
     mcp_oauth,
+    mcp_tools,
     remote_connections,
     secrets_in,
 )
@@ -506,6 +508,9 @@ def finish_signin(
             name = instance.name
     except (mcp_oauth.SignInError, RuleViolationError) as failed:
         return _page("Not connected", str(failed), False)
+    # Its tools as they are now: what a server offers can depend on the account.
+    with contextlib.suppress(ToolError, RingkeeperError, TimeoutError):
+        mcp_tools.refresh(name)
     return _page(
         "Connected",
         f"Ringkeeper is connected as '{name}'. You can close this tab and go back to Ringkeeper.",
