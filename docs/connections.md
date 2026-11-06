@@ -7,7 +7,7 @@ use it. A connection can't be linked to another client's project.
 
 A **shared tool** is yours, not a client's: a web browser, files on this
 computer, a search tool. It holds no client data, so it can go to any project,
-or to all of them (new ones too), with exceptions.
+or to all of them (new ones too), with exceptions. You're asked right after adding one.
 
 ## Adding one
 
