@@ -12,10 +12,10 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import object_session
 
 from ringkeeper.api.auth import AdminDep
@@ -39,6 +39,7 @@ from ringkeeper.services import (
     cleanup,
     clients,
     model_usage,
+    paging,
     projects,
     tasks,
     titles,
@@ -79,15 +80,18 @@ def _like(text: str) -> str:
 @router.get("/threads")
 def list_threads(
     session: SessionDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=paging.MOST_PER_PAGE)] = 50,
     archived: bool = False,
     q: Annotated[str | None, Query(max_length=200)] = None,
     client: str | None = None,
     project: str | None = None,
+    cursor: Annotated[str | None, Query(max_length=300)] = None,
 ) -> list[ThreadSummary]:
     """The latest conversations: archived ones only when asked, or when searching
-    (a search finds archived ones too). `client`/`project`: ones with work there."""
-    query = select(Thread).order_by(Thread.updated_at.desc()).limit(limit)
+    (a search finds archived ones too, and every message). `client`/`project`: ones with work
+    there. The headers say how many there are and how to get the next page."""
+    query = select(Thread)
     names = projects.in_scope(session, client, project)
     if names is not None:
         query = query.where(
@@ -102,7 +106,9 @@ def list_threads(
         query = query.where(
             Thread.archived_at.is_not(None) if archived else Thread.archived_at.is_(None)
         )
-    found = session.scalars(query).all()
+    page = paging.fetch(session, query, Thread.updated_at, Thread.id, limit=limit, cursor=cursor)
+    page.tell(response)
+    found = page.items
     ids = [t.id for t in found]
     counts: dict[uuid.UUID, dict[str, int]] = {}
     for thread_id, status, count in session.execute(
@@ -200,20 +206,24 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
 @router.get("/tasks")
 def list_tasks(
     session: SessionDep,
+    response: Response,
     project: str | None = None,
     status: TaskStatus | None = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    limit: Annotated[int, Query(ge=1, le=paging.MOST_PER_PAGE)] = 100,
     archived: bool = False,
     q: Annotated[str | None, Query(max_length=200)] = None,
     client: str | None = None,
+    cursor: Annotated[str | None, Query(max_length=300)] = None,
 ) -> list[dict[str, Any]]:
-    found = tasks.list_tasks(
-        session, status=status, limit=limit, archived=archived,
+    """The headers say how many there are and how to get the next page."""
+    page = tasks.page_of_tasks(
+        session, status=status, limit=limit, archived=archived, cursor=cursor,
         search=_like(q.strip()) if q and q.strip() else None,
         projects=projects.in_scope(session, client, project),
     )  # fmt: skip
+    page.tell(response)
     owners = projects.owners(session)
-    return [_task_card(t, owners) for t in found]
+    return [_task_card(t, owners) for t in page.items]
 
 
 @router.get("/tasks/{task_id}")
@@ -364,8 +374,13 @@ def _audit_query(
     outcome: AuditOutcome | None,
     since: datetime | None,
     until: datetime | None,
+    search: str | None = None,
 ) -> Any:
     query = select(AuditEvent).order_by(AuditEvent.at.desc(), AuditEvent.id.desc())
+    if search is not None:
+        said = (AuditEvent.reason, AuditEvent.tool, AuditEvent.instance, AuditEvent.project,
+                AuditEvent.result, cast(AuditEvent.args, String))  # fmt: skip
+        query = query.where(or_(*(c.ilike(search, escape="\\") for c in said)))
     if names is not None:
         query = query.where(AuditEvent.project.in_(names))
     if instance is not None:
@@ -393,21 +408,29 @@ def _audit_row(event: AuditEvent, owners: dict[str, str] | None = None) -> dict[
 @router.get("/audit")
 def list_audit(
     session: SessionDep,
+    response: Response,
     project: str | None = None,
     instance: str | None = None,
     outcome: AuditOutcome | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
     before_id: int | None = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    limit: Annotated[int, Query(ge=1, le=paging.MOST_PER_PAGE)] = 100,
     client: str | None = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    cursor: Annotated[str | None, Query(max_length=300)] = None,
 ) -> list[dict[str, Any]]:
+    """Newest first. `q` searches what happened, what was sent and what came back. The headers
+    say how many there are and how to get the next page."""
     names = projects.in_scope(session, client, project)
-    query = _audit_query(names, instance, outcome, since, until)
+    search = _like(q.strip()) if q and q.strip() else None
+    query = _audit_query(names, instance, outcome, since, until, search)
     if before_id is not None:
         query = query.where(AuditEvent.id < before_id)
+    page = paging.fetch(session, query, AuditEvent.at, AuditEvent.id, limit=limit, cursor=cursor)
+    page.tell(response)
     owners = projects.owners(session)
-    return [_audit_row(e, owners) for e in session.scalars(query.limit(limit))]
+    return [_audit_row(e, owners) for e in page.items]
 
 
 MAX_EXPORT_ROWS = 50_000
@@ -422,11 +445,13 @@ def export_audit(
     since: datetime | None = None,
     until: datetime | None = None,
     client: str | None = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
 ) -> StreamingResponse:
     """The audit log as CSV, e.g. per client (`?project=`). Arguments are left out.
     At most MAX_EXPORT_ROWS rows, newest first: narrow it with since/until for more."""
     names = projects.in_scope(session, client, project)
-    query = _audit_query(names, instance, outcome, since, until).limit(MAX_EXPORT_ROWS)
+    search = _like(q.strip()) if q and q.strip() else None
+    query = _audit_query(names, instance, outcome, since, until, search).limit(MAX_EXPORT_ROWS)
     rows = session.scalars(query).all()
 
     def lines() -> Iterator[str]:

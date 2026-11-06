@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ringkeeper.api.auth import AdminDep
@@ -285,8 +285,13 @@ def run_routine(ident: str, data: RunIn, session: WriteSessionDep) -> dict[str, 
 
 
 @router.get("/routines/{ident}/runs")
-def routine_runs(ident: str, session: SessionDep, limit: int = 50) -> list[dict[str, Any]]:
-    return [r.__dict__ for r in routines.history(session, ident, min(max(limit, 1), 500))]
+def routine_runs(
+    ident: str, session: SessionDep, response: Response, limit: int = 50, cursor: str | None = None
+) -> list[dict[str, Any]]:
+    """The headers say how many there are and how to get the next page."""
+    page = routines.history_page(session, ident, min(max(limit, 1), 500), cursor)
+    page.tell(response)
+    return [r.__dict__ for r in page.items]
 
 
 # --- Webhooks ---

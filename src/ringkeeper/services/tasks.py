@@ -32,9 +32,10 @@ from ringkeeper.models import (
     TaskKind,
     TaskRisk,
     TaskStatus,
+    Thread,
     WorkerSession,
 )
-from ringkeeper.services import attachments, projects, revocations
+from ringkeeper.services import attachments, paging, projects, revocations
 from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, TASKS_CHANNEL, current_user
 from ringkeeper.services.runtime import effective as effective_settings
@@ -221,17 +222,38 @@ def list_tasks(
     search: str | None = None,
     projects: list[str] | None = None,
 ) -> Sequence[Task]:
-    """`search`: a LIKE pattern over the request, outcome, summary and project; it
-    finds archived tasks too. Otherwise archived ones are listed only when asked."""
-    query = (
-        select(Task)
-        .options(selectinload(Task.sessions))
-        .order_by(Task.created_at.desc())
-        .limit(limit)
-    )
+    return page_of_tasks(
+        session, status=status, project=project, limit=limit, archived=archived, search=search,
+        projects=projects,
+    ).items  # fmt: skip
+
+
+def page_of_tasks(
+    session: Session,
+    *,
+    status: TaskStatus | None = None,
+    project: str | None = None,
+    limit: int = 50,
+    archived: bool = False,
+    search: str | None = None,
+    projects: list[str] | None = None,
+    cursor: str | None = None,
+) -> paging.Page[Task]:
+    """`search`: a LIKE pattern over the request, outcome, summary, project and the words of its
+    conversation; it finds archived tasks too. Otherwise archived ones are listed only when
+    asked."""
+    query = select(Task)
     if search is not None:
         fields = (Task.prompt, Task.outcome, Task.summary, Task.project)
-        query = query.where(or_(*(f.ilike(search, escape="\\") for f in fields)))
+        said = select(Message.thread_id).where(Message.body.ilike(search, escape="\\"))
+        titled = select(Thread.id).where(Thread.title.ilike(search, escape="\\"))
+        query = query.where(
+            or_(
+                *(f.ilike(search, escape="\\") for f in fields),
+                Task.thread_id.in_(said),
+                Task.thread_id.in_(titled),
+            )
+        )
     else:
         query = query.where(
             Task.archived_at.is_not(None) if archived else Task.archived_at.is_(None)
@@ -242,7 +264,10 @@ def list_tasks(
         query = query.where(Task.project == project)
     if projects is not None:
         query = query.where(Task.project.in_(projects))
-    return session.scalars(query).all()
+    return paging.fetch(
+        session, query, Task.created_at, Task.id, limit=limit, cursor=cursor,
+        load=(selectinload(Task.sessions),),
+    )  # fmt: skip
 
 
 def latest_session(task: Task) -> WorkerSession:

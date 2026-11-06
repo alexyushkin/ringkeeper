@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { useConnectionTitles } from "@/components/connection-form";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Alert, Button, Empty, Loading, PageHeader, Select, timeUntil } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { LoadMore } from "@/components/tidy";
+import { api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
 import { place, projectName, useScope } from "@/lib/client/scope";
 
@@ -41,7 +42,7 @@ export default function ApprovalsPage() {
   const [kind, setKind] = useState("");
   const [at, setAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const decisions = useApi<Decision[]>("decisions", { ...scope.query, kind, status: "pending", category: "approval", limit: 200 });
+  const decisions = usePaged<Decision>("decisions", { ...scope.query, kind, status: "pending", category: "approval" });
   const trusts = useApi<Trust[]>("trusts");
   useLive((event) => {
     if (event.type === "approval") {
@@ -50,7 +51,7 @@ export default function ApprovalsPage() {
     }
   });
   // Production holds first; otherwise newest first, as the API lists them.
-  const ordered = [...(decisions.data ?? [])].sort((a, b) => Number(b.production) - Number(a.production));
+  const ordered = [...(decisions.items ?? [])].sort((a, b) => Number(b.production) - Number(a.production));
   const count = ordered.length;
   const current = ordered[Math.min(at, Math.max(count - 1, 0))];
   const currentId = current?.id;
@@ -119,8 +120,8 @@ export default function ApprovalsPage() {
       ) : null}
       {decisions.error ? <Alert>{decisions.error}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
-      {decisions.loading && !decisions.data ? <Loading /> : null}
-      {decisions.data?.length === 0 ? <Empty>{scope.client || scope.project ? `Nothing is waiting for you from ${place(scope.client, scope.project)}.` : "Nothing is waiting for you. When an agent wants to change live client data, or send something to real people, it asks here first."}</Empty> : null}
+      {decisions.loading && !decisions.items ? <Loading /> : null}
+      {decisions.items?.length === 0 ? <Empty>{scope.client || scope.project ? `Nothing is waiting for you from ${place(scope.client, scope.project)}.` : "Nothing is waiting for you. When an agent wants to change live client data, or send something to real people, it asks here first."}</Empty> : null}
       {count > 1 ? <p className="mb-2 hidden text-xs text-muted md:block">Keys: J next · K previous · A approve · D deny</p> : null}
       <div className="space-y-4">
         {ordered.map((decision) => {
@@ -137,6 +138,7 @@ export default function ApprovalsPage() {
           );
         })}
       </div>
+      <LoadMore list={decisions} />
     </>
   );
 }

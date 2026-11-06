@@ -175,6 +175,111 @@ export function useApi<T>(path: string | null, query?: Options["query"]): Loaded
   return { data, error, loading, reload };
 }
 
+export const PAGE_SIZE = 50;
+const MOST_PER_PAGE = 500;
+
+export interface PagedList<T> {
+  items: T[] | undefined;
+  total: number | undefined; // in the whole list, not just what's loaded
+  more: boolean;
+  error: string | null;
+  loading: boolean;
+  loadingMore: boolean;
+  reload: () => void;
+  loadMore: () => void;
+}
+
+interface OnePage<T> {
+  items: T[];
+  next: string | null;
+  total: number | undefined;
+}
+
+async function onePage<T>(path: string, query: Options["query"], limit: number, cursor: string | null): Promise<OnePage<T>> {
+  const options: Options = { query: { ...query, limit, cursor } };
+  let response = await send(path, options);
+  if (response.status === 403 && response.headers.get("x-ringkeeper-confirm") === "password" && confirmHandler && (await confirmHandler())) {
+    response = await send(path, options);
+  }
+  const next = response.headers.get("x-next-cursor");
+  const total = response.headers.get("x-total-count");
+  return { items: (await read<T[]>(path, response)) ?? [], next, total: total === null ? undefined : Number(total) };
+}
+
+function same<T>(item: T): unknown {
+  return (item as { id?: unknown }).id ?? item;
+}
+
+/** A long list, a page at a time. A reload (a live event, say) keeps as many rows as are loaded. */
+export function usePaged<T>(path: string | null, query?: Options["query"], size: number = PAGE_SIZE): PagedList<T> {
+  const [items, setItems] = useState<T[] | undefined>(undefined);
+  const [total, setTotal] = useState<number | undefined>(undefined);
+  const [next, setNext] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [tick, setTick] = useState(0);
+  const key = JSON.stringify(query ?? {});
+  const shown = useRef({ key, count: 0 });
+  const latest = useRef(0); // only the newest request's answer counts
+  useEffect(() => {
+    if (path === null) return;
+    const mine = ++latest.current;
+    const fresh = shown.current.key !== key;
+    const want = fresh ? size : Math.max(size, shown.current.count);
+    shown.current.key = key;
+    setLoading(true);
+    void (async () => {
+      try {
+        const asked = JSON.parse(key) as Options["query"];
+        const rows: T[] = [];
+        let cursor: string | null = null;
+        let count: number | undefined;
+        do {
+          const page: OnePage<T> = await onePage<T>(path, asked, Math.min(want - rows.length, MOST_PER_PAGE), cursor);
+          rows.push(...page.items);
+          cursor = page.next;
+          count = page.total;
+        } while (cursor && rows.length < want);
+        if (mine !== latest.current) return;
+        shown.current.count = rows.length;
+        setItems(rows);
+        setTotal(count);
+        setNext(cursor);
+        setError(null);
+      } catch (err) {
+        if (mine === latest.current) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (mine === latest.current) setLoading(false);
+      }
+    })();
+  }, [path, key, tick, size]);
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+  const loadMore = useCallback(() => {
+    if (path === null || !next) return;
+    const mine = ++latest.current;
+    setLoadingMore(true);
+    void onePage<T>(path, JSON.parse(key) as Options["query"], size, next)
+      .then((page) => {
+        if (mine !== latest.current) return;
+        setItems((now) => {
+          const known = new Set((now ?? []).map(same));
+          const all = [...(now ?? []), ...page.items.filter((item) => !known.has(same(item)))];
+          shown.current.count = all.length;
+          return all;
+        });
+        setTotal(page.total);
+        setNext(page.next);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (mine === latest.current) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setLoadingMore(false));
+  }, [path, key, next, size]);
+  return { items, total, more: next !== null, error, loading, loadingMore, reload, loadMore };
+}
+
 export interface LiveEvent {
   type: string;
   task_id?: string;

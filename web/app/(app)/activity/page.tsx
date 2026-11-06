@@ -4,7 +4,8 @@ import { useState } from "react";
 
 import { useConnectionTitles } from "@/components/connection-form";
 import { Alert, Badge, Card, Code, Details, Empty, Field, Loading, PageHeader, Select } from "@/components/ui";
-import { useApi } from "@/lib/client/api";
+import { usePaged } from "@/lib/client/api";
+import { ListTotal, LoadMore } from "@/components/tidy";
 import { place, useScope } from "@/lib/client/scope";
 
 interface Row {
@@ -43,8 +44,9 @@ export default function ActivityPage() {
   const scope = useScope();
   const [outcome, setOutcome] = useState("");
   const [since, setSince] = useState("");
-  const query = { client: scope.client, project: scope.project, outcome, since: since ? new Date(since).toISOString() : "" };
-  const rows = useApi<Row[]>("audit", { ...query, limit: 200 });
+  const [words, setWords] = useState("");
+  const query = { client: scope.client, project: scope.project, outcome, since: since ? new Date(since).toISOString() : "", q: words.trim() };
+  const rows = usePaged<Row>("audit", query);
   const connection = useConnectionTitles();
   const csv = `/bff/audit.csv?${new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])}`;
 
@@ -54,15 +56,19 @@ export default function ActivityPage() {
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Select label="What" value={outcome} onChange={setOutcome} options={OUTCOMES} />
         <Field label="Since" type="date" value={since} onChange={setSince} />
+        <div className="sm:col-span-2">
+          <Field label="Search activity" value={words} onChange={setWords} placeholder="Words from what happened, what was sent or what came back" />
+        </div>
       </div>
       <a href={csv} className="mb-4 inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 text-sm font-medium" download>
         Export CSV{scope.project || scope.client ? ` for ${place(scope.client, scope.project)}` : ""}
       </a>
+      <ListTotal total={rows.total} what={["entry", "entries"]} searching={Boolean(words.trim())} archived={false} />
       {rows.error ? <Alert>{rows.error}</Alert> : null}
-      {rows.loading && !rows.data ? <Loading /> : null}
-      {rows.data?.length === 0 ? <Empty>Nothing here yet. Changes, refusals and your answers are listed here as they happen; if you set a filter, clear it.</Empty> : null}
+      {rows.loading && !rows.items ? <Loading /> : null}
+      {rows.items?.length === 0 ? <Empty>Nothing here yet. Changes, refusals and your answers are listed here as they happen; if you set a filter, clear it.</Empty> : null}
       <ol className="space-y-2">
-        {rows.data?.map((row) => (
+        {rows.items?.map((row) => (
           <li key={row.id}>
             <Card className="space-y-1 py-3">
               <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -81,6 +87,7 @@ export default function ActivityPage() {
           </li>
         ))}
       </ol>
+      <LoadMore list={rows} />
     </>
   );
 }

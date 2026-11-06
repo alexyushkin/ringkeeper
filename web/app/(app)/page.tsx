@@ -8,9 +8,9 @@ import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
 import { ScopeNote } from "@/components/scope-switcher";
-import { BulkBar, ListTools, SelectBox, useSelection } from "@/components/tidy";
+import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
-import { useApi, useLive } from "@/lib/client/api";
+import { useLive, usePaged } from "@/lib/client/api";
 import { place, useScope } from "@/lib/client/scope";
 import { threadHref } from "@/lib/client/routes";
 
@@ -33,7 +33,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
   const scope = useScope();
-  const threads = useApi<Thread[]>("threads", { ...scope.query, q: query.trim() || undefined, archived: archived || undefined });
+  const threads = usePaged<Thread>("threads", { ...scope.query, q: query.trim() || undefined, archived: archived || undefined });
   const pick = useSelection();
   useLive((event) => {
     if (["message", "message_routed", "task", "approval"].includes(event.type)) threads.reload();
@@ -52,11 +52,12 @@ export default function Home() {
       <ScopeNote />
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="conversations" />
       <BulkBar kind="thread" ids={[...pick.selected]} archivedView={archived} onDone={threads.reload} onClear={pick.clear} />
+      <ListTotal total={threads.total} what={["conversation", "conversations"]} searching={Boolean(query.trim())} archived={archived} />
       {threads.error ? <Alert>{threads.error}</Alert> : null}
-      {threads.loading && !threads.data ? <Loading /> : null}
-      {threads.data?.length === 0 ? <Empty>{query || archived ? "Nothing matches. Clear the search, or switch Archived off." : scope.client || scope.project ? `No conversations for ${place(scope.client, scope.project)} yet.` : "Nothing yet. Type or say what you need above, and the conversation shows up here."}</Empty> : null}
+      {threads.loading && !threads.items ? <Loading /> : null}
+      {threads.items?.length === 0 ? <Empty>{query || archived ? "Nothing matches. Clear the search, or switch Archived off." : scope.client || scope.project ? `No conversations for ${place(scope.client, scope.project)} yet.` : "Nothing yet. Type or say what you need above, and the conversation shows up here."}</Empty> : null}
       <ul className="space-y-2">
-        {threads.data?.map((thread) => {
+        {threads.items?.map((thread) => {
           const running = (thread.tasks.running ?? 0) + (thread.tasks.queued ?? 0);
           const done = thread.tasks.succeeded ?? 0;
           const failed = (thread.tasks.failed ?? 0) + (thread.tasks.timed_out ?? 0);
@@ -84,6 +85,7 @@ export default function Home() {
           );
         })}
       </ul>
+      <LoadMore list={threads} />
     </>
   );
 }

@@ -3,9 +3,10 @@
 Everything but /health needs the admin token (`public` vs `router`).
 """
 
-from typing import Any, Literal
+import uuid
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -145,26 +146,32 @@ def _decision_out(decision: Decision, owners: dict[str, str] | None = None) -> D
 @router.get("/decisions")
 def list_decisions(
     session: WriteSessionDep,
+    response: Response,
     status: DecisionStatus | None = DecisionStatus.PENDING,
     kind: DecisionKind | None = None,
     project: str | None = None,
     limit: int = 50,
     client: str | None = None,
     category: Literal["approval", "question"] | None = None,
+    thread: uuid.UUID | None = None,
+    task: uuid.UUID | None = None,
+    routine: uuid.UUID | None = None,
+    cursor: Annotated[str | None, Query(max_length=300)] = None,
 ) -> list[DecisionOut]:
     """Newest first; `client`/`project` narrow it to those projects' decisions.
     `category`: approvals (actions: Approvals and its badge) or questions (asked in
-    the conversation)."""
+    the conversation). `thread`, `task`, `routine`: only what belongs to it. The headers say how
+    many there are and how to get the next page."""
     # A write session: listing marks stale decisions expired first.
-    found = inbox.list_decisions(
-        session, status=status, kind=kind, limit=1000 if category else min(max(limit, 1), 1000),
+    page = inbox.page_of_decisions(
+        session, status=status, kind=kind, limit=min(max(limit, 1), 1000), cursor=cursor,
         projects=projects.in_scope(session, client, project),
+        approvals=None if category is None else category == "approval",
+        thread=thread, task=task, routine=routine,
     )  # fmt: skip
-    if category is not None:
-        wanted = category == "approval"
-        found = [d for d in found if inbox.is_approval(d) is wanted][: min(max(limit, 1), 1000)]
+    page.tell(response)
     owners = projects.owners(session)
-    return [_decision_out(d, owners) for d in found]
+    return [_decision_out(d, owners) for d in page.items]
 
 
 @router.get("/decisions/{decision_id}")

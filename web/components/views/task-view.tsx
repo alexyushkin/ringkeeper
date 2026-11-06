@@ -147,7 +147,7 @@ function EventView({ event }: { event: Event }) {
 export function TaskView({ id }: { id: string }) {
   const router = useRouter();
   const task = useApi<Task>(`tasks/${id}`);
-  const pending = useApi<Decision[]>("decisions", { status: "pending", limit: 200 });
+  const pending = useApi<Decision[]>(task.data ? "decisions" : null, { status: "pending", task: task.data?.id, limit: 500 });
   const [events, setEvents] = useState<Event[]>([]);
   const [retention, setRetention] = useState(90);
   const last = useRef(0);
@@ -209,7 +209,7 @@ export function TaskView({ id }: { id: string }) {
   if (task.error) return <Alert>{task.error}</Alert>;
   if (!task.data) return <Loading />;
   const t = task.data;
-  const waiting = (pending.data ?? []).filter((d) => d.task_id === id);
+  const waiting = pending.data ?? [];
 
   return (
     <>
