@@ -44,8 +44,9 @@ out of date.
 ## What's held
 
 - **Reading and adding notes run by themselves,** and each one is in Activity.
-- **No secrets.** A note with a token, password, card or bank number, or an email address is
-  refused. The same things are hidden from agents if someone types them in Notion.
+- **No secrets.** A note with a token, a password, or a card or bank number is refused, and the same
+  things are hidden from agents if someone types them in Notion. A project's notes may keep a
+  business contact's email address.
 - **Notes are treated as information, not instructions.** Agents are told so, and a note can't
   change what needs your approval.
 
@@ -55,8 +56,6 @@ out of date.
   can't be shared between clients either.
 - A client's Notion connection only works for that client's projects.
 - A note is at most 2,000 characters.
-- Phone numbers and street addresses aren't caught by the filter, so keep agents' instructions
-  clear about them.
 
 ## Shared notes
 
@@ -64,28 +63,48 @@ out of date.
 shared connection. Every project can read it, unless you turn it off in that project's Memory, and
 agents can't write there unless you allow it. Keep client data out of it.
 
-## Your Notion memory
+## My memory
 
-Notion can keep personal memories for you, and your agents can use them for what's yours, across
-every client: your preferences, your style, how you work.
+**My memory** is for what's yours, across every client: your preferences, your style, how you work.
+It's a Notion database of your own, so it works on any Notion plan.
+
+1. Add **Notion memory** as a shared tool, and share a page with it in Notion.
+2. Open **Settings > Memory > My memory**, pick the connection and the page, and save.
+
+Ringkeeper makes a database called `My memory` under that page. Agents search it when they start,
+and add lasting preferences when they finish. You can add and edit rows there too. A project can
+leave it out, in its own **Memory** settings.
+
+## What your own memory can't hold
+
+This covers My memory, Shared notes and Notion AI memory:
+
+- **Nothing about a client.** A save naming a client, a project's full display name, or the address
+  of a client's connection is refused. Names match as whole phrases, and one common word on its
+  own, like website, app, crm or portal, never counts.
+- **Nobody's details.** Email addresses, phone numbers and street addresses are taken out, and the
+  rest is kept.
+- **No secrets.** A token, a password, or a card or bank number is refused.
+
+The check goes by names, so a client's fact that doesn't name them can't be caught. Agents are told
+to keep those in the project's own memory.
+
+## Notion AI memory
+
+**Needs Notion Business plan or higher,** with Notion AI. It's off until you turn it on. It uses
+Notion's own personal memory instead of a database of yours. On other plans, use My memory.
 
 1. Add **Notion** from the catalog as a shared tool, and sign in with your own account. A token
    won't do: memory needs a signed-in person.
-2. Open **Settings > Memory > Notion memory** and turn on **Use my Notion memory**.
+2. Open **Settings > Memory > Notion AI memory** and turn it on.
 
-It needs Notion AI, which is part of Notion's Business and Enterprise plans, and memories on for
-you and your workspace: in Notion, **Settings > Notion AI > Memory > Use memories**. If Notion
-doesn't offer the tools, Ringkeeper says so. Press **Refresh its tools** after changing that.
-
-Agents search it when they start, and save lasting preferences when they finish.
+Memories must be on for you and your workspace: in Notion, **Settings > Notion AI > Memory > Use
+memories**. If Notion doesn't offer the tools, Ringkeeper says so. Press **Refresh its tools** after
+changing that.
 
 - **Searching, reading and saving run by themselves.** Saves and refusals are in Activity.
 - **Deleting a memory needs the connection's name typed.** Editing one waits for your approval.
-- **Client knowledge never goes there.** A save that names a client, a project or one of their
-  addresses is refused, and so is one holding a secret, an email address, or anything about other
-  people. That knowledge stays in the project's own memory. The check goes by names: a client's
-  fact that doesn't name them can't be caught, so agents are told to keep them out too.
-- A client's Notion connection can't use this, and memory calls on one are refused.
+- **A save about someone else is refused,** and so is any memory call on a client's connection.
 
 ## Undo
 

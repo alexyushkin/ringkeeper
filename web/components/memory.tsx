@@ -198,7 +198,7 @@ export function ProjectMemory({ project }: { project: string }) {
             <p className="text-xs text-muted">Notes you or other tools add there are picked up on the next run. Edits in Notion win, and deleted rows are forgotten.</p>
           </>
         ) : null}
-        {data.shared_available ? <Toggle label="Use my shared notes" checked={shared} onChange={setShared} hint="Agents here can read them." /> : null}
+        {data.shared_available ? <Toggle label="Use My memory and shared notes" checked={shared} onChange={setShared} hint="Agents here can read them, and add to My memory." /> : null}
         {error ? <Alert>{error}</Alert> : null}
         <Button kind="primary" busy={busy} disabled={!ready} onClick={() => void save()}>
           Save
@@ -218,7 +218,63 @@ interface Personal {
   hint: string | null;
 }
 
-/** "Use my Notion memory": the owner's own preferences, on their shared Notion connection. */
+/** "My memory": the owner's preferences across clients, in a database of their own. */
+export function MyMemory() {
+  const status = useApi<{ mine: Where | null; connections: { name: string; title: string }[] }>("memory/mine");
+  const [connection, setConnection] = useState("");
+  const [place, setPlace] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const data = status.data;
+  useEffect(() => {
+    if (data?.mine) setConnection(data.mine.connection);
+  }, [data]);
+  if (!data) return null;
+
+  async function save() {
+    setError(null);
+    try {
+      await api("memory/mine", { method: "PUT", json: { connection, ...picked(place) } });
+      setPlace("");
+      status.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function remove() {
+    await api("memory/mine", { method: "DELETE" });
+    setConnection("");
+    status.reload();
+  }
+
+  return (
+    <Section id="my-memory" title="My memory" summary={data.mine ? "in Notion" : "off"} defaultOpen={false}>
+      <div className="space-y-3">
+        <p className="text-sm text-muted">Your preferences, style and how you work, in a Notion database of your own. It works on any Notion plan. Agents search it when they start and add lasting preferences when they finish. Nothing about a client or project goes in, and emails, phone numbers and street addresses are taken out.</p>
+        {!data.connections.length ? <Alert tone="warn">Add Notion memory as a shared tool under Connections first. A client&apos;s connection can&apos;t hold this.</Alert> : null}
+        {data.mine ? (
+          <a href={data.mine.url} target="_blank" rel="noreferrer" className="text-sm text-accent">
+            Open in Notion
+          </a>
+        ) : null}
+        {data.connections.length ? <NotionPicker connections={data.connections} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} /> : null}
+        {error ? <Alert>{error}</Alert> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button kind="primary" disabled={!connection || !place} onClick={() => void save()}>
+            Save
+          </Button>
+          {data.mine ? (
+            <ConfirmButton question="Stop using My memory? What's in Notion stays there." confirm="Stop using it" onConfirm={remove}>
+              Stop using it
+            </ConfirmButton>
+          ) : null}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/** Notion AI's own memory: the owner's preferences, on their shared Notion connection. */
 export function PersonalMemory() {
   const status = useApi<{ connections: Personal[] }>("memory/personal");
   const [error, setError] = useState<string | null>(null);
@@ -251,13 +307,13 @@ export function PersonalMemory() {
   }
 
   return (
-    <Section id="notion-memory" title="Notion memory" summary={all.some((c) => c.enabled) ? "on" : "off"} defaultOpen={false}>
+    <Section id="notion-memory" title="Notion AI memory" summary={all.some((c) => c.enabled) ? "on" : "needs Notion Business plan"} defaultOpen={false}>
       <div className="space-y-3">
-        <p className="text-sm text-muted">Your own preferences, style and how you work, in Notion&apos;s personal memory. Agents search it when they start and save lasting preferences when they finish. Nothing about a client or project goes in: those saves are refused, and that knowledge stays in each project&apos;s Memory.</p>
+        <p className="text-sm text-muted">Needs Notion Business plan or higher, with Notion AI. On other plans, use My memory above. It holds your own preferences in Notion&apos;s personal memory. Nothing about a client or project goes in, and that knowledge stays in each project&apos;s Memory.</p>
         {!all.length ? <Alert tone="warn">Add Notion as a shared tool under Connections, and sign in with your own account. A client&apos;s Notion connection can&apos;t use this.</Alert> : null}
         {all.map((connection) => (
           <div key={connection.name} className="space-y-2">
-            <Toggle label={`Use my Notion memory on ${connection.title}`} checked={connection.enabled} onChange={(on) => void set(connection.name, on)} hint="Searching and saving run without asking. Deleting a memory needs the connection's name typed." />
+            <Toggle label={`Use Notion AI memory on ${connection.title}`} checked={connection.enabled} onChange={(on) => void set(connection.name, on)} hint="Searching and saving run without asking. Deleting a memory needs the connection's name typed." />
             {connection.hint ? <Alert tone="warn">{connection.hint}</Alert> : null}
             {connection.enabled ? (
               <Button busy={busy === connection.name} onClick={() => void refresh(connection.name)}>

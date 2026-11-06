@@ -55,11 +55,17 @@ def build_memory_server(current_caller: Callable[[], Caller]) -> FastMCP:
         shared: Annotated[
             bool, Field(description="In the owner's shared notes, if agents may write there.")
         ] = False,
+        mine: Annotated[
+            bool,
+            Field(description="In the owner's My memory: their own preferences, never a client's."),
+        ] = False,
     ) -> dict[str, Any]:
         """Keep a note for later runs of this project. It runs without asking. Secrets, card and
         bank numbers are refused."""
         try:
-            return await anyio.to_thread.run_sync(memory.remember, current_caller(), note, shared)
+            return await anyio.to_thread.run_sync(
+                memory.remember, current_caller(), note, shared, mine
+            )
         except RingkeeperError as error:
             raise McpToolError(scrub(str(error))) from None
 

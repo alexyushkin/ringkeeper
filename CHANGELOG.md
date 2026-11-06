@@ -8,10 +8,14 @@ publishes it as the release notes and the app shows it with the update.
 - **Agents remember between runs.** Each project keeps notes, here by default or in a Notion
   database you can read and edit. An edit there wins, a deleted row is forgotten, and what you or
   other tools add is picked up on the next run. Agents reach only their own project's notes, and
-  secrets, card numbers and email addresses are refused.
-- **Shared notes and your Notion memory.** Settings has a Memory tab for what's yours across
-  clients: a shared notes page, and Notion's own personal memory for your preferences. Nothing about
-  a client or project can be saved to Notion's memory.
+  secrets and card numbers are refused.
+- **My memory.** Your own preferences across clients, in a Notion database that works on any
+  Notion plan. Agents search it when they start and add to it when they finish. Settings has a new
+  Memory tab for it, along with a shared notes page and Notion AI memory, which needs Notion's
+  Business plan.
+- **Nothing about a client goes in your own memory.** A save naming a client or a project's full
+  name is refused, one common word like "website" never counts, and emails, phone numbers and
+  street addresses are taken out. A project's own notes may keep a business contact's email.
 - **Tools are read again after signing in,** so what a server newly offers shows up.
 
 ## 0.1.0-beta.24 (2026-11-06)

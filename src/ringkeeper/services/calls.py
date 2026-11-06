@@ -363,11 +363,11 @@ async def _refuse_what_cant_be_kept(call: ToolCall) -> None:
     raise RefusalError(said, reason)
 
 
-async def _screen(call: ToolCall, spec: ToolSpec, target: Target) -> None:
+async def _screened(call: ToolCall, spec: ToolSpec, target: Target) -> ToolCall:
     if spec.screen is None:
-        return
+        return call
     try:
-        await anyio.to_thread.run_sync(spec.screen, target, call.args)
+        return replace(call, args=await anyio.to_thread.run_sync(spec.screen, target, call.args))
     except ToolError as error:
         said = scrub(str(error))
         await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.REFUSED, reason=said))
@@ -415,7 +415,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     if spec.classify is not None:
         is_write = spec.classify(target, call.args) is ToolKind.WRITE
 
-    await _screen(call, spec, target)
+    call = await _screened(call, spec, target)
 
     if scrub_obj(call.args) != call.args:
         # Held decisions keep args verbatim, so a secret must never get in there.

@@ -270,9 +270,27 @@ def test_a_secret_isnt_kept(notion: FakeNotion) -> None:
         memory.remember(worker("acme-web"), f"the key is {API_KEY}")
 
 
-def test_an_email_address_isnt_kept(notion: FakeNotion) -> None:
-    with pytest.raises(RuleViolationError, match="personal details"):
-        memory.remember(worker("acme-web"), "Write to pat@acme.example")
+def test_a_project_may_keep_a_business_contacts_email(notion: FakeNotion) -> None:
+    source = to_notion("acme-web", "acme-notion")
+    memory.remember(worker("acme-web"), "Invoices go to ap@acme.example")
+    notion.row(source, "Orders go to orders@acme.example")
+    fresh()
+    assert sorted(said(memory.recall(worker("acme-web")))) == [
+        "Invoices go to ap@acme.example", "Orders go to orders@acme.example",
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "text", ["The password reset page is broken", "Rotate the API key every quarter"]
+)
+def test_talking_about_secrets_isnt_holding_one(notion: FakeNotion, text: str) -> None:
+    assert memory.remember(worker("acme-web"), text)["kept"]
+
+
+@pytest.mark.parametrize("text", ["password: hunter2hunter2", "the token abc123def456 expires"])
+def test_a_labelled_secret_is_still_refused(notion: FakeNotion, text: str) -> None:
+    with pytest.raises(RuleViolationError, match="wasn't kept"):
+        memory.remember(worker("acme-web"), text)
 
 
 def test_a_token_typed_in_notion_never_reaches_an_agent(notion: FakeNotion) -> None:
@@ -502,6 +520,125 @@ def test_a_project_can_leave_shared_notes_out(notion: FakeNotion) -> None:
     assert said(memory.recall(worker("acme-web"))) == []
 
 
+# --- My memory ---
+
+
+def mine() -> str:
+    with session_scope() as session:
+        where = memory.attach_mine(session, "team-notion", parent=OTHER_PARENT)
+    return str(where["data_source"])
+
+
+def test_my_memory_makes_its_database_and_agents_add_to_it(notion: FakeNotion) -> None:
+    source = mine()
+    assert notion.titles[source] == "My memory"
+    assert memory.remember(worker("acme-web"), "I like short emails", mine=True)["where"] == (
+        "My memory"
+    )
+    assert [r["text"] for r in notion.databases[source].values()] == ["I like short emails"]
+
+
+def test_every_project_finds_my_memory(notion: FakeNotion) -> None:
+    source = mine()
+    notion.row(source, "I write in plain words")
+    for project in ("acme-web", "globex-app"):
+        fresh()
+        found = memory.recall(worker(project))["notes"]
+        assert [(n["note"], n["where"]) for n in found] == [("I write in plain words", "my memory")]
+
+
+def test_my_memory_needs_a_shared_connection(notion: FakeNotion) -> None:
+    with session_scope() as session, pytest.raises(RuleViolationError, match="isn't a shared"):
+        memory.attach_mine(session, "acme-notion", parent=OTHER_PARENT)
+
+
+def test_my_memory_and_shared_notes_stay_apart(notion: FakeNotion) -> None:
+    notes = share()
+    source = mine()
+    assert notes != source
+    notion.row(notes, "From the shared page")
+    notion.row(source, "From my memory")
+    found = {n["note"]: n["where"] for n in memory.recall(worker("acme-web"))["notes"]}
+    assert found == {"From the shared page": "shared notes", "From my memory": "my memory"}
+    with session_scope() as session:
+        memory.detach_shared(session)
+    fresh()
+    assert said(memory.recall(worker("acme-web"))) == ["From my memory"]
+
+
+def test_a_save_naming_a_client_is_refused_and_recorded(notion: FakeNotion) -> None:
+    source = mine()
+    with pytest.raises(RuleViolationError, match="only for the owner's own"):
+        memory.remember(worker("acme-web"), "Acme likes weekly calls", mine=True)
+    assert notion.databases[source] == {}
+
+
+@pytest.mark.parametrize(
+    ("text", "what"),
+    [
+        ("Reach me at pat@elsewhere.example for urgent work", "an email address"),
+        ("Call +1 415 555 0132 if it's urgent", "a phone number"),
+        ("My office is 1200 Market Street, Suite 40", "a street address"),
+    ],
+)
+def test_details_are_taken_out_and_the_rest_is_kept(
+    notion: FakeNotion, text: str, what: str
+) -> None:
+    source = mine()
+    answer = memory.remember(worker("acme-web"), text, mine=True)
+    assert answer["removed"] == [what]
+    (row,) = notion.databases[source].values()
+    assert "[removed]" in row["text"]
+
+
+def test_details_typed_in_my_memory_never_reach_an_agent(notion: FakeNotion) -> None:
+    source = mine()
+    notion.row(source, "Reach me at pat@elsewhere.example or 415-555-0132")
+    (shown,) = said(memory.recall(worker("acme-web")))
+    assert "elsewhere" not in shown
+    assert "0132" not in shown
+
+
+def test_shared_notes_keep_the_same_rules(notion: FakeNotion) -> None:
+    share(agents_write=True)
+    with pytest.raises(RuleViolationError, match="only for the owner's own"):
+        memory.remember(worker("acme-web"), "Globex pays late", shared=True)
+    assert memory.remember(worker("acme-web"), "Mail me at a@b.example", shared=True)["removed"]
+
+
+def test_a_worker_is_told_about_my_memory_only_when_its_set_up(notion: FakeNotion) -> None:
+    with session_scope() as session:
+        assert memory.hints(session, projects.get_project(session, "acme-web"), None) == []
+    mine()
+    with session_scope() as session:
+        (said_to,) = memory.hints(session, projects.get_project(session, "acme-web"), None)
+    assert "mine set to true" in said_to
+    assert "Never put anything about a client" in said_to
+
+
+def test_a_project_can_leave_my_memory_out(notion: FakeNotion) -> None:
+    source = mine()
+    notion.row(source, "Mine")
+    with session_scope() as session:
+        memory.choose(session, "acme-web", memory.LOCAL, shared_notes=False)
+        assert memory.hints(session, projects.get_project(session, "acme-web"), None) == []
+    assert said(memory.recall(worker("acme-web"))) == []
+    with pytest.raises(RuleViolationError, match="isn't set up"):
+        memory.remember(worker("acme-web"), "Nope", mine=True)
+
+
+def test_my_memory_through_the_api(owner: TestClient, notion: FakeNotion) -> None:
+    shown = owner.get("/memory/mine").json()
+    assert shown["mine"] is None
+    assert [c["name"] for c in shown["connections"]] == ["team-notion"]
+    saved = owner.put("/memory/mine", json={"connection": "team-notion", "parent": OTHER_PARENT})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["mine"]["connection"] == "team-notion"
+    assert owner.get("/projects/acme-web/memory").json()["shared_available"] is True
+    assert owner.delete("/memory/mine").status_code == 204
+    assert owner.get("/memory/mine").json()["mine"] is None
+
+
 # --- Through the API ---
 
 
@@ -554,7 +691,9 @@ def test_an_agent_has_no_way_to_name_a_place_or_delete() -> None:
     import inspect  # noqa: PLC0415
 
     assert list(inspect.signature(memory.recall).parameters) == ["caller", "words", "limit"]
-    assert list(inspect.signature(memory.remember).parameters) == ["caller", "text", "shared"]
+    assert list(inspect.signature(memory.remember).parameters) == [
+        "caller", "text", "shared", "mine",
+    ]  # fmt: skip
 
 
 def test_the_memory_token_never_reaches_a_note_or_the_vault_log(notion: FakeNotion) -> None:

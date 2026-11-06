@@ -46,7 +46,7 @@ from ringkeeper.services import (
     cleanup,
     holds,
     inbox,
-    personal_memory,
+    memory,
     projects,
     revocations,
     subscription,
@@ -422,10 +422,8 @@ class Manager:
                 model = agent.model or model
                 effort = agent.effort
                 autonomy = Autonomy(agent.autonomy) if agent.autonomy else autonomy
-            if job.role is not SessionRole.ARCHITECT and (
-                personal := personal_memory.instructions(project, agent)
-            ):
-                prompt = f"{prompt}\n\n{personal}"
+            if job.role is not SessionRole.ARCHITECT:
+                prompt = "\n\n".join([prompt, *memory.hints(session, project, agent)])
             # Memory is every worker's: it's pinned to the token's project.
             endpoints = sorted({"memory", *(agent_name(service) for service in served)})
         architect_role = job.role is SessionRole.ARCHITECT

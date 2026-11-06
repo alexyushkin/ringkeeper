@@ -29,7 +29,7 @@ LOGS = ("backend.log", "shell.log")
 REDACTED = "[removed]"
 
 # Shapes of secrets, whoever's they are: the scrubber only knows Ringkeeper's own.
-SHAPES = [
+SECRET_SHAPES = [
     re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}"),
     re.compile(r"\bxox[abpr]-[A-Za-z0-9-]{8,}"),
     re.compile(r"\bxapp-[A-Za-z0-9-]{8,}"),
@@ -38,23 +38,38 @@ SHAPES = [
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bntn_[A-Za-z0-9]{20,}"),  # Notion
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}"),  # JWTs
-    re.compile(
-        r"(?i)\b(bearer|token|api[_-]?key|password|secret)(\s*[:=]\s*|\s+)['\"]?[^\s'\",;]{6,}"
-    ),
     re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{30,}\b"),  # Telegram bot tokens
-    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),  # email addresses
 ]
+LABELLED = re.compile(
+    r"(?i)\b(bearer|token|api[_-]?key|password|secret)(\s*[:=]\s*|\s+)['\"]?[^\s'\",;]{6,}"
+)
+# In a note, "the password reset page" is ordinary: a value after a space needs a digit in it.
+NOTE_LABELLED = re.compile(
+    r"(?i)\b(bearer|token|api[_-]?key|password|secret)"
+    r"(\s*[:=]\s*['\"]?[^\s'\",;]{6,}|\s+['\"]?(?=[^\s'\",;]*\d)[^\s'\",;]{6,})"
+)
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 # user:password@ in an address keeps the user and host, not the password.
 CREDENTIALS = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)(?P<user>[^:/@\s]+):[^@\s/]+@")
 
 
-def clean(text: str) -> str:
-    """Ringkeeper's own secrets, then anything shaped like a secret, removed."""
+def _no_credentials(text: str) -> str:
     text = scrub(text)
     text = CREDENTIALS.sub(lambda m: f"{m['scheme']}{m['user']}:{REDACTED}@", text)
-    for shape in SHAPES:
+    for shape in SECRET_SHAPES:
         text = shape.sub(REDACTED, text)
     return text
+
+
+def clean(text: str) -> str:
+    """Ringkeeper's own secrets, then anything shaped like a secret, removed."""
+    return EMAIL.sub(REDACTED, LABELLED.sub(REDACTED, _no_credentials(text)))
+
+
+def clean_note(text: str) -> str:
+    """The same for a note, which may keep a business contact's email address and may talk about
+    passwords without holding one."""
+    return NOTE_LABELLED.sub(REDACTED, _no_credentials(text))
 
 
 def _tail(path: Path, lines: int = LOG_LINES) -> str:
