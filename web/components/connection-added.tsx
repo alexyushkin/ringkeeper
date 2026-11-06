@@ -34,7 +34,9 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
   const eligible = theirs.filter((p) => !has.has(p.name));
   const chosen = Object.keys(picked);
   const owner = connection ? clientName(connection.owner) : "";
-  const offerAll = Boolean(connection && !connection.shared && !connection.all_projects && theirs.length > 1);
+  // A shared tool can go everywhere, even with no projects yet; a client's needs two to choose from.
+  const offerAll = Boolean(connection && !connection.all_projects && !projects.loading && (connection.shared || theirs.length > 1));
+  const everyone = connection?.shared ? "all projects" : `all of ${owner}'s projects`;
 
   async function useInAll() {
     setBusy(true);
@@ -79,12 +81,13 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
       <TestButton name={name} />
       {connection?.all_projects ? (
         <p className="text-sm text-muted">{connection.reach}, new ones too. A project&apos;s link can be narrowed under Details.</p>
-      ) : connection && !projects.loading && !theirs.length ? (
-        <NoProjects client={connection.shared ? undefined : connection.owner} />
       ) : offerAll && !chooseSome ? (
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Use in all of {owner}&apos;s projects</legend>
-          <p className="text-xs text-muted">Projects added later get it too. Leave out any that shouldn&apos;t have it:</p>
+          <legend className="text-sm font-medium">Use in {everyone}</legend>
+          <p className="text-xs text-muted">
+            {connection?.shared ? "New clients and projects get it too." : "Projects added later get it too."}
+            {theirs.length ? " Leave out any that shouldn't have it:" : ""}
+          </p>
           {theirs.map((p) => (
             <label key={p.name} className="flex items-center gap-2 text-sm">
               <input
@@ -94,17 +97,22 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
                 className="size-4 accent-[var(--color-accent)]"
               />
               {projectName(p.name)}
+              {connection?.shared ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
             </label>
           ))}
           <div className="flex flex-wrap gap-2">
-            <Button kind="primary" busy={busy} disabled={leftOut.length === theirs.length} onClick={useInAll}>
-              {leftOut.length ? `Use in all of ${owner}'s projects except ${leftOut.length}` : `Use in all of ${owner}'s projects`}
+            <Button kind="primary" busy={busy} disabled={theirs.length > 0 && leftOut.length === theirs.length} onClick={useInAll}>
+              {leftOut.length ? `Use in ${everyone} except ${leftOut.length}` : `Use in ${everyone}`}
             </Button>
-            <Button kind="ghost" onClick={() => setChooseSome(true)}>
-              Choose projects instead
-            </Button>
+            {theirs.length ? (
+              <Button kind="ghost" onClick={() => setChooseSome(true)}>
+                Choose projects instead
+              </Button>
+            ) : null}
           </div>
         </fieldset>
+      ) : connection && !projects.loading && !theirs.length ? (
+        <NoProjects client={connection.shared ? undefined : connection.owner} />
       ) : eligible.length ? (
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{connection?.projects.length ? "Also use in…" : "Use in…"}</legend>
