@@ -52,6 +52,30 @@ reports. If your Google app was made before these were added, first turn on the
 and [Analytics Admin](https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com)
 APIs, and add the `webmasters.readonly` and `analytics.readonly` scopes under Data Access.
 
+## YouTube
+
+Choose what the account may do when you sign in, or later with Change access: **read videos and
+comments**, **upload videos**, **edit and delete videos, reply to comments**, and **read
+analytics**. First turn on the
+[YouTube Data](https://console.cloud.google.com/apis/library/youtube.googleapis.com) and
+[YouTube Analytics](https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com)
+APIs, and add the `youtube.readonly`, `youtube.upload`, `youtube.force-ssl` and
+`yt-analytics.readonly` scopes under Data Access. A sign-in reaches one channel: the one you pick
+on Google's page.
+
+**A video is private unless you choose otherwise.** Ringkeeper always sends its privacy, because
+YouTube's own default is public.
+
+- **Reading runs by itself.**
+- **A private video waits for your approval,** scheduled or not. A scheduled one goes public by
+  itself at its time, and approving it is what allows that.
+- **Public and unlisted videos, edits, replies and deletes need the connection's name typed,** in
+  the app itself. They can't be approved from a chat app.
+- **A time that has passed is refused,** even if it passed while the card waited: YouTube would
+  publish at once.
+
+A video comes from the project's own folder. YouTube allows 100 uploads a day.
+
 ## Long emails and attachments
 
 A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep

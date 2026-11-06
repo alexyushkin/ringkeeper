@@ -79,7 +79,8 @@ def test_every_service_has_its_adapter_and_sends_hold_always() -> None:
     }
     assert set(google.WRITES) == {
         "send_mail", "create_draft", "trash_mail", "upload_file", "share_file", "create_event",
-        "update_sheet", "append_rows",
+        "update_sheet", "append_rows", "upload_video", "edit_video", "set_video_privacy",
+        "delete_video", "reply_to_comment", "delete_comment",
     }  # fmt: skip
 
 
