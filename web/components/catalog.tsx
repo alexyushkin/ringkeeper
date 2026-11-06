@@ -9,7 +9,7 @@ import { VendorConnect, type VendorInfo } from "@/components/vendor-connect";
 import { KindChoice, type Kind } from "@/components/shared-tools";
 import { Alert, Badge, Button, Details, Field, Select, Spinner, TextArea } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { LOGOS } from "@/lib/client/logos";
+import { LOGO_FILES, LOGOS } from "@/lib/client/logos";
 import { projectName } from "@/lib/client/scope";
 
 /**
@@ -212,7 +212,7 @@ const SIGN_IN_CATEGORY: Record<string, Category> = {
   atlassian: "Dev tools",
 };
 
-// Services with no logo in lib/client/logos: their initials on their color.
+// Services with no logo in lib/client/logos or public/logos: their initials on their color.
 const MARKS: Record<string, [string, string, string]> = {
   twilio: ["T", "#f22f46", "#fff"],
   retell: ["R", "#6d28d9", "#fff"],
@@ -255,6 +255,21 @@ const MARKS: Record<string, [string, string, string]> = {
 
 /** A service's logo on its color, else its initials. A database connection: Postgres's. */
 export function ServiceMark({ id, database = false }: { id: string; database?: boolean }) {
+  const file = database ? undefined : LOGO_FILES[id];
+  if (file) {
+    // The brand's own file, only scaled, on a plate that gives it its clear space.
+    const size = file.wide ? "h-9 w-16" : "size-9";
+    return (
+      <span className={`logo-plate ${file.dark ? "logo-themed" : ""} ${file.bare ? "" : "rounded-lg border border-line"} grid ${size} shrink-0 place-items-center p-1`} aria-hidden>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/logos/${id}.svg`} alt="" className="logo-light size-full object-contain" />
+        {file.dark ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/logos/${id}-dark.svg`} alt="" className="logo-dark size-full object-contain" />
+        ) : null}
+      </span>
+    );
+  }
   const logo = LOGOS[database ? "postgres" : id];
   if (logo) {
     return (

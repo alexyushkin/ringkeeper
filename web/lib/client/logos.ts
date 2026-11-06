@@ -10,6 +10,33 @@ export interface Logo {
   path: string;
 }
 
+/**
+ * Brands' own logo files, in public/logos, shown as they are: SOURCES.md there says where each
+ * came from. `dark`: there's a version for dark backgrounds. `wide`: a wordmark, on a wider plate.
+ * `bare`: the brand asks not to be put inside a shape, so it has no border or rounded corners.
+ */
+export const LOGO_FILES: Record<string, { dark?: boolean; wide?: boolean; bare?: boolean }> = {
+  apify: {},
+  apollo: {},
+  attio: { dark: true },
+  aws: { dark: true, wide: true },
+  azure: {},
+  close: {},
+  gohighlevel: { bare: true },
+  microsoft: {},
+  mollie: { dark: true, wide: true },
+  monday: {},
+  oci: { wide: true },
+  oracle: { wide: true },
+  pipedrive: { wide: true },
+  retell: {},
+  salesforce: {},
+  sanity: { dark: true },
+  servicetitan: {},
+  tavily: {},
+  twilio: {},
+};
+
 export const LOGOS: Record<string, Logo> = {
   bluesky: { color: "#1185fe", ink: "#fff", path: "M5.202 2.857C7.954 4.922 10.913 9.11 12 11.358c1.087-2.247 4.046-6.436 6.798-8.501C20.783 1.366 24 .213 24 3.883c0 .732-.42 6.156-.667 7.037-.856 3.061-3.978 3.842-6.755 3.37 4.854.826 6.089 3.562 3.422 6.299-5.065 5.196-7.28-1.304-7.847-2.97-.104-.305-.152-.448-.153-.327 0-.121-.05.022-.153.327-.568 1.666-2.782 8.166-7.847 2.97-2.667-2.737-1.432-5.473 3.422-6.3-2.777.473-5.899-.308-6.755-3.369C.42 10.04 0 4.615 0 3.883c0-3.67 3.217-2.517 5.202-1.026" },
   braintree: { color: "#000000", ink: "#fff", path: "M8.276 20.482h4.717c3.641 0 5.462-1.2 5.462-3.517 0-2.275-1.945-3.517-5.752-3.517H8.276Zm0-16.965v6.538h4.138c3.103 0 4.717-1.159 4.717-3.269 0-2.152-1.655-3.269-4.759-3.269zM1.696 24v-3.518H4.47V3.517H1.697V0h11.089c5.09 0 8.193 2.358 8.193 6.455 0 2.69-1.572 4.345-3.558 5.131 2.855.787 4.882 2.814 4.882 5.586 0 4.386-3.393 6.828-8.938 6.828H1.697" },
