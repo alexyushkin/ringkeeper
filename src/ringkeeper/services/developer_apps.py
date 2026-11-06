@@ -513,8 +513,12 @@ PROVIDERS: dict[str, Provider] = {
             steps=(
                 "Open My Apps on Meta for Developers and click Create app. Choose the use case "
                 "Manage everything on your Page. Add the Instagram use case too if you want it.",
-                "Under the use case's permissions, add the ones listed here.",
-                "Add Facebook Login, and paste {redirect} under Valid OAuth Redirect URIs.",
+                "Click Dashboard in the left menu, select each use case and click Customize. "
+                "Click Add next to the permissions under Scopes here: Meta adds only a few by "
+                "itself, and a missing one stops sign-in with Invalid Scopes.",
+                "In the left menu, open Facebook Login for Business, then Settings. If it isn't "
+                "there, add that product first. Paste {redirect} as the Redirect URI, click "
+                "Check URI, then Save changes.",
                 "Keep yourself in the app's Roles: without Meta's review, only people with a "
                 "role can sign in.",
                 "Open App settings, then Basic. The App ID is the client ID here, and the App "

@@ -11,6 +11,8 @@ publishes it as the release notes and the app shows it with the update.
   where that is.
 - **A call that can't run says why in plain words,** on every tool, and no longer repeats what was
   sent.
+- **Meta's setup steps match Meta's screens.** They now say where to add each permission, which
+  stops the Invalid Scopes error at sign-in, and where the redirect address goes.
 
 ## 0.1.0-beta.26 (2026-11-06)
 

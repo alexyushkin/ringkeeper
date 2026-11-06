@@ -12,7 +12,7 @@ and Business Verification. Until then the client's tile says **Needs Meta review
 sign in. Once Meta approves your app, change **Client accounts** on the app in
 **Settings > Developer apps**.
 
-Sign-in hasn't been tried against a real Meta app yet, so these tiles say Unverified.
+Sign-in hasn't been completed against a real Meta app yet, so these tiles say Unverified.
 
 ## Where to get the key
 
@@ -21,6 +21,10 @@ Add the app in **Settings > Developer apps**, then sign in from the tile:
 - **Facebook Pages:** pick the Pages it may reach on Meta's page.
 - **Instagram:** the account must be a professional one, linked to one of those Pages.
 - **Threads:** add the Threads use case to your app. It has its own app ID and secret.
+
+If Meta says **Invalid Scopes**, a permission is missing from your app. Meta adds only a few
+by itself. Open the app's **Dashboard**, select the use case, click **Customize**, and click
+**Add** next to each one the message names.
 
 ## What it can do
 
