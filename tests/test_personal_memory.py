@@ -168,8 +168,7 @@ def test_editing_a_memory_is_an_ordinary_held_edit(saved: Path) -> None:
         "Acme prefers invoices monthly",  # a client
         "On acme-web, deploy on Fridays",  # a project's short name
         "acme web uses a staging site",  # the same, with a space
-        "Harbor Rebuild runs late",  # a project's title
-        "For the marina job, use blue",  # a project's other name
+        "Harbor Rebuild runs late",  # a project's full display name
         "Globex wants weekly calls",  # another client altogether
     ],
 )
@@ -181,13 +180,69 @@ def test_a_save_naming_a_client_or_project_is_refused(saved: Path, text: str) ->
 
 @pytest.mark.parametrize(
     "text",
-    ["My token is ghp_0123456789abcdefghijklmnopqrstuvwxyz", "Write to pat@elsewhere.example",
-     "password: hunter2hunter2"],
+    ["My token is ghp_0123456789abcdefghijklmnopqrstuvwxyz", "password: hunter2hunter2"],
 )  # fmt: skip
 def test_a_save_with_a_secret_or_personal_details_is_refused(saved: Path, text: str) -> None:
     with pytest.raises((ToolError, RefusalError)):
         call("notion-create-pages", with_text(text))
     assert saves(saved) == 0
+
+
+@pytest.mark.parametrize(
+    ("text", "gone"),
+    [
+        ("Write to pat@elsewhere.example first", "pat@elsewhere.example"),
+        ("Text me on 415-555-0132", "415-555-0132"),
+        ("Post it to 12 Baker Street", "12 Baker Street"),
+    ],
+)
+def test_a_save_goes_without_personal_details(saved: Path, text: str, gone: str) -> None:
+    call("notion-create-pages", with_text(text))
+    assert gone not in saved.read_text()
+    assert "[removed]" in saved.read_text()
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Ship on 2026-11-06 at 10:00", "Use version 1.24.3", "Allow 10 minutes on the way",
+     "Budget is 1,200 a month", "Room 12 is fine", "Keep it under 300 words"],
+)  # fmt: skip
+def test_ordinary_numbers_stay(text: str) -> None:
+    assert personal_memory.take_out(text) == (text, [])
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["(415) 555-0132", "+1 415 555 0132", "415.555.0132", "+44 20 7946 0958", "+14155550132",
+     "phone: 4155550132", "1200 Market Street", "5 Fifth Ave", "PO Box 123", "9 Elm Rd"],
+)  # fmt: skip
+def test_phone_numbers_and_street_addresses_go(text: str) -> None:
+    cleaned, found = personal_memory.take_out(f"Use {text} please")
+    assert found
+    assert text not in cleaned
+
+
+def test_a_single_common_word_never_blocks_a_save(saved: Path) -> None:
+    with session_scope() as session:
+        make_project(session, "site", owner="acme", title="Website")
+        make_project(session, "mobile", owner="acme", title="App")
+    assert call("notion-create-pages", with_text("I like my website copy short"))
+    assert call("notion-create-pages", with_text("Build the app before the docs"))
+    assert saves(saved) == 2
+
+
+def test_only_the_whole_name_of_a_project_counts(saved: Path) -> None:
+    assert call("notion-create-pages", with_text("A harbor view rebuild is a nice phrase"))
+    assert saves(saved) == 1
+    with pytest.raises((ToolError, RefusalError), match="harbor rebuild"):
+        call("notion-create-pages", with_text("harbor  rebuild notes"))
+
+
+def test_a_company_suffix_isnt_needed_to_match(saved: Path) -> None:
+    with session_scope() as session:
+        make_project(session, "bright-web", owner="Bright Homes LLC", title="Roofing Quotes")
+    with pytest.raises((ToolError, RefusalError), match="bright homes"):
+        call("notion-create-pages", with_text("Bright Homes wants weekly calls"))
 
 
 def test_a_save_about_other_people_is_refused(saved: Path) -> None:

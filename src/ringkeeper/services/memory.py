@@ -25,10 +25,12 @@ from sqlalchemy.orm import Session
 
 from ringkeeper import sensitive
 from ringkeeper.adapters import vendor
+from ringkeeper.adapters.base import ToolError
 from ringkeeper.calls import Caller
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import (
+    Agent,
     AuditEvent,
     AuditOutcome,
     Instance,
@@ -38,15 +40,35 @@ from ringkeeper.models import (
     Setting,
     WorkerSession,
 )
-from ringkeeper.services import agents, clients, instances, notion_api, paging, projects, report
+from ringkeeper.services import (
+    agents,
+    clients,
+    instances,
+    notion_api,
+    paging,
+    personal_memory,
+    projects,
+    report,
+)
 from ringkeeper.services.bindings import same_client
 from ringkeeper.services.notion_api import NotionError, Place, Row
 from ringkeeper.vault import get_vault
 
-LOCAL, NOTION = "local", "notion"
+LOCAL, NOTION, MINE = "local", "notion", "mine"
 BACKENDS = (LOCAL, NOTION)
 VENDOR = "notion_memory"
 SHARED_KEY = "memory-shared-notes"
+MINE_KEY = "memory-mine"
+MY_MEMORY = "My memory"
+MY_INSTRUCTIONS = """\
+The owner keeps "My memory" in Notion: their preferences, style and how they work, across every
+client.
+- When you start: `recall` includes it, marked "my memory". Search it for what applies.
+- When you finish: if you learned a lasting preference of the owner's, save it with `remember` and
+  mine set to true.
+- Never put anything about a client or project there: no client or project names, and no client
+  data. That's refused. It goes in this project's own memory, with plain `remember`.
+"""
 MOST_CHARS = notion_api.TEXT_LIMIT
 RECALLED = 50
 FRESH_SECONDS = 60
@@ -69,17 +91,22 @@ class Pulled:
 
 
 def refusal(text: str) -> str | None:
-    """Why this can't be a note, or None. The same filter as every call's arguments."""
+    """Why this can't be a project's note, or None. A business contact's email address may stay."""
     if found := sensitive.find(text):
         return f"it looks like it holds a {found}"
-    if report.clean(text) != text:
-        return "it looks like it holds a secret or someone's personal details"
+    if report.clean_note(text) != text:
+        return "it looks like it holds a secret"
     return None
 
 
 def _clean(text: str) -> str:
-    """Something typed in Notion, with what must not reach an agent masked."""
-    return report.clean(text)
+    """A project's note typed in Notion, with what must not reach an agent masked."""
+    return report.clean_note(text)
+
+
+def _clean_personal(text: str) -> str:
+    """The same for a note across clients, which keeps no one's details."""
+    return personal_memory.take_out(report.clean_note(text))[0]
 
 
 # --- Where a project's notes are ---
@@ -196,9 +223,55 @@ def choose(
     return project.memory
 
 
-def shared_settings(session: Session) -> dict[str, Any]:
-    row = session.get(Setting, SHARED_KEY)
+def _own(session: Session, key: str) -> dict[str, Any]:
+    row = session.get(Setting, key)
     return dict(row.value) if row else {}
+
+
+def shared_settings(session: Session) -> dict[str, Any]:
+    return _own(session, SHARED_KEY)
+
+
+def mine_settings(session: Session) -> dict[str, Any]:
+    return _own(session, MINE_KEY)
+
+
+def _attach_own(
+    session: Session,
+    key: str,
+    title: str,
+    connection: str,
+    parent: str | None,
+    data_source: str | None,
+) -> dict[str, Any]:
+    """The owner's own place across clients, on a shared connection. The same one again is kept
+    as it is."""
+    _usable(session, None, connection)
+    saved = _own(session, key)
+    if saved.get("connection") == connection and (
+        (parent and parent == saved.get("parent")) or data_source == saved.get("data_source")
+    ):
+        return saved
+    token = _token(session, connection)
+    if data_source:
+        place = notion_api.use_place(token, data_source)
+    elif parent:
+        place = notion_api.create_place(token, parent, title)
+    else:
+        raise RuleViolationError(f"Choose a Notion page for {title}.")
+    return {
+        "connection": connection, "parent": parent, "database": place.database,
+        "data_source": place.data_source, "url": place.url, "columns": place.columns,
+    }  # fmt: skip
+
+
+def _store_own(session: Session, key: str, where: dict[str, Any]) -> dict[str, Any]:
+    row = session.get(Setting, key)
+    if row:
+        row.value = where
+    else:
+        session.add(Setting(key=key, value=where))
+    return where
 
 
 def attach_shared(
@@ -209,48 +282,42 @@ def attach_shared(
     data_source: str | None = None,
     agents_write: bool = False,
 ) -> dict[str, Any]:
-    """The owner's own notes across clients: a shared tool's page, read-only to agents unless
-    `agents_write`."""
-    _usable(session, None, connection)
-    row = session.get(Setting, SHARED_KEY)
-    saved = dict(row.value) if row else {}
-    if saved.get("connection") == connection and (
-        (parent and parent == saved.get("parent")) or data_source == saved.get("data_source")
-    ):
-        where = {**saved, "agents_write": agents_write}
-    else:
-        token = _token(session, connection)
-        if data_source:
-            place = notion_api.use_place(token, data_source)
-        elif parent:
-            place = notion_api.create_place(token, parent, "Shared notes")
-        else:
-            raise RuleViolationError("Choose a Notion page for your shared notes.")
-        where = {
-            "connection": connection, "parent": parent, "database": place.database,
-            "data_source": place.data_source, "url": place.url, "columns": place.columns,
-            "agents_write": agents_write,
-        }  # fmt: skip
+    """The owner's own notes across clients, read-only to agents unless `agents_write`."""
+    where = _attach_own(session, SHARED_KEY, "Shared notes", connection, parent, data_source)
+    return _store_own(session, SHARED_KEY, {**where, "agents_write": agents_write})
+
+
+def attach_mine(
+    session: Session, connection: str, *, parent: str | None = None, data_source: str | None = None
+) -> dict[str, Any]:
+    """My memory: the owner's preferences across clients, which agents search and add to."""
+    where = _attach_own(session, MINE_KEY, MY_MEMORY, connection, parent, data_source)
+    return _store_own(session, MINE_KEY, where)
+
+
+def _detach(session: Session, key: str, backend: str) -> None:
+    row = session.get(Setting, key)
     if row:
-        row.value = where
-    else:
-        session.add(Setting(key=SHARED_KEY, value=where))
-    return where
+        session.delete(row)
+    session.execute(
+        delete(MemoryNote).where(MemoryNote.project_id.is_(None), MemoryNote.backend == backend)
+    )
+    _synced.pop(_key(None, backend), None)
 
 
 def detach_shared(session: Session) -> None:
-    row = session.get(Setting, SHARED_KEY)
-    if row:
-        session.delete(row)
-    session.execute(delete(MemoryNote).where(MemoryNote.project_id.is_(None)))
-    _synced.pop(_key(None), None)
+    _detach(session, SHARED_KEY, NOTION)
+
+
+def detach_mine(session: Session) -> None:
+    _detach(session, MINE_KEY, MINE)
 
 
 # --- Taking what's in Notion ---
 
 
-def _key(project: uuid.UUID | None) -> str:
-    return str(project) if project else "shared"
+def _key(project: uuid.UUID | None, backend: str = NOTION) -> str:
+    return str(project) if project else backend
 
 
 def _seen(row: Row) -> str:
@@ -271,9 +338,11 @@ def _write_rows(
     rows: list[Row],
     bodies: dict[str, str],
     started: datetime,
+    backend: str,
 ) -> Pulled:
     owned = MemoryNote.project_id == project if project else MemoryNote.project_id.is_(None)
-    held = session.scalars(select(MemoryNote).where(owned, MemoryNote.backend == NOTION)).all()
+    held = session.scalars(select(MemoryNote).where(owned, MemoryNote.backend == backend)).all()
+    clean = _clean if project else _clean_personal
     known = {n.external_id: n for n in held}
     added = changed = 0
     for row in rows:
@@ -288,13 +357,13 @@ def _write_rows(
         if note is None:
             added += 1
             session.add(MemoryNote(
-                project_id=project, backend=NOTION, agent=row.agent, body=_clean(text),
+                project_id=project, backend=backend, agent=row.agent, body=clean(text),
                 source_task=row.task, external_id=row.id, external_seen=_seen(row),
                 **({"created_at": found} if (found := _when(row)) else {}),
             ))  # fmt: skip
         else:
             changed += 1
-            note.body, note.agent, note.source_task = _clean(text), row.agent, row.task
+            note.body, note.agent, note.source_task = clean(text), row.agent, row.task
             note.external_seen = _seen(row)
     there = {r.id for r in rows}
     gone = [n for n in held if n.external_id not in there and n.created_at < started]
@@ -303,7 +372,9 @@ def _write_rows(
     return Pulled(added, changed, len(gone))
 
 
-def _pull(project: uuid.UUID | None, connection: str, place: Place) -> Pulled:
+def _pull(
+    project: uuid.UUID | None, connection: str, place: Place, backend: str = NOTION
+) -> Pulled:
     """Everything or nothing: Notion is read first, and only then is anything changed."""
     started = datetime.now(UTC)
     with session_scope(commit=False) as session:
@@ -311,13 +382,13 @@ def _pull(project: uuid.UUID | None, connection: str, place: Place) -> Pulled:
         owned = MemoryNote.project_id == project if project else MemoryNote.project_id.is_(None)
         seen = dict(session.execute(
             select(MemoryNote.external_id, MemoryNote.external_seen)
-            .where(owned, MemoryNote.backend == NOTION)
+            .where(owned, MemoryNote.backend == backend)
         ).tuples().all())  # fmt: skip
     rows = notion_api.rows(token, place)
     bodies = {r.id: notion_api.body_of(token, r.id) for r in rows if seen.get(r.id) != _seen(r)}
     with session_scope() as session:
-        pulled = _write_rows(session, project, rows, bodies, started)
-    _synced[_key(project)] = time.monotonic()
+        pulled = _write_rows(session, project, rows, bodies, started, backend)
+    _synced[_key(project, backend)] = time.monotonic()
     return pulled
 
 
@@ -339,13 +410,21 @@ def sync_shared() -> Pulled:
     return _pull(None, str(saved["connection"]), _place(saved))
 
 
-def _fresh(project: uuid.UUID | None, saved: dict[str, Any]) -> bool:
+def sync_mine() -> Pulled:
+    with session_scope(commit=False) as session:
+        saved = mine_settings(session)
+    if not saved:
+        raise RuleViolationError("There's no My memory database.")
+    return _pull(None, str(saved["connection"]), _place(saved), MINE)
+
+
+def _fresh(project: uuid.UUID | None, saved: dict[str, Any], backend: str = NOTION) -> bool:
     """Read Notion unless that was just done. False: it didn't answer, so these may be old."""
-    last = _synced.get(_key(project))
+    last = _synced.get(_key(project, backend))
     if last is not None and time.monotonic() - last < FRESH_SECONDS:
         return True
     try:
-        _pull(project, str(saved["connection"]), _place(saved))
+        _pull(project, str(saved["connection"]), _place(saved), backend)
     except RingkeeperError:
         return False
     return True
@@ -361,6 +440,7 @@ class Who:
     backend: str
     notion: dict[str, Any]
     shared: dict[str, Any]
+    mine: dict[str, Any]
     agent: str | None
     task: uuid.UUID | None
 
@@ -377,6 +457,7 @@ def _who(session: Session, caller: Caller) -> Who:
         project.id, project.name, backend_of(project, agent.memory if agent else None),
         cast(dict[str, Any], saved.get("notion") or {}),
         shared_settings(session) if use_shared else {},
+        mine_settings(session) if use_shared else {},
         agent.name if agent else None, row.task_id if row else None,
     )  # fmt: skip
 
@@ -419,16 +500,22 @@ def recall(caller: Caller, words: str | None = None, limit: int = RECALLED) -> d
         current = _fresh(who.project, who.notion)
     if who.shared:
         current = _fresh(None, who.shared) and current
+    if who.mine:
+        current = _fresh(None, who.mine, MINE) and current
     with session_scope(commit=False) as session:
         mine = _search(
             select(MemoryNote).where(MemoryNote.project_id == who.project,
                                      MemoryNote.backend == who.backend), words,
         ).order_by(MemoryNote.created_at.desc(), MemoryNote.id.desc()).limit(limit)  # fmt: skip
         notes = [_shown(n, "this project") for n in session.scalars(mine)]
-        if who.shared:
-            theirs = _search(select(MemoryNote).where(MemoryNote.project_id.is_(None)), words)
-            ordered = theirs.order_by(MemoryNote.created_at.desc()).limit(limit)
-            notes += [_shown(n, "shared notes") for n in session.scalars(ordered)]
+        for saved, backend, where in ((who.shared, NOTION, "shared notes"),
+                                      (who.mine, MINE, "my memory")):  # fmt: skip
+            if saved:
+                owners = select(MemoryNote).where(
+                    MemoryNote.project_id.is_(None), MemoryNote.backend == backend
+                )
+                ordered = _search(owners, words).order_by(MemoryNote.created_at.desc()).limit(limit)
+                notes += [_shown(n, where) for n in session.scalars(ordered)]
     _record(caller, "recall", AuditOutcome.EXECUTED, f"read {len(notes)} notes")
     answer: dict[str, Any] = {"notes": notes, "reminder": READ_AS_NOTES}
     if not current:
@@ -436,44 +523,83 @@ def recall(caller: Caller, words: str | None = None, limit: int = RECALLED) -> d
     return answer
 
 
-def remember(caller: Caller, text: str, shared: bool = False) -> dict[str, Any]:
+def _vetted(caller: Caller, text: str) -> tuple[str, list[str]]:
+    """A note across clients: it can't be about one, and keeps no one's details."""
+    with session_scope(commit=False) as session:
+        try:
+            return personal_memory.vetted(session, text)
+        except ToolError as error:
+            said = str(error)
+    _record(caller, "remember", AuditOutcome.REFUSED, said)
+    raise RuleViolationError(said)
+
+
+def _for_project(caller: Caller, text: str) -> str:
+    if why := refusal(text):
+        _record(caller, "remember", AuditOutcome.REFUSED, f"not kept: {why}")
+        raise RuleViolationError(
+            f"That wasn't kept: {why}. Notes never hold secrets, tokens, or card or bank numbers."
+        )
+    return text
+
+
+def _where_to(who: Who, shared: bool, mine: bool) -> dict[str, Any]:
+    """The Notion place this note goes to, or nothing: it stays here."""
+    if mine:
+        if not who.mine:
+            raise RuleViolationError("My memory isn't set up for this project.")
+        return who.mine
+    if shared:
+        if not who.shared.get("agents_write"):
+            raise RuleViolationError("Shared notes are read-only to agents.")
+        return who.shared
+    if who.backend == NOTION and not who.notion:
+        raise RuleViolationError("This project's Notion page isn't set up.")
+    return who.notion if who.backend == NOTION else {}
+
+
+def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False) -> dict[str, Any]:
     text = text.strip()
     if not text:
         raise RuleViolationError("Say what to remember.")
     if len(text) > MOST_CHARS:
         raise RuleViolationError(f"A note is at most {MOST_CHARS} characters. Keep the point.")
-    if why := refusal(text):
-        _record(caller, "remember", AuditOutcome.REFUSED, f"not kept: {why}")
-        raise RuleViolationError(
-            f"That wasn't kept: {why}. Notes never hold secrets, tokens, card or bank numbers, "
-            "or email addresses. Say it without them."
-        )
+    across = shared or mine
+    removed: list[str] = []
+    if across:
+        text, removed = _vetted(caller, text)
+    else:
+        text = _for_project(caller, text)
     with session_scope(commit=False) as session:
         who = _who(session, caller)
-        token = None
-        saved = who.shared if shared else who.notion
-        if shared and not saved.get("agents_write"):
-            raise RuleViolationError("Shared notes are read-only to agents.")
-        if shared or who.backend == NOTION:
-            if not saved:
-                raise RuleViolationError("This project's Notion page isn't set up.")
-            token = _token(session, str(saved["connection"]))
+        saved = _where_to(who, shared, mine)
+        token = _token(session, str(saved["connection"])) if saved else None
     day = datetime.now(UTC).date().isoformat()
     task = str(who.task) if who.task else None
-    project = None if shared else who.project
     external: tuple[str, str] | None = None
     if token is not None:
         external = notion_api.add(token, _place(saved), text, who.agent, day, task)
+    backend = MINE if mine else (NOTION if external else LOCAL)
     with session_scope() as session:
         session.add(MemoryNote(
-            project_id=project, backend=NOTION if external else LOCAL, agent=who.agent, body=text,
-            source_task=task, external_id=external[0] if external else None,
+            project_id=None if across else who.project, backend=backend, agent=who.agent,
+            body=text, source_task=task, external_id=external[0] if external else None,
             external_seen=_seen(Row(external[0], external[1], text, None, None, None))
             if external else None,
         ))  # fmt: skip
-    where = "shared notes" if shared else ("Notion" if external else "Ringkeeper")
+    where = (
+        MY_MEMORY if mine else "shared notes" if shared else "Notion" if external else "Ringkeeper"
+    )
     _record(caller, "remember", AuditOutcome.EXECUTED, f"kept a note in {where}")
-    return {"kept": True, "where": where}
+    return {"kept": True, "where": where, **({"removed": removed} if removed else {})}
+
+
+def hints(session: Session, project: Project, agent: Agent | None) -> list[str]:
+    """What a worker is told about the owner's memory across clients, if it's set up."""
+    told = [personal_memory.instructions(project, agent)]
+    if mine_settings(session) and settings_of(project).get("shared_notes", True):
+        told.append(MY_INSTRUCTIONS)
+    return [t for t in told if t]
 
 
 # --- The owner's view ---

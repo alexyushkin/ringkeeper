@@ -49,7 +49,7 @@ def memory_status(name: str, session: SessionDep) -> dict[str, Any]:
         "notion": _where(saved.get("notion") or {}),
         "title": memory.title_of(session, project),
         "shared_notes": saved.get("shared_notes", True),
-        "shared_available": bool(memory.shared_settings(session)),
+        "shared_available": bool(memory.shared_settings(session) or memory.mine_settings(session)),
         "notes": int(kept or 0),
         "connections": [
             {"name": i.name, "title": i.title or i.name}
@@ -138,6 +138,36 @@ def set_personal(data: PersonalIn, session: WriteSessionDep) -> dict[str, Any]:
         instance=data.connection,
     )  # fmt: skip
     return personal_status(session)
+
+
+@router.get("/memory/mine")
+def mine_status(session: SessionDep) -> dict[str, Any]:
+    return {
+        "mine": _where(memory.mine_settings(session)),
+        "connections": [
+            {"name": i.name, "title": i.title or i.name}
+            for i in memory.connections_for(session, None)
+        ],
+    }
+
+
+class MineIn(Input):
+    connection: Annotated[str, Field(max_length=63)]
+    parent: NotionId | None = None
+    data_source: NotionId | None = None
+
+
+@router.put("/memory/mine")
+def set_mine(data: MineIn, session: WriteSessionDep) -> dict[str, Any]:
+    memory.attach_mine(session, data.connection, parent=data.parent, data_source=data.data_source)
+    admin_audit.record(session, "memory.mine", "set the My memory database", by=OWNER)
+    return mine_status(session)
+
+
+@router.delete("/memory/mine", status_code=204)
+def remove_mine(session: WriteSessionDep) -> None:
+    memory.detach_mine(session)
+    admin_audit.record(session, "memory.mine", "removed the My memory database", by=OWNER)
 
 
 @router.get("/memory/shared")

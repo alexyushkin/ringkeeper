@@ -393,14 +393,16 @@ def _classify(target: Target, args: JSON) -> ToolKind:
     return ToolKind.READ if level == READ else ToolKind.WRITE
 
 
-def _screen(target: Target, args: JSON) -> None:
-    """What's checked before a memory call, with the database to hand."""
+def _screen(target: Target, args: JSON) -> JSON:
+    """What's checked before a memory call, with the database to hand. It answers with the
+    call's arguments as they may go."""
     tool, arguments = str(args.get("tool", "")), args.get("arguments")
     given = cast(JSON, arguments) if isinstance(arguments, dict) else {}
     if kind := memory_call(target.config, tool, given):
         from ringkeeper.services import personal_memory  # noqa: PLC0415 (it needs the database)
 
-        personal_memory.check(target, kind, given)
+        return {**args, "arguments": personal_memory.check(target, kind, given)}
+    return args
 
 
 def _saves(target: Target, args: JSON) -> bool:
