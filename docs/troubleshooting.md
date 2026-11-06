@@ -3,8 +3,9 @@
 ## A connection says Plan limit
 
 The service answered that your plan with it doesn't include this. The key and the connection are
-fine, so another try won't help: Ringkeeper doesn't repeat the call for an hour, and it doesn't
-count against the task. Upgrade with the service, then press **Test** on the connection.
+fine, so another try won't help: Ringkeeper doesn't repeat the call for an hour, and that call
+doesn't count against the task. Anything else that fails in the task still does. Upgrade with the
+service, then press **Test** on the connection.
 
 If something here doesn't fix it, use **Help › Report a problem** in the app
 (or Ctrl+K, "report"). It gathers the version and the end of the logs, removes

@@ -677,6 +677,8 @@ class WorkerSession(Base):
     action: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     # Worker turns in the architect loop: {"passed": bool, "results": [...]}.
     checks: Mapped[dict[str, Any] | None] = mapped_column(Doc)
+    # What a service's plan refused in this session: {"connection/tool": what it said}.
+    plan_refused: Mapped[dict[str, str] | None] = mapped_column(Doc)
     sdk_session_id: Mapped[str | None] = mapped_column(Text)
     container_id: Mapped[str | None] = mapped_column(Text)
     state_volume: Mapped[str] = mapped_column(Text)

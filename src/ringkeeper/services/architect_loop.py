@@ -14,7 +14,7 @@ from ringkeeper.models import (
     TaskStatus,
     WorkerSession,
 )
-from ringkeeper.services import architect, inbox, tasks
+from ringkeeper.services import architect, inbox, plan_notes, tasks
 
 # A session that ended like this stops the loop: the task takes its status.
 FINAL = frozenset({TaskStatus.STOPPED, TaskStatus.TIMED_OUT, TaskStatus.BUDGET_EXCEEDED})
@@ -78,19 +78,23 @@ def _architect_ended(session: Session, settings: Settings, row: WorkerSession, t
 def _worker_ended(
     session: Session,
     settings: Settings,
+    row: WorkerSession,
     task: Task,
     status: TaskStatus,
     review: dict[str, Any],
 ) -> None:
     checks: dict[str, Any] | None = review.get("checks")
-    # A plan that doesn't allow something isn't a failed attempt: a bigger model won't change it.
-    if checks is not None and not checks.get("passed", True) and not task.plan_limit:
+    # A call the plan refused isn't a failed attempt, as a bigger model won't change it. Any
+    # other failure is, in this round or a later one.
+    failed = checks is not None and not checks.get("passed", True)
+    if failed and not plan_notes.explains(task, row):
         task.failed_check_rounds += 1
     task.review_round = min(task.review_round + 1, architect.MAX_REVIEWS)
     task.phase = ArchitectPhase.REVIEWING
     prompt = architect.review_prompt(
-        task, status, checks, review.get("diff"), review.get("result"), review.get("error")
-    )
+        task, status, checks, review.get("diff"), review.get("result"), review.get("error"),
+        plan_limit=plan_notes.refused_now(task, row),
+    )  # fmt: skip
     sdk = tasks.last_sdk_session(task, SessionRole.ARCHITECT)
     tasks.add_session(session, settings, task, prompt, SessionRole.ARCHITECT, sdk_session_id=sdk)
 
@@ -114,4 +118,4 @@ def advance(
             _architect_ended(session, settings, row, task)
         return
     if task.phase in (ArchitectPhase.BUILDING, ArchitectPhase.REVIEWING):
-        _worker_ended(session, settings, task, status, review)
+        _worker_ended(session, settings, row, task, status, review)

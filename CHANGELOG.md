@@ -14,8 +14,9 @@ publishes it as the release notes and the app shows it with the update.
   versions where they exist, and the brand's color with initials where a logo can't be used. They
   show in the catalog and on connection cards.
 - **Plan limits are said plainly.** When any service answers that your plan doesn't include
-  something, the connection's card and the task say so, the call isn't repeated, and it doesn't
-  count as a failed attempt or move the task to a bigger model.
+  something, the connection's card and the task say so, and the call isn't repeated. That call
+  doesn't count as a failed attempt or move the task to a bigger model. Anything else that fails
+  in the task still does.
 - **"Trust for 1 hour" no longer shows** on services that can't be trusted, like ElevenLabs.
 
 ## 0.1.0-beta.25 (2026-11-06)
