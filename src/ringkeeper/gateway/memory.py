@@ -13,6 +13,7 @@ from pydantic import Field
 from ringkeeper import __version__
 from ringkeeper.calls import Caller
 from ringkeeper.errors import RingkeeperError
+from ringkeeper.gateway.arguments import CheckedArguments
 from ringkeeper.scrub import scrub
 from ringkeeper.services import memory
 
@@ -29,6 +30,7 @@ def build_memory_server(current_caller: Callable[[], Caller]) -> FastMCP:
         ),
         mask_error_details=True,
     )
+    server.add_middleware(CheckedArguments())
 
     async def recall(
         words: Annotated[

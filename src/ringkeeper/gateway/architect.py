@@ -19,6 +19,7 @@ from ringkeeper import __version__
 from ringkeeper.calls import Caller
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
+from ringkeeper.gateway.arguments import CheckedArguments
 from ringkeeper.scrub import scrub
 from ringkeeper.services import architect
 from ringkeeper.services.calls import bound_instances
@@ -36,6 +37,7 @@ def build_architect_server(current_caller: Callable[[], Caller]) -> FastMCP:
         ),
         mask_error_details=True,
     )
+    server.add_middleware(CheckedArguments())
 
     async def step(fn: Callable[[Session], str]) -> dict[str, Any]:
         def work() -> str:
