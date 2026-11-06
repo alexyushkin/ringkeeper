@@ -3,6 +3,15 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Searches in connected services find what was asked.** A search written the natural way, such
+  as a name and a limit in HubSpot, failed with a technical error, and the agent's next try could
+  go out with no filter at all. Values now go where each service reads them, and agents are told
+  where that is.
+- **A call that can't run says why in plain words,** on every tool, and no longer repeats what was
+  sent.
+
 ## 0.1.0-beta.26 (2026-11-06)
 
 - **Leadfeeder.** Website visitors, companies, contacts and lists, through Leadfeeder's own server,

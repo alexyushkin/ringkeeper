@@ -406,10 +406,32 @@ async def _metered(fields: JSON, used: int) -> None:
     await asyncio.to_thread(ads_budget.add, str(fields.get("app") or ""), used)
 
 
+def _slot(vendor: Vendor, op: Op, name: str) -> str:
+    """The part of a call an operation reads a value from."""
+    if name in PLACEHOLDER.findall(op.path) or name in vendor.path_headers.values():
+        return "path"
+    in_address = op.method in ("GET", "DELETE") and not op.graphql
+    # A change that says which body fields it takes has its other values in its address.
+    return (
+        "query" if in_address or name in op.local or (op.only and name not in op.only) else "body"
+    )
+
+
+def _parts(vendor: Vendor, op: Op) -> dict[str, list[str]]:
+    """What an operation takes, by the part of a call each value goes in. `operation=void` in
+    a table only says what's fixed in its path, and `{account}` is the tool's own argument."""
+    parts: dict[str, list[str]] = {}
+    for name in dict.fromkeys((*PLACEHOLDER.findall(op.path), *op.params)):
+        if "=" not in name and name != "account":
+            parts.setdefault(_slot(vendor, op, name), []).append(name)
+    return parts
+
+
 @read
 async def list_operations(target: Target) -> JSON:
-    """List what this connection can do: each operation's name, what it does, what it takes,
-    and how a call runs (without asking, after approval, or with the name typed)."""
+    """List what this connection can do: each operation's name, what it does, the values it
+    takes under path, query and body, which are the parts of call_operation they go in, and how
+    a call runs (without asking, after approval, or with the name typed)."""
     vendor = vendor_of(_fields(target.secret.reveal()))
     return {
         "service": vendor.name,
@@ -417,8 +439,7 @@ async def list_operations(target: Target) -> JSON:
             {
                 "name": f"{vendor.key}.{op.name}",
                 "does": op.says,
-                "path": PLACEHOLDER.findall(op.path),
-                "takes": list(op.params),
+                **_parts(vendor, op),
                 "runs": RUNS[op.level],
                 **({"note": op.hint} if op.hint else {}),
             }
@@ -427,6 +448,9 @@ async def list_operations(target: Target) -> JSON:
     }
 
 
+PARTS = ("path", "query", "body")
+ARGUMENTS = ("operation", *PARTS, "account", "instance")
+COUNTS = ("limit", "first")  # numbers to the service, which some clients send as text
 OperationName = Annotated[
     str, Field(min_length=3, max_length=100, description="From list_operations.")
 ]
@@ -444,18 +468,16 @@ def _reader(vendor: Vendor, fields: JSON, account: str | None) -> Reader:
 async def _call_operation(
     target: Target,
     operation: OperationName,
-    path: Annotated[Values, Field(description="Values for the operation's path.")] = None,
-    query: Annotated[
-        Values,
-        Field(description="Query values, for a read or a search, as list_operations shows."),
-    ] = None,
-    body: Annotated[Values, Field(description="What to send, for a change.")] = None,
+    path: Annotated[Values, Field(description="What list_operations shows under path.")] = None,
+    query: Annotated[Values, Field(description="What list_operations shows under query.")] = None,
+    body: Annotated[Values, Field(description="What list_operations shows under body.")] = None,
     account: Annotated[
         str | None, Field(description="Which account, where the service has several.")
     ] = None,
 ) -> JSON:
-    """Run one operation from list_operations. It waits for the user's approval unless
-    list_operations says it runs without asking."""
+    """Run one operation from list_operations, giving each value in the part it's shown
+    under there. It waits for the user's approval unless list_operations says it runs without
+    asking."""
     args = {"operation": operation, "path": path, "body": body}
     vendor, op, fields = _own(target, args)
     values = dict(query or {})
@@ -467,6 +489,55 @@ async def _call_operation(
     answer = await run(vendor, op, fields, path, values, body, account)
     # A long answer is read in parts: services.continuations.
     return op.after(answer, local) if op.after is not None else answer
+
+
+def _object(value: Any) -> Any:
+    """A part of a call sent as text, as some clients do."""
+    if isinstance(value, str) and value.lstrip().startswith("{"):
+        with contextlib.suppress(ValueError):
+            return json.loads(value)
+    return value
+
+
+def _loose(name: str, value: Any) -> bool:
+    """A value given beside the parts of a call, not in one. An operation's own `query` looks
+    like the part of that name, and is told apart by not being an object."""
+    return name not in ARGUMENTS or (name in PARTS and not isinstance(value, dict | None))
+
+
+def tidied(args: JSON) -> JSON:
+    """A call with its values in the parts the operation reads them from.
+
+    Beside the parts, a value is refused, and that's how it's natural to write a search. In
+    the wrong part it's worse: a service ignores what it wasn't looking for, so a search
+    answers with everything. Only what the operation lists is moved: the rest is left to be
+    refused, or sent as it was asked.
+    """
+    found = operation(str(args.get("operation") or ""))
+    if found is None:
+        return args
+    vendor, op = found
+    known = {*(name for names in _parts(vendor, op).values() for name in names), *op.only}
+    fixed = {k: _object(v) if k in PARTS else v for k, v in args.items()}
+    moved = {k: fixed.pop(k) for k, v in list(fixed.items()) if k in known and _loose(k, v)}
+    for part in ("query", "body"):
+        given = fixed.get(part)
+        if isinstance(given, dict):
+            kept = dict(cast(JSON, given))
+            for name in [n for n in kept if n in known and _slot(vendor, op, n) != part]:
+                moved[name] = kept.pop(name)
+            fixed[part] = kept
+    # What's left is an operation's own `query`, for one that reads an object: Square's search.
+    if fixed.get("query") and "query" in known and _slot(vendor, op, "query") != "query":
+        moved.setdefault("query", fixed.pop("query"))
+    for name, value in moved.items():
+        part = _slot(vendor, op, name)
+        into: Any = fixed.get(part) or {}
+        if not isinstance(into, dict):
+            return args
+        number = part == "body" and name in COUNTS and str(value).isdigit()
+        fixed[part] = {name: int(value) if number else value, **cast(JSON, into)}
+    return {k: v for k, v in fixed.items() if v != {} or k not in PARTS}
 
 
 def _at(value: JSON, dotted: str) -> Any:
@@ -646,6 +717,7 @@ call_operation = ToolSpec(
     undo=OperationUndo(),
     typed=typed_reason,
     names=_names,
+    tidy=tidied,
 )
 
 
