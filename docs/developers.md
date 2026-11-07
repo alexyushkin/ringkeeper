@@ -1004,6 +1004,22 @@ cd shell && npx @tauri-apps/cli@2.12.2 build --config bundle/windows.json
 Releases, signing and the release checklist: [docs/RELEASING.md](RELEASING.md),
 [docs/SIGNING.md](SIGNING.md), [docs/RELEASE_CHECK.md](RELEASE_CHECK.md).
 
+### Recording the demo again
+
+The README's GIF, the 90-second video and the three clips come from `scripts/demo/`. After a UI
+change, build the web app, then run it from a scratch install, as for `ringkeeper scenarios run`:
+
+```
+cd web && node scripts/build-desktop.mjs && cd ..
+uv run --with imageio-ffmpeg==0.6.0 python scripts/demo/record.py
+```
+
+It takes about 15 minutes. `stage.py` builds two made-up clients and a stand-in for Telegram,
+`drive.cjs` plays the scenes at 1920x1080 with a real model and puts the captions on the page, and
+`record.py` cuts the video. To change only the cut, pass it the folder of an earlier run. A
+worker's answer varies between runs, so look at the result before committing it, and check that
+no real names or paths show.
+
 Adding a service means one module in `src/ringkeeper/adapters/` (tools declared
 `@read` or `@write`), one entry in `adapters/__init__.py`, and tests. See
 [CONTRIBUTING.md](../CONTRIBUTING.md).

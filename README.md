@@ -4,6 +4,10 @@
 [![Release](https://img.shields.io/github/v/release/alexyushkin/ringkeeper-releases?include_prereleases&label=release)](https://github.com/alexyushkin/ringkeeper-releases/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+![A request routed to the right client, a production change held and approved, then undone, the other client's connection refused, and an approval from a phone](docs/images/demo.gif)
+
+[Watch the 90-second demo](docs/media/ringkeeper-demo.mp4) (two made-up clients, a real model).
+
 Ringkeeper lets one person get work done for many clients from one chat, without
 ever switching connections.
 

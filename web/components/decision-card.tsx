@@ -130,6 +130,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
             </div>
           ) : null}
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
+          {typeof decision.args?.sql === "string" && decision.args.params ? <Code>{`Values: ${JSON.stringify(decision.args.params)}`}</Code> : null}
           {decision.undo ? (
             <p className="text-xs text-muted">
               {decision.undo.possible ? `You can revert this for ${decision.undo.days} days after it runs (on its task page).` : `Can't be undone: ${decision.undo.why}`}
