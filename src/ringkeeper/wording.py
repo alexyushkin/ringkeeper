@@ -76,6 +76,9 @@ def service(kind: InstanceType | str) -> str:
         return str(kind)
 
 
+IN_THE_APP = ("api", "cli")  # how an answer from the window or a terminal is recorded
+
+
 def person(who: str | None) -> str:
     """'slack:U0123 (alex)' -> 'alex (Slack)'; 'owner' -> 'you'."""
     if not who or who in ("owner", "unknown"):
@@ -83,6 +86,8 @@ def person(who: str | None) -> str:
     found = _WHO.match(who)
     if found is None:
         return who
+    if found.group("app") in IN_THE_APP:
+        return "you (in the app)"
     app = APPS.get(found.group("app"), found.group("app").capitalize())
     return f"{found.group('name')} ({app})" if found.group("name") else f"you ({app})"
 

@@ -3,7 +3,7 @@
 import pytest
 
 from ringkeeper.telegram import text as shown_text
-from ringkeeper.wording import plain
+from ringkeeper.wording import person, plain
 
 
 @pytest.mark.parametrize(
@@ -34,3 +34,10 @@ def test_sql_is_still_hidden_before_marks_go() -> None:
     shown = shown_text.question("Run `UPDATE orders SET paid = true`?", 500)
     assert "UPDATE" not in shown.text
     assert shown_text.SQL_HIDDEN in shown.text
+
+
+def test_an_answer_from_the_app_reads_as_people_say_it() -> None:
+    assert person("api:owner") == "you (in the app)"
+    assert person("cli:owner") == "you (in the app)"
+    assert person("owner") == "you"
+    assert person("slack:U0123 (alex)") == "alex (Slack)"

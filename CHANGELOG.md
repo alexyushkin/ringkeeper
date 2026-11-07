@@ -5,6 +5,9 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Approvals show the values.** A held database change showed `status = %s`, with the values
+  only under Show details. They're now right under the statement.
+- **Chat apps say where you answered in plain words:** "in the app", not "Api".
 - **Run tasks in Docker.** With Docker Desktop, Settings > Security can run each task in a
   container that sees only its project's folder, away from the vault, the keychain and
   your other files. It's off by default, and recommended for client work. If Docker isn't
