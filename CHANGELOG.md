@@ -21,7 +21,8 @@ publishes it as the release notes and the app shows it with the update.
   Docker also downloads Claude Code (about 130 MB), once.
 - **Self-test.** Settings > Advanced > Self-test, or `ringkeeper scenarios run`, sends real
   requests through Ringkeeper against two made-up clients in a scratch folder, and reports
-  where each went, what was held, what was refused, and whether changes could be undone.
+  where each went, what was held, what was refused, and whether changes could be undone. Two
+  of them push the model to reach the other client, and the report shows what it did.
 - **"Remember this" is remembered.** It used to end up in a notes file on a task's branch, where
   the next task couldn't find it, even though the reply said it was noted. Now it goes to the
   project's memory.
