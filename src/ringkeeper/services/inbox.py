@@ -46,6 +46,7 @@ from ringkeeper.models import (
     TaskRisk,
     TaskStatus,
 )
+from ringkeeper.names import slug
 from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import decisions, examples, paging, projects, tasks, titles
 from ringkeeper.services.architect import MAX_REVIEWS
@@ -425,13 +426,14 @@ def _answer_route(
     message = payload.get("message")
     if message:
         examples.save(session, message, choice, kind=kind, decision_id=decision.id, by=by)
+    wanted = str(routed.get("agent") or "")
     agent = (
         session.scalar(
             select(Agent)
             .join(Project, Project.id == Agent.project_id)
-            .where(Project.name == choice, Agent.name == routed["agent"])
+            .where(Project.name == choice, Agent.name == slug(wanted))
         )
-        if routed.get("agent")
+        if wanted
         else None
     )
     return tasks.create_task(

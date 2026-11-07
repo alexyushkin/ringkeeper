@@ -25,6 +25,7 @@ from ringkeeper.models import (
     InstanceType,
     Message,
     MessageRole,
+    Routine,
     RoutingExample,
     SessionEvent,
     Task,
@@ -142,7 +143,8 @@ class Driver:
                     self._say(session, ident, inbox.Answer(choice=APPROVE))
                 elif decision.kind is DecisionKind.QUESTION:
                     budget = (decision.payload or {}).get("budget")
-                    self._say(session, ident, inbox.Answer(text="stop" if budget else ANSWER))
+                    said = "stop" if budget else scenario.says or ANSWER
+                    self._say(session, ident, inbox.Answer(text=said))
                 else:
                     holds.append((ident, decision.instance))
                     if ident not in noted:
@@ -195,7 +197,12 @@ class Driver:
                     seen.agents.append(agent.name if agent else "?")
             seen.tools = tool_names(events)
             seen.replies = "\n".join(said)
-            seen.text = "\n".join([*said, *(json.dumps(e.payload, default=str) for e in events)])
+            for task in found:
+                own = {s.id for s in sessions if s.task_id == task.id}
+                done = [json.dumps(e.payload, default=str) for e in events if e.session_id in own]
+                text = "\n".join([task.prompt, task.summary or "", *done])
+                seen.texts[task.project] = seen.texts.get(task.project, "") + text
+            seen.models = sorted({s.model for s in sessions if s.model})
             seen.refusals = [
                 str(reason)
                 for reason in session.scalars(
@@ -267,7 +274,7 @@ class Driver:
             if scenario.routine is None:
                 sent = threads.post_message(session, scenario.request, author=AUTHOR, source="web")
                 return sent.thread_id
-            routine = routines.get_routine(session, scenario.routine)
+            routine = session.scalars(select(Routine).where(Routine.name == scenario.routine)).one()
             started = routines.start_run(session, self.settings, routine, "test")
             task = started.task
             if task is None:

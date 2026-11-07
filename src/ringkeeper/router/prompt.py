@@ -48,7 +48,10 @@ Rules:
   same or very similar phrasing.
 - `agent`: when the operator asks one of a project's agents by name ("ask the
   Seaside follow-up agent to..."), that agent's name exactly as listed under the
-  project's `agents`. Otherwise leave it out.
+  project's `agents`. Otherwise leave it out. Keep the agent even if the job doesn't
+  look like one for it: an agent is limited to its own connections on purpose, and
+  a task without it could reach more than the operator chose. If it can't do the
+  job, it will say so.
 - kind: feature (new behaviour in code), fix (broken code), data (read or
   change data in the project's instances), content (copy, docs), ops
   (workflows, deploys, configuration).
@@ -65,6 +68,11 @@ Rules:
   project's root, so never tell it to look for a project folder. If the
   operator wants to be asked something first, tell the worker to use its
   ask_user tool.
+- When the operator asks to remember something for a project, that's a task for
+  the project's memory: write the prompt as "Use the remember tool to save this
+  note: ...". Never ask for a notes file, because a file changed by a task stays
+  on that task's branch and the next task won't see it. When the operator asks
+  what was remembered, tell the worker to use the recall tool.
 - Questions about Ringkeeper itself or the operator's own setup ("how many
   connections do we have?", "what's waiting for me?", "what did we spend this
   week?", "which projects does Acme have?"): their connections, projects,

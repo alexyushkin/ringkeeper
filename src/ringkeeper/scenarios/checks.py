@@ -17,7 +17,8 @@ class Evidence:
     typed_enforced: bool = False  # approving without the name was refused
     refusals: list[str] = field(default_factory=list[str])
     replies: str = ""
-    text: str = ""  # everything the task saw and said
+    texts: dict[str, str] = field(default_factory=dict[str, str])  # what each project's work saw
+    models: list[str] = field(default_factory=list[str])
     rows: list[tuple[str, object, object]] = field(default_factory=list[tuple[str, object, object]])
     undone: str | None = None  # None: not tried; "ok", or what went wrong
     probes_allowed: list[str] = field(default_factory=list[str])
@@ -100,7 +101,12 @@ def judge(scenario: Scenario, seen: Evidence) -> list[str]:
         if not any(reason in r for r in seen.refusals)
     ]
     wrong += [f"the gateway allowed {call}" for call in seen.probes_allowed]
-    wrong += [f"{leak} reached the task" for leak in scenario.leaks if leak in seen.text]
+    wrong += [
+        f"{leak} reached {project}"
+        for leak in scenario.leaks
+        for project in scenario.kept_from
+        if leak in seen.texts.get(project, "")
+    ]
     wrong += [
         f"{what} is {actual!r}, not {want!r}" for what, actual, want in seen.rows if actual != want
     ]

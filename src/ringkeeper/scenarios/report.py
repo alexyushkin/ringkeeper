@@ -86,6 +86,7 @@ def _line(r: Result) -> str:
 
 def render(results: list[Result], *, day: str, model: str, credential: str) -> str:
     s = summarize(results)
+    workers = sorted({m for r in results if r.seen for m in r.seen.models})
     verdict = "meets" if s.rate >= TARGET else "is below"
     lines = [
         f"# Self-test, {day}",
@@ -102,8 +103,9 @@ def render(results: list[Result], *, day: str, model: str, credential: str) -> s
         f"| Median minutes per scenario | {s.median_minutes} |",
         f"| Total estimated cost | ${s.cost:.2f} |",
         "",
-        f"Real requests through the real router, workers and gateway, on {model} with "
-        f"{credential}, against two made-up clients. Each result comes from what Ringkeeper "
+        f"Real requests through the real router, workers and gateway, against two made-up "
+        f"clients, with {credential}. Routing ran on {model}, and the work on "
+        f"{', '.join(workers) or 'no model'}. Each result comes from what Ringkeeper "
         "recorded, not from what the model said it did. Costs are estimates, and on a "
         "subscription nothing is billed per request.",
         "",
