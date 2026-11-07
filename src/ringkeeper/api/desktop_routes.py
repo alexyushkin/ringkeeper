@@ -20,11 +20,13 @@ from ringkeeper import ocr_local, voice_local
 from ringkeeper.api import manage_routes
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
+from ringkeeper.claude_auth import ClaudeAuthError
 from ringkeeper.config import get_settings
 from ringkeeper.desktop import lifecycle, opener
 from ringkeeper.desktop.update import State, updates
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Project, Task, TaskStatus
+from ringkeeper.scenarios.self_test import self_test
 from ringkeeper.schemas import Input, ProjectIn, Slug
 from ringkeeper.services import (
     backup,
@@ -332,6 +334,32 @@ def docker_choose(body: DockerIn, session: WriteSessionDep) -> dict[str, Any]:
         raise HTTPException(422, detail=problem)
     runtime.update(session, {"docker_tasks": body.on}, by="owner")
     return desktop_docker.status(runtime.effective(session))
+# --- Self-test ---
+
+
+@router.get("/self-test")
+def self_test_status() -> dict[str, Any]:
+    """Whether it's running, how far it's got, and the last report."""
+    return self_test.status(get_settings())
+
+
+@router.post("/self-test", status_code=202)
+def self_test_start(session: SessionDep) -> dict[str, Any]:
+    """Start a run in a scratch folder. The app polls GET /desktop/self-test."""
+    settings = runtime.effective(session)
+    try:
+        self_test.start(settings, get_vault())
+    except ClaudeAuthError as error:
+        raise HTTPException(422, detail=str(error)) from None
+    return self_test.status(settings)
+
+
+@router.post("/self-test/stop", status_code=202)
+def self_test_stop() -> dict[str, Any]:
+    """Finish the scenario under way and skip the rest."""
+    settings = get_settings()
+    self_test.stop(settings)
+    return self_test.status(settings)
 
 
 # --- Voice on this computer ---

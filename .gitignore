@@ -30,3 +30,5 @@ Thumbs.db
 
 # Desktop mode run from source (ringkeeper desktop --data-dir ./.desktop-data)
 .desktop-data/
+# Sandbox secrets for the self-test
+scenarios.toml
