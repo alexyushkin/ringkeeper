@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **The conversation says what happened.** When Ringkeeper asked which project a request was
+  for, its reply could still start with "I'll read the request...", as if the work had begun.
+  Now a reply that asks only asks. And once you pick the project, the conversation says
+  "Working on it in ..." instead of leaving the question as its last word (or that nothing
+  started, if you chose none).
+
 ## 0.1.0-beta.28 (2026-11-07)
 
 - **A client's connection works only for that client's projects, on every call.** It was

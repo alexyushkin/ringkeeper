@@ -456,6 +456,43 @@ def test_an_unsure_route_asks_plainly() -> None:
     assert inbox.options(decision) == ["acme-reports", "acme-web", "none"]
 
 
+def test_a_question_isn_t_dressed_as_a_start() -> None:
+    # The model writes its line as if starting; Ringkeeper asked instead, so that's all it says.
+    thread_id = ask("Read the newest request in acme's tracker and handle it")
+    claim = "I'll read the newest request and check with you before changing anything."
+    route(FakeModel([output(routed("acme-reports", 0.5), reply=claim)]))
+    assert thread_bodies(thread_id)[-1][1] == threads.ASKS_PROJECT
+
+
+def test_answering_which_project_says_what_started() -> None:
+    thread_id = ask("Update the report")
+    route(FakeModel([output(routed("acme-reports", 0.4, outcome="The report is current."))]))
+    [decision] = route_decisions()
+    with session_scope() as session:
+        inbox.answer(
+            session, get_settings(), str(decision.id), Answer(choice="acme-reports"),
+            by="owner", via=Via.API,
+        )  # fmt: skip
+    bodies = [body for _, body in thread_bodies(thread_id)]
+    assert bodies[-2:] == [
+        threads.ASKS_PROJECT,
+        "Working on it in Acme reports: The report is current.",
+    ]  # the question isn't the thread's last word once the work runs
+
+
+def test_answering_none_says_nothing_started() -> None:
+    thread_id = ask("Update the report")
+    route(FakeModel([output(routed("acme-reports", 0.4))]))
+    [decision] = route_decisions()
+    with session_scope() as session:
+        inbox.answer(
+            session, get_settings(), str(decision.id), Answer(choice=inbox.NO_PROJECT),
+            by="owner", via=Via.API,
+        )  # fmt: skip
+    assert thread_bodies(thread_id)[-1][1] == inbox.NOT_STARTED
+    assert all_tasks() == []
+
+
 # --- @-mentions: a firm choice ---
 
 

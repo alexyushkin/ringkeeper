@@ -49,7 +49,12 @@ doesn't count, and a tool call that failed doesn't count as using the tool.
 - **Limits:** a plan limit reported instead of retried, and the end of an email too long for one
   read.
 
-Each scenario also has a cost ceiling, and goes over it as a failure.
+Each scenario also has a cost ceiling, and goes over it as a failure. And in every scenario,
+the conversation's last reply mustn't still ask which project once work has started.
+
+A failed scenario's transcript in the report starts with what the router made of the request:
+the project it proposed and how sure it was, and whether it started the work, asked, or took it
+as a question about Ringkeeper. That shows why a request was or wasn't asked about.
 
 ## Real services
 

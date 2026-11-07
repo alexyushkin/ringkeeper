@@ -199,19 +199,19 @@ def _apply_example(session: Session, message: Message, output: RouterOutput) -> 
 
 def _reply(session: Session, routed: Routed, output: RouterOutput) -> str:
     """Plain words: what started, and what Ringkeeper needs from the operator (the
-    question itself is shown under the reply, with its buttons)."""
-    lines: list[str] = []
-    for task in routed.tasks:
-        what = task.outcome or "the task"
-        plan = " I'll show you a plan first." if task.phase is not None else ""
-        lines.append(f"Working on it in {titles.of(session, task.project)}: {what}{plan}")
+    question itself is shown under the reply, with its buttons).
+
+    The model's own line is kept only when everything it proposed started: it's written
+    as if the work were starting ("I'll read the request..."), which isn't true of a task
+    that waits for an answer."""
+    lines = [threads.working_on(session, task) for task in routed.tasks]
     for decision in routed.decisions:
         payload = decision.payload or {}
         if payload.get("production"):
             lines.append(f"Before I start: this would use {payload['production']} (production).")
         else:
-            lines.append("Which project is this for?")
-    if output.reply:
+            lines.append(threads.ASKS_PROJECT)
+    if output.reply and not routed.decisions:
         lines.insert(0, output.reply)
     return "\n".join(lines) or "Nothing to do."
 
