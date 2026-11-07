@@ -1,5 +1,7 @@
 """Run one Claude Agent SDK session and stream every message as a JSON line."""
 
+from pathlib import Path
+
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import McpHttpServerConfig, McpServerConfig
 
@@ -26,7 +28,9 @@ of something as if it were the whole. A write isn't repeated to see more of its
 result."""
 
 
-def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> ClaudeAgentOptions:
+def build_options(
+    config: WorkerConfig, ask: inbox.AskState | None = None, cli: Path | None = None
+) -> ClaudeAgentOptions:
     servers: dict[str, McpServerConfig] = {
         name: McpHttpServerConfig(
             type="http", url=url, headers={"Authorization": f"Bearer {config.gateway_token}"}
@@ -59,14 +63,15 @@ def build_options(config: WorkerConfig, ask: inbox.AskState | None = None) -> Cl
         stderr=lambda line: emit("sdk.stderr", line=line),
         # The agent runs as the worker user, never as the runner (root).
         user="worker" if is_root() else None,
+        cli_path=cli,  # None: the SDK's own (see claude_code.py)
     )
 
 
-async def run(config: WorkerConfig) -> bool:
+async def run(config: WorkerConfig, cli: Path | None = None) -> bool:
     """Returns True if the SDK reported success."""
     ok = False
     ask = inbox.AskState()
-    async with ClaudeSDKClient(options=build_options(config, ask)) as client:
+    async with ClaudeSDKClient(options=build_options(config, ask, cli)) as client:
         await client.query(config.prompt)
         async for message in client.receive_response():
             kind = message_type(message)

@@ -11,7 +11,8 @@ publishes it as the release notes and the app shows it with the update.
 - **Run tasks in Docker.** With Docker Desktop, Settings > Security can run each task in a
   container that sees only its project's folder, away from the vault, the keychain and
   your other files. It's off by default, and recommended for client work. If Docker isn't
-  running when a task starts, the task runs on this computer and says so.
+  running when a task starts, the task runs on this computer and says so. The first task in
+  Docker also downloads Claude Code (about 130 MB), once.
 - **Self-test.** Settings > Advanced > Self-test, or `ringkeeper scenarios run`, sends real
   requests through Ringkeeper against two made-up clients in a scratch folder, and reports
   where each went, what was held, what was refused, and whether changes could be undone.

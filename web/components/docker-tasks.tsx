@@ -71,7 +71,7 @@ export function DockerTasks() {
             </Button>
           )
         ) : null}
-        {s?.image_ready ? <Toggle label="Run tasks in Docker" checked={s.on} onChange={(on) => act(() => api("desktop/docker", { method: "PUT", json: { on } }))} hint="Takes effect from the next task." /> : null}
+        {s?.image_ready ? <Toggle label="Run tasks in Docker" checked={s.on} onChange={(on) => act(() => api("desktop/docker", { method: "PUT", json: { on } }))} hint="Takes effect from the next task. The first task in Docker also downloads Claude Code (about 130 MB), once." /> : null}
         {s?.error ? <Alert>{s.error}</Alert> : null}
         {error ? <Alert>{error}</Alert> : null}
       </div>

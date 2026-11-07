@@ -10,6 +10,9 @@ from typing import Any
 
 WORKSPACE = "/workspace"
 STATE_DIR = "/state"
+# Claude Code, fetched by the first task and kept for the next (worker/.../claude_code.py).
+CLI_CACHE_DIR = "/opt/claude-code"
+CLI_CACHE_VOLUME = "ringkeeper-claude-code"
 
 FIXED_ENV = {
     "LANG": "C.UTF-8",

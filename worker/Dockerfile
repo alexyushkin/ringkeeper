@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
-# The worker image: Python, the Claude Agent SDK (which bundles the Claude Code
-# CLI), git, pytest and uv for project checks, and the small runner. It never contains the master key, the data
-# dir or a Docker socket, and none of them are ever mounted into it.
+# The worker image: Python, the Claude Agent SDK, git, pytest and uv for project
+# checks, and the small runner. It never contains the master key, the data dir or a
+# Docker socket, and none of them are ever mounted into it.
+#
+# Nor does it contain the Claude Code CLI: the SDK's bundled copy is removed, and the
+# first task fetches the pinned version from npm into the claude-code cache volume
+# (ringkeeper_worker/claude_code.py, pinned in claude-code.json).
 FROM python:3.12-slim-trixie
 
 RUN apt-get update \
@@ -11,7 +15,8 @@ RUN apt-get update \
 ARG CLAUDE_AGENT_SDK_VERSION=0.2.174
 ARG PYTEST_VERSION=9.1.1
 # pytest (and uv, for projects that use it) so a project's checks can run here.
-RUN pip install --no-cache-dir         "claude-agent-sdk==${CLAUDE_AGENT_SDK_VERSION}" "pytest==${PYTEST_VERSION}"
+RUN pip install --no-cache-dir "claude-agent-sdk==${CLAUDE_AGENT_SDK_VERSION}" "pytest==${PYTEST_VERSION}" \
+    && rm -rf "$(python -c 'import claude_agent_sdk, os; print(os.path.dirname(claude_agent_sdk.__file__))')/_bundled"
 COPY --from=ghcr.io/astral-sh/uv:0.9.22 /uv /usr/local/bin/uv
 
 # Workspaces are bind mounts owned by someone else; let git work in them.
@@ -19,6 +24,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.22 /uv /usr/local/bin/uv
 # owned by the worker here, so a fresh named volume starts out writable.
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin worker \
     && mkdir -p /state && chown worker:worker /state \
+    && mkdir -p /opt/claude-code \
     && printf '[safe]\n\tdirectory = /workspace\n[init]\n\tdefaultBranch = main\n' > /etc/gitconfig
 
 COPY ringkeeper_worker /opt/ringkeeper_worker
