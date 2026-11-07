@@ -104,6 +104,21 @@ def remove(session: Session, vault: Vault, name: str) -> None:
     vault.delete(ref(name))
 
 
+APPROVE_HOW = (
+    "To decide, the user opens this link to Ringkeeper's Approvals and clicks Approve or Deny "
+    "on the change. Give them the link."
+)
+
+
+def approval_link(session: Session, settings: Settings) -> dict[str, str]:
+    """Where the user decides on a pass's held call: the signed Open link (as in Slack and
+    Telegram) and what to click there. Empty when there's no address to give."""
+    from ringkeeper.channels import links  # noqa: PLC0415 (links reaches the inbox)
+
+    url = links.open_url(session, settings, "/approvals")
+    return {"open": url, "how": APPROVE_HOW} if url else {}
+
+
 def server_name(name: str) -> str:
     """What the AI app lists it as: ringkeeper-acme-claude-desktop."""
     return f"ringkeeper-{name}"

@@ -404,6 +404,7 @@ def test_telegram_follows_its_prefs(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_the_desktop_open_link_is_signed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_MODE", "desktop")
     monkeypatch.setattr(opener, "_asked", None)  # and back to none after the test
+    monkeypatch.setattr(opener, "_sign_in", None)  # no backend running to sign a browser in
     settings = get_settings()
     with session_scope() as session:
         url = links.open_url(session, settings, "/approvals")
@@ -419,6 +420,51 @@ def test_the_desktop_open_link_is_signed(monkeypatch: pytest.MonkeyPatch) -> Non
     asked = opener.pending()
     assert asked is not None
     assert asked["path"] == "/approvals"
+
+
+def test_the_open_link_signs_this_browser_in_when_no_window_takes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ringkeeper.desktop import server  # noqa: PLC0415
+
+    monkeypatch.setenv("RINGKEEPER_MODE", "desktop")
+    monkeypatch.setattr(opener, "_asked", None)
+    monkeypatch.setattr(opener, "_shell_seen", None)
+    launch = server.Launch()
+
+    def sign_in(page: str) -> str:
+        return server.sign_in_address(launch, 8765, page)
+
+    monkeypatch.setattr(opener, "_sign_in", sign_in)
+    with session_scope() as session:
+        url = links.open_url(session, get_settings(), "/approvals")
+    assert url is not None
+    sig = url.rsplit("sig=", 1)[1]
+    with TestClient(create_app(), follow_redirects=False) as client:
+        sent = client.get("/open", params={"to": "/approvals", "sig": sig})
+        assert sent.status_code == 303
+        there = sent.headers["location"]
+        assert there.startswith("http://127.0.0.1:8765/desktop/start?code=")
+        assert opener.pending() is None  # no window asked to open
+        assert client.get("/open", params={"to": "/approvals", "sig": "0" * 32}).status_code == 403
+
+        # The start code is real, once: it signs the browser in and lands it on Approvals.
+        door = TestClient(
+            server.FrontDoor(create_app(), launch, 8765, None),
+            base_url="http://127.0.0.1:8765", follow_redirects=False,
+        )  # fmt: skip
+        signed_in = door.get(there.removeprefix("http://127.0.0.1:8765"))
+        assert (signed_in.status_code, signed_in.headers["location"]) == (303, "/approvals")
+        assert server.SESSION_COOKIE in signed_in.cookies
+        assert door.get(there.removeprefix("http://127.0.0.1:8765")).status_code == 403
+
+        # With the app's window there (the shell asked for its status), the window opens it.
+        opener.shell_asked()
+        opened = client.get("/open", params={"to": "/approvals", "sig": sig})
+        assert opened.status_code == 200
+        asked = opener.pending()
+        assert asked is not None
+        assert asked["path"] == "/approvals"
 
 
 def test_no_open_button_without_an_address(

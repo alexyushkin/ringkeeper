@@ -2,7 +2,8 @@
 (ringkeeper.channels). Tokens go straight to the vault and never come back out.
 
 `opener` is the desktop app's Open link (channels.links): no sign-in, the
-signature is the check, and all it does is bring the app window up at a page.
+signature is the check. It brings the app window up at a page, or, with no
+window to take it, signs this browser in there (desktop.opener).
 """
 
 from collections.abc import Callable, Generator
@@ -10,7 +11,7 @@ from contextlib import contextmanager
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from ringkeeper import channels
@@ -223,12 +224,14 @@ def open_page(
     session: SessionDep,
     to: Annotated[str, Query(max_length=300)],
     sig: Annotated[str, Query(max_length=64)],
-) -> HTMLResponse:
+) -> Response:
     settings = get_settings()
     if settings.mode != "desktop" or not to.startswith("/") or to.startswith("//"):
         raise HTTPException(404)
     if not links.signed(session, to, sig):
         return HTMLResponse(OPENING.format(text="This link isn't from this Ringkeeper."), 403)
+    if not desktop_opener.window_can_open() and (there := desktop_opener.sign_in(to)):
+        return RedirectResponse(there, status_code=303)  # this browser, signed in at the page
     desktop_opener.ask(to)
     text = "Opening Ringkeeper on this computer. You can close this tab."
     return HTMLResponse(OPENING.format(text=text))

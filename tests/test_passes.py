@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from ringkeeper import bridge
 from ringkeeper.adapters import sqlite_file
+from ringkeeper.channels import links
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import (
@@ -172,6 +173,34 @@ def test_a_change_from_a_pass_is_held_approved_and_undone(clients: tuple[str, Va
     revert = asyncio.run(calls.request_revert(str(change["id"]), vault))
     asyncio.run(calls.approve(str(revert.id), by="owner", vault=vault))
     assert status_of(1) == "paid"
+
+
+def test_a_held_change_says_where_to_approve_it(
+    clients: tuple[str, Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The app has no Ringkeeper window: the held result and check_approval give the signed
+    # Open link to Approvals (as Slack and Telegram do) and what to click there.
+    monkeypatch.setenv("RINGKEEPER_MODE", "desktop")
+    url, vault = clients
+    token = new_pass(vault)
+    sql = "UPDATE orders SET status = 'shipped' WHERE id = 1"
+    held = call(url, token, "execute", {"instance": ACME_DB, "sql": sql}).structured_content
+    port = get_settings().hooks_port
+    assert held["open"].startswith(f"http://127.0.0.1:{port}/open?to=%2Fapprovals&sig=")
+    with session_scope(commit=False) as session:
+        assert links.signed(session, "/approvals", held["open"].rsplit("sig=", 1)[1])
+    assert "Approve or Deny" in held["how"]
+    assert "`open` link" in held["message"]
+
+    ident = {"decision_id": held["decision_id"]}
+    waiting = call(url, token, "check_approval", ident, "ringkeeper").structured_content
+    assert (waiting["status"], waiting["open"], waiting["how"]) == (
+        "pending", held["open"], held["how"],
+    )  # fmt: skip
+    asyncio.run(calls.approve(held["decision_id"], by="owner", vault=vault))
+    ran = call(url, token, "check_approval", ident, "ringkeeper").structured_content
+    assert ran["status"] == "executed"
+    assert "open" not in ran  # nothing left to decide
 
 
 def test_check_approval_shows_only_the_pass_s_own(clients: tuple[str, Vault]) -> None:

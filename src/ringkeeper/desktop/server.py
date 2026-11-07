@@ -40,14 +40,14 @@ from collections.abc import Callable, Generator
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import IO, Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import uvicorn
 from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ringkeeper.api.auth import DESKTOP_MARK
-from ringkeeper.desktop import lifecycle
+from ringkeeper.desktop import lifecycle, opener
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +124,13 @@ def _local_path(path: str) -> str:
     return "/"
 
 
+def sign_in_address(launch: Launch, port: int, page: str) -> str:
+    """A one-time address that signs a browser in and lands it on a page (the Open link,
+    when no window is there to take it)."""
+    code, landing = launch.new_code(), quote(page, safe="")
+    return f"http://127.0.0.1:{port}/desktop/start?code={code}&next={landing}"
+
+
 def _same(a: str | None, b: str) -> bool:
     return a is not None and hmac.compare_digest(a.encode(), b.encode())
 
@@ -192,6 +199,7 @@ class FrontDoor:
             response = self._shutdown() if self._from_shell(headers) else self._no_secret()
         elif path.startswith("/desktop/api/"):
             if self._from_shell(headers):
+                opener.shell_asked()
                 await self.api(self._to_api(scope, path, "/desktop/api"), receive, send)
                 return
             response = self._no_secret()
@@ -414,6 +422,7 @@ def run(  # noqa: PLR0915 (the whole start-up, in order)
         migrate.upgrade(settings.database_url)
         bootstrap.run(settings)  # the keychain's master key, before the gateway needs it
         launch = Launch()
+        opener.can_sign_in(lambda page: sign_in_address(launch, api_port, page))
         stopping = stop or threading.Event()  # set by the caller or the shell
         lifecycle.on_stop(stopping.set)  # a restored backup restarts the backend
         hooks_sock = _listen_fixed(settings.hooks_port)
