@@ -14,6 +14,7 @@ from ringkeeper.cli import (
     projects,
     registry,
     routing,
+    scenarios,
     secrets,
     tasks,
     telegram,
@@ -60,6 +61,7 @@ app.add_typer(auth.app, name="auth")
 app.add_typer(tasks.app, name="task")
 app.add_typer(routing.app, name="routing")
 app.add_typer(inbox.app, name="inbox")
+app.add_typer(scenarios.app, name="scenarios")
 app.command("ask")(inbox.ask)
 app.add_typer(telegram.app, name="telegram")
 app.add_typer(web.app, name="web")
