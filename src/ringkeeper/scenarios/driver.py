@@ -6,7 +6,7 @@ import re
 import sqlite3
 import time
 import uuid
-from pathlib import Path, PurePath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
 from sqlalchemy import delete, select
@@ -92,7 +92,10 @@ def _result_text(block: dict[str, Any]) -> str:
 
 def _pattern(path: str | Path) -> re.Pattern[str]:
     """A folder however it's written: either slash, doubled in JSON, any case."""
-    parts = [part.strip("\\/") for part in PurePath(path).parts]
+    text = str(path)
+    windows = re.match(r"^([A-Za-z]:|\\\\)", text) is not None  # whatever this runs on
+    found = (PureWindowsPath(text) if windows else PurePosixPath(text)).parts
+    parts = [part.strip("\\/") for part in found]
     return re.compile(r"[\\/]+".join(re.escape(part) for part in parts if part), re.IGNORECASE)
 
 
