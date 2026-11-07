@@ -195,6 +195,14 @@ def templates() -> dict[str, dict[str, Any]]:
     return routines.TEMPLATES
 
 
+@router.get("/watching")
+def watching(
+    session: SessionDep, project: str | None = None, client: str | None = None
+) -> dict[str, Any]:
+    """Home's Automation watch line."""
+    return routines.watching(session, project, client)
+
+
 @router.get("/routines")
 def list_routines(
     session: SessionDep, project: str | None = None, client: str | None = None

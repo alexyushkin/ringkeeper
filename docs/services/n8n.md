@@ -23,3 +23,8 @@ workflow after it was held.
 
 Replacing a workflow, and turning one on or off, can be reverted for 7 days
 ([Undo](../undo.md)). Re-running or stopping a run can't.
+
+## Automation watch
+
+A routine can start when a workflow run fails, to find out why and propose a fix. See
+[Automation watch](../agents-and-routines.md#automation-watch).

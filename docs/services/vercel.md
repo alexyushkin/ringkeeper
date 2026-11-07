@@ -23,3 +23,8 @@ A project's link can be limited to **one team**, and optionally **one project**.
 
 A deploy can't be undone by Ringkeeper. Put the earlier deployment live in
 Vercel (or ask Ringkeeper to promote it).
+
+## Automation watch
+
+A routine can start when a deploy fails, to find out why and propose a fix. See
+[Automation watch](../agents-and-routines.md#automation-watch).
