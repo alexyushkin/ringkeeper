@@ -1,4 +1,4 @@
-"""Tasks in Docker on the desktop: where each task runs, and what happens when Docker isn't ready."""
+"""Tasks in Docker on the desktop: where each runs, and what happens when Docker isn't ready."""
 
 import json
 import threading
