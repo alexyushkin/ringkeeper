@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.28 (2026-11-07)
 
 - **A client's connection works only for that client's projects, on every call.** It was
   checked when you linked it in the app, but a registry file could link it to another
