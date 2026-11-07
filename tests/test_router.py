@@ -43,7 +43,9 @@ def projects(database_url: str) -> None:
         )  # fmt: skip
         make_project(session, "acme-reports", owner="acme", description="Acme reporting")
         make_project(session, "globex-portal", owner="globex", description="Globex portal")
-        make_instance(session, "globex-supabase-dev", secret_ref="aws-sm://globex/very-secret")
+        make_instance(
+            session, "globex-supabase-dev", secret_ref="aws-sm://globex/very-secret", owner="globex"
+        )
     bind("globex-portal", "globex-supabase-dev", is_default=True)
 
 
@@ -396,7 +398,9 @@ def test_what_counts_as_a_question_about_the_setup() -> None:
 
 def test_production_data_waits_for_a_go_ahead_in_the_conversation() -> None:
     with session_scope() as session:
-        make_instance(session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db")
+        make_instance(
+            session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db", owner="globex"
+        )
     bind("globex-portal", "globex-db")
     thread_id = ask("How many orders did globex get today?")
     route(FakeModel([output(routed("globex-portal", 0.97, kind="data"))]))
@@ -423,7 +427,9 @@ def test_production_data_waits_for_a_go_ahead_in_the_conversation() -> None:
 
 def test_a_change_that_isn_t_data_starts_without_asking() -> None:
     with session_scope() as session:
-        make_instance(session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db")
+        make_instance(
+            session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db", owner="globex"
+        )
     bind("globex-portal", "globex-db")
     ask("Fix the typo in globex's footer")
     route(FakeModel([output(routed("globex-portal", 0.97, kind="fix"))]))

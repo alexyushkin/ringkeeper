@@ -53,7 +53,7 @@ def seaside(database_url: str, tmp_path: Path) -> Path:
     get_vault().store("file://seaside/sms", json.dumps({"sid": "AC1", "token": "t"}))
     get_vault().store(get_settings().claude_api_key_ref, CLAUDE_API_KEY)
     with session_scope() as session:
-        make_project(session, "seaside", owner="seaside", workspace_path=str(folder))
+        make_project(session, "seaside", workspace_path=str(folder))
         make_instance(session, "seaside-db")
         make_instance(session, "seaside-sms", type=InstanceType.TWILIO,
                       secret_ref="file://seaside/sms")  # fmt: skip

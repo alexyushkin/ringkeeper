@@ -134,7 +134,7 @@ def test_get_project_includes_bound_instances_without_secrets(
         "type": "supabase",
         "env": "prod",
         "base_url": "https://acme-prod.supabase.example",
-        "owner": "acme-platform",
+        "owner": "acme",
         "is_default": False,
         "allowed_tools": ["list_tables", "describe_table", "query", "execute"],
         "preapproved_writes": [],

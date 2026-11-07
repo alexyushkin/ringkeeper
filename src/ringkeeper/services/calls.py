@@ -5,7 +5,8 @@ Checks run in a fixed order, and the first failure refuses the call:
 1. a valid worker token (verified before this module is reached; a missing
    caller is refused here too, defensively)
 2. the instance exists (omitted only for reads, via the project's default)
-3. the instance is bound to the token's project
+3. the instance is bound to the token's project, and is that project's client's or a
+   shared tool (a link forced across clients is still refused)
 4. the tool is in the binding's allowed_tools (empty = all)
 5. the call stays inside the binding's scope, if it has one: IDs it pins are
    filled in or checked, and account-wide tools are refused (ringkeeper.remote)
@@ -58,6 +59,7 @@ from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import (
     agents,
     audit,
+    bindings,
     continuations,
     decisions,
     google_oauth,
@@ -104,8 +106,13 @@ async def _db[T](fn: Callable[[Session], T]) -> T:
     return await anyio.to_thread.run_sync(work)
 
 
+def _usable(project: Project) -> list[ProjectInstance]:
+    """The project's links, without any to another client's connection (refused anyway)."""
+    return [b for b in project.bindings if not bindings.crosses_clients(project, b.instance)]
+
+
 def _bound_names(project: Project, call: ToolCall) -> str:
-    names = sorted(b.instance.name for b in project.bindings if b.instance_type == call.service)
+    names = sorted(b.instance.name for b in _usable(project) if b.instance_type == call.service)
     return ", ".join(names) or "none"
 
 
@@ -131,7 +138,7 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
                 "write without an explicit instance",
             )
         default = next(
-            (b for b in project.bindings if b.is_default and b.instance_type == call.service), None
+            (b for b in _usable(project) if b.is_default and b.instance_type == call.service), None
         )
         if default is None:
             raise RefusalError(
@@ -160,6 +167,12 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
     if instances.excluded(instance, project):  # never linked; refused even if it were
         raise RefusalError(
             unavailable, f"instance '{name}' is for all projects except '{project.name}'"
+        )
+    if bindings.crosses_clients(project, instance):  # can't be linked; refused if it is
+        raise RefusalError(
+            unavailable,
+            f"instance '{name}' belongs to client '{instance.owner}', project "
+            f"'{project.name}' to '{project.owner}'",
         )
     agent = agents.for_worker_session(session, caller.session_id)
     if agent is not None and instance.name not in agent.connections:
@@ -361,7 +374,7 @@ def bound_instances(caller: Caller) -> list[dict[str, Any]]:
             }
             # A Google account says which one it is ("send from the info@ mailbox").
             | ({"account": b.instance.config["email"]} if b.instance.config.get("email") else {})
-            for b in sorted(project.bindings, key=lambda b: (b.instance.type, b.instance.name))
+            for b in sorted(_usable(project), key=lambda b: (b.instance.type, b.instance.name))
             # An agent sees only its own connections.
             if agent is None or b.instance.name in agent.connections
         ]

@@ -104,7 +104,7 @@ worker (Claude Code, …)
 gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/gmail  /mcp/google  /mcp/github  /mcp/mcp
    1. valid token?            (signed, short-lived, names project + session)
    2. instance exists?        (omitted only for reads: the project default)
-   3. bound to the project?
+   3. bound to the project, and the project's client's (or a shared tool)?
    4. tool in allowed_tools?  (empty = all)
    ├─ read                  → run
    ├─ write, dev/staging    → run, audit
@@ -120,6 +120,10 @@ The first failed check refuses the call with a message the agent can relay.
 An agent gets the same message for an instance that doesn't exist and one that
 belongs to another client, so it can't probe for other clients' names. The
 audit log records the precise reason.
+
+A client's connection is linked only to that client's projects, whichever way the
+link is made: the app, the CLI or a registry file. The gateway checks it again on
+every call, so a link that got into the database some other way is still refused.
 
 ## Rules
 
