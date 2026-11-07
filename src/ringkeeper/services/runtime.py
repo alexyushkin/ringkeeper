@@ -80,6 +80,7 @@ class RuntimeIn(Input):
     health_checks: bool | None = None
     hotkey: Annotated[str, Field(min_length=1, max_length=60)] | None = None
     hotkey_enabled: bool | None = None
+    docker_tasks: bool | None = None  # desktop mode only: see PUT /desktop/docker
     start_at_login: bool | None = None  # desktop mode only
     check_updates: bool | None = None  # desktop mode only
     stt_language: SpokenLanguage | None = None  # Whisper codes ("en,ru"), or "auto"

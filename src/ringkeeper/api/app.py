@@ -117,9 +117,12 @@ async def _too_many(_request: Request, error: Exception) -> JSONResponse:
 def worker_runtime(settings: Settings) -> ContainerRuntime:
     """Docker containers (server mode) or local processes (desktop mode)."""
     if settings.worker_runtime == "process":
+        from ringkeeper.services.runtime import current_settings  # noqa: PLC0415
+        from ringkeeper.workers.desktop_docker import DesktopRuntime  # noqa: PLC0415
         from ringkeeper.workers.process import ProcessRuntime  # noqa: PLC0415
 
-        return ProcessRuntime(settings.data_dir / "workers", tools_path=settings.worker_tools_path)
+        local = ProcessRuntime(settings.data_dir / "workers", tools_path=settings.worker_tools_path)
+        return DesktopRuntime(local, current_settings) if settings.mode == "desktop" else local
     from ringkeeper.workers.runtime import DockerRuntime  # noqa: PLC0415 (only the api needs it)
 
     return DockerRuntime()

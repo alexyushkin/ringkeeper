@@ -68,7 +68,7 @@ then Help › Report a problem in the app.
 
 ## What Ringkeeper doesn't do yet
 
-- **A separate account for tasks on the desktop:** an optional mode that runs tasks as a separate local account, so they can't reach your own files, is planned. Until then, use server mode for strong isolation.
+- **Isolation without Docker on the desktop:** tasks can't reach your own files only when they run in Docker (Settings > Security). Without Docker Desktop there's no separate account for tasks yet.
 - **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles.
 - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser.
 - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages.
