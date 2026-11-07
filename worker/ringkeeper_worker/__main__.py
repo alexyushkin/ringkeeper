@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ringkeeper_worker import agent, gitguard, stub
+from ringkeeper_worker import agent, claude_code, gitguard, stub
 from ringkeeper_worker.checks import run_checks
 from ringkeeper_worker.config import (
     TASK_ENV,
@@ -32,7 +32,8 @@ def _run(config: WorkerConfig) -> bool:
         if config.stub is not None:
             # The stand-in agent runs as the worker user, like the real one.
             return bool(as_worker(lambda: asyncio.run(stub.run(config))))
-        return asyncio.run(agent.run(config))
+        cli = claude_code.ensure(say=lambda text: emit("ringkeeper.note", message=text))
+        return asyncio.run(agent.run(config, cli))
     except Exception as error:
         emit("ringkeeper.error", message=f"{type(error).__name__}: {error}"[:2000])
         return False

@@ -19,6 +19,7 @@ import docker
 import httpx2
 import pytest
 import uvicorn
+from docker.errors import DockerException
 from sqlalchemy import select, update
 
 from ringkeeper.claude_auth import BILLING_ENV_VARS
@@ -36,8 +37,9 @@ from ringkeeper.models import (
 )
 from ringkeeper.services import inbox, tasks
 from ringkeeper.vault import Vault, get_vault
+from ringkeeper.workers.env import CLI_CACHE_DIR
 from ringkeeper.workers.manager import Manager
-from ringkeeper.workers.runtime import LABEL_SESSION, DockerRuntime, WorkerSpec
+from ringkeeper.workers.runtime import LABEL_SESSION, RUNNER_CAPS, DockerRuntime, WorkerSpec
 from tests.conftest import CLAUDE_API_KEY, CLAUDE_OAUTH_TOKEN, free_port
 
 PROXY_VARS = ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]  # no credential: the model proxy
@@ -50,12 +52,17 @@ NETWORK = "ringkeeper_test_workers"
 GATEWAY_HOST = "rk-test-gateway"
 # What a worker sees, besides the files Docker always injects.
 DOCKER_INJECTED = {"/", "/etc/hosts", "/etc/hostname", "/etc/resolv.conf"}
-EXPECTED_MOUNTS = {"/workspace", "/state", "/tmp", "/home/worker"}  # noqa: S108
+EXPECTED_MOUNTS = {"/workspace", "/state", "/tmp", "/home/worker", CLI_CACHE_DIR}  # noqa: S108
 
 
 @pytest.fixture(scope="session")
 def docker_client() -> Any:
-    return docker.from_env()
+    try:
+        client = docker.from_env()
+        client.ping()
+    except DockerException:
+        pytest.skip("there's no Docker here")
+    return client
 
 
 @pytest.fixture(scope="session")
@@ -438,3 +445,51 @@ def test_feature_loop_in_real_containers_with_real_checks(
     for name in {tasks.state_volume_name(uuid.UUID(task_id), role) for role in SessionRole}:
         for volume in docker.from_env().volumes.list(filters={"name": name}):
             volume.remove(force=True)
+
+
+def test_claude_code_is_fetched_once_and_the_agent_cant_change_it(
+    worker_image: str, docker_client: Any
+) -> None:
+    """The image has no Claude Code. The first start fetches the pinned one into the cache
+    volume; the next start uses it with no network at all, and the worker user (the agent)
+    can't write there."""
+    from docker.types import Mount  # noqa: PLC0415
+
+    volume = f"rk-test-claude-code-{uuid.uuid4().hex[:8]}"
+    pin = json.loads((ROOT / "worker/ringkeeper_worker/claude-code.json").read_text("utf-8"))
+    program = f"{CLI_CACHE_DIR}/{pin['version']}/claude"
+
+    def run(code: str, **options: Any) -> str:
+        output = docker_client.containers.run(
+            worker_image, entrypoint=["python", "-c", code], remove=True, read_only=True,
+            user=options.pop("user", "0:0"), cap_drop=["ALL"], cap_add=RUNNER_CAPS,
+            security_opt=["no-new-privileges"],
+            tmpfs={"/tmp": "", "/home/worker": "uid=1000,gid=1000"},  # noqa: S108
+            mounts=[Mount(CLI_CACHE_DIR, volume, type="volume")], **options,
+        )  # fmt: skip
+        return output.decode().strip()
+
+    fetch = "from ringkeeper_worker import claude_code as c; print(c.ensure())"
+    try:
+        none = "import shutil; from ringkeeper_worker import claude_code as c; "
+        assert run(none + "print(shutil.which('claude'), c.bundled())") == "None False"
+        assert run(fetch) == program
+        version = (
+            "import subprocess; from ringkeeper_worker import claude_code as c; "
+            "from ringkeeper_worker.privileges import as_worker_kwargs; "
+            "print(subprocess.run([str(c.ensure()), '--version'], capture_output=True, "
+            "text=True, **as_worker_kwargs()).stdout)"
+        )
+        assert pin["version"] in run(version, network_mode="none")
+        tamper = "\n".join(
+            [
+                "import pathlib",
+                f"for path in ('{CLI_CACHE_DIR}/x', '{program}'):",
+                "    try: pathlib.Path(path).write_bytes(b'x'); print('wrote', path)",
+                "    except OSError: print('refused')",
+            ]
+        )
+        assert run(tamper, user="1000:1000").split() == ["refused", "refused"]
+    finally:
+        for found in docker_client.volumes.list(filters={"name": volume}):
+            found.remove(force=True)

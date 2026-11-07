@@ -39,6 +39,15 @@ workflow publishes betas as normal releases; "beta" is in the version.
 
 1. Add a section to `CHANGELOG.md`: `## 0.1.1 (2026-11-02)` and what changed,
    in users' words.
+   Bump the Claude Code version that Docker tasks fetch:
+
+   ```bash
+   uv run python scripts/pin_claude_code.py
+   ```
+
+   It pins the version the SDK bundles (the one the desktop app ships), with each
+   Linux package's sha512 from npm, and refuses a version less than two weeks old.
+   The worker image doesn't contain Claude Code: each install fetches it once.
 2. Push it, then tag and push the tag:
 
    ```bash

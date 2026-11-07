@@ -51,6 +51,9 @@ For strong isolation, turn on **Settings > Security > Run tasks in Docker**, or 
 server mode. A task in Docker sees only its project's folder, so it has no access to
 the vault, the keychain or the rest of the computer's files. We recommend it for client
 work. It's off by default and needs Docker Desktop, plus a one-time image download.
+The image doesn't include Claude Code: the first task in Docker downloads the version
+this release pins from npm, checks it against the checksum the release recorded, and
+keeps it for the next tasks, where a task can't change it.
 
 Three things to know about it on the desktop:
 
