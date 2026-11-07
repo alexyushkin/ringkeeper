@@ -321,6 +321,12 @@ def for_tasks(session: Session, task_ids: list[str]) -> list[JSON]:
     return [listed(session, c) for c in sorted(found, key=lambda c: c.at)]
 
 
+def for_session(session: Session, session_id: str) -> list[JSON]:
+    """The changes one caller made (a pass's, say), oldest first."""
+    found = [c for c in _all() if c.session_id == session_id]
+    return [listed(session, c) for c in sorted(found, key=lambda c: c.at)]
+
+
 def for_project(session: Session, project: str) -> list[JSON]:
     found = [c for c in _all() if c.project == project]
     return [listed(session, c) for c in sorted(found, key=lambda c: c.at)]

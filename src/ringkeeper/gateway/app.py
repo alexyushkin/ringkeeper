@@ -36,16 +36,18 @@ from ringkeeper.adapters.base import Adapter, ToolError, ToolKind, ToolSpec
 from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
+from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway import model_proxy
 from ringkeeper.gateway.approvals import approval_loop
 from ringkeeper.gateway.architect import build_architect_server
 from ringkeeper.gateway.arguments import CheckedArguments
 from ringkeeper.gateway.memory import build_memory_server
+from ringkeeper.gateway.pass_server import build_pass_server
 from ringkeeper.keys import load_master_key
 from ringkeeper.models import InstanceType
 from ringkeeper.scrub import install_log_scrubbing, scrub
-from ringkeeper.services import continuations
+from ringkeeper.services import continuations, passes
 from ringkeeper.services.calls import (
     bound_instances,
     run_call,
@@ -68,6 +70,11 @@ InstanceArg = Annotated[
 ]
 
 
+def _pass_caller(token: str) -> Caller:
+    with session_scope() as session:
+        return passes.verify(session, token)
+
+
 class WorkerTokenAuth:
     """ASGI middleware: verify the bearer worker token, or answer 401 with the reason."""
 
@@ -85,6 +92,10 @@ class WorkerTokenAuth:
         scheme, _, token = Headers(scope=scope).get("authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not token.strip():
             reason = "a bearer worker token is required (Authorization: Bearer <token>)"
+        elif passes.is_pass_token(token.strip()):
+            reason = await self._pass(token.strip(), scope, receive, send)
+            if reason is None:
+                return
         else:
             try:
                 claims = await anyio.to_thread.run_sync(verify_token, token.strip())
@@ -112,6 +123,19 @@ class WorkerTokenAuth:
                 return
         await anyio.to_thread.run_sync(unauthenticated, self.service, reason)
         await self._refuse(reason, scope, receive, send)
+
+    async def _pass(self, token: str, scope: Scope, receive: Receive, send: Send) -> str | None:
+        """Serve a pass's request, or say why it can't be. A pass reaches what a task's
+        worker does, and nothing else."""
+        if self.role is not TokenRole.WORKER:
+            return "a pass can't use this endpoint"
+        try:
+            caller = await anyio.to_thread.run_sync(_pass_caller, token)
+        except passes.PassError as error:
+            return str(error)
+        scope.setdefault("state", {})[CALLER_KEY] = caller
+        await self.app(scope, receive, send)
+        return None
 
     async def _refuse(self, reason: str, scope: Scope, receive: Receive, send: Send) -> None:
         response = JSONResponse(
@@ -263,6 +287,19 @@ def create_app(vault: Vault | None = None) -> Starlette:
         Route(
             "/mcp/memory",
             endpoint=WorkerTokenAuth(memory_app, None),
+            methods=["GET", "POST", "DELETE"],
+        )
+    )
+
+    # What a pass has besides the connections (a worker token is refused inside).
+    pass_app = build_pass_server(current_caller).http_app(
+        path="/mcp/ringkeeper", stateless_http=True, json_response=True
+    )
+    apps.append(pass_app)
+    routes.append(
+        Route(
+            "/mcp/ringkeeper",
+            endpoint=WorkerTokenAuth(pass_app, None),
             methods=["GET", "POST", "DELETE"],
         )
     )

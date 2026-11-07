@@ -67,6 +67,7 @@ from ringkeeper.services import (
     instances,
     mcp_oauth,
     mcp_tools,
+    passes,
     plan_notes,
     revocations,
     trusts,
@@ -599,7 +600,9 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
         "status": "held_for_approval",
         "decision_id": decision_id,
         "expires_at": expires_at,
-        "message": HELD_MESSAGE.format(label=label),
+        "message": (
+            HELD_FOR_AN_APP if passes.is_pass_session(call.caller.session_id) else HELD_MESSAGE
+        ).format(label=label),
     }
 
 
@@ -610,6 +613,13 @@ HELD_MESSAGE = (
     "so don't ask them about it and don't call it again. Finish anything that doesn't "
     "depend on it, then end your turn with a one-line note of what's waiting. You'll be "
     "resumed with the result once they decide."
+)
+
+# What an app using a pass reads: no task will be resumed for it, so it asks.
+HELD_FOR_AN_APP = (
+    "Held: {label} waits for the user's approval in Ringkeeper. They already see it, so "
+    "don't ask them about it and don't call it again. Tell them it's waiting, and use "
+    "check_approval with this decision_id to see what became of it."
 )
 
 

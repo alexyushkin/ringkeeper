@@ -20,6 +20,7 @@ from ringkeeper.api import (
     manage_routes,
     memory_routes,
     owner_routes,
+    passes_routes,
     remote_routes,
     routines_routes,
     start_routes,
@@ -187,6 +188,7 @@ def create_app() -> FastAPI:
     app.include_router(remote_routes.router)
     app.include_router(remote_routes.callback)
     app.include_router(developer_routes.router)
+    app.include_router(passes_routes.router)
     app.include_router(google_routes.router)
     app.include_router(google_routes.rules_router)
     app.include_router(routines_routes.router)
