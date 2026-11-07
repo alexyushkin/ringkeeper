@@ -1,0 +1,54 @@
+name: Service request
+description: A service Ringkeeper should connect to.
+labels: [service-request]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Ringkeeper uses free, official APIs only. Knowing what you'd ask it to do helps more than a
+        list of everything the service can do.
+  - type: input
+    id: service
+    attributes:
+      label: Which service?
+      placeholder: Trello
+    validations:
+      required: true
+  - type: textarea
+    id: job
+    attributes:
+      label: What would you ask Ringkeeper to do with it?
+      description: Two or three real requests, in your own words.
+      placeholder: |
+        Move Acme's overdue cards to the top of the board.
+        List what's due this week across all my clients.
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: Link to its API documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Can the API be used on a free plan?
+      options:
+        - "Yes"
+        - "Only on a paid plan"
+        - "I don't know"
+    validations:
+      required: true
+  - type: textarea
+    id: risky
+    attributes:
+      label: What should wait for your approval?
+      description: Anything that reaches real people, publishes, spends money or deletes.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Can you help?
+      options:
+        - label: I can test it on a real account.
+        - label: I'd like to build it.
