@@ -81,6 +81,11 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
         (scenario(cost_ceiling=0.1), Evidence(cost=0.2), "over its $0.10 ceiling"),
         (scenario(tools=("q",)), Evidence(tools=["q"], statuses=["failed"]), "ended as failed"),
         (scenario(), Evidence(timed_out=True), "not finished"),
+        (
+            scenario(project=SHOP, pick=SHOP),
+            Evidence(projects=[SHOP], asked=True, asks_after_start=True),
+            f"asks which project, though work ran in {SHOP}",
+        ),
     ],
 )
 def test_what_goes_wrong_is_said(expected: Scenario, seen: Evidence, says: str) -> None:
@@ -388,6 +393,29 @@ def test_a_failure_s_transcript_is_in_the_report() -> None:
     text = report.render([result], day="2026-11-07", model="m", credential="a key")
     assert "## What happened in each failure" in text
     assert "reply Which page do you mean?" in text
+
+
+def test_the_last_word_can_t_ask_for_a_project_once_work_ran() -> None:
+    asked = "Which project is this for?"
+    assert driver.asks_after_start([asked], started=True)
+    assert not driver.asks_after_start([asked, "Working on it in Demo shop: done."], started=True)
+    assert not driver.asks_after_start([asked], started=False)  # still waiting, rightly
+
+
+def test_a_transcript_says_what_the_router_made_of_the_request() -> None:
+    meta: dict[str, Any] = {
+        "output": {"tasks": [{"project": SHOP, "confidence": 0.55, "touches": []}]},
+        "tasks": [],
+        "decisions": ["d1"],
+    }
+    assert driver.routing(meta) == f"router: proposed {SHOP} at 0.55, started 0, asked 1"
+    told: dict[str, Any] = {
+        "output": {"tasks": [], "about_ringkeeper": True},
+        "tasks": [],
+        "decisions": [],
+    }
+    assert "answered as a question about Ringkeeper" in driver.routing(told)
+    assert driver.routing(None, "model unavailable") == "router: error model unavailable"
 
 
 def test_a_report_s_transcript_names_no_folder_of_this_computer() -> None:

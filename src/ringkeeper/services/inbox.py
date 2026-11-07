@@ -48,7 +48,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.names import slug
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import decisions, examples, paging, projects, tasks, titles
+from ringkeeper.services import decisions, examples, paging, projects, tasks, threads, titles
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -420,6 +420,8 @@ def _answer_route(
     _close(decision, DecisionStatus.ANSWERED, by, via, Answer(choice=choice, text=answer.text))
     decision.project = None if choice == NO_PROJECT else choice
     if choice == NO_PROJECT:
+        if decision.thread_id is not None:
+            threads.add_reply(session, decision.thread_id, NOT_STARTED)
         return None
     routed: dict[str, Any] = payload.get("task", {})
     kind = TaskKind(routed["kind"]) if routed.get("kind") else None
@@ -436,7 +438,7 @@ def _answer_route(
         if wanted
         else None
     )
-    return tasks.create_task(
+    task = tasks.create_task(
         session,
         settings,
         project=choice,
@@ -449,6 +451,12 @@ def _answer_route(
         thread_id=decision.thread_id,
         message_id=decision.message_id,
     )
+    if decision.thread_id is not None:  # the thread's last word was the question
+        threads.add_reply(session, decision.thread_id, threads.working_on(session, task))
+    return task
+
+
+NOT_STARTED = "OK, I haven't started anything for that."
 
 
 @dataclass(frozen=True)

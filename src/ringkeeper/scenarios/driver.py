@@ -111,6 +111,33 @@ def neutral(lines: list[str], places: list[tuple[str | Path, str]]) -> list[str]
     return out
 
 
+def routing(meta: dict[str, Any] | None, error: str | None = None) -> str:
+    """What the router made of a request, so a report shows why it asked or didn't."""
+    if not meta:
+        return f"router: error {error}" if error else "router: nothing recorded"
+    output = cast(dict[str, Any], meta.get("output") or {})
+    proposed = [
+        f"{t.get('project')} at {t.get('confidence')}"
+        + (f", also touching {', '.join(t['touches'])}" if t.get("touches") else "")
+        for t in cast(list[dict[str, Any]], output.get("tasks") or [])
+    ]
+    said = [
+        f"proposed {'; '.join(proposed) or 'no tasks'}",
+        f"started {len(meta.get('tasks') or [])}",
+        f"asked {len(meta.get('decisions') or [])}",
+    ]
+    if meta.get("about_ringkeeper") or output.get("about_ringkeeper"):
+        said.append("answered as a question about Ringkeeper")
+    if error:
+        said.append(f"error {error}")
+    return f"router: {', '.join(said)}"
+
+
+def asks_after_start(replies: list[str], started: bool) -> bool:
+    """Work ran, yet the conversation's last word still asks which project."""
+    return started and bool(replies) and threads.ASKS_PROJECT in replies[-1]
+
+
 def transcript(events: list[SessionEvent]) -> list[str]:
     """Each tool call and what came back, then the worker's last words, for the report."""
     lines: list[str] = []
@@ -239,8 +266,13 @@ class Driver:
                     .order_by(SessionEvent.id)
                 ).all()
             )
-            messages = session.scalars(select(Message).where(Message.thread_id == thread)).all()
+            messages = session.scalars(
+                select(Message)
+                .where(Message.thread_id == thread)
+                .order_by(Message.created_at, Message.id)
+            ).all()
             said = [m.body for m in messages if m.role is not MessageRole.USER]
+            seen.asks_after_start = asks_after_start(said, bool(found))
             said += [t.summary for t in found if t.summary]
             seen.projects = sorted({t.project for t in found})
             seen.statuses = [t.status.value for t in found]
@@ -270,6 +302,11 @@ class Driver:
             seen.transcript = neutral(
                 [
                     f"request {scenario.request}",
+                    *(
+                        routing(m.routing, m.route_error)
+                        for m in messages
+                        if m.role is MessageRole.USER
+                    ),
                     *(f"task in {t.project}: {t.status.value}" for t in found),
                     *transcript(events),
                     *(f"gateway refused: {r}" for r in seen.refusals),

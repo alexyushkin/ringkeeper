@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from ringkeeper import sensitive
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Message, MessageRole, Thread
+from ringkeeper.models import Message, MessageRole, Task, Thread
+from ringkeeper.services import titles
 from ringkeeper.services.decisions import MIN_ID_PREFIX
 from ringkeeper.storage import events
 
@@ -118,6 +119,16 @@ def add_reply(
     session.add(message)
     session.flush()
     return message
+
+
+ASKS_PROJECT = "Which project is this for?"
+
+
+def working_on(session: Session, task: Task) -> str:
+    """What a started task is, in the words the thread shows."""
+    what = task.outcome or "the task"
+    plan = " I'll show you a plan first." if task.phase is not None else ""
+    return f"Working on it in {titles.of(session, task.project)}: {what}{plan}"
 
 
 def get_message(session: Session, message_id: uuid.UUID, *, lock: bool = False) -> Message:

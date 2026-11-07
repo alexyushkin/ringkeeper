@@ -15,6 +15,7 @@ class Evidence:
     statuses: list[str] = field(default_factory=list[str])
     agents: list[str] = field(default_factory=list[str])
     asked: bool = False  # the router asked which project
+    asks_after_start: bool = False  # work ran, but the last reply still asks which project
     confirmed_production: bool = False  # the router asked before using production
     tools: list[str] = field(default_factory=list[str])
     holds: list[str] = field(default_factory=list[str])
@@ -53,6 +54,8 @@ def _routing(scenario: Scenario, seen: Evidence) -> list[str]:
         strays = [p for p in seen.projects if p not in wanted]
         if strays:
             wrong.append(f"work landed in {', '.join(strays)}")
+    if seen.asks_after_start:
+        wrong.append(f"the reply asks which project, though work ran in {', '.join(seen.projects)}")
     if scenario.agent and scenario.agent not in seen.agents:
         wrong.append(f"{scenario.agent} didn't run it (ran as {seen.agents or 'no agent'})")
     return wrong
