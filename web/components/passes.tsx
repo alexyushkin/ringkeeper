@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Changes } from "@/components/changes";
-import { Alert, Badge, Button, Card, ConfirmButton, Field, Section, Select, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, Section, Select, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
 interface PassInfo {
@@ -138,32 +138,39 @@ function PassCard({ pass, onChanged }: { pass: PassInfo; onChanged: () => void }
 }
 
 const APPS = {
+  "claude-desktop": { label: "Claude Desktop", where: "" },
   "claude-code": { label: "Claude Code", where: "Run this in a terminal. It adds the pass for every folder you use Claude Code in." },
   cursor: { label: "Cursor", where: "Put this in .cursor/mcp.json in your home folder (or in one project's folder, for that project only). If the file already lists servers, add this one beside them." },
 } as const;
 
 function Setup({ pass }: { pass: PassInfo }) {
-  const [app, setApp] = useState<keyof typeof APPS>("claude-code");
-  const [copied, setCopied] = useState(false);
-  const text = app === "claude-code" ? pass.setup.claude_code : pass.setup.json;
+  const [app, setApp] = useState<keyof typeof APPS>("claude-desktop");
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Set it up in">
         {(Object.keys(APPS) as (keyof typeof APPS)[]).map((key) => (
-          <Button
-            key={key}
-            kind={key === app ? "primary" : "secondary"}
-            onClick={() => {
-              setApp(key);
-              setCopied(false);
-            }}
-          >
+          <Button key={key} kind={key === app ? "primary" : "secondary"} onClick={() => setApp(key)}>
             {APPS[key].label}
           </Button>
         ))}
       </div>
-      <p className="text-sm">{APPS[app].where} Ringkeeper has to be running while you use it.</p>
+      {app === "claude-desktop" ? (
+        <ClaudeDesktop pass={pass} />
+      ) : (
+        <>
+          <p className="text-sm">{APPS[app].where} Ringkeeper has to be running while you use it.</p>
+          <CopyBlock key={app} text={app === "claude-code" ? pass.setup.claude_code : pass.setup.json} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function CopyBlock({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
       <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-sunken p-3 text-xs">{text}</pre>
       <Button
         onClick={async () => {
@@ -173,6 +180,53 @@ function Setup({ pass }: { pass: PassInfo }) {
       >
         {copied ? "Copied" : "Copy"}
       </Button>
+    </>
+  );
+}
+
+/** Claude Desktop: an extension file to open, saved into Downloads. The settings file by
+ * hand is the fallback, and only with Claude quit: it rewrites the file while it runs. */
+function ClaudeDesktop({ pass }: { pass: PassInfo }) {
+  const [saved, setSaved] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const done = await api<{ path: string }>(`passes/${pass.name}/claude-desktop`, { method: "POST" });
+      setSaved(done.path);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm">
+        Save the pass as a Claude Desktop extension, then double-click the file: Claude Desktop asks whether to install it. You can also add it from Claude&apos;s Customize &gt; Connectors.
+        Start a new chat afterwards. Ringkeeper has to be running while you use it.
+      </p>
+      <Button kind="primary" onClick={save} busy={busy}>
+        Save the extension
+      </Button>
+      {saved && (
+        <Alert tone="good">
+          Saved to <span className="break-all font-mono text-xs">{saved}</span>. Double-click it to install it.
+        </Alert>
+      )}
+      {error && <Alert>{error}</Alert>}
+      <Details label="Add it by hand instead">
+        <p className="text-sm">
+          <b>Quit Claude completely first</b> (from its icon by the clock, not just the window): it rewrites its settings file while it runs, and your change would be lost. Then add this to{" "}
+          <span className="font-mono text-xs">claude_desktop_config.json</span> (in <span className="font-mono text-xs">%APPDATA%\Claude</span> on Windows,{" "}
+          <span className="font-mono text-xs">~/Library/Application Support/Claude</span> on a Mac), beside any servers already there, and start Claude.
+        </p>
+        <CopyBlock text={pass.setup.json} />
+      </Details>
     </div>
   );
 }

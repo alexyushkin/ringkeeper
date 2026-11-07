@@ -3,9 +3,10 @@
 Ringkeeper's bridge, which reads the token from the vault."""
 
 import json
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 
 from ringkeeper.api.auth import AdminDep
@@ -97,6 +98,29 @@ def remove(name: Slug, session: WriteSessionDep) -> None:
     admin_audit.record(
         session, "pass.removed", f"removed the pass {name}", by="owner", project=project
     )
+
+
+def downloads() -> Path:
+    return Path.home() / "Downloads"
+
+
+@router.post("/{name}/claude-desktop")
+def claude_desktop(name: Slug, session: SessionDep) -> dict[str, str]:
+    """The pass as a Claude Desktop extension, saved into Downloads to open from there."""
+    settings = get_settings()
+    if settings.mode != "desktop":
+        raise HTTPException(409, "A pass for Claude Desktop needs the desktop app.")
+    row = passes.get(session, name)
+    if row.revoked_at is not None:
+        raise HTTPException(409, f"The pass {name} is revoked. Make a new one.")
+    blob = passes.extension(settings, row.name, titles.of(session, row.project.name))
+    path = downloads() / f"Ringkeeper-{row.name}.mcpb"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(blob)
+    except OSError as error:
+        raise HTTPException(422, f"Couldn't save it ({error.strerror}). Try again.") from None
+    return {"path": str(path)}
 
 
 @router.get("/{name}/changes")

@@ -63,6 +63,21 @@ Three things to know about it on the desktop:
 - **A container can reach this computer's network,** which it needs for the gateway. A
   service on your computer that trusts anything local isn't protected from it.
 
+## Apps with a pass
+
+A [pass](passes.md) lets Claude Desktop, Claude Code or Cursor use one project's connections. The
+app starts Ringkeeper's bridge on this computer, which reads the pass's key from the vault, so the
+key isn't in the app's settings or in the extension file. Each call goes through the gateway like a
+task's: the project's own connections only, another client's refused on every call, production
+changes held, the call logged and its secrets removed. A pass can't reach the model, another
+project or Ringkeeper's settings. The database keeps only a hash of its key, and revoking it stops
+the next call.
+
+The link to Approvals that a held change gives the app is signed, and it works only on this
+computer. It brings Ringkeeper's window up there. (When Ringkeeper runs without its app window, it
+signs the browser that opened it in instead, with a one-time code.) Approving still takes your
+click.
+
 ## What leaves your computer
 
 - **To Anthropic:** your requests, and what tasks read and do, so Claude can

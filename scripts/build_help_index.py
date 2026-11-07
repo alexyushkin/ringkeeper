@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TARGET = ROOT / "src" / "ringkeeper" / "help_index.json"
 # The user guide. Not the notes for developers and releases.
 PAGES = (
-    "concepts", "connections", "agents-and-routines", "approvals", "undo", "notifications",
+    "concepts", "connections", "agents-and-routines", "approvals", "undo", "passes",
+    "notifications",
     "where-claude-runs",
     "backup", "working-faster", "security", "self-test", "troubleshooting", "faq",
     "install-desktop",
