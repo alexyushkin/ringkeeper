@@ -23,9 +23,9 @@ ringkeeper scenarios list
 From a source checkout the report goes to `docs/scenarios/<date>.md`. Otherwise it goes to the
 `self-test` folder in your Ringkeeper data folder. The command exits with an error below 90%.
 
-A full run takes about 45 minutes. On an API key it costs a few dollars, and it stops starting new
-scenarios at an estimated $15, or whatever you give `--ceiling`. On a subscription nothing is
-billed per request, but it does count toward your usage.
+A full run takes about 10 minutes. On an API key it's usually well under a dollar, and it stops
+starting new scenarios at an estimated $15, or whatever you give `--ceiling`. On a subscription
+nothing is billed per request, but it does count toward your usage.
 
 ## What it checks
 
@@ -39,8 +39,9 @@ doesn't count, and a tool call that failed doesn't count as using the tool.
   delete that needs the connection's name typed; a development connection that isn't held; and
   instructions hidden in a customer's note that aren't followed.
 - **Refusals:** a request for the other client's data worded to sound legitimate, the other
-  client's connection named outright, and an agent reaching past its connections. The gateway is
-  also called directly, so a refusal is proved even when the model never tries.
+  client's connection named outright, and an agent reaching past its connections. A good model
+  usually won't even try these, so the self-test also calls the gateway directly, which is what
+  proves the gateway refuses.
 - **Limits:** a plan limit reported instead of retried, and the end of an email too long for one
   read.
 

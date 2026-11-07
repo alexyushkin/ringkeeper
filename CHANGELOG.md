@@ -12,6 +12,11 @@ publishes it as the release notes and the app shows it with the update.
 - **Self-test.** Settings > Advanced > Self-test, or `ringkeeper scenarios run`, sends real
   requests through Ringkeeper against two made-up clients in a scratch folder, and reports
   where each went, what was held, what was refused, and whether changes could be undone.
+- **"Remember this" is remembered.** It used to end up in a notes file on a task's branch, where
+  the next task couldn't find it, even though the reply said it was noted. Now it goes to the
+  project's memory.
+- **An agent you name is the one that runs.** A task you gave to an agent could run without it,
+  with wider access than that agent has, if the job didn't look like one for it.
 
 ## 0.1.0-beta.27 (2026-11-06)
 

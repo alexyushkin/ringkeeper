@@ -13,7 +13,9 @@ from sqlalchemy import select
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import AuthMode, Instance
+from ringkeeper.models import AuthMode, Instance, SessionEvent
+from ringkeeper.router.prompt import SYSTEM_PROMPT
+from ringkeeper.router.service import named_agent
 from ringkeeper.scenarios import launcher, report, world
 from ringkeeper.scenarios.catalog import (
     ACME_DB,
@@ -28,6 +30,7 @@ from ringkeeper.scenarios.catalog import (
     Undo,
 )
 from ringkeeper.scenarios.checks import Evidence, judge, routed_right
+from ringkeeper.scenarios.driver import tool_names
 from ringkeeper.scenarios.host import PROGRESS, REPORT, STOP
 from ringkeeper.scenarios.self_test import RUN, SelfTest
 from ringkeeper.services import bindings
@@ -64,7 +67,7 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
         (scenario(never_held=True), Evidence(holds=["execute"]), "shouldn't have been"),
         (scenario(held=1, answer=TYPED), Evidence(holds=["execute"]), "wasn't refused"),
         (scenario(reply_has=("Ana",)), Evidence(replies="Bo"), "doesn't say 'Ana'"),
-        (scenario(leaks=(CANARY,)), Evidence(text=f"a {CANARY} row"), "reached the task"),
+        (scenario(leaks=(CANARY,)), Evidence(texts={SHOP: f"a {CANARY} row"}), f"reached {SHOP}"),
         (scenario(), Evidence(probes_allowed=["a on b"]), "the gateway allowed a on b"),
         (scenario(), Evidence(rows=[("q", 1, 2)]), "q is 1, not 2"),
         (scenario(undo=Undo(Row("d", "q", 1))), Evidence(), "undo: not tried"),
@@ -77,6 +80,42 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
 )
 def test_what_goes_wrong_is_said(expected: Scenario, seen: Evidence, says: str) -> None:
     assert says in "; ".join(judge(expected, seen))
+
+
+def test_a_client_s_data_in_its_own_project_isn_t_a_leak() -> None:
+    seen = Evidence(texts={"acme-orders": f"a {CANARY} row", SHOP: "nothing of theirs"})
+    assert judge(scenario(leaks=(CANARY,)), seen) == []
+
+
+def test_a_failed_tool_call_doesn_t_count_as_using_the_tool() -> None:
+    def event(kind: str, block: dict[str, Any]) -> SessionEvent:
+        return SessionEvent(type=kind, payload={"message": {"content": [block]}})
+
+    used = {"_kind": "ToolUseBlock", "id": "1", "name": "query"}
+    missing = {"_kind": "ToolUseBlock", "id": "2", "name": "execute"}
+    refused = {"_kind": "ToolResultBlock", "tool_use_id": "2", "is_error": True}
+    events = [event("sdk.assistant", used), event("sdk.assistant", missing)]
+    assert tool_names([*events, event("sdk.user", refused)]) == ["query"]
+
+
+@pytest.mark.usefixtures("database_url")
+@pytest.mark.parametrize("written", ["stock-checker", "Stock Checker", "STOCK CHECKER"])
+def test_a_named_agent_is_found_however_the_model_wrote_it(
+    data_dir: Path, tmp_path: Path, written: str
+) -> None:
+    settings = Settings(mode="desktop", data_dir=data_dir, workspaces_root=str(tmp_path / "work"))
+    with session_scope() as session:
+        world.build(session, settings, get_vault(), {})
+        found = named_agent(session, SHOP, written)
+        assert found is not None
+        assert found.name == "stock-checker"
+        assert named_agent(session, SHOP, "nobody") is None
+        assert named_agent(session, SHOP, None) is None
+
+
+def test_the_router_is_told_to_keep_a_named_agent_and_use_memory() -> None:
+    assert "Keep the agent even if" in SYSTEM_PROMPT
+    assert "Use the remember tool" in SYSTEM_PROMPT
 
 
 def test_a_scenario_that_did_what_it_should_passes() -> None:

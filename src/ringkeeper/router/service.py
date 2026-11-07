@@ -40,6 +40,7 @@ from ringkeeper.models import (
     TaskKind,
     TaskRisk,
 )
+from ringkeeper.names import slug
 from ringkeeper.router import self_answer
 from ringkeeper.router.model import RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
@@ -153,15 +154,21 @@ def _ask(
     )
 
 
+def named_agent(session: Session, project: str, name: str | None) -> Agent | None:
+    """The project's agent, however the model wrote its name: "Stock Checker" is stock-checker.
+    A task without it could reach more than the agent can, so this mustn't miss on spelling."""
+    if not name:
+        return None
+    return session.scalar(
+        select(Agent)
+        .join(Project, Project.id == Agent.project_id)
+        .where(Project.name == project, Agent.name == slug(name))
+    )
+
+
 def _dispatch(session: Session, settings: Settings, message: Message, task: RoutedTask) -> Task:
     # The agent the operator named, if it's one of the project's (else the plain task).
-    agent = None
-    if task.agent:
-        project = session.scalar(select(Project).where(Project.name == task.project))
-        if project is not None:
-            agent = session.scalar(
-                select(Agent).where(Agent.project_id == project.id, Agent.name == task.agent)
-            )
+    agent = named_agent(session, task.project, task.agent)
     return tasks.create_task(
         session,
         settings,
