@@ -30,6 +30,20 @@ what you paste into the app only starts Ringkeeper's bridge on this computer.
 The app then has tools named by service: `database_query`, `airtable_list_records`,
 `memory_recall`, and so on.
 
+### Claude Desktop by hand
+
+If the extension won't install, you can add the pass to Claude Desktop's settings file
+yourself:
+
+1. **Quit Claude completely first:** File > Exit on Windows (or right-click its icon by the
+   clock and choose Quit), Claude > Quit Claude on a Mac. Closing the window isn't enough.
+   Claude rewrites the file while it runs, and an edit made then is lost.
+2. Open `claude_desktop_config.json`: `%APPDATA%\Claude\` on Windows,
+   `~/Library/Application Support/Claude/` on a Mac. Copy it somewhere first.
+3. Copy the Cursor JSON from the pass, and add its entry under `mcpServers`, beside any servers
+   already there.
+4. Start Claude.
+
 ## When a change waits for approval
 
 The app is told the change is waiting, and is given its ID. Approve or deny it in Ringkeeper as
