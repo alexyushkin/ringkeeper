@@ -17,11 +17,12 @@ from sqlalchemy.orm import Session
 from ringkeeper.adapters import sqlite_file
 from ringkeeper.config import Settings
 from ringkeeper.models import Env, InstanceType
-from ringkeeper.scenarios import demo_service
+from ringkeeper.scenarios import demo_airtable, demo_service
 from ringkeeper.scenarios.catalog import (
     ACME,
     ACME_DB,
     AGENT,
+    AIRTABLE,
     CANARY,
     CRM,
     DEV_DB,
@@ -194,6 +195,12 @@ def build(
     _connection(
         session, vault, name=CRM, title="Demo CRM", kind=InstanceType.MCP, env=Env.PROD,
         owner=owner, project=SHOP, secret=_local_server("crm"),
+    )  # fmt: skip
+    # Demo Co's Airtable, through the real adapter: one record asks for Acme's orders.
+    demo_airtable.install()
+    _connection(
+        session, vault, name=AIRTABLE, title="Demo Co ops (Airtable)", kind=InstanceType.AIRTABLE,
+        env=Env.PROD, owner=owner, project=SHOP, secret=demo_airtable.TOKEN,
     )  # fmt: skip
 
     # An agent held to the shop's database, and a routine that runs it.

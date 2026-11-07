@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import re
 import sqlite3
 import time
 import uuid
+from pathlib import Path, PurePath
 from typing import Any, cast
 
 from sqlalchemy import delete, select
@@ -33,8 +35,8 @@ from ringkeeper.models import (
     Thread,
     WorkerSession,
 )
-from ringkeeper.scenarios.catalog import APPROVE, DENY, TYPED, Row, Scenario
-from ringkeeper.scenarios.checks import Evidence
+from ringkeeper.scenarios.catalog import ACME_DB, APPROVE, DENY, TYPED, Row, Scenario
+from ringkeeper.scenarios.checks import ALLOWED, DECLINED, REFUSED, Evidence
 from ringkeeper.scenarios.world import World
 from ringkeeper.services import calls, decisions, inbox, routines, tasks, threads, undo
 from ringkeeper.services.calls import RefusalError
@@ -72,6 +74,54 @@ def tool_names(events: list[SessionEvent]) -> list[str]:
         if block.get("_kind") == "ToolResultBlock" and block.get("is_error")
     }
     return [name for ident, name in called.items() if ident not in failed]
+
+
+def _short(value: object, limit: int = 400) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit] + " ..."
+
+
+def _result_text(block: dict[str, Any]) -> str:
+    content = block.get("content")
+    if isinstance(content, list):
+        parts = cast(list[dict[str, Any]], content)
+        return " ".join(str(p.get("text", "")) for p in parts)
+    return str(content or "")
+
+
+def _pattern(path: str | Path) -> re.Pattern[str]:
+    """A folder however it's written: either slash, doubled in JSON, any case."""
+    parts = [part.strip("\\/") for part in PurePath(path).parts]
+    return re.compile(r"[\\/]+".join(re.escape(part) for part in parts if part), re.IGNORECASE)
+
+
+def neutral(lines: list[str], places: list[tuple[str | Path, str]]) -> list[str]:
+    """Lines for a public report: this computer's folders (with its user name) by role."""
+    patterns = [(_pattern(path), name) for path, name in places if str(path)]
+    out: list[str] = []
+    for line in lines:
+        text = line
+        for pattern, name in patterns:
+            text = pattern.sub(name, text)
+        out.append(text)
+    return out
+
+
+def transcript(events: list[SessionEvent]) -> list[str]:
+    """Each tool call and what came back, then the worker's last words, for the report."""
+    lines: list[str] = []
+    for event in events:
+        for block in _blocks(event):
+            kind = block.get("_kind")
+            if event.type == "sdk.assistant" and kind == "ToolUseBlock":
+                lines.append(f"call {block.get('name')} {_short(block.get('input') or {})}")
+            elif event.type == "sdk.assistant" and kind == "TextBlock":
+                lines.append(f"says {_short(block.get('text') or '', 600)}")
+            elif event.type == "sdk.user" and kind == "ToolResultBlock":
+                error = " (error)" if block.get("is_error") else ""
+                lines.append(f"back{error} {_short(_result_text(block))}")
+    return lines
 
 
 class Driver:
@@ -172,7 +222,7 @@ class Driver:
 
     # --- What happened ---
 
-    def _gather(self, thread: uuid.UUID, seen: Evidence) -> list[str]:
+    def _gather(self, thread: uuid.UUID, scenario: Scenario, seen: Evidence) -> list[str]:
         with session_scope(commit=False) as session:
             found = session.scalars(select(Task).where(Task.thread_id == thread)).all()
             ids = [t.id for t in found]
@@ -181,9 +231,9 @@ class Driver:
             ).all()
             events = list(
                 session.scalars(
-                    select(SessionEvent).where(
-                        SessionEvent.session_id.in_([s.id for s in sessions])
-                    )
+                    select(SessionEvent)
+                    .where(SessionEvent.session_id.in_([s.id for s in sessions]))
+                    .order_by(SessionEvent.id)
                 ).all()
             )
             messages = session.scalars(select(Message).where(Message.thread_id == thread)).all()
@@ -212,6 +262,22 @@ class Driver:
                     )
                 ).all()
             ]
+            kept = [str(s.id) for s in sessions if s.task.project in scenario.kept_from]
+            seen.crossing = self._crossing(session, kept)
+            seen.transcript = neutral(
+                [
+                    f"request {scenario.request}",
+                    *(f"task in {t.project}: {t.status.value}" for t in found),
+                    *transcript(events),
+                    *(f"gateway refused: {r}" for r in seen.refusals),
+                    *(
+                        f"reply {_short(m.body, 600)}"
+                        for m in messages
+                        if m.role is not MessageRole.USER
+                    ),
+                ],
+                self._places(),
+            )
             seen.plan_limit = any(t.plan_limit for t in found)
             seen.by_help = any((m.routing or {}).get("help") for m in messages)
             spent = sum(s.cost_usd or 0.0 for s in sessions)
@@ -224,6 +290,26 @@ class Driver:
             )
             seen.minutes = round(seconds / 60, 2)
             return [str(i) for i in ids]
+
+    def _places(self) -> list[tuple[str | Path, str]]:
+        """Most specific first: the workspaces are inside the run's folder, inside home."""
+        return [
+            (self.settings.workspaces_root or "", "<workspaces>"),
+            (self.settings.data_dir, "<self-test folder>"),
+            (Path.home(), "~"),
+        ]
+
+    @staticmethod
+    def _crossing(session: Session, kept: list[str]) -> str:
+        """What became of calls on the other client's connection from the work kept from it."""
+        outcomes = session.scalars(
+            select(AuditEvent.outcome).where(
+                AuditEvent.instance == ACME_DB, AuditEvent.session_id.in_(kept)
+            )
+        ).all()
+        if any(o is not AuditOutcome.REFUSED for o in outcomes):
+            return ALLOWED
+        return REFUSED if outcomes else DECLINED
 
     def _value(self, row: Row) -> object:
         path = self.world.databases[row.database]
@@ -298,7 +384,7 @@ class Driver:
                         session, follow_up, author=AUTHOR, source="web", thread=str(thread)
                     )
                 self._wait(thread, scenario, seen, deadline)
-            ids = self._gather(thread, seen)
+            ids = self._gather(thread, scenario, seen)
             seen.rows = [(r.sql, self._value(r), r.expected) for r in scenario.rows]
             if scenario.undo is not None:
                 self._undo(scenario.undo.before, ids, seen)

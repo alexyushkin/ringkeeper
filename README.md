@@ -39,7 +39,7 @@ first time, in Finder, choose **Go › Applications**, right-click **Ringkeeper*
   happens, when you'd rather not ask
 - Approve from Telegram, Slack or Discord; back up and move to a new computer
 
-**Tested on a real model:** 21 of 21 scenarios passed, with 18 of 18 requests reaching the right place, every production change held, and the other client's connection refused. Real requests through the real router, workers and gateway, against two made-up clients. Six scenarios that need real test accounts were skipped. [Read the report](docs/scenarios/2026-11-06.md), or run it yourself: [Self-test](docs/self-test.md).
+**Tested on a real model:** 23 of 23 scenarios passed, with 18 of 18 requests reaching the right place, every production change held, and the other client's connection refused. Two of them push the model to reach the other client, one through a record's text and one by naming the connection, and it declined both times. Real requests through the real router, workers and gateway, against two made-up clients. Six scenarios that need real test accounts were skipped, and an earlier run that day passed 22 of 23. [Read the report](docs/scenarios/2026-11-07.md), or run it yourself: [Self-test](docs/self-test.md).
 
 **Learn more:** [User guide](docs/README.md) · [Concepts](docs/concepts.md) ·
 [Install on Windows or Mac](docs/install-desktop.md) · [Server (Docker)](docs/install-server.md) ·
