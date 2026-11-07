@@ -62,6 +62,7 @@ type Template = Partial<RoutineData> & { name: string; prompt: string; trigger: 
 
 const DAYS: [string, string][] = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
 const TEMPLATE_HELP: Record<string, string> = {
+  "fix-it": "When an n8n run, a deploy or a check fails, or a site goes down: why, and a fix to approve.",
   "daily-digest": "Weekday mornings: what changed and what needs you.",
   "lead-follow-up": "When a lead comes in: a follow-up email, as a draft.",
   "weekly-report": "Friday afternoons: the week, for the client.",

@@ -228,8 +228,8 @@ async def _website(_read: Read, event: dict[str, Any]) -> list[Item]:
             problem = f"it answered {response.status_code}"
     except httpx.TimeoutException:
         problem = f"no answer in {WEBSITE_SECONDS:.0f} seconds"
-    except httpx.HTTPError as error:
-        problem = f"it couldn't be reached ({type(error).__name__})"
+    except httpx.HTTPError:
+        problem = "it couldn't be reached"
     if problem is None:
         event["_keep"] = {"down_since": None}
         return []
