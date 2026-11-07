@@ -334,6 +334,8 @@ def docker_choose(body: DockerIn, session: WriteSessionDep) -> dict[str, Any]:
         raise HTTPException(422, detail=problem)
     runtime.update(session, {"docker_tasks": body.on}, by="owner")
     return desktop_docker.status(runtime.effective(session))
+
+
 # --- Self-test ---
 
 
