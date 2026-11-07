@@ -22,6 +22,7 @@
 **When you need it**
 
 - [Security: what's stored where, and what leaves your computer](security.md)
+- [Self-test: real requests, checked](self-test.md)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
 
