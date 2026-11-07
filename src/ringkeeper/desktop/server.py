@@ -2,7 +2,8 @@
 
 `run()` starts the API (with the session manager and router) and the gateway
 on random local ports, and writes `desktop.json` in the data folder for the
-app shell: the address and a per-launch secret. Nothing else in it.
+app shell: the address and a per-launch secret, and the gateway's address for a pass's
+bridge (`ringkeeper mcp`), which needs a token for every call anyway.
 
 The front door (`FrontDoor`) is the only thing listening for the app:
 
@@ -452,7 +453,9 @@ def run(  # noqa: PLR0915 (the whole start-up, in order)
                 runtime = _write_runtime(
                     data_dir,
                     {"url": f"http://127.0.0.1:{api_port}", "secret": launch.secret,
-                     "pid": os.getpid(), "version": settings.app_version},
+                     "pid": os.getpid(), "version": settings.app_version,
+                     # For a pass's bridge (ringkeeper mcp): every call there needs a token.
+                     "gateway": f"http://127.0.0.1:{gateway_port}"},
                 )  # fmt: skip
                 logger.info("Ringkeeper is running at http://127.0.0.1:%d", api_port)
                 if ready is not None:

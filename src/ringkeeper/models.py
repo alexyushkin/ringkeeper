@@ -717,6 +717,29 @@ class SessionEvent(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(Doc)
 
 
+class Pass(Base):
+    """A way for an AI app on this computer (Claude Desktop, Claude Code, Cursor) to use one
+    project's connections through the gateway, like a task does. Its token is in the vault;
+    only its hash is here. Revoking it stops it at once (services.passes)."""
+
+    __tablename__ = "passes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    name: Mapped[str] = mapped_column(String(63), unique=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE", name="fk_passes_project")
+    )
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_by: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["Project"] = relationship()
+
+
 class TokenRevocation(Base):
     """Revoked worker tokens, by jti. The gateway refuses any token listed here."""
 

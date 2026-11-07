@@ -17,6 +17,7 @@ import { AboutCard } from "@/components/about";
 import { BackupSettings } from "@/components/backup";
 import { ClaudePlace } from "@/components/claude-place";
 import { DeveloperApps } from "@/components/developer-apps";
+import { Passes } from "@/components/passes";
 import { DockerTasks } from "@/components/docker-tasks";
 import { HelpHint } from "@/components/help-hint";
 import { ScanSettings } from "@/components/scans";
@@ -154,6 +155,7 @@ export default function SettingsPage() {
               </div>
             ),
           },
+          { key: "passes", label: "Passes", content: () => <Passes /> },
         ]
       : []),
     {

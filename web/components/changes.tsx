@@ -2,7 +2,7 @@
 
 import { useConnectionTitles } from "@/components/connection-form";
 import Link from "@/components/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Alert, Badge, Button, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -23,16 +23,17 @@ interface Change {
 
 /** What a task (or a conversation's tasks) changed on connections: Revert for 7 days,
  * where it can be undone, or why it can't. Reverting waits for approval too. */
-export function Changes({ task, thread }: { task?: string; thread?: string }) {
-  const list = useApi<Change[]>(task ? `tasks/${task}/changes` : `threads/${thread}/changes`);
+export function Changes({ task, thread, path, heading = "Data it changed" }: { task?: string; thread?: string; path?: string; heading?: string }) {
+  const list = useApi<Change[]>(path ?? (task ? `tasks/${task}/changes` : `threads/${thread}/changes`));
+  const titleId = useId(); // a page can show several lists
   useLive((event) => {
     if (["approval", "task"].includes(event.type)) list.reload();
   });
   if (!list.data?.length) return null;
   return (
-    <section className="mt-4 space-y-2" aria-labelledby="changes-title">
-      <h2 id="changes-title" className="text-sm font-semibold text-muted">
-        Data it changed
+    <section className="mt-4 space-y-2" aria-labelledby={titleId}>
+      <h2 id={titleId} className="text-sm font-semibold text-muted">
+        {heading}
       </h2>
       <ul className="space-y-2">
         {list.data.map((change) => (
