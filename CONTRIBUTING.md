@@ -8,6 +8,8 @@ short and will grow.
 - **A security problem?** Don't open an issue: see [SECURITY.md](SECURITY.md).
 - **An idea?** Open an issue with the "Idea or request" form: describe the job
   you're trying to do.
+- **A service you'd like connected?** Use the "Service request" form. Issues labelled
+  `good first issue` are good places to start, and [ROADMAP.md](ROADMAP.md) says what's next.
 
 ## Setup
 
