@@ -40,7 +40,7 @@ export function Passes() {
   return (
     <Section id="passes" title="Passes" summary={live ? `${live} in use` : "none yet"}>
       <p className="mb-3 text-sm text-muted">
-        A pass lets an AI app on this computer, like Claude Code or Cursor, use one project&apos;s connections. Every call goes through Ringkeeper, the same as a task&apos;s: it can&apos;t reach
+        A pass lets an AI app on this computer (Claude Desktop, Claude Code or Cursor) use one project&apos;s connections. Every call goes through Ringkeeper, the same as a task&apos;s: it can&apos;t reach
         another project or another client, changes to production wait for your approval, and what it changed can be undone.
       </p>
       <NewPass onMade={list.reload} />
