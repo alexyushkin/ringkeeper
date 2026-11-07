@@ -189,7 +189,7 @@ def test_one_file_can_demote_a_default_and_make_it_prod(database_url: str, tmp_p
 
 def test_apply_never_deletes(database_url: str, tmp_path: Path, engine: Engine) -> None:
     apply(EXAMPLE)
-    apply(write(tmp_path, {"projects": [project("globex-portal", owner="globex-web")]}))
+    apply(write(tmp_path, {"projects": [project("globex-portal", owner="globex")]}))
     with Session(engine) as session:
         names = [p.name for p in projects.list_projects(session)]
     assert names == ["acme-reports", "acme-web", "globex-portal"]

@@ -30,12 +30,22 @@ def same_client(a: str, b: str) -> bool:
     return clients.key(a) == clients.key(b)
 
 
+def crosses_clients(project: Project, instance: Instance) -> bool:
+    """A client's connection reaching another client's project. Shared tools (no
+    client's data) go to any project. The gateway checks this again on every call."""
+    return not instance.shared and not same_client(project.owner, instance.owner)
+
+
 def check_same_client(session: Session, project_name: str, instance_name: str) -> None:
-    """The app's rule: a client's connection is shared only among that client's
-    projects; a shared tool (no client's data) goes to any project. (A registry file
-    may still link across owners, where an owner is a team.)"""
+    """The rule: a client's connection is shared only among that client's projects; a
+    shared tool goes to any project. Every way of linking (the app, the CLI, a registry
+    file) is refused the same way."""
     project, instance = _resolve(session, project_name, instance_name)
-    if not instance.shared and not same_client(project.owner, instance.owner):
+    _refuse_crossing(session, project, instance)
+
+
+def _refuse_crossing(session: Session, project: Project, instance: Instance) -> None:
+    if crosses_clients(project, instance):
         names = clients.names(session)
         raise RuleViolationError(
             f"{instance.name} belongs to {names.get(instance.owner, instance.owner)} and "
@@ -74,6 +84,7 @@ def set_binding(session: Session, data: BindingIn) -> tuple[ProjectInstance, boo
     Returns the binding and whether it was newly created.
     """
     project, instance = _resolve(session, data.project, data.instance)
+    _refuse_crossing(session, project, instance)
     if excluded(instance, project):
         raise RuleViolationError(
             f"'{instance.name}' is for all projects except some, and '{project.title}' is one "

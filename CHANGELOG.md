@@ -5,6 +5,12 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A client's connection works only for that client's projects, on every call.** It was
+  checked when you linked it in the app, but a registry file could link it to another
+  client's project, and the gateway didn't check again. Now a registry file is refused the
+  same way, and the gateway refuses such a call even if the link is already there. If
+  `registry apply` now refuses your file, give each connection the owner of the projects
+  that use it, or make it a shared tool.
 - **Approvals show the values.** A held database change showed `status = %s`, with the values
   only under Show details. They're now right under the statement.
 - **Chat apps say where you answered in plain words:** "in the app", not "Api".
