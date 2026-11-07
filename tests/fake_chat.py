@@ -125,8 +125,9 @@ class FakeSlack:
         }
         before = len(self.replies)
         self.socket.outgoing.put({"envelope_id": ident, "type": "interactive", "payload": payload})
+        # Its own acknowledgement: a late reply to the last press would also be a new reply.
+        wait_for(lambda: {"envelope_id": ident} in self.socket.received)
         wait_for(lambda: len(self.replies) > before)
-        assert {"envelope_id": ident} in self.socket.received  # acknowledged
         return len(self.replies) - 1
 
 
