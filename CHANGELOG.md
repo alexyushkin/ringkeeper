@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Passes: use a project's connections from Claude Desktop, Claude Code or Cursor.** Settings >
+  Passes makes a pass for one project. Claude Desktop gets it as an extension file to double-click;
+  Claude Code a command; Cursor a few lines of settings. Every call goes through Ringkeeper the same
+  way a task's does: only that project's connections, never another client's, changes to production
+  held for your approval, and undo for 7 days. When a change is held, the app gets a link to it in
+  Approvals to give you. See [Passes](docs/passes.md).
+
 - **The conversation says what happened.** When Ringkeeper asked which project a request was
   for, its reply could still start with "I'll read the request...", as if the work had begun.
   Now a reply that asks only asks. And once you pick the project, the conversation says

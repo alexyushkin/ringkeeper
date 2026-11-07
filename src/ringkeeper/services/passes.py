@@ -10,15 +10,19 @@ used to call anything. Revoking a pass stops it on its next call.
 """
 
 import hashlib
+import io
+import json
 import re
 import secrets
 import sys
+import zipfile
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from ringkeeper import __version__
 from ringkeeper.calls import Caller
 from ringkeeper.config import Settings
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
@@ -133,6 +137,34 @@ def launch(settings: Settings, name: str) -> dict[str, Any]:
         env["RINGKEEPER_KEYCHAIN_SERVICE"] = settings.keychain_service
     args = ["-m", "ringkeeper", "mcp", "--pass", name, "--data-dir", str(settings.data_dir)]
     return {"command": sys.executable, "args": args, "env": env}
+
+
+def extension(settings: Settings, name: str, project_title: str) -> bytes:
+    """The pass as a Claude Desktop extension (.mcpb): opening it installs it. It starts the
+    same bridge as the other apps, with this install's data folder; there's no key in it."""
+    manifest = {
+        "manifest_version": "0.3",
+        "name": server_name(name),
+        "display_name": f"Ringkeeper: {project_title}",
+        "version": __version__,
+        "description": (
+            f"{project_title}'s connections through Ringkeeper. Every call is checked by "
+            "Ringkeeper, and changes to production wait for your approval there."
+        ),
+        "author": {"name": "Ringkeeper"},
+        "server": {
+            "type": "python",
+            "entry_point": "server/main.py",
+            "mcp_config": launch(settings, name),
+        },
+        "compatibility": {"platforms": ["win32", "darwin"]},
+    }
+    blob = io.BytesIO()
+    with zipfile.ZipFile(blob, "w", zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("manifest.json", json.dumps(manifest, indent=2))
+        # Not run: mcp_config starts Ringkeeper's own bridge, from Ringkeeper's install.
+        bundle.writestr("server/main.py", "# Ringkeeper's bridge is started by mcp_config.\n")
+    return blob.getvalue()
 
 
 class PassError(Exception):

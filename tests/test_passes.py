@@ -9,6 +9,7 @@ import asyncio
 import json
 import sqlite3
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -363,3 +364,37 @@ def test_a_scratch_install_s_keychain_name_goes_into_the_setup(
     assert started["env"] == {"RINGKEEPER_KEYCHAIN_SERVICE": "RingkeeperScratch"}
     monkeypatch.delenv("RINGKEEPER_KEYCHAIN_SERVICE")
     assert passes.launch(get_settings(), "acme-code")["env"] == {}
+
+
+def test_claude_desktop_gets_the_pass_as_an_extension_file(
+    owner: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from ringkeeper.api import passes_routes  # noqa: PLC0415
+
+    monkeypatch.setattr(passes_routes, "downloads", lambda: tmp_path)
+    with session_scope() as session:
+        make_project(session, ACME)
+    assert owner.post("/passes", json={"name": "acme-desk", "project": ACME}).status_code == 201
+    # Only the desktop app has a bridge on this computer to start.
+    assert owner.post("/passes/acme-desk/claude-desktop").status_code == 409
+
+    desktop = get_settings().model_copy(update={"mode": "desktop"})
+    monkeypatch.setattr(passes_routes, "get_settings", lambda: desktop)
+    saved = owner.post("/passes/acme-desk/claude-desktop")
+    assert saved.status_code == 200, saved.text
+    path = Path(saved.json()["path"])
+    assert path == tmp_path / "Ringkeeper-acme-desk.mcpb"
+    with zipfile.ZipFile(path) as bundle:
+        manifest = json.loads(bundle.read("manifest.json"))
+        everything = b"".join(bundle.read(n) for n in bundle.namelist())
+    assert manifest["name"] == "ringkeeper-acme-desk"
+    assert manifest["display_name"] == "Ringkeeper: Acme web"
+    started = manifest["server"]["mcp_config"]
+    assert started["command"] == sys.executable
+    assert started["args"][3:5] == ["--pass", "acme-desk"]
+    token = get_vault().resolve(passes.ref("acme-desk")).reveal()
+    assert token.encode() not in everything
+    assert passes.PREFIX.encode() not in everything
+
+    assert owner.post("/passes/acme-desk/revoke").status_code == 200
+    assert owner.post("/passes/acme-desk/claude-desktop").status_code == 409
