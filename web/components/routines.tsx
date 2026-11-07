@@ -41,6 +41,12 @@ interface EventSpec {
   base?: string;
   table?: string;
   query?: string;
+  workflow?: string; // n8n
+  project?: string; // Vercel
+  repo?: string; // GitHub
+  watch?: "checks" | "issues";
+  branch?: string;
+  url?: string; // website
 }
 
 interface Schedule {
@@ -234,7 +240,7 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
     const json = {
       name: name.trim(), agent, prompt, trigger,
       schedule: trigger === "schedule" ? schedule : null,
-      event: trigger === "event" ? { ...watch, source } : null,
+      event: trigger === "event" ? { ...watch, source, ...(source === "github" ? { watch: watch.watch ?? "checks" } : {}) } : null,
       max_steps: Number(steps), max_minutes: Number(minutes), max_runs_per_day: Number(perDay),
       budget_usd: budget.trim() ? Number(budget) : null, notify, catch_up: catchUp, tz: browserZone(),
     };
@@ -309,6 +315,10 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
               ["folder", "A file is added to the project's folder"],
               ["airtable", "A record is added to an Airtable table"],
               ["gmail", "A matching email arrives (Google account)"],
+              ["n8n", "An n8n workflow run fails"],
+              ["vercel", "A Vercel deploy fails"],
+              ["github", "A GitHub check fails, or an issue is opened"],
+              ["website", "A website stops answering"],
             ]}
           />
           {source === "airtable" ? (
@@ -324,12 +334,43 @@ export function RoutineForm({ project, agents, start, existing, onSaved, onCance
               <Field label="Which emails (Gmail search)" value={watch.query ?? ""} onChange={(v) => setWatch((w) => ({ ...w, query: v }))} placeholder="from:@geninfos.com subject:quote" />
             </>
           ) : null}
+          {source === "n8n" ? (
+            <>
+              <Select label="n8n connection" value={watch.connection ?? ""} onChange={(v) => setWatch((w) => ({ ...w, connection: v }))} options={[["", "Choose…"], ...ofType("n8n")]} />
+              <Field label="Only this workflow (ID, optional)" value={watch.workflow ?? ""} onChange={(v) => setWatch((w) => ({ ...w, workflow: v.trim() || undefined }))} placeholder="All workflows" />
+            </>
+          ) : null}
+          {source === "vercel" ? (
+            <>
+              <Select label="Vercel connection" value={watch.connection ?? ""} onChange={(v) => setWatch((w) => ({ ...w, connection: v }))} options={[["", "Choose…"], ...ofType("vercel")]} />
+              <Field label="Vercel project (name or ID)" value={watch.project ?? ""} onChange={(v) => setWatch((w) => ({ ...w, project: v.trim() }))} placeholder="acme-site" />
+            </>
+          ) : null}
+          {source === "github" ? (
+            <>
+              <Select label="GitHub connection" value={watch.connection ?? ""} onChange={(v) => setWatch((w) => ({ ...w, connection: v }))} options={[["", "Choose…"], ...ofType("github")]} />
+              <Field label="Repository" value={watch.repo ?? ""} onChange={(v) => setWatch((w) => ({ ...w, repo: v.trim() }))} placeholder="owner/name" />
+              <Select
+                label="Watch for"
+                value={watch.watch ?? "checks"}
+                onChange={(v) => setWatch((w) => ({ ...w, watch: v as EventSpec["watch"] }))}
+                options={[
+                  ["checks", "A check that fails on a branch's latest commit"],
+                  ["issues", "A new issue"],
+                ]}
+              />
+              {(watch.watch ?? "checks") === "checks" ? <Field label="Branch (optional)" value={watch.branch ?? ""} onChange={(v) => setWatch((w) => ({ ...w, branch: v.trim() || undefined }))} placeholder="The default branch" /> : null}
+            </>
+          ) : null}
+          {source === "website" ? <Field label="Website address" value={watch.url ?? ""} onChange={(v) => setWatch((w) => ({ ...w, url: v.trim() }))} placeholder="https://acme.example" /> : null}
           <p className="text-xs text-muted">
             {source === "webhook"
               ? "The address appears once it's saved. It answers only on this computer; calls from the internet aren't supported yet."
               : source === "folder"
                 ? "Files already there don't count; each new file starts one run, with {{event.file}}."
-                : "Checked every 5 minutes, reading only. What's there now doesn't count; each new one starts one run, with its fields as {{event...}}."}
+                : source === "website"
+                  ? "Checked every 5 minutes from this computer. Going down starts one run, with {{event.what}}; it's one event until the site answers again."
+                  : "Checked every 5 minutes, reading only, through Ringkeeper like any task. What's there now doesn't count; each new one starts one run, with {{event.what}}, {{event.link}} and its other fields."}
           </p>
         </div>
       ) : null}

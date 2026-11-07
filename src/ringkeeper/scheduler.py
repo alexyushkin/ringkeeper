@@ -6,10 +6,11 @@ computer is awake (a missed run is made up once on wake), and 24/7 on a server.
 
 import logging
 import threading
+from datetime import UTC, datetime
 
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
-from ringkeeper.services import routines
+from ringkeeper.services import routine_events, routines
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,14 @@ class Scheduler:
         self.settings = settings
 
     def tick(self) -> int:
+        now = datetime.now(UTC)
+        # Watched services first, outside any transaction: a call the gateway refuses
+        # writes to the audit log, which the tick's write lock would hold up.
+        with session_scope(commit=False) as session:
+            watches = routines.due_watches(session, self.settings, now)
+        fetched = routine_events.fetch_all(watches, now)
         with session_scope() as session:
-            started = routines.tick(session, self.settings)
+            started = routines.tick(session, self.settings, now, fetched)
         for one in started:
             if one.run.skipped:
                 logger.info("routine run skipped: %s", one.run.skipped)

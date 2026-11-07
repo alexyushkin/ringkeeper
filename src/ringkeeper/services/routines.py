@@ -18,6 +18,7 @@
 
 import secrets
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ from ringkeeper.services import agents, paging, projects, routine_events, tasks
 from ringkeeper.services.runtime import effective
 
 TRIGGERS = ("schedule", "event", "manual")
-SOURCES = ("webhook", "folder", "airtable", "gmail")  # the last two: services.routine_events
+SOURCES = ("webhook", "folder", *routine_events.SOURCES)  # the rest: services.routine_events
 NOTIFY = ("app", "channels", "none")
 STARTED = ("schedule", "catch_up", "event", "manual")  # what counts toward the day's limit
 MAX_FILES_PER_TICK = 20
@@ -44,6 +45,15 @@ FOLDER_SKIP = {".git", "node_modules", ".venv", "__pycache__", "previous-version
 
 # Starting points for a new routine (the owner edits everything after).
 TEMPLATES: dict[str, dict[str, Any]] = {
+    "fix-it": {
+        "name": "Fix a failed automation",
+        "prompt": "Something failed: {{event.what}} {{event.link}}\n\nFind out why. Read the run, "
+        "deploy or check through this project's connections, and say what went wrong in plain "
+        "words. If there's a fix, make it: changes to production wait for my approval. Don't "
+        "run again anything that sends messages or charges money.",
+        "trigger": "event",
+        "event": {"source": "n8n"},
+    },
     "daily-digest": {
         "name": "Daily digest",
         "prompt": "Write a short digest of what changed in this project since yesterday "
@@ -143,6 +153,34 @@ def list_routines(
     return list(session.scalars(query.order_by(Project.name, Routine.name)))
 
 
+WATCHED = ("n8n", "vercel", "github", "website")  # Automation watch, on Home
+
+
+def watching(
+    session: Session, project: str | None = None, client: str | None = None
+) -> dict[str, Any]:
+    """Home's Automation watch line: what's watched, the latest problem it found, and any
+    watch that can't look right now."""
+    watched = [
+        r for r in list_routines(session, project, client)
+        if r.trigger == "event" and _source(r.event) in WATCHED and not r.paused
+    ]  # fmt: skip
+    found = [
+        {"routine": r.name, "routine_id": str(r.id), **dict((r.state or {})["last_event"])}
+        for r in watched
+        if (r.state or {}).get("last_event")
+    ]
+    return {
+        "watching": len(watched),
+        "last": max(found, key=lambda f: str(f.get("at")), default=None),
+        "cant_look": [
+            {"routine": r.name, "routine_id": str(r.id), "error": str(r.state["error"])}
+            for r in watched
+            if (r.state or {}).get("error")
+        ],
+    }
+
+
 def create_routine(
     session: Session, project: str, data: RoutineIn, *, tz: str | None = None
 ) -> Routine:
@@ -216,11 +254,17 @@ def describe_when(routine: Routine) -> str:
         return describe(parse(routine.schedule))
     if routine.trigger == "event":
         source = _source(routine.event)
+        event = routine.event or {}
+        github = "a check fails" if event.get("watch") == "checks" else "an issue is opened"
         return {
             "webhook": "When its webhook is called (from this computer)",
             "folder": "When a file is added to the project's folder",
-            "airtable": f"When a record is added to {(routine.event or {}).get('table')}",
+            "airtable": f"When a record is added to {event.get('table')}",
             "gmail": "When a matching email arrives",
+            "n8n": "When an n8n workflow run fails",
+            "vercel": f"When a Vercel deploy of {event.get('project')} fails",
+            "github": f"When {github} in {event.get('repo')}",
+            "website": f"When {event.get('url')} stops answering",
         }.get(source or "", f"On {source} events")
     return "When you run it"
 
@@ -371,9 +415,29 @@ def blocked(session: Session, settings: Settings, routine: Routine) -> str | Non
 # --- The scheduler ---
 
 
-def tick(session: Session, settings: Settings, now: datetime | None = None) -> list[Started]:
-    """Start whatever is due: scheduled runs (one catch-up after sleep) and new files in
-    project folders. Called every half minute by the scheduler."""
+def _watched(routine: Routine) -> bool:
+    return routine.trigger == "event" and _source(routine.event) in routine_events.SOURCES
+
+
+def due_watches(session: Session, settings: Settings, now: datetime) -> list[routine_events.Due]:
+    """The watched services and websites due for a look (fetched outside the transaction)."""
+    return [
+        watch
+        for routine in list_routines(session)
+        if _watched(routine) and blocked(session, settings, routine) is None
+        and (watch := routine_events.due(routine, now)) is not None
+    ]  # fmt: skip
+
+
+def tick(
+    session: Session,
+    settings: Settings,
+    now: datetime | None = None,
+    fetched: Mapping[uuid.UUID, routine_events.Fetched] | None = None,
+) -> list[Started]:
+    """Start whatever is due: scheduled runs (one catch-up after sleep), new files in
+    project folders, and what the watches `fetched` found (see Scheduler.tick). Called every
+    half minute by the scheduler."""
     now = now or datetime.now(UTC)
     started: list[Started] = []
     for routine in list_routines(session):
@@ -383,8 +447,8 @@ def tick(session: Session, settings: Settings, now: datetime | None = None) -> l
             started += _due(session, settings, routine, now)
         elif routine.trigger == "event" and _source(routine.event) == "folder":
             started += _new_files(session, settings, routine, now)
-        elif routine.trigger == "event" and _source(routine.event) in routine_events.SOURCES:
-            started += routine_events.poll(session, settings, routine, now)
+        elif _watched(routine) and fetched and (found := fetched.get(routine.id)) is not None:
+            started += routine_events.apply(session, settings, routine, now, found)
     return started
 
 

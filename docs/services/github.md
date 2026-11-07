@@ -6,7 +6,8 @@ A [fine-grained token](https://github.com/settings/personal-access-tokens/new)
 (best): Resource owner = the client's organization (or you), **Only select
 repositories** (this client's), and Repository permissions **Contents, Issues,
 Pull requests, Metadata** (read and write to push and open issues and pull
-requests; read-only to only read). Everything else at No access. Set an expiry.
+requests; read-only to only read). To have a routine watch its checks, add
+**Checks** (read-only). Everything else at No access. Set an expiry.
 
 A [classic token](https://github.com/settings/tokens/new) (scope `repo`) only if
 the organization doesn't allow fine-grained ones. GitHub Enterprise Server:
@@ -14,7 +15,8 @@ add its address.
 
 ## What it can do
 
-- **Read:** repositories, issues, pull requests, files, branches, commits.
+- **Read:** repositories, issues, pull requests, files, branches, commits, and the
+  checks on a commit.
 - **Change:** open and update issues, comment, open and merge pull requests,
   push a branch. A push never forces.
 
@@ -31,3 +33,8 @@ the token's other repositories.
 ## Undo
 
 Changes on GitHub can't be undone by Ringkeeper.
+
+## Automation watch
+
+A routine can start when a check fails or an issue is opened, to find out why and propose a fix. See
+[Automation watch](../agents-and-routines.md#automation-watch).

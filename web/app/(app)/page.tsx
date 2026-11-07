@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
+import { WatchLine } from "@/components/watch-line";
 import { ScopeNote } from "@/components/scope-switcher";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
@@ -47,6 +48,7 @@ export default function Home() {
       <div className="mt-4">
         <FirstSteps />
       </div>
+      <WatchLine client={scope.client || undefined} project={scope.project || undefined} />
       <DigestCard client={scope.client || undefined} />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
       <ScopeNote />

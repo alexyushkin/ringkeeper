@@ -210,7 +210,7 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
 | `/mcp/gmail` | `search_messages`, `get_message`, `read_attachment`, `get_thread` | `create_draft` (never held), `send_email` (always held) |
 | `/mcp/google` | `search_mail`, `read_mail`, `read_attachment`, `get_thread`, `search_files`, `read_file`, `list_events`, `read_sheet` | `send_mail`, `create_draft`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account) |
-| `/mcp/github` | `list_repos`, `get_repo`, `list_issues`, `get_issue`, `list_pulls`, `get_pull`, `get_file`, `list_branches`, `list_commits` | `create_issue`, `comment`, `update_issue`, `create_pull`, `merge_pull` (name typed), `push_branch` (all always held) |
+| `/mcp/github` | `list_repos`, `get_repo`, `list_issues`, `get_issue`, `list_pulls`, `get_pull`, `get_file`, `list_branches`, `list_commits`, `list_check_runs` | `create_issue`, `comment`, `update_issue`, `create_pull`, `merge_pull` (name typed), `push_branch` (all always held) |
 | `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
 A worker only gets the endpoints of the services its project is connected to.

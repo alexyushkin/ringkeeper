@@ -86,8 +86,14 @@ def turn_on(ident: str, now: datetime) -> None:
 
 
 def tick(now: datetime) -> list[routines.Started]:
+    """As the scheduler does it: watches fetched first, then one transaction."""
+    from ringkeeper.services import routine_events  # noqa: PLC0415
+
+    with session_scope(commit=False) as session:
+        watches = routines.due_watches(session, get_settings(), now)
+    fetched = routine_events.fetch_all(watches, now)
     with session_scope() as session:
-        started = routines.tick(session, get_settings(), now)
+        started = routines.tick(session, get_settings(), now, fetched)
         session.flush()
         for s in started:
             _ = s.run.skipped, s.run.missed, s.run.trigger, s.run.task_id, s.run.event

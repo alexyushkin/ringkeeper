@@ -11,6 +11,13 @@ publishes it as the release notes and the app shows it with the update.
   way a task's does: only that project's connections, never another client's, changes to production
   held for your approval, and undo for 7 days. When a change is held, the app gets a link to it in
   Approvals to give you. See [Passes](docs/passes.md).
+- **Automation watch.** A routine can start when a client's n8n workflow run fails, a
+  Vercel deploy fails, a GitHub check fails or an issue is opened, or a website stops
+  answering. It's checked every 5 minutes, reading only, through the project's own
+  connections. A new template, **Fix a failed automation**, finds out why and proposes a
+  fix for your approval. Home says what's being watched and the last problem found.
+- **Routines that watch Airtable or Gmail now read through Ringkeeper's checks too,** like
+  a task: only the project's own connections, never another client's.
 
 - **The conversation says what happened.** When Ringkeeper asked which project a request was
   for, its reply could still start with "I'll read the request...", as if the work had begun.

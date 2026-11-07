@@ -315,6 +315,33 @@ async def list_commits(
     }
 
 
+@read
+async def list_check_runs(
+    target: Target, repo: Repo, branch: Branch | None = None, limit: Limit = 30
+) -> JSON:
+    """The checks on a branch's latest commit (the default branch if left out): each with
+    its status and, once finished, its conclusion (success, failure, timed_out...)."""
+    ref = branch or str((await get_repo.handler(target, repo=repo)).get("default_branch") or "")
+    found = await _call(
+        target, "GET", f"{_repo(repo)}/commits/{ref}/check-runs", params={"per_page": limit}
+    )
+    return {
+        "branch": ref,
+        "check_runs": [
+            {
+                "id": c.get("id"),
+                "name": c.get("name"),
+                "status": c.get("status"),
+                "conclusion": c.get("conclusion"),
+                "sha": str(c.get("head_sha") or "")[:12],
+                "completed": c.get("completed_at"),
+                "url": c.get("html_url"),
+            }
+            for c in cast(list[JSON], found.get("check_runs") or [])
+        ],
+    }
+
+
 # --- Writes: each waits for approval ---
 
 
@@ -487,7 +514,7 @@ push_branch = replace(push_branch, classify=_task_branch)
 
 TOOLS = (
     list_repos, get_repo, list_issues, get_issue, list_pulls, get_pull, get_file,
-    list_branches, list_commits,
+    list_branches, list_commits, list_check_runs,
     create_issue, comment, update_issue, create_pull, merge_pull, push_branch,
 )  # fmt: skip
 ADAPTER = Adapter(service=InstanceType.GITHUB, tools=TOOLS, secret_fragments=secret_fragments)

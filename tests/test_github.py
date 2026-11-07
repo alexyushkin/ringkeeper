@@ -44,6 +44,20 @@ class FakeGitHub:
         if path.endswith("/issues") and request.method == "GET":
             repo = "/".join(path.split("/")[2:4])
             return httpx2.Response(200, json=[{"number": 1, "title": f"in {repo}", "labels": []}])
+        if path.endswith("/check-runs"):
+            runs = [
+                {
+                    "id": 5,
+                    "name": "tests",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "head_sha": "abcdef1234567890",
+                    "html_url": "https://github.example/run/5",
+                }
+            ]
+            return httpx2.Response(200, json={"total_count": 1, "check_runs": runs})
+        if path.count("/") == 3 and path.startswith("/repos/"):
+            return httpx2.Response(200, json={"full_name": path[7:], "default_branch": "main"})
         if path == "/user/repos":
             return httpx2.Response(200, json=[{"full_name": "acme-inc/website"}])
         return httpx2.Response(404, json={"message": f"no {path}"})
@@ -114,6 +128,21 @@ def call(project: str, tool: str, instance: str | None = None, **args: Any) -> A
     return asyncio.run(
         run_call(ToolCall(caller, InstanceType.GITHUB, tool, instance, args), get_vault())
     )
+
+
+def test_the_checks_on_the_default_branch_s_latest_commit(
+    world: tuple[FakeGitHub, FakeGit, dict[str, Path]],
+) -> None:
+    fake, _git, _folders = world
+    found = call("acme-web", "list_check_runs", "acme-gh", repo="acme-inc/website")
+    assert found["branch"] == "main"
+    assert found["check_runs"] == [{
+        "id": 5, "name": "tests", "status": "completed", "conclusion": "failure",
+        "sha": "abcdef123456", "completed": None, "url": "https://github.example/run/5",
+    }]  # fmt: skip
+    assert fake.seen[-1][2].endswith("/repos/acme-inc/website/commits/main/check-runs?per_page=30")
+    with pytest.raises(RefusalError):  # the connection's scope is still the one repository
+        call("acme-web", "list_check_runs", "acme-gh", repo="globex/app")
 
 
 def test_two_projects_two_tokens_never_cross(
