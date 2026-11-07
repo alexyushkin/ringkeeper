@@ -43,7 +43,9 @@ def main() -> int:
         dist = info["versions"][version]["dist"]  # type: ignore[index]
         packages[arch] = {"tarball": dist["tarball"], "integrity": dist["integrity"]}
     PIN.write_text(
-        json.dumps({"version": version, "packages": packages}, indent=2) + "\n", encoding="utf-8"
+        json.dumps({"version": version, "packages": packages}, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",  # as committed, on Windows too
     )
     print(f"Pinned Claude Code {version}.")
     return 0
