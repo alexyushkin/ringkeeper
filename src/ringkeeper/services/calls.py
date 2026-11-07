@@ -43,6 +43,7 @@ from ringkeeper.adapters.base import (
     ToolSpec,
 )
 from ringkeeper.calls import Caller, ToolCall
+from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import (
@@ -586,16 +587,22 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
         except Exception as error:  # the card shows the IDs instead
             logger.warning("couldn't name what %s changes: %s", call.tool, type(error).__name__)
 
-    def hold(session: Session) -> tuple[str, str, str]:
+    def hold(session: Session) -> tuple[str, str, str, dict[str, str]]:
         decision = decisions.hold(session, call, target.name, precondition=precondition)
         if can_undo is not None:
             decision.payload = {**(decision.payload or {}), "undo": can_undo}
         if names:
             decision.payload = {**(decision.payload or {}), "names": scrub_obj(names)}
         audit.record(session, call, AuditOutcome.HELD, decision_id=decision.id)
-        return str(decision.id), decision.expires_at.isoformat(), holds.label(decision)
+        # An app using a pass has no Ringkeeper window of its own: say where to decide.
+        where = (
+            passes.approval_link(session, get_settings())
+            if passes.is_pass_session(call.caller.session_id)
+            else {}
+        )
+        return str(decision.id), decision.expires_at.isoformat(), holds.label(decision), where
 
-    decision_id, expires_at, label = await _db(hold)
+    decision_id, expires_at, label, where = await _db(hold)
     return {
         "status": "held_for_approval",
         "decision_id": decision_id,
@@ -603,6 +610,7 @@ async def _hold(call: ToolCall, spec: ToolSpec, target: Target) -> JSON:
         "message": (
             HELD_FOR_AN_APP if passes.is_pass_session(call.caller.session_id) else HELD_MESSAGE
         ).format(label=label),
+        **where,
     }
 
 
@@ -617,9 +625,9 @@ HELD_MESSAGE = (
 
 # What an app using a pass reads: no task will be resumed for it, so it asks.
 HELD_FOR_AN_APP = (
-    "Held: {label} waits for the user's approval in Ringkeeper. They already see it, so "
-    "don't ask them about it and don't call it again. Tell them it's waiting, and use "
-    "check_approval with this decision_id to see what became of it."
+    "Held: {label} waits for the user's approval in Ringkeeper. Don't call it again, even "
+    "written differently. Tell them it's waiting, give them the `open` link and what to "
+    "click (`how`), and use check_approval with this decision_id to see what became of it."
 )
 
 

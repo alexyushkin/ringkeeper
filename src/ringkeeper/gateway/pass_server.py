@@ -15,6 +15,7 @@ from pydantic import Field
 
 from ringkeeper import __version__
 from ringkeeper.calls import Caller
+from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway.arguments import CheckedArguments
@@ -37,7 +38,7 @@ SAYS = {
 def approval(caller: Caller, decision_id: str) -> dict[str, Any]:
     if not passes.is_pass_session(caller.session_id):
         raise RingkeeperError("only a pass can check its held calls here")
-    with session_scope(commit=False) as session:
+    with session_scope() as session:  # the first link makes the Open links' key
         try:
             decision = decisions.get_decision(session, decision_id)
         except RingkeeperError:
@@ -49,6 +50,8 @@ def approval(caller: Caller, decision_id: str) -> dict[str, Any]:
             "call": holds.label(decision),
             "says": SAYS.get(decision.status, decision.status.value),
         }
+        if decision.status is DecisionStatus.PENDING:  # where to decide, again
+            found |= passes.approval_link(session, get_settings())
         if decision.status is DecisionStatus.EXECUTED:
             found["result"] = scrub((decision.result or "")[:RESULT_CHARS])
         if decision.status is DecisionStatus.FAILED:
