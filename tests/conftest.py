@@ -280,7 +280,9 @@ def registry(database_url: str, target_dsn: str, vault: Vault) -> Iterator[None]
             secret_ref="file://acme/n8n",
             base_url="https://n8n.acme.example",
         )
-        make_instance(session, "globex-supabase-dev", secret_ref="file://globex/supabase")
+        make_instance(
+            session, "globex-supabase-dev", secret_ref="file://globex/supabase", owner="globex"
+        )
         make_instance(session, "acme-supabase-unbound", secret_ref=supabase_ref)
     bind("acme-web", "acme-supabase-dev", is_default=True)
     bind("acme-web", "acme-supabase-staging", allowed_tools=["query", "list_tables"])
