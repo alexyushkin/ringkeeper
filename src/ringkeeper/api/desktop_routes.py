@@ -38,6 +38,7 @@ from ringkeeper.services import (
 from ringkeeper.telegram.text import summary
 from ringkeeper.vault import get_vault
 from ringkeeper.voice import VoiceError
+from ringkeeper.workers import desktop_docker
 
 # Same length rule as Telegram: a notification is a pointer to the app.
 NOTICE_CHARS = 160
@@ -297,6 +298,40 @@ def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> d
         except RuleViolationError as error:
             raise HTTPException(422, detail=str(error)) from None
     return {"imported": created}
+
+
+# --- Tasks in Docker ---
+
+
+@router.get("/docker")
+def docker_status(session: SessionDep) -> dict[str, Any]:
+    """Whether tasks can run in Docker here, and the next step if not."""
+    return desktop_docker.status(runtime.effective(session))
+
+
+@router.post("/docker/download", status_code=202)
+def docker_download(session: SessionDep) -> dict[str, Any]:
+    """Fetch the image, once. The app polls GET /desktop/docker for progress."""
+    settings = runtime.effective(session)
+    image = desktop_docker.image_for(settings)
+    if image is None:
+        raise HTTPException(422, detail="This version of Ringkeeper doesn't have a Docker image.")
+    desktop_docker.download.start(desktop_docker.connect, image)
+    return desktop_docker.status(settings)
+
+
+class DockerIn(Input):
+    on: bool
+
+
+@router.put("/docker")
+def docker_choose(body: DockerIn, session: WriteSessionDep) -> dict[str, Any]:
+    """On only once it can work: Docker running, the image here, the gateway reachable."""
+    settings = runtime.effective(session)
+    if body.on and (problem := desktop_docker.turn_on(settings)) is not None:
+        raise HTTPException(422, detail=problem)
+    runtime.update(session, {"docker_tasks": body.on}, by="owner")
+    return desktop_docker.status(runtime.effective(session))
 
 
 # --- Voice on this computer ---

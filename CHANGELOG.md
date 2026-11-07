@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Run tasks in Docker.** With Docker Desktop, Settings > Security can run each task in a
+  container that sees only its project's folder, away from the vault, the keychain and
+  your other files. It's off by default, and recommended for client work. If Docker isn't
+  running when a task starts, the task runs on this computer and says so.
+
 ## 0.1.0-beta.27 (2026-11-06)
 
 - **Searches in connected services find what was asked.** A search written the natural way, such

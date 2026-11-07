@@ -166,6 +166,7 @@ class Settings(BaseSettings):
     health_checks: bool = True  # test every connection once a day (services.health)
     hotkey: str = "Ctrl+Alt+R"  # the quick request box (the desktop shell)
     hotkey_enabled: bool = True
+    docker_tasks: bool = False  # desktop: run tasks in Docker (workers.desktop_docker)
     routines_paused: bool = False  # the tray's "Pause all routines" (services.routines)
     # Desktop: a fixed address on this computer for routines' webhooks (the app's own
     # port changes each launch). Only POST /hooks/... answers there. 0: none.

@@ -17,6 +17,7 @@ import { AboutCard } from "@/components/about";
 import { BackupSettings } from "@/components/backup";
 import { ClaudePlace } from "@/components/claude-place";
 import { DeveloperApps } from "@/components/developer-apps";
+import { DockerTasks } from "@/components/docker-tasks";
 import { HelpHint } from "@/components/help-hint";
 import { ScanSettings } from "@/components/scans";
 import { AUTO, VoiceSettings } from "@/components/voice";
@@ -215,6 +216,7 @@ export default function SettingsPage() {
         </div>
       ),
     },
+    ...(DESKTOP ? [{ key: "security", label: "Security", content: () => <DockerTasks /> }] : []),
     {
       key: "advanced",
       label: "Advanced",

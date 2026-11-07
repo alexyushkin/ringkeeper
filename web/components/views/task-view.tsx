@@ -136,6 +136,8 @@ function EventView({ event }: { event: Event }) {
     }
     case "ringkeeper.error":
       return <Alert>{String(p.message ?? "")}</Alert>;
+    case "ringkeeper.note":
+      return <Alert tone="accent">{String(p.message ?? "")}</Alert>;
     case "sdk.result": {
       const message = (p.message as { subtype?: string; num_turns?: number } | undefined) ?? {};
       return <p className="text-xs text-muted">{message.subtype === "error_max_turns" ? `Stopped at the step limit after ${message.num_turns} steps (Settings › Advanced)` : `Finished after ${message.num_turns} steps`}</p>;

@@ -47,9 +47,18 @@ own files, yet a script written to do it could still reach anything your user ca
 your files, the system keychain and the master key in it, and Ringkeeper's own
 files. A task told to do that by something it read is the risk to think about.
 
-For strong isolation, use server mode. With Docker workers, a task has no access to
-the vault, the keychain or the rest of the computer. An optional desktop mode that
-runs tasks as a separate local account is planned, but it isn't here yet.
+For strong isolation, turn on **Settings > Security > Run tasks in Docker**, or use
+server mode. A task in Docker sees only its project's folder, so it has no access to
+the vault, the keychain or the rest of the computer's files. We recommend it for client
+work. It's off by default and needs Docker Desktop, plus a one-time image download.
+
+Three things to know about it on the desktop:
+
+- **If Docker isn't ready when a task starts, the task still runs,** on this computer
+  and without that isolation, and says so at the top of the task.
+- **A task can still change its project's folder,** as it's meant to.
+- **A container can reach this computer's network,** which it needs for the gateway. A
+  service on your computer that trusts anything local isn't protected from it.
 
 ## What leaves your computer
 
