@@ -5,7 +5,7 @@ import Link from "@/components/link";
 import { Markdown } from "@/components/markdown";
 import { useState } from "react";
 
-import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, clock, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { place, projectName } from "@/lib/client/scope";
 import { taskHref } from "@/lib/client/routes";
@@ -34,9 +34,70 @@ export interface Decision {
   thread_id: string | null;
   created_at: string;
   expires_at: string;
+  snoozed_until?: string | null;
+  answer?: Record<string, unknown> | null;
+}
+
+interface Estimate {
+  model: string;
+  low: number | null;
+  high: number | null;
+  based_on: number;
+  spent: number;
+  limit: number | null;
+  subscription: boolean;
 }
 
 const NONE = "none";
+const SPARE = 5 * 60_000; // a snooze ends at least this long before the approval runs out
+
+/** Snooze choices that end before it runs out: in an hour, in three, tomorrow at 9. */
+function snoozes(expires: string): [string, Date][] {
+  const now = Date.now();
+  const morning = new Date();
+  morning.setDate(morning.getDate() + 1);
+  morning.setHours(9, 0, 0, 0);
+  const all: [string, Date][] = [
+    ["1 hour", new Date(now + 3_600_000)],
+    ["3 hours", new Date(now + 3 * 3_600_000)],
+    ["Tomorrow 9 AM", morning],
+  ];
+  return all.filter(([, at]) => at.getTime() < new Date(expires).getTime() - SPARE);
+}
+
+const dollars = (n: number) => `$${n.toFixed(2)}`;
+
+/** The model that would do the work, and what tasks like it have cost. */
+function PlanCost({ estimate }: { estimate: Estimate }) {
+  return (
+    <dl data-estimate className="grid gap-1 rounded-md border border-line p-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4">
+      <dt className="text-muted">Model</dt>
+      <dd className="font-mono text-xs leading-5">{estimate.model}</dd>
+      <dt className="text-muted">Likely cost</dt>
+      <dd>
+        {estimate.low !== null && estimate.high !== null
+          ? estimate.low === estimate.high
+            ? `About ${dollars(estimate.low)}`
+            : `${dollars(estimate.low)} to ${dollars(estimate.high)}`
+          : "No finished task like this yet to go by"}
+        {estimate.based_on ? <span className="text-muted"> (from {estimate.based_on} like it, plan to review)</span> : null}
+      </dd>
+      {estimate.spent ? (
+        <>
+          <dt className="text-muted">So far</dt>
+          <dd>{dollars(estimate.spent)} on the plan</dd>
+        </>
+      ) : null}
+      {estimate.limit ? (
+        <>
+          <dt className="text-muted">Limit</dt>
+          <dd>It stops at {dollars(estimate.limit)} and asks before spending more</dd>
+        </>
+      ) : null}
+      {estimate.subscription ? <dd className="text-xs text-muted sm:col-span-2">On your Claude subscription, this counts toward its usage limits instead of being billed.</dd> : null}
+    </dl>
+  );
+}
 
 /**
  * One thing waiting for you, with its buttons: a held call (what it wants to do, the
@@ -66,6 +127,22 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
     }
   }
 
+  async function snooze(until: Date | null) {
+    setBusy("snooze");
+    setError(null);
+    try {
+      await api(`decisions/${decision.id}/snooze`, { json: { until: until ? until.toISOString() : null } });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const snoozed = decision.snoozed_until && new Date(decision.snoozed_until).getTime() > Date.now() ? decision.snoozed_until : null;
+  const canSnooze = decision.approval && decision.status === "pending" && !decision.answer;
+
   async function answer(choice: string | null, answerText?: string) {
     setBusy(choice ?? "answer");
     setError(null);
@@ -92,6 +169,14 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
         {decision.instance ? <span className="text-sm text-muted">on {title(decision.instance)}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(decision.created_at)}</span>
       </div>
+      {snoozed ? (
+        <div data-snoozed className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
+          Snoozed until {clock(snoozed)}: it isn&apos;t in Approvals or notifications till then.
+          <Button kind="ghost" busy={busy === "snooze"} onClick={() => void snooze(null)}>
+            Wake it now
+          </Button>
+        </div>
+      ) : null}
 
       {decision.kind === "approve" ? (
         <div className="mt-3 space-y-3">
@@ -172,6 +257,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
       {decision.kind === "plan" ? (
         <div className="mt-3 space-y-3">
           <h3 className="font-medium">{String(payload.title ?? "A plan")}</h3>
+          {payload.estimate ? <PlanCost estimate={payload.estimate as Estimate} /> : null}
           <Code>{String(payload.plan ?? "")}</Code>
           <Details label="Show the agent's instructions">
             <Code>{String(payload.worker_prompt ?? "")}</Code>
@@ -218,6 +304,17 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
       ) : null}
 
       {decision.kind === "route" ? <RouteQuestion decision={decision} busy={busy} onAnswer={(choice) => void answer(choice)} /> : null}
+
+      {canSnooze && !snoozed && snoozes(decision.expires_at).length ? (
+        <div data-snooze className="mt-3 flex flex-wrap items-center gap-1 text-sm text-muted">
+          Not now? Snooze it:
+          {snoozes(decision.expires_at).map(([label, at]) => (
+            <Button key={label} kind="ghost" busy={busy === "snooze"} onClick={() => void snooze(at)}>
+              {label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mt-3">

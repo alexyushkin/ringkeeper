@@ -48,6 +48,14 @@ function mentionAt(text: string, caret: number): { start: number; query: string 
  * clients, projects, connections and agents: a mention is a firm choice. Files dropped
  * here (or added with the clip) go with the request, into the project its task runs in.
  */
+/** An hour from now, on the minute, as a datetime-local value. */
+function soon(): string {
+  const at = new Date(Date.now() + 3_600_000);
+  at.setSeconds(0, 0);
+  const local = new Date(at.getTime() - at.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: { threadId?: string; onSent: (thread: string) => void; autoFocus?: boolean; prefix?: string }) {
   const [text, setText] = useState("");
   const mentionable = useApi<Mentionable[]>("mentions");
@@ -61,6 +69,7 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [later, setLater] = useState<string | null>(null); // "send later": a datetime-local value
   const voice = useLocalVoice();
   const [setup, setSetup] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -146,8 +155,9 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
     setError(null);
     try {
       const result = await api<{ thread_id: string }>("messages", {
-        json: { body: `${prefix}${body}`, source: "web", input, author: "owner", thread_id: threadId ?? null, attachments: files.map((f) => f.id) },
+        json: { body: `${prefix}${body}`, source: "web", input, author: "owner", thread_id: threadId ?? null, attachments: files.map((f) => f.id), run_at: later ? new Date(later).toISOString() : null },
       });
+      setLater(null);
       setText("");
       setFiles([]);
       setHeard(null);
@@ -358,10 +368,26 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
             )}
           </button>
         )}
-        <Button type="submit" kind="primary" busy={busy} disabled={!text.trim()} className="shrink-0">
-          Send
+        <Button type="submit" kind="primary" busy={busy} disabled={!text.trim() || later === ""} className="shrink-0">
+          {later ? "Schedule" : "Send"}
         </Button>
       </div>
+      {threadId ? null : later === null ? (
+        <button type="button" className="self-start px-1 text-xs text-accent" onClick={() => setLater(soon())}>
+          Send later…
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2 px-1">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-muted">Run it at (this computer&apos;s time)</span>
+            <input type="datetime-local" value={later} min={soon()} onChange={(event) => setLater(event.target.value)} className="rounded-lg border border-line bg-surface px-2 py-1" />
+          </label>
+          <Button kind="ghost" onClick={() => setLater(null)}>
+            Send now instead
+          </Button>
+          <p className="w-full text-xs text-muted">It waits until then, and you can cancel it on Home before it runs. If Ringkeeper isn&apos;t running then, it runs when Ringkeeper starts, unless that&apos;s more than 6 hours late.</p>
+        </div>
+      )}
       {files.length ? (
         <ul className="flex flex-wrap gap-2 px-1" aria-label="Attached files">
           {files.map((file) => (

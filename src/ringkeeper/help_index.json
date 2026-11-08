@@ -93,7 +93,13 @@
 "doc": "approvals",
 "anchor": "approving",
 "title": "Approving",
-"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. The same goes for what can't be taken back on the newer connections: sending to many people at once, deleting a file or an email, a DELETE through an API. These always ask, even on test data; they can't be trusted for an hour, and no per-tool setting lets them run by themselves. **Business systems follow the action, not the vendor.** Reports and lookups run. Drafts and edits wait for approval, even on test data. Anything that sends to real people, publishes, posts to the books, moves money, deletes, changes who has access or adds ongoing cost needs the name typed, in the app itself. On these services a per-tool setting can make a tool stricter, never looser. Nothing on an accounting connection ever runs by itself, even after you've approved one like it. An approval that moves money shows the amount, currency, counterparty and account in large text, as written in the call; anything the call doesn't say shows as not stated. **Card and bank numbers never go through.** A tool call that carries one is refused before it's sent, and they're removed from logs, conversations, a task's events and the audit log. Use the service's own hosted page, or a token it issued. A held action expires after 24 hours if nobody answers. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster. On a business system or an add-on tool, that covers that one action on that connection, not everything it can do."
+"text": "Held actions are in **Approvals** (with a count in the sidebar), in their conversation, and in your notification channels. Each shows exactly what would run, on which connection, for which client and project. **Approve** runs it; **Deny** (with an optional note) tells the AI not to, and why. Before it runs, an approved action is checked again against today's setup: if the connection was unlinked or narrowed since, it's refused. Where it can, Ringkeeper also checks the target hasn't changed since the action was held, and asks the AI to redo it if it has. **Destructive changes need the connection's name typed**: deleting rows, dropping or altering tables, anything the check can't read for certain. These can't be approved from Telegram, Slack or Discord: those say *Open in Ringkeeper*. The same goes for what can't be taken back on the newer connections: sending to many people at once, deleting a file or an email, a DELETE through an API. These always ask, even on test data; they can't be trusted for an hour, and no per-tool setting lets them run by themselves. **Business systems follow the action, not the vendor.** Reports and lookups run. Drafts and edits wait for approval, even on test data. Anything that sends to real people, publishes, posts to the books, moves money, deletes, changes who has access or adds ongoing cost needs the name typed, in the app itself. On these services a per-tool setting can make a tool stricter, never looser. Nothing on an accounting connection ever runs by itself, even after you've approved one like it. An approval that moves money shows the amount, currency, counterparty and account in large text, as written in the call; anything the call doesn't say shows as not stated. **Card and bank numbers never go through.** A tool call that carries one is refused before it's sent, and they're removed from logs, conversations, a task's events and the audit log. Use the service's own hosted page, or a token it issued. A held action expires after 24 hours if nobody answers."
+},
+{
+"doc": "approvals",
+"anchor": "snooze",
+"title": "Snooze",
+"text": "**Not now?** under an approval snoozes it for an hour, three hours, or until tomorrow at 9 (only the times before it expires are offered). Until then it isn't in Approvals or its count, and nothing notifies you about it. Then it's back, with a fresh notification in the desktop app and your channels. Snoozed approvals are listed at the bottom of Approvals; **Wake it now** brings one back early. Snoozing is in Activity. The task that's waiting goes on waiting: a snooze doesn't approve or deny anything. J, K, A and D work on the Approvals page, and one action can be trusted for an hour: see Working faster. On a business system or an add-on tool, that covers that one action on that connection, not everything it can do."
 },
 {
 "doc": "approvals",
@@ -213,13 +219,13 @@
 "doc": "recipes",
 "anchor": "add-one",
 "title": "Add one",
-"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** a dozen common jobs, from fixing a failed n8n run to a weekly client report. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
+"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or acting on an email you forward to yourself. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
 },
 {
 "doc": "recipes",
 "anchor": "share-your-own",
 "title": "Share your own",
-"text": "On an agent (a project's Agents), **Export as recipe** saves the agent and its routines as a file, `<agent>.ringkeeper-recipe.json`. It keeps: - the agent's instructions, model, effort, autonomy and memory setting, and the kinds of connection it uses (not which ones); - each routine's name, prompt, timing, limits and notifications, and for an event only what kind it is (an n8n failure, a GitHub check, a website). It leaves out connection names, what an event watches, time zones, and anything that looks like a secret. Read it before you share it: what you wrote in the instructions and prompts is in it."
+"text": "On an agent (a project's Agents), **Export as recipe** saves the agent and its routines as a file, `<agent>.ringkeeper-recipe.json`. It keeps: - the agent's instructions, model, effort, autonomy and memory setting, and the kinds of connection it uses (not which ones); - each routine's name, prompt, timing, limits and notifications, and for an event only what kind it is (an n8n failure, a GitHub check, a website). It leaves out connection names, what an event watches, time zones, and anything that looks like a secret. Read it before you share it: what you wrote in the instructions and prompts is in it. A recipe's Gmail event may say which mail starts a run, in Gmail's search words: the Forward an email starter watches only `from:me to:me subject:(Fwd OR Fw)`. An exported recipe never has one, since a search can name a client."
 },
 {
 "doc": "recipes",
@@ -231,7 +237,7 @@
 "doc": "notifications",
 "anchor": "",
 "title": "Notifications",
-"text": "Ringkeeper can tell you about approvals, finished tasks, routine results and failures when you're away from the app: in **Telegram**, **Slack** or **Discord** (Settings › Notifications). On Windows you also get a notification from the tray."
+"text": "Ringkeeper can tell you about approvals, finished tasks, routine results and failures when you're away from the app: in **Telegram**, **Slack** or **Discord** (Settings › Notifications). On Windows you also get a notification from the tray. Windows notifications can't have Approve or Deny buttons yet (the desktop app's notifications only offer buttons on phones): click one to open it in Ringkeeper."
 },
 {
 "doc": "notifications",
@@ -250,6 +256,12 @@
 "anchor": "slack-and-discord",
 "title": "Slack and Discord",
 "text": "Both are your own app (Slack, in Socket Mode) or bot (Discord). They connect out from your computer, so nothing needs a public address. Settings walks you through creating them step by step: the Slack app manifest to paste, or the Discord invite link that asks only to see channels and send messages. Then choose where it posts (a channel or a direct message) and your member or user ID. Tokens go into the vault."
+},
+{
+"doc": "notifications",
+"anchor": "new-requests-by-dm",
+"title": "New requests by DM",
+"text": "Turn on **Take new requests by DM** on a Slack or Discord channel, and a direct message from you to the app (Slack) or bot (Discord) becomes a new request, the same as one typed in Ringkeeper: it's routed to a project and runs with the usual approvals and limits. Ringkeeper answers in that DM with what it did, and again when each task ends. Only your member or user ID is taken; anyone else is told no, and messages in a channel are never requests. - **Slack:** the app needs the manifest from this version (it adds direct messages). For an app set up before, copy the manifest from **Add another Slack channel**, paste it on the app's **App Manifest** page at api.slack.com, and reinstall the app. - **Discord:** the bot has to share a server with you for you to message it."
 },
 {
 "doc": "notifications",
@@ -346,6 +358,12 @@
 "anchor": "quick-request",
 "title": "Quick request",
 "text": "Press **Ctrl+Alt+R** anywhere, and a small box opens over whatever you're doing. Type or hold the mic, choose a client or project if you like, and send. It says **Sent**, with a link to the conversation, and closes. Change the key or turn it off in Settings › Advanced › Quick request. If another app already uses it, Ringkeeper says so and you can pick another."
+},
+{
+"doc": "working-faster",
+"anchor": "send-later",
+"title": "Send later",
+"text": "Under the request box on Home, **Send later…** picks a day and time (this computer's time). The request waits until then, in its conversation and in **Sent for later** on Home, each with **Cancel**. At its time it's routed like any request. If Ringkeeper isn't running then (the computer was asleep, say), it runs when Ringkeeper starts, unless that's more than 6 hours late: then it doesn't run, and its conversation says so. A time can be up to 90 days ahead."
 },
 {
 "doc": "working-faster",

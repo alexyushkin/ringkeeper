@@ -10,7 +10,8 @@ import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Markdown, plainText } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
-import { Alert, Badge, Card, Details, Loading, timeAgo } from "@/components/ui";
+import { CancelButton } from "@/components/scheduled";
+import { Alert, Badge, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
 import { useApi, useLive } from "@/lib/client/api";
 import { projectName } from "@/lib/client/scope";
 
@@ -23,6 +24,8 @@ interface Message {
   body: string;
   routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] }; help?: HelpAnswer } | null;
   route_error: string | null;
+  run_at?: string | null;
+  canceled_at?: string | null;
   created_at: string;
 }
 
@@ -97,7 +100,14 @@ export function ThreadView({ id }: { id: string }) {
                 </Details>
               </div>
             ) : null}
-            {message.role === "user" && !message.routing && !message.route_error ? (
+            {message.role === "user" && message.canceled_at ? (
+              <p className="mt-1 ml-8 text-xs text-muted">Not run.</p>
+            ) : message.role === "user" && message.run_at && !message.routing && !message.route_error && new Date(message.run_at).getTime() > Date.now() ? (
+              <p data-later className="mt-1 ml-8 flex flex-wrap items-center gap-2 text-xs text-muted">
+                Sent for later: it runs {clock(message.run_at)}.
+                <CancelButton id={message.id} onDone={thread.reload} />
+              </p>
+            ) : message.role === "user" && !message.routing && !message.route_error ? (
               <p className="mt-1 ml-8 text-xs text-muted">Finding the right project…</p>
             ) : null}
           </li>

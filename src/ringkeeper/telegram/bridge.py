@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import voice_local
 from ringkeeper.channels import telegram_state
+from ringkeeper.channels.news import finished_text, routed_text
 from ringkeeper.channels.outbox import due, task_event
 from ringkeeper.channels.prefs import ROUTINES
 from ringkeeper.config import Settings, get_settings
@@ -54,7 +55,7 @@ from ringkeeper.models import (
     VoiceConfirmation,
 )
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, threads, titles
+from ringkeeper.services import inbox, plan_cost, threads, titles
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.storage.sql import insert
 from ringkeeper.telegram import text as telegram_text
@@ -113,6 +114,10 @@ def render(decision: Decision, settings: Settings) -> str:
         lines.append(telegram_text.SHORTENED)
     if decision.kind is DecisionKind.QUESTION:
         lines.append("Reply to this message with your answer.")
+    if decision.kind is DecisionKind.PLAN and (
+        estimate := (decision.payload or {}).get("estimate")
+    ):
+        lines.append(plan_cost.said(estimate))
     if why := inbox.destructive_reason(decision):
         lines.append(f"This change {why}, so approve it in the Ringkeeper app. Deny works here.")
     return scrub("\n".join(lines))
@@ -151,38 +156,6 @@ def outcome_line(decision: Decision) -> str:
             return f"✔ Answered by {who}: {_label(decision, choice)}"
         case _:
             return f"✔ {decision_status(decision.status).capitalize()} by {who}."
-
-
-def routed_text(session: Session, message: Message, limit: int) -> str:
-    """Projects, task ids and kinds only: never the worker prompt or outcome."""
-    head = "Your request"
-    if message.route_error:
-        return (
-            "I couldn't tell which project your request is for. Send it again and name "
-            "the project, or open Ringkeeper."
-        )
-    routing = message.routing or {}
-    lines: list[str] = []
-    for ident in routing.get("tasks", []):
-        task = session.get(Task, ident)
-        if task is not None:
-            lines.append(f"→ {titles.of(session, task.project)}: started")
-    for _ident in routing.get("decisions", []):
-        lines.append("? I need to know which project. I've sent that question separately.")
-    if not lines:
-        # The router answered instead of making tasks: meant to be read, so it gets
-        # the room a question gets, with the same rules (no SQL or code).
-        output = cast(dict[str, Any], routing.get("output") or {})
-        shown = telegram_text.question(str(output.get("reply") or "Nothing to do."), limit)
-        lines.append(shown.text)
-        if shown.cut:
-            lines.append(telegram_text.SHORTENED)
-    return "\n".join([f"{head}:", *lines])
-
-
-def finished_text(task: Task) -> str:
-    mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
-    return f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
 
 
 def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:

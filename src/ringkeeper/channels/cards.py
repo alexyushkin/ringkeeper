@@ -23,7 +23,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Routine, Task, TaskStatus
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, titles
+from ringkeeper.services import inbox, plan_cost, titles
 from ringkeeper.telegram import text as shown_text
 from ringkeeper.telegram.api import defang
 from ringkeeper.wording import decision_status, person, plain, task_status
@@ -99,6 +99,10 @@ def decision_card(decision: Decision, open_url: str | None) -> Card:
     lines = [" · ".join(head), shown.text]
     if shown.cut:
         lines.append(SHORTENED)
+    if decision.kind is DecisionKind.PLAN and (
+        estimate := (decision.payload or {}).get("estimate")
+    ):
+        lines.append(plan_cost.said(estimate))
     buttons: list[Button] = []
     options = inbox.options(decision)
     if decision.kind is DecisionKind.APPROVE and inbox.quick_approval(decision):

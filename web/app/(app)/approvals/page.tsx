@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { useConnectionTitles } from "@/components/connection-form";
 import { DecisionCard, type Decision } from "@/components/decision-card";
-import { Alert, Button, Empty, Loading, PageHeader, Select, timeUntil } from "@/components/ui";
+import { Alert, Button, Details, Empty, Loading, PageHeader, Select, timeUntil } from "@/components/ui";
 import { LoadMore } from "@/components/tidy";
 import { api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
@@ -42,11 +42,13 @@ export default function ApprovalsPage() {
   const [kind, setKind] = useState("");
   const [at, setAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const decisions = usePaged<Decision>("decisions", { ...scope.query, kind, status: "pending", category: "approval" });
+  const decisions = usePaged<Decision>("decisions", { ...scope.query, kind, status: "pending", category: "approval", snoozed: false });
+  const snoozed = usePaged<Decision>("decisions", { ...scope.query, kind, status: "pending", category: "approval", snoozed: true });
   const trusts = useApi<Trust[]>("trusts");
   useLive((event) => {
     if (event.type === "approval") {
       decisions.reload();
+      snoozed.reload();
       trusts.reload();
     }
   });
@@ -133,12 +135,24 @@ export default function ApprovalsPage() {
               {first && group.length > 1 && !typed ? (
                 <Button onClick={() => void approveAll(group)}>Approve all {group.length} like this</Button>
               ) : null}
-              <DecisionCard decision={decision} onDone={decisions.reload} />
+              <DecisionCard decision={decision} onDone={() => { decisions.reload(); snoozed.reload(); }} />
             </div>
           );
         })}
       </div>
       <LoadMore list={decisions} />
+      {snoozed.items?.length ? (
+        <div className="mt-8">
+          <Details label={`Snoozed (${snoozed.total ?? snoozed.items.length})`}>
+            <div className="space-y-4">
+              {snoozed.items.map((decision) => (
+                <DecisionCard key={decision.id} decision={decision} onDone={() => { decisions.reload(); snoozed.reload(); }} />
+              ))}
+            </div>
+            <LoadMore list={snoozed} />
+          </Details>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -130,6 +130,19 @@ class FakeSlack:
         wait_for(lambda: len(self.replies) > before)
         return len(self.replies) - 1
 
+    def dm(self, text: str, user: str, **extra: Any) -> str:
+        """A DM to the app: an events_api envelope over Socket Mode. Returns its envelope id."""
+        ident = f"env-{next(self._envelope)}"
+        event = {
+            "type": "message", "channel_type": "im", "channel": "D1", "user": user,
+            "text": text, "ts": "1700000001.000100", **extra,
+        }  # fmt: skip
+        self.socket.outgoing.put(
+            {"envelope_id": ident, "type": "events_api", "payload": {"event": event}}
+        )
+        wait_for(lambda: {"envelope_id": ident} in self.socket.received)
+        return ident
+
 
 class FakeDiscord:
     def __init__(self) -> None:
@@ -200,12 +213,21 @@ class FakeDiscord:
         wait_for(lambda: len(self.callbacks) > before)
         return len(self.callbacks) - 1
 
+    def dm(self, text: str, user: str, **extra: Any) -> None:
+        """A DM to the bot: MESSAGE_CREATE over the gateway, with no guild."""
+        wait_for(lambda: self.identified() is not None)
+        sent = {
+            "id": str(next(self._ids)), "channel_id": "701", "content": text,
+            "author": {"id": user, "username": f"user{user}"}, **extra,
+        }  # fmt: skip
+        self.socket.outgoing.put({"op": 0, "t": "MESSAGE_CREATE", "s": next(self._seq), "d": sent})
+
 
 @contextmanager
-def listening(api: Any, on_press: Any) -> Generator[threading.Event]:
+def listening(api: Any, on_press: Any, on_message: Any = None) -> Generator[threading.Event]:
     """The channel's listener on its own thread, for as long as the block runs."""
     stop = threading.Event()
-    thread = threading.Thread(target=api.listen, args=(stop, on_press), daemon=True)
+    thread = threading.Thread(target=api.listen, args=(stop, on_press, on_message), daemon=True)
     thread.start()
     try:
         yield stop

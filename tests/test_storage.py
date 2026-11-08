@@ -182,6 +182,26 @@ def test_postgres_specifics_stay_in_storage() -> None:
     assert offenders == []
 
 
+def test_the_next_request_on_a_thread_waits_for_the_last_ones_commit_elsewhere(
+    sqlite_engine: Engine,
+) -> None:
+    """A request's write began on this worker thread, and another thread is committing its
+    session; meanwhile this thread starts the next request's write. It waits for that
+    commit instead of taking it for a write inside a write."""
+    first = Session(sqlite_engine)
+    first.add(Setting(key="first", value={}))
+    first.flush()  # BEGIN IMMEDIATE, here on this thread
+    finisher = threading.Timer(0.3, first.commit)
+    finisher.start()
+    with Session(sqlite_engine) as second:  # same thread, before that commit
+        second.add(Setting(key="second", value={}))
+        second.commit()
+    finisher.join()
+    first.close()
+    with Session(sqlite_engine) as check:
+        assert {s.key for s in check.scalars(select(Setting))} >= {"first", "second"}
+
+
 def test_a_write_finished_on_another_thread_frees_the_first(sqlite_engine: Engine) -> None:
     """FastAPI may commit a request's session on another worker thread than the one
     that began the write. That thread must be able to write again afterwards."""

@@ -555,6 +555,8 @@ class Decision(Base):
     decided_by: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
     executed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # Snoozed: out of Approvals and its notifications until then (never past expires_at).
+    snoozed_until: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class AuditEvent(Base):
@@ -810,6 +812,9 @@ class Message(Base):
     routing: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     routed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     route_error: Mapped[str | None] = mapped_column(Text)
+    # Sent for later: the router leaves it until then. Canceled: it never runs.
+    run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    canceled_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
 
     thread: Mapped[Thread] = relationship(back_populates="messages")

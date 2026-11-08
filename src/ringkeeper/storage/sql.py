@@ -9,11 +9,15 @@ is one process, so that's enough.
 
 The one thing SQLite can't do that Postgres can: a second write transaction
 in the same thread while the first is still open would wait for itself. That
-raises NestedWriteError at once instead of hanging.
+raises NestedWriteError instead of hanging. A thread's open write can also belong
+to a request whose session another thread is finishing (FastAPI commits a request's
+session on whichever worker thread is free, and the first thread may start the
+next request meanwhile), so the second write first waits NESTED_WAIT for it to end.
 """
 
 import sqlite3
 import threading
+import time
 import uuid
 from typing import Any
 
@@ -26,6 +30,7 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.storage import events
 
 SQLITE_BUSY_SECONDS = 30
+NESTED_WAIT = 2.0  # seconds a thread's open write may take to be finished elsewhere
 READ_ONLY = "ringkeeper_read_only"  # an execution option: this session only reads
 
 Insert = postgresql.Insert | sqlite.Insert
@@ -51,6 +56,7 @@ class _Writers(threading.local):
 
 
 _writers = _Writers()
+_released = threading.Condition()  # a write's mark was cleared, on any thread
 
 
 def _held() -> set[str]:
@@ -73,8 +79,27 @@ def _release(connection: Any) -> None:
     writing: tuple[str, set[str]] | None = getattr(raw, "writing", None)
     if writing is not None:
         database, holder = writing
-        holder.discard(database)
+        with _released:
+            holder.discard(database)
+            _released.notify_all()
         raw.writing = None
+
+
+def _wait_for_own(database: str) -> None:
+    """This thread's open write on the database: wait a little for another thread to
+    finish it (a request's session, committed elsewhere); one that doesn't end is a write
+    inside a write."""
+    deadline = time.monotonic() + NESTED_WAIT
+    with _released:
+        while database in _held():
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise NestedWriteError(
+                    "a write transaction is already open in this thread; SQLite allows one "
+                    "writer at a time (read with session_scope(commit=False), or reuse the "
+                    "session)"
+                )
+            _released.wait(left)
 
 
 def is_sqlite(url: str) -> bool:
@@ -138,11 +163,7 @@ def _prepare_sqlite(engine: Engine) -> None:
         if connection.get_execution_options().get(READ_ONLY):
             connection.exec_driver_sql("BEGIN")
             return
-        if database in _held():
-            raise NestedWriteError(
-                "a write transaction is already open in this thread; SQLite allows one "
-                "writer at a time (read with session_scope(commit=False), or reuse the session)"
-            )
+        _wait_for_own(database)
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         _held().add(database)
         _raw(connection.connection).writing = (database, _held())

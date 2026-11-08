@@ -10,6 +10,16 @@ Type or hold the mic, choose a client or project if you like, and send. It says
 in Settings › Advanced › Quick request. If another app already uses it, Ringkeeper
 says so and you can pick another.
 
+## Send later
+
+Under the request box on Home, **Send later…** picks a day and time (this computer's
+time). The request waits until then, in its conversation and in **Sent for later** on
+Home, each with **Cancel**. At its time it's routed like any request.
+
+If Ringkeeper isn't running then (the computer was asleep, say), it runs when Ringkeeper
+starts, unless that's more than 6 hours late: then it doesn't run, and its conversation
+says so. A time can be up to 90 days ahead.
+
 ## Mentions
 
 Type **@** in any request box to name a client, project, connection or agent. A

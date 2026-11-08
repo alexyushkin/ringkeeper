@@ -308,6 +308,19 @@ export function timeUntil(value: string): string {
   return `for ${minutes} more minute${minutes === 1 ? "" : "s"}`;
 }
 
+/** "today at 3:00 PM", "tomorrow at 9:00 AM", "Tue at 3:00 PM", or "Nov 20 at 3:00 PM" when it's
+ * more than six days away. */
+export function clock(value: string): string {
+  const at = new Date(value);
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(at) - day(new Date())) / 86_400_000);
+  if (days === 0) return `today at ${time}`;
+  if (days === 1) return `tomorrow at ${time}`;
+  const date = Math.abs(days) > 6 ? at.toLocaleDateString([], { month: "short", day: "numeric" }) : at.toLocaleDateString([], { weekday: "short" });
+  return `${date} at ${time}`;
+}
+
 export function timeAgo(value: string | null | undefined): string {
   if (!value) return "";
   const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);

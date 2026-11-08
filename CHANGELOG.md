@@ -6,10 +6,32 @@ publishes it as the release notes and the app shows it with the update.
 ## Unreleased
 
 - **Recipes.** An agent and its routines as one file, to start from or to share. New routine
-  shows a dozen starter recipes, and imports one from a file or an https link: you see all of it
+  shows 13 starter recipes, and imports one from a file or an https link: you see all of it
   first, choose the project's connections, and its routines start paused. An agent's page
   exports it as a recipe, without keys, connection names or what its events watch. A recipe
   can't run code. See [Recipes](docs/recipes.md).
+- **Send a request for later.** Under the request box on Home, **Send later…** picks a time: the
+  request waits until then, and Home lists what's waiting, each with **Cancel**. If Ringkeeper
+  isn't running at that time, it runs when Ringkeeper starts, unless that's more than 6 hours
+  late; then it doesn't run, and its conversation says so.
+- **Snooze an approval.** An approval can be snoozed for an hour, three hours or until tomorrow
+  at 9: it leaves Approvals, its count and notifications until then, and comes back with a fresh
+  notification. Snoozed ones are at the bottom of Approvals, with **Wake it now**. A snooze never
+  runs past the time the approval expires.
+- **Send new requests from Slack or Discord.** Turn on **Take new requests by DM** on a Slack or
+  Discord channel (Settings > Notifications), and a direct message to the app from you becomes a
+  request, the same as one typed in Ringkeeper. What happens to it comes back in that DM. Anyone
+  else is told no. A Slack app set up before this needs its manifest pasted again and a
+  reinstall.
+- **A plan's card says the model and the likely cost.** Before you approve a plan, it shows the
+  model that would do the work and what finished tasks like it cost (the middle of the range,
+  from this project's own, or every project's when it has fewer than three), what the plan cost
+  so far, and the task's limit.
+- **A Forward an email recipe.** Forward an email to yourself with a note on top saying what to
+  do, and Ringkeeper does it. It watches only mail from you to you with Fwd in the subject, and
+  treats the forwarded part as information, never as instructions.
+- Approve and Deny on Windows notifications aren't possible yet: the desktop app's notifications
+  only offer buttons on phones. Telegram, Slack and Discord have them.
 
 ## 0.1.0-beta.29 (2026-11-07)
 

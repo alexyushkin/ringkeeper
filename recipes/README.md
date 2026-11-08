@@ -20,6 +20,7 @@ You see everything in it before it's added, and its routines start paused.
 | `lead-follow-up` | Drafts a reply to a new lead sent to its webhook | - |
 | `data-sync-check` | Checks every morning that connected systems agree | - |
 | `inbox-triage` | Sorts new Gmail and drafts replies to urgent mail | Google |
+| `forward-an-email` | Does what your note says on an email you forward to yourself | Google |
 | `airtable-new-record` | Checks a new Airtable record for missing or odd fields | Airtable |
 | `monthly-housekeeping` | Lists stale records, idle automations and expiring keys | - |
 

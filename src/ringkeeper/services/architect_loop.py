@@ -14,7 +14,7 @@ from ringkeeper.models import (
     TaskStatus,
     WorkerSession,
 )
-from ringkeeper.services import architect, inbox, plan_notes, tasks
+from ringkeeper.services import architect, inbox, plan_cost, plan_notes, tasks
 
 # A session that ended like this stops the loop: the task takes its status.
 FINAL = frozenset({TaskStatus.STOPPED, TaskStatus.TIMED_OUT, TaskStatus.BUDGET_EXCEEDED})
@@ -35,6 +35,7 @@ def _architect_ended(session: Session, settings: Settings, row: WorkerSession, t
             task.status = TaskStatus.WAITING
             task.finished_at = None
             payload = {k: action[k] for k in ("title", "plan", "worker_prompt")}
+            payload["estimate"] = plan_cost.estimate(session, settings, task)
             inbox.create(
                 session, settings, DecisionKind.PLAN, payload, project=task.project, task=task
             )

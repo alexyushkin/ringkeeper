@@ -43,3 +43,5 @@ if you'd use one of these, and say what you'd ask it to do.
 - ClickUp and Asana
 - WhatsApp through the existing Twilio connection: every message held
 - Passes for a server install, so an AI app on another computer reaches it over HTTPS
+- Approve and Deny on desktop notifications, once the desktop app's notifications support
+  buttons on Windows and macOS (today only phones get them)

@@ -75,6 +75,7 @@ class ChannelPatch(Input):
     target: Ident | None = None
     approver: Ident | None = None
     prefs: PrefsIn | None = None
+    requests: bool | None = None  # take DMs from the approver as new requests
 
 
 class ChannelOut(BaseModel):
@@ -86,6 +87,7 @@ class ChannelOut(BaseModel):
     approver: str
     about: dict[str, str]  # the workspace or bot, as Slack or Discord named it
     prefs: dict[str, Any]
+    requests: bool = False
     running: bool
     error: str | None
 
@@ -109,7 +111,8 @@ def _out(channel: Channel, status: dict[str, dict[str, object]]) -> ChannelOut:
     return ChannelOut(
         id=str(channel.id), kind=channel.kind, name=channel.name, enabled=channel.enabled,
         target=str(config.get("target") or ""), approver=str(config.get("approver") or ""),
-        about=about, prefs=dict(channel.prefs), running=bool(state.get("running")),
+        about=about, prefs=dict(channel.prefs), requests=bool(config.get("requests")),
+        running=bool(state.get("running")),
         error=str(error) if error else None,
     )  # fmt: skip
 
@@ -182,6 +185,7 @@ def change_channel(
     channels.update_channel(
         session, channel, name=data.name, enabled=data.enabled, target=data.target,
         approver=data.approver, prefs=data.prefs.doc() if data.prefs else None,
+        requests=data.requests,
     )  # fmt: skip
     session.flush()
     events.notify(session, SETTINGS_CHANNEL)

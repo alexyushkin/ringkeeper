@@ -176,6 +176,7 @@ class MessageIn(_Input):
     source: Literal["api", "web"] = "api"
     input: Literal["text", "voice"] = "text"  # voice: a transcript the user confirmed
     attachments: CleanList = Field(default_factory=list[str])  # ids from POST /attachments
+    run_at: datetime | None = None  # sent for later: when the router takes it
 
 
 class MessageAccepted(BaseModel):
@@ -194,6 +195,8 @@ class MessageOut(_Output):
     routing: dict[str, Any] | None
     routed_at: datetime | None
     route_error: str | None
+    run_at: datetime | None = None  # sent for later
+    canceled_at: datetime | None = None
     created_at: datetime
 
 
@@ -245,4 +248,5 @@ class DecisionOut(_Output):
     thread_id: uuid.UUID | None
     created_at: datetime
     expires_at: datetime
+    snoozed_until: datetime | None = None
     decided_at: datetime | None

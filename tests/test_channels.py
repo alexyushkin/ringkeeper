@@ -21,7 +21,7 @@ from ringkeeper.channels import links
 from ringkeeper.channels import slack as slack_module
 from ringkeeper.channels.cards import NOT_ALLOWED, TEST_ACTION
 from ringkeeper.channels.discord import DiscordApi
-from ringkeeper.channels.outbox import Runner
+from ringkeeper.channels.outbox import GOT_IT, NOT_YOURS, REQUESTS_OFF, Runner
 from ringkeeper.channels.slack import SlackApi
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
@@ -33,10 +33,12 @@ from ringkeeper.models import (
     DecisionStatus,
     Env,
     InstanceType,
+    Message,
+    MessageRole,
     Notification,
     TaskStatus,
 )
-from ringkeeper.services import tasks
+from ringkeeper.services import inbox, tasks, threads
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.telegram.api import BotApi
 from ringkeeper.telegram.bridge import Bridge
@@ -50,6 +52,7 @@ from tests.fake_chat import (
     FakeDiscord,
     FakeSlack,
     listening,
+    wait_for,
 )
 from tests.fake_telegram import BOT_TOKEN, ME, FakeTelegram
 from tests.helpers import make_instance
@@ -356,7 +359,7 @@ def test_discord_button_approves_once_and_only_for_the_approver(discord: FakeDis
         assert discord.callbacks[-1]["data"]["content"].startswith("Not done")
     identify = discord.identified()
     assert identify is not None
-    assert identify["intents"] == 0
+    assert identify["intents"] == 1 << 12  # DMs; interactions need no intent
     [edit] = discord.edited()
     assert [b["label"] for b in edit["components"][0]["components"]] == ["Open in Ringkeeper"]
 
@@ -376,6 +379,120 @@ def test_discord_quiet_hours_and_dm(discord: FakeDiscord) -> None:
     assert rk.send_due(now + timedelta(hours=2)) == 1
     assert ("POST", "users/@me/channels", {"recipient_id": ME_DISCORD}) in discord.calls
     assert ("POST", "channels/701/messages") in [(m, p) for m, p, _b in discord.calls]
+
+
+def test_a_snoozed_approval_waits_and_is_sent_again_when_it_comes_back(slack: FakeSlack) -> None:
+    ident = add_slack()
+    held = held_write()
+    rk = runner(ident)
+    assert rk.send_due() == 1
+    with session_scope() as session:
+        inbox.snooze(session, held, datetime.now(UTC) + timedelta(minutes=30), by="owner")
+    assert rk.send_due() == 0
+    with session_scope() as session:  # its time comes: a snooze is a minute or more
+        for note in session.scalars(select(Notification).where(Notification.decision_id == held)):
+            note.created_at = datetime.now(UTC) - timedelta(minutes=31)
+        session.get_one(Decision, held).snoozed_until = datetime.now(UTC) - timedelta(seconds=1)
+    assert rk.send_due() == 1  # back: a fresh message
+    assert rk.send_due() == 0  # once
+    assert len(slack.posted()) == 2
+    fresh = held_write()
+    with session_scope() as session:  # snoozed before it was ever sent: sent when it's back
+        inbox.snooze(session, fresh, datetime.now(UTC) + timedelta(minutes=30), by="owner")
+    assert rk.send_due() == 0
+
+
+# --- New requests by DM (Slack and Discord) ---
+
+
+def take_requests(ident: str, on: bool = True) -> None:
+    with session_scope() as session:
+        channels.update_channel(session, channels.get_channel(session, ident), requests=on)
+
+
+def asked(source: str) -> list[tuple[str, str]]:
+    """(body, author) of each request from there."""
+    with session_scope(commit=False) as session:
+        rows = session.scalars(
+            select(Message).where(Message.source == source, Message.role == MessageRole.USER)
+        ).all()
+        return [(m.body, m.author) for m in rows]
+
+
+def answer_it(source: str, reply: str = "The site is up.") -> None:
+    with session_scope() as session:
+        message = session.scalars(select(Message).where(Message.source == source)).one()
+        threads.mark_routed(session, message, {"output": {"reply": reply}})
+
+
+def dm_texts(slack: FakeSlack) -> list[str]:
+    return [m["text"] for m in slack.posted() if m["channel"] == "D1"]
+
+
+def test_the_slack_app_is_set_up_to_take_dms() -> None:
+    assert "im:history" in slack_module.SCOPES
+    assert slack_module.MANIFEST["settings"]["event_subscriptions"] == {
+        "bot_events": ["message.im"]
+    }
+    assert slack_module.MANIFEST["features"]["app_home"]["messages_tab_enabled"] is True
+
+
+def test_a_slack_dm_from_the_approver_is_a_request_and_its_news_comes_back(
+    slack: FakeSlack,
+) -> None:
+    ident = add_slack()
+    take_requests(ident)
+    rk = runner(ident)
+    api = rk.transport
+    assert isinstance(api, SlackApi)
+    with listening(api, rk.on_press, rk.on_message):
+        slack.dm("Delete every customer", OTHER_SLACK)
+        wait_for(lambda: NOT_YOURS in dm_texts(slack))
+        slack.dm("I'm the bot", ME_SLACK, bot_id="B1")  # its own messages are never requests
+        slack.dm("edited", ME_SLACK, subtype="message_changed")
+        slack.dm("Is the Acme site up?", ME_SLACK)
+        wait_for(lambda: GOT_IT in dm_texts(slack))
+    assert asked("slack") == [("Is the Acme site up?", f"slack:{ME_SLACK}")]
+    answer_it("slack")
+    assert rk.send_news() == 1
+    assert dm_texts(slack)[-1] == "Your request:\nThe site is up."
+    assert rk.send_news() == 0  # once
+
+
+def test_dm_requests_are_off_until_turned_on(slack: FakeSlack) -> None:
+    ident = add_slack()
+    rk = runner(ident)
+    assert rk.on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == REQUESTS_OFF
+    assert asked("slack") == []
+    take_requests(ident)
+    assert runner(ident).on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == GOT_IT
+    assert len(asked("slack")) == 1
+
+
+def test_a_discord_dm_from_the_approver_is_a_request(discord: FakeDiscord) -> None:
+    ident = add_discord()
+    take_requests(ident)
+    rk = runner(ident)
+    api = rk.transport
+    assert isinstance(api, DiscordApi)
+
+    def said() -> list[str]:
+        return [m.get("content", "") for m in discord.posted()]
+
+    with listening(api, rk.on_press, rk.on_message):
+        discord.dm("Delete every customer", OTHER_DISCORD)
+        wait_for(lambda: NOT_YOURS in said())
+        discord.dm("In a server channel", ME_DISCORD, guild_id="601")  # not a DM
+        discord.dm("A bot", ME_DISCORD, author={"id": ME_DISCORD, "bot": True})
+        discord.dm("Is the Acme site up?", ME_DISCORD)
+        wait_for(lambda: GOT_IT in said())
+    [(body, author)] = asked("discord")
+    assert body == "Is the Acme site up?"
+    assert author.startswith(f"discord:{ME_DISCORD}")
+    answer_it("discord")
+    assert rk.send_news() == 1
+    assert ("POST", "users/@me/channels", {"recipient_id": ME_DISCORD}) in discord.calls
+    assert said()[-1] == "Your request:\nThe site is up."
 
 
 # --- Telegram follows its prefs ---
