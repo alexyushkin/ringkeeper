@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import zipfile
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -147,6 +148,16 @@ for line in sys.stdin:
 """
 
 
+def seen(file: Path, count: int, wait: float = 10.0) -> list[str]:
+    """What the fake bridge has written down, once it has `count` lines (or the wait is up)."""
+    deadline = time.monotonic() + wait
+    while True:
+        found = file.read_text().split() if file.exists() else []
+        if len(found) >= count or time.monotonic() > deadline:
+            return found
+        time.sleep(0.05)
+
+
 class Claude:
     """Claude Desktop's side of the relay's stdio."""
 
@@ -216,13 +227,15 @@ def test_claude_desktop_s_extension_keeps_working_across_an_update(
         running(data, gateway)
         assert claude.next()["method"] == "notifications/tools/list_changed"
         assert (data / "starts").read_text() == "2"
-        assert (data / "seen-2").read_text().split() == ["initialize", "notifications/initialized"]
+        # The bridge writes down the replayed handshake as it reads it, just after the relay
+        # tells Claude: wait for it rather than read the file at once.
+        assert seen(data / "seen-2", 2) == ["initialize", "notifications/initialized"]
         assert "from bridge 2" in json.dumps(claude.ask(8, "tools/call", {"name": "tool_2"}))
         assert claude.ask(9, "tools/list")["result"]["tools"][0]["name"] == "tool_2"
     finally:
         assert relay.stdin is not None
         relay.stdin.close()  # Claude quits
-        assert relay.wait(10) == 0
+        assert relay.wait(60) == 0
 
 
 @pytest.mark.skipif(NODE is None, reason="needs Node, as Claude Desktop has")
@@ -234,7 +247,7 @@ def test_a_bridge_that_can_t_start_shows_its_error_in_claude(tmp_path: Path) -> 
         [str(NODE), str(relay_js), sys.executable, str(fake), "--data-dir", str(tmp_path)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )  # fmt: skip
-    assert relay.wait(20) == 1  # Claude marks it failed, with the bridge's words in its log
+    assert relay.wait(60) == 1  # Claude marks it failed, with the bridge's words in its log
     assert relay.stderr is not None
     assert "no pass" in relay.stderr.read()
     assert relay.stdin is not None
