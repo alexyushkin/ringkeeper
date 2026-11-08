@@ -1,0 +1,23 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "New GitHub issue triage",
+  "description": "When an issue is opened, sums it up, says how urgent it looks, and drafts a first reply for your review.",
+  "agent": {
+    "name": "issue-triager",
+    "instructions": "You triage new GitHub issues for this client. Sum the issue up in two lines, say how urgent it looks and why, and draft a short, friendly first reply. Post nothing yourself: replies wait for approval.",
+    "needs": [
+      "github"
+    ]
+  },
+  "routines": [
+    {
+      "name": "When an issue is opened",
+      "prompt": "A new issue: {{event.what}} {{event.link}}. Triage it and draft a reply.",
+      "trigger": "event",
+      "event": {
+        "source": "github",
+        "watch": "issues"
+      }
+    }
+  ]
+}

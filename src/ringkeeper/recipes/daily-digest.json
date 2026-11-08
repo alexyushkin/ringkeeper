@@ -1,0 +1,21 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Daily digest",
+  "description": "Every weekday morning, a short digest of what changed in the project since yesterday.",
+  "agent": {
+    "name": "digest-writer",
+    "instructions": "You write a short daily digest for this project: new records, failed runs, and anything that needs attention, most important first. Read only: change nothing, send nothing.",
+    "needs": []
+  },
+  "routines": [
+    {
+      "name": "Weekday digest",
+      "prompt": "Write today's digest ({{today}}): what changed since yesterday and what needs attention.",
+      "trigger": "schedule",
+      "schedule": {
+        "every": "weekdays",
+        "time": "08:00"
+      }
+    }
+  ]
+}

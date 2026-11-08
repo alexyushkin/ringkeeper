@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Recipes.** An agent and its routines as one file, to start from or to share. New routine
+  shows a dozen starter recipes, and imports one from a file or an https link: you see all of it
+  first, choose the project's connections, and its routines start paused. An agent's page
+  exports it as a recipe, without keys, connection names or what its events watch. A recipe
+  can't run code. See [Recipes](docs/recipes.md).
+
 ## 0.1.0-beta.29 (2026-11-07)
 
 - **A client's month.** Each client's page has a This month tab: tasks and how they ended,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Recipes } from "@/components/recipes";
 import Link from "@/components/link";
 import { useState } from "react";
 
@@ -141,8 +142,16 @@ function RoutineRow({ routine, showProject, onChange }: { routine: RoutineData; 
 export function NewRoutine({ project, agents, onCreated }: { project: string; agents: AgentData[]; onCreated: (id: string) => void }) {
   const templates = useApi<Record<string, Template>>("routine-templates");
   const [start, setStart] = useState<Template | null>(null);
-  // No agent yet: make one right here, then the routine.
-  if (!agents.length) return <RoutineFor project={project} onCreated={onCreated} />;
+  const added = (routine: string | null) => routine && onCreated(routine);
+  // No agent yet: make one right here, then the routine; or add a recipe, which brings one.
+  if (!agents.length) {
+    return (
+      <div className="space-y-4">
+        <RoutineFor project={project} onCreated={onCreated} />
+        <Recipes project={project} onAdded={added} />
+      </div>
+    );
+  }
   if (!start) {
     return (
       <div className="space-y-2">
@@ -158,6 +167,9 @@ export function NewRoutine({ project, agents, onCreated }: { project: string; ag
             <span className="block font-medium">Blank</span>
             <span className="mt-1 block text-sm text-muted">Your own instructions and timing.</span>
           </button>
+        </div>
+        <div className="pt-2">
+          <Recipes project={project} onAdded={added} />
         </div>
       </div>
     );

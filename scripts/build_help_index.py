@@ -16,7 +16,7 @@ TARGET = ROOT / "src" / "ringkeeper" / "help_index.json"
 # The user guide. Not the notes for developers and releases.
 PAGES = (
     "concepts", "connections", "agents-and-routines", "approvals", "undo", "passes",
-    "client-month",
+    "client-month", "recipes",
     "notifications",
     "where-claude-runs",
     "backup", "working-faster", "security", "self-test", "troubleshooting", "faq",

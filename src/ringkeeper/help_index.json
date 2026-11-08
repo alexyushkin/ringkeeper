@@ -69,7 +69,7 @@
 "doc": "agents-and-routines",
 "anchor": "routines",
 "title": "Routines",
-"text": "A routine runs one agent with a prompt (**Routines › New routine**: the project, then its agent; you can create the agent right there): - **On a schedule:** every day, weekdays, chosen days, monthly or every few hours, at a time in your time zone. After the computer slept, one run makes up for the missed ones. - **When something happens:** a new email matching a search, a new Airtable record, a file added to the project's folder, or its webhook being called (on this computer only). Or something going wrong: see Automation watch below. - **By hand:** Run now. New routines start paused, with **Test run**. Each run is an ordinary task: reads run, changes wait for your approval like any other. Limits per run (steps, minutes, a dollar cap with an API key) and runs per day keep it in check. Pause one routine, a project's, or all of them (also from the tray). Templates to start from: fix a failed automation, daily digest, new-lead follow-up draft, weekly report, data sync check."
+"text": "A routine runs one agent with a prompt (**Routines › New routine**: the project, then its agent; you can create the agent right there): - **On a schedule:** every day, weekdays, chosen days, monthly or every few hours, at a time in your time zone. After the computer slept, one run makes up for the missed ones. - **When something happens:** a new email matching a search, a new Airtable record, a file added to the project's folder, or its webhook being called (on this computer only). Or something going wrong: see Automation watch below. - **By hand:** Run now. New routines start paused, with **Test run**. Each run is an ordinary task: reads run, changes wait for your approval like any other. Limits per run (steps, minutes, a dollar cap with an API key) and runs per day keep it in check. Pause one routine, a project's, or all of them (also from the tray). Templates to start from: fix a failed automation, daily digest, new-lead follow-up draft, weekly report, data sync check. Below them are recipes: an agent with its routines, from the starters, a file or a link."
 },
 {
 "doc": "agents-and-routines",
@@ -202,6 +202,30 @@
 "anchor": "a-monthly-cap",
 "title": "A monthly cap",
 "text": "On the client's page, Settings > Monthly cap sets the most their tasks may cost in a month, in dollars. Once that month's AI cost reaches it: - A new task for the client, or a follow-up to one, waits for you in Approvals instead of running, wherever it came from. Choose **Run anyway this once**, **Raise the cap** (to more than the client has used this month), or **Don't run it**. Running past the cap and raising it are both in Activity. - Routines don't ask: their runs are skipped, their history says why, and Home says which client's routines are waiting. - A task that's already running finishes. Its own spending cap still applies. The cap starts again on the 1st. Changes to the cap are in Activity. The month follows this computer's calendar (the server's, for a server install)."
+},
+{
+"doc": "recipes",
+"anchor": "",
+"title": "Recipes",
+"text": "A recipe is an agent and its routines as one file: the agent's instructions and settings, and each routine's prompt and timing. Use one to start from, or share your own. A recipe never has a key, a connection's name, or anything that points at one client. Which connection to use, and what an event watches (a repository, a website, an Airtable base), are chosen when you add it. It can't run code: a recipe is only settings and instructions, and a file with anything else in it is refused."
+},
+{
+"doc": "recipes",
+"anchor": "add-one",
+"title": "Add one",
+"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** a dozen common jobs, from fixing a failed n8n run to a weekly client report. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
+},
+{
+"doc": "recipes",
+"anchor": "share-your-own",
+"title": "Share your own",
+"text": "On an agent (a project's Agents), **Export as recipe** saves the agent and its routines as a file, `<agent>.ringkeeper-recipe.json`. It keeps: - the agent's instructions, model, effort, autonomy and memory setting, and the kinds of connection it uses (not which ones); - each routine's name, prompt, timing, limits and notifications, and for an event only what kind it is (an n8n failure, a GitHub check, a website). It leaves out connection names, what an event watches, time zones, and anything that looks like a secret. Read it before you share it: what you wrote in the instructions and prompts is in it."
+},
+{
+"doc": "recipes",
+"anchor": "the-file",
+"title": "The file",
+"text": "A recipe is JSON with `\"ringkeeper_recipe\": 1`, its version. A later Ringkeeper reads older versions; an older one says to update before adding a newer one. The starters are in the recipes folder."
 },
 {
 "doc": "notifications",

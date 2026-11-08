@@ -1,0 +1,24 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Weekly client report",
+  "description": "Every Friday afternoon, drafts the week's report for the client: what was done, numbers that moved, and what's next.",
+  "agent": {
+    "name": "report-writer",
+    "instructions": "You write this client's weekly report in plain, friendly words: what was done, the numbers that moved, problems and what's next. Keep it under a page. Save it as a draft; send nothing.",
+    "needs": []
+  },
+  "routines": [
+    {
+      "name": "Friday report",
+      "prompt": "Write this week's report for the client, up to {{today}}.",
+      "trigger": "schedule",
+      "schedule": {
+        "every": "week",
+        "days": [
+          "fri"
+        ],
+        "time": "16:00"
+      }
+    }
+  ]
+}

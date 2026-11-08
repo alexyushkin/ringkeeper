@@ -1,0 +1,22 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Failed Vercel deploy",
+  "description": "When a Vercel deployment fails, reads the build log and explains the error, with the change that likely caused it.",
+  "agent": {
+    "name": "deploy-checker",
+    "instructions": "You read failed Vercel deployments for this client. Find the first real error in the build log, say what it means in plain words, and point to the commit or setting that likely caused it. Propose a fix; don't redeploy production without approval.",
+    "needs": [
+      "vercel"
+    ]
+  },
+  "routines": [
+    {
+      "name": "When a deploy fails",
+      "prompt": "A deploy failed: {{event.what}} {{event.link}}. Explain the error and the likely fix.",
+      "trigger": "event",
+      "event": {
+        "source": "vercel"
+      }
+    }
+  ]
+}

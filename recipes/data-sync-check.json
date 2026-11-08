@@ -1,0 +1,21 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Data sync check",
+  "description": "Every morning, checks that the project's connected systems agree and lists any differences.",
+  "agent": {
+    "name": "sync-checker",
+    "instructions": "You check that this client's connected systems agree: compare record counts and the latest records, and list any differences with where to look. Read only: change nothing, send nothing.",
+    "needs": []
+  },
+  "routines": [
+    {
+      "name": "Morning check",
+      "prompt": "Check that the connected systems agree as of {{today}}, and list any differences.",
+      "trigger": "schedule",
+      "schedule": {
+        "every": "day",
+        "time": "07:00"
+      }
+    }
+  ]
+}
