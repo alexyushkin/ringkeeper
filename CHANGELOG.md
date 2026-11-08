@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.30 (2026-11-08)
 
 - **Recipes.** An agent and its routines as one file, to start from or to share. New routine
   shows 13 starter recipes, and imports one from a file or an https link: you see all of it
