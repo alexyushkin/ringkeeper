@@ -24,9 +24,11 @@ def record(
     project: str | None = None,
     instance: str | None = None,
     details: dict[str, Any] | None = None,
+    session_id: str | None = None,
 ) -> AuditEvent:
     event = AuditEvent(
         project=project,
+        session_id=session_id,  # a pass's, beside its calls
         instance=instance,
         tool=action,
         outcome=AuditOutcome.CHANGED,

@@ -8,7 +8,9 @@ the same checks on every call.
 import asyncio
 import json
 import sqlite3
-import sys
+import threading
+import time
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ from sqlalchemy import select
 
 from ringkeeper import bridge
 from ringkeeper.adapters import sqlite_file
+from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.channels import links
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
@@ -31,11 +34,15 @@ from ringkeeper.models import (
     AuditOutcome,
     Env,
     Instance,
+    Message,
     Pass,
     Project,
     ProjectInstance,
+    Task,
+    TaskStatus,
+    Thread,
 )
-from ringkeeper.services import calls, passes, undo
+from ringkeeper.services import calls, decisions, passes, tasks, threads, undo
 from ringkeeper.vault import Vault, get_vault
 from tests import test_web_api
 from tests.helpers import bind, make_instance, make_project
@@ -285,7 +292,7 @@ def test_the_bridge_shows_the_project_s_connections_and_checks_nothing_itself(
 
     names, read, refused = asyncio.run(go())
     assert {"database_query", "database_execute", "memory_recall"} <= names
-    assert "ringkeeper_check_approval" in names
+    assert {"ringkeeper_check_approval", "ringkeeper_ask", "ringkeeper_task_status"} <= names
     assert not any(n.startswith("airtable_") for n in names)  # only what the project has
     assert read.structured_content["rows"] == [[1], [2]]
     assert refused.is_error  # the gateway's refusal, passed through
@@ -331,7 +338,7 @@ def test_the_app_makes_shows_and_revokes_a_pass_without_showing_its_token(
     setup = shown["setup"]
     assert setup["server"] == "ringkeeper-acme-code"
     started = json.loads(setup["json"])["mcpServers"]["ringkeeper-acme-code"]
-    assert started["command"] == sys.executable
+    assert started["command"] == passes.python()
     assert started["args"][:5] == ["-m", "ringkeeper", "mcp", "--pass", "acme-code"]
     assert started["args"][5:] == ["--data-dir", str(get_settings().data_dir)]
     assert " '--' " in setup["claude_code"]  # PowerShell's claude.ps1 would eat a bare --
@@ -357,13 +364,17 @@ def test_the_app_makes_shows_and_revokes_a_pass_without_showing_its_token(
 
 
 def test_a_scratch_install_s_keychain_name_goes_into_the_setup(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("RINGKEEPER_KEYCHAIN_SERVICE", "RingkeeperScratch")
+    monkeypatch.setenv("RINGKEEPER_ENV_FILE", str(tmp_path / "missing.env"))
     started = passes.launch(get_settings(), "acme-code")
     assert started["env"] == {"RINGKEEPER_KEYCHAIN_SERVICE": "RingkeeperScratch"}
     monkeypatch.delenv("RINGKEEPER_KEYCHAIN_SERVICE")
     assert passes.launch(get_settings(), "acme-code")["env"] == {}
+    # The app runs its backend with no .env; the bridge reads none either, wherever it starts.
+    monkeypatch.setenv("RINGKEEPER_ENV_FILE", "")
+    assert passes.launch(get_settings(), "acme-code")["env"] == {"RINGKEEPER_ENV_FILE": ""}
 
 
 def test_claude_desktop_gets_the_pass_as_an_extension_file(
@@ -390,11 +401,156 @@ def test_claude_desktop_gets_the_pass_as_an_extension_file(
     assert manifest["name"] == "ringkeeper-acme-desk"
     assert manifest["display_name"] == "Ringkeeper: Acme web"
     started = manifest["server"]["mcp_config"]
-    assert started["command"] == sys.executable
-    assert started["args"][3:5] == ["--pass", "acme-desk"]
+    assert started["command"] == "node"  # Claude's own, running the relay
+    assert started["args"][:2] == ["${__dirname}/server/relay.js", passes.python()]
+    assert started["args"][5:7] == ["--pass", "acme-desk"]
+    assert bundle_has_relay(path)
     token = get_vault().resolve(passes.ref("acme-desk")).reveal()
     assert token.encode() not in everything
     assert passes.PREFIX.encode() not in everything
 
     assert owner.post("/passes/acme-desk/revoke").status_code == 200
     assert owner.post("/passes/acme-desk/claude-desktop").status_code == 409
+
+
+def bundle_has_relay(path: Path) -> bool:
+    with zipfile.ZipFile(path) as bundle:
+        return bundle.read("server/relay.js").startswith(b"// Ringkeeper's relay")
+
+
+# --- ringkeeper_ask: a request handed to Ringkeeper becomes a task in the pass's project ---
+
+
+def quick_asks(monkeypatch: pytest.MonkeyPatch, wait: float = 0.3) -> None:
+    from ringkeeper.services import pass_tasks  # noqa: PLC0415
+
+    monkeypatch.setattr(pass_tasks, "WAIT_SECONDS", wait)
+    monkeypatch.setattr(pass_tasks, "CHECK_SECONDS", 0.05)
+    monkeypatch.setenv("RINGKEEPER_MODE", "desktop")  # the links are the app's signed ones
+
+
+def asked_task(task_id: str) -> tuple[Task, Message, Thread]:
+    with session_scope() as session:
+        task = session.get(Task, uuid.UUID(task_id))
+        assert task is not None
+        message = session.get(Message, task.message_id)
+        assert message is not None
+        thread = session.get(Thread, message.thread_id)
+        assert thread is not None
+        session.expunge_all()
+        return task, message, thread
+
+
+def test_ask_starts_a_task_in_the_pass_s_project_and_says_it_s_running(
+    clients: tuple[str, Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, vault = clients
+    quick_asks(monkeypatch)
+    token = new_pass(vault)
+    request = "Find the open orders in Globex's database and mark them shipped"
+    found = call(url, token, "ask", {"request": request}, "ringkeeper").structured_content
+    assert found["status"] == "running"
+    assert "ringkeeper_task_status" in found["says"]
+    page = links.task_page(get_settings(), found["task_id"])
+    assert found["task"].startswith(f"http://127.0.0.1:{get_settings().hooks_port}/open?to=")
+    with session_scope(commit=False) as session:  # the task, in Ringkeeper
+        assert links.signed(session, page, found["task"].rsplit("sig=", 1)[1])
+
+    task, message, thread = asked_task(found["task_id"])
+    assert task.project == ACME  # its own project, whatever the request names
+    assert task.prompt == request
+    assert task.status is TaskStatus.QUEUED
+    assert (thread.source, message.author) == ("pass", "pass:acme-desktop")
+    assert message.routed_at is not None  # the router doesn't pick it up again
+    with session_scope() as session:
+        replies = [m.body for m in threads.thread_messages(session, thread.id)]
+        logged = session.scalars(
+            select(AuditEvent).where(AuditEvent.session_id == "pass:acme-desktop")
+        ).all()
+    assert replies[1].startswith("Asked through the pass acme-desktop. Working on it in ")
+    [entry] = logged
+    assert (entry.tool, entry.project) == ("task.asked", ACME)
+    assert (entry.reason or "").startswith(f"started a task: {request}")
+
+
+def test_ask_returns_the_result_once_the_task_is_done(
+    clients: tuple[str, Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, vault = clients
+    quick_asks(monkeypatch, wait=20)
+    token = new_pass(vault)
+
+    def finish_it() -> None:  # what the worker does, from here
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            with session_scope() as session:
+                task = session.scalars(select(Task).where(Task.project == ACME)).first()
+                if task is not None:
+                    task.status, task.summary = TaskStatus.SUCCEEDED, "Order 2 is still open."
+                    return
+            time.sleep(0.05)
+
+    worker = threading.Thread(target=finish_it)
+    worker.start()
+    found = call(url, token, "ask", {"request": "Is order 2 open?"}, "ringkeeper")
+    worker.join()
+    shown = found.structured_content
+    assert (shown["status"], shown["result"]) == ("done", "Order 2 is still open.")
+    again = call(url, token, "task_status", {"task_id": shown["task_id"]}, "ringkeeper")
+    assert again.structured_content["result"] == "Order 2 is still open."
+
+
+def test_a_task_from_ask_that_hits_a_hold_returns_the_approval_link(
+    clients: tuple[str, Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, vault = clients
+    quick_asks(monkeypatch, wait=20)
+    token = new_pass(vault)
+    sql = "UPDATE orders SET status = 'shipped' WHERE id = 2"
+
+    def hold_it() -> None:  # the task's worker writes to production: held, as from a task
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            with session_scope() as session:
+                task = session.scalars(select(Task).where(Task.project == ACME)).first()
+                if task is not None:
+                    worker = Caller(ACME, str(task.sessions[0].id), "worker-token")
+                    kind = session.scalars(select(Instance).where(Instance.name == ACME_DB)).one()
+                    db = ToolCall(worker, kind.type, "execute", ACME_DB, {"sql": sql})
+                    decisions.hold(session, db, ACME_DB)
+                    return
+            time.sleep(0.05)
+
+    worker = threading.Thread(target=hold_it)
+    worker.start()
+    found = call(url, token, "ask", {"request": "Ship order 2"}, "ringkeeper").structured_content
+    worker.join()
+    assert found["status"] == "held"
+    assert "%2Fapprovals&sig=" in found["open"]  # signed, as for a call held directly
+    assert found["open"] != found["task"]
+    assert "Approve" in found["how"]
+    assert len(found["held"]) == 1
+    assert status_of(2) == "open"  # nothing ran
+
+
+def test_task_status_shows_only_the_pass_s_own_tasks(
+    clients: tuple[str, Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, vault = clients
+    quick_asks(monkeypatch)
+    token = new_pass(vault)
+    other = new_pass(vault, "acme-cursor")
+    found = call(url, token, "ask", {"request": "Count the orders"}, "ringkeeper")
+    ident = {"task_id": found.structured_content["task_id"]}
+    with pytest.raises(ToolError, match="no task with that id for this pass"):
+        call(url, other, "task_status", ident, "ringkeeper")
+    with session_scope() as session:  # nor a task the user started in the app
+        made = tasks.create_task(session, get_settings(), project=ACME, prompt="Tidy up")
+        theirs = {"task_id": str(made.id)}
+    with pytest.raises(ToolError, match="no task with that id for this pass"):
+        call(url, token, "task_status", theirs, "ringkeeper")
+
+    with session_scope() as session:
+        passes.revoke(session, "acme-desktop", by="owner")
+    with pytest.raises(Exception, match=r"error response|401"):  # refused at the door
+        call(url, token, "ask", {"request": "Count the orders again"}, "ringkeeper")

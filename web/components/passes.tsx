@@ -207,7 +207,7 @@ function ClaudeDesktop({ pass }: { pass: PassInfo }) {
   return (
     <div className="space-y-2">
       <p className="text-sm">
-        Save the pass as a Claude Desktop extension, then double-click the file: Claude Desktop asks whether to install it. You can also add it from Claude&apos;s Customize &gt; Connectors.
+        Save the pass as a Claude Desktop extension, then double-click the file: Claude Desktop asks whether to install it. If double-clicking doesn&apos;t open Claude, add the file from Claude&apos;s Customize &gt; Connectors.
         Start a new chat afterwards. Ringkeeper has to be running while you use it.
       </p>
       <Button kind="primary" onClick={save} busy={busy}>
