@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.29 (2026-11-07)
 
 - **A client's month.** Each client's page has a This month tab: tasks and how they ended,
   changes made and approved, refused calls, and the AI cost, for any month. Download it as a PDF
