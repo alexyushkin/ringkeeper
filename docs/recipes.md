@@ -13,8 +13,8 @@ file with anything else in it is refused.
 On a project's Routines, **New routine** shows the routine templates and, below them,
 **recipes**:
 
-- **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or
-  acting on an email you forward to yourself.
+- **The starters:** 15 common jobs, from fixing a failed n8n run to a weekly client report,
+  acting on an email you forward to yourself, or checking a site's speed every week.
 - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub
   page for a file works too, like
   `https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json`. Shared
@@ -57,3 +57,6 @@ A recipe is JSON with `"ringkeeper_recipe": 1`, its version. A later Ringkeeper 
 versions; an older one says to update before adding a newer one. The starters are published in
 [ringkeeper-recipes](https://github.com/alexyushkin/ringkeeper-recipes), and kept the same as
 this repository's [recipes](https://github.com/alexyushkin/ringkeeper/tree/main/recipes) folder.
+
+The agent's `needs` lists kinds of connection: a type (`google`, `github`, `n8n`) or one
+business system by name, like `vendor:pagespeed`, since those all share the type `vendor`.

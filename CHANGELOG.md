@@ -14,6 +14,16 @@ publishes it as the release notes and the app shows it with the update.
   shows an example from there, and links to it.
 - **Fixed:** on Routines, a project with no agents yet now offers the recipes too, not only
   Create an agent.
+- **Google Docs** on the Google account: read a document, make one, and edit one by replacing
+  text or adding to the end. Making and editing wait for your approval, and an edit always asks,
+  since a document may be someone else's. **To use it, sign the account in again:** under
+  Connections, open it, choose Change access and tick Docs. If your Google app is older, turn on
+  the Google Docs API first. See [Google](docs/services/google.md#docs).
+- **PageSpeed Insights.** A new tile, with a free Google Cloud key: a page's scores, Core Web
+  Vitals and the fixes that would save the most time. It only reads. See
+  [PageSpeed Insights](docs/services/pagespeed.md).
+- **Two new starter recipes:** a weekly speed check, and a monthly search and speed report.
+  A recipe can now ask for one business system by name (`vendor:pagespeed`), not only a type.
 
 ## 0.1.0-beta.30 (2026-11-08)
 

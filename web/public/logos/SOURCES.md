@@ -44,6 +44,7 @@ These have no file here, so nothing was added without the terms allowing it:
 | FreshBooks | Its kit has no SVG, and its terms ask for written consent. |
 | GoCardless | Its toolkit ties logo use to an agreement with GoCardless. |
 | Helcim | No brand page found. |
+| PageSpeed Insights | Neither svgl nor gilbarbara/logos has it (gilbarbara's Lighthouse logo is a different product), and Google has no brand kit for it. |
 | Housecall Pro | Its API terms want logo use reviewed and approved. |
 | Jobber | Its terms ask for prior written consent. |
 | Keap | Its kit couldn't be read here. |

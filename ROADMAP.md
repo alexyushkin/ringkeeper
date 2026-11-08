@@ -32,6 +32,7 @@ Prove what Ringkeeper claims before adding more.
 - **Cal.com,** through its official remote MCP server. Bookings are held because they reach people.
   Done: on main, out with the next release.
 - **Google Docs,** on the Google connection, and **PageSpeed Insights.**
+  Done: on main, out with the next release.
 - **Make,** if its REST API works on the free plan.
 
 ## On request

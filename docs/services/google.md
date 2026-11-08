@@ -1,4 +1,4 @@
-# Google (Gmail, Calendar, Drive, Sheets, Search Console, Analytics)
+# Google (Gmail, Calendar, Drive, Sheets, Docs, Search Console, Analytics)
 
 Google accounts sign in through **your own Google app**: you make it once, for
 free, and then add as many clients' Google accounts as you need. This is in the
@@ -10,7 +10,7 @@ desktop app.
 
 1. In the [Google Cloud console](https://console.cloud.google.com/projectcreate),
    signed in with your own account, create a project. No billing needed.
-2. Turn on the Gmail, Calendar, Drive and Sheets APIs.
+2. Turn on the Gmail, Calendar, Drive, Sheets and Docs APIs.
 3. **Google Auth Platform › Branding › Get started**: app name "Ringkeeper",
    audience **External**. Fill in the home page, privacy policy link and
    authorized domain that Settings shows, then save.
@@ -41,6 +41,24 @@ needs the connection's name typed, in the app itself.
 - An account stops working if its password changes (for mail), if it's unused
   for six months, or if its owner removes Ringkeeper. Sign in again then.
 - A client's Workspace admin may need to trust your app's client ID.
+
+## Docs
+
+Choose **Docs: read** or **Docs: read, create and edit** when you sign in, or later with
+Change access. An account added before Docs was here doesn't have it: open it under
+Connections, choose **Change access**, tick Docs and sign in again. If your Google app was
+made before then too, first turn on the
+[Google Docs API](https://console.cloud.google.com/apis/library/docs.googleapis.com) and add the
+`documents` and `documents.readonly` scopes under Data Access.
+
+- **Reading a document runs:** its title and text, tables as rows.
+- **Making a document waits for your approval.** It's in the account's Drive, and only the
+  account can see it until someone shares it.
+- **Editing a document waits for your approval, every time:** replacing a piece of text
+  everywhere it appears, or adding text at the end. A document may be someone else's, so unlike
+  other Google writes, you can't set an edit to run without asking. If the document changes
+  between the request and your approval, the edit doesn't run; ask again.
+- Ringkeeper can't undo an edit. Google Docs keeps every version: **File › Version history**.
 
 ## Search Console and Analytics
 

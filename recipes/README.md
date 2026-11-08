@@ -24,6 +24,8 @@ You see everything in it before it's added, and its routines start paused.
 | `forward-an-email` | Does what your note says on an email you forward to yourself | Google |
 | `airtable-new-record` | Checks a new Airtable record for missing or odd fields | Airtable |
 | `monthly-housekeeping` | Lists stale records, idle automations and expiring keys | - |
+| `weekly-speed-check` | Checks the site's main pages' speed every Monday and compares | PageSpeed Insights |
+| `monthly-search-and-speed` | Search clicks next to each page's speed, as a monthly draft | Google, PageSpeed Insights |
 
 Changes to production, sent messages and charges wait for your approval in Ringkeeper, whatever
 a recipe says. The format is described in [Recipes](https://github.com/alexyushkin/ringkeeper/blob/main/docs/recipes.md).

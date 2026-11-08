@@ -180,7 +180,7 @@ KIND_OF = {"n8n": InstanceType.N8N, "github": InstanceType.GITHUB, "vercel": Ins
 def test_the_starters_each_add_cleanly(database_url: str) -> None:
     del database_url
     found = recipes.starters()
-    assert len(found) == 13
+    assert len(found) == 15
     with session_scope() as session:
         make_project(session, ACME_SHOP)
         for kind, type_ in KIND_OF.items():
@@ -228,7 +228,7 @@ def test_recipes_folder_matches_the_bundled_starters() -> None:
         for p in (root / "src" / "ringkeeper" / "recipes").glob("*.json")
     }
     assert shared == bundled
-    assert len(shared) == 13
+    assert len(shared) == 15
 
 
 def test_recipes_through_the_api(two_clients: tuple[str, str], owner: TestClient) -> None:

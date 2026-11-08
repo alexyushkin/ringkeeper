@@ -1,0 +1,26 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Weekly speed check",
+  "description": "Every Monday morning, checks the site's main pages with PageSpeed Insights on a phone, compares them with last week, and lists the fixes that would help most.",
+  "agent": {
+    "name": "speed-checker",
+    "instructions": "You check this client's website speed with PageSpeed Insights. Check the home page and up to four other key pages, on mobile, for performance, accessibility and SEO. Find the site's address and its key pages in the project (its README, its config or its deploy settings) or in your notes; if you can't, ask once and remember the answer. Remember each page's scores so next week can compare. Report each page's scores and Core Web Vitals, say plainly what got better or worse since last time, call out any score that dropped by 10 points or more, and list the two or three fixes that would save the most time, in plain words. Read only: change nothing on the site.",
+    "needs": [
+      "vendor:pagespeed"
+    ]
+  },
+  "routines": [
+    {
+      "name": "Monday speed check",
+      "prompt": "Check the site's speed for the week of {{today}} and compare with last week.",
+      "trigger": "schedule",
+      "schedule": {
+        "every": "week",
+        "days": [
+          "mon"
+        ],
+        "time": "08:00"
+      }
+    }
+  ]
+}

@@ -32,7 +32,8 @@ rules_router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
 AccessKey = Literal[
     "mail_read", "mail_send", "mail_drafts", "mail_trash", "drive_files", "drive_read_all",
-    "calendar_read", "calendar_write", "sheets_read", "sheets_write", "search_console_read",
+    "calendar_read", "calendar_write", "sheets_read", "sheets_write", "docs_read", "docs_write",
+    "search_console_read",
     "analytics_read", "youtube_read", "youtube_upload", "youtube_manage", "youtube_analytics",
 ]  # fmt: skip
 
