@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.31 (2026-11-08)
 
 - **Cal.com.** A new tile: sign in with your Cal.com account through Cal.com's own hosted
   server. Reading runs. Bookings and every other change wait for your approval each time, and
