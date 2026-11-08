@@ -85,6 +85,8 @@ ACCESS = {
         Access("calendar_write", "Calendar: add and change events", G + "calendar.events"),
         Access("sheets_read", "Sheets: read", G + "spreadsheets.readonly"),
         Access("sheets_write", "Sheets: read and edit", G + "spreadsheets"),
+        Access("docs_read", "Docs: read", G + "documents.readonly"),
+        Access("docs_write", "Docs: read, create and edit", G + "documents"),
         Access("search_console_read", "Search Console: read", G + "webmasters.readonly"),
         Access("analytics_read", "Analytics: read", G + "analytics.readonly"),
         Access("youtube_read", "YouTube: read videos and comments", G + "youtube.readonly"),

@@ -1,0 +1,25 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Monthly search and speed report",
+  "description": "On the first of the month, puts last month's Google Search clicks and positions next to the site's PageSpeed scores, and drafts a short report for the client.",
+  "agent": {
+    "name": "seo-reporter",
+    "instructions": "You write this client's monthly search and speed report. From Search Console, take last month's clicks, impressions, average position and the top queries and pages, compared with the month before. With PageSpeed Insights, check the home page and the three pages with the most clicks, on mobile. Put the two together: say which pages people find most, how fast they are, and which slow page is worth fixing first. Keep it under a page, in plain words for the client, and save it as a draft; send nothing and change nothing on the site.",
+    "needs": [
+      "google",
+      "vendor:pagespeed"
+    ]
+  },
+  "routines": [
+    {
+      "name": "First of the month",
+      "prompt": "Write the search and speed report for the month before {{today}}.",
+      "trigger": "schedule",
+      "schedule": {
+        "every": "month",
+        "day": 1,
+        "time": "09:00"
+      }
+    }
+  ]
+}

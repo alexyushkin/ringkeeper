@@ -193,7 +193,7 @@ def accounts(session: Session, settings: Settings) -> list[dict[str, Any]]:
 
 def _rule(rules: dict[str, str], tool: str) -> str:
     """A rule stored before sending always asked no longer counts."""
-    return "ask" if tool in google.ALWAYS_ASKS else rules.get(tool, "ask")
+    return "ask" if tool in google.KEEPS_ASKING else rules.get(tool, "ask")
 
 
 def tools(instance: Instance) -> list[dict[str, Any]]:
@@ -208,7 +208,8 @@ def tools(instance: Instance) -> list[dict[str, Any]]:
             "description": " ".join(spec.description.split()),
             "allowed": bool(set(google.NEEDS[spec.name]) & access),
             "rule": _rule(rules, spec.name) if spec.kind.value == "write" else None,
-            "fixed": spec.name in google.ALWAYS_ASKS,
+            "fixed": spec.name in google.KEEPS_ASKING,
+            "why": google.ASKS_WHY.get(spec.name, ""),
         }
         for spec in google.ADAPTER.tools
     ]
@@ -224,8 +225,13 @@ def set_write_rules(session: Session, name: str, rules: dict[str, str]) -> dict[
         raise RuleViolationError(
             f"'{bad[0]}' isn't a Google write tool, or its rule isn't ask or run."
         )
-    if fixed := sorted(t for t, r in rules.items() if t in google.ALWAYS_ASKS and r == "run"):
-        raise RuleViolationError(f"'{fixed[0]}' always asks: sending can't run by itself.")
+    if fixed := sorted(t for t, r in rules.items() if t in google.KEEPS_ASKING and r == "run"):
+        why = (
+            "a document may be someone else's"
+            if fixed[0] == "edit_doc"
+            else "sending can't run by itself"
+        )
+        raise RuleViolationError(f"'{fixed[0]}' always asks: {why}.")
     kept = {t: r for t, r in rules.items() if r == "run"}
     before = dict(instance.config.get("write_rules") or {})
     instance.config = {**instance.config, "write_rules": kept}

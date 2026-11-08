@@ -219,7 +219,7 @@
 "doc": "recipes",
 "anchor": "add-one",
 "title": "Add one",
-"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or acting on an email you forward to yourself. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too, like `https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json`. Shared recipes are in ringkeeper-recipes. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
+"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** 15 common jobs, from fixing a failed n8n run to a weekly client report, acting on an email you forward to yourself, or checking a site's speed every week. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too, like `https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json`. Shared recipes are in ringkeeper-recipes. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
 },
 {
 "doc": "recipes",
@@ -231,7 +231,7 @@
 "doc": "recipes",
 "anchor": "the-file",
 "title": "The file",
-"text": "A recipe is JSON with `\"ringkeeper_recipe\": 1`, its version. A later Ringkeeper reads older versions; an older one says to update before adding a newer one. The starters are published in ringkeeper-recipes, and kept the same as this repository's recipes folder."
+"text": "A recipe is JSON with `\"ringkeeper_recipe\": 1`, its version. A later Ringkeeper reads older versions; an older one says to update before adding a newer one. The starters are published in ringkeeper-recipes, and kept the same as this repository's recipes folder. The agent's `needs` lists kinds of connection: a type (`google`, `github`, `n8n`) or one business system by name, like `vendor:pagespeed`, since those all share the type `vendor`."
 },
 {
 "doc": "notifications",
@@ -854,14 +854,14 @@
 {
 "doc": "services/google",
 "anchor": "",
-"title": "Google (Gmail, Calendar, Drive, Sheets, Search Console, Analytics)",
+"title": "Google (Gmail, Calendar, Drive, Sheets, Docs, Search Console, Analytics)",
 "text": "Google accounts sign in through **your own Google app**: you make it once, for free, and then add as many clients' Google accounts as you need. This is in the desktop app."
 },
 {
 "doc": "services/google",
 "anchor": "make-the-app-once-about-10-minutes",
 "title": "Make the app (once, about 10 minutes)",
-"text": "**Settings › Developer apps** has every step with links that open the right page: 1. In the Google Cloud console, signed in with your own account, create a project. No billing needed. 2. Turn on the Gmail, Calendar, Drive and Sheets APIs. 3. **Google Auth Platform › Branding › Get started**: app name \"Ringkeeper\", audience **External**. Fill in the home page, privacy policy link and authorized domain that Settings shows, then save. 4. **Audience › Publish app.** Left in \"Testing\", Google signs accounts out after 7 days. 5. **Data Access**: paste the scopes Settings lists. 6. **Clients › Create client**: type **Desktop app**. Copy the client ID and secret (Google shows the secret only once) and paste both into Settings."
+"text": "**Settings › Developer apps** has every step with links that open the right page: 1. In the Google Cloud console, signed in with your own account, create a project. No billing needed. 2. Turn on the Gmail, Calendar, Drive, Sheets and Docs APIs. 3. **Google Auth Platform › Branding › Get started**: app name \"Ringkeeper\", audience **External**. Fill in the home page, privacy policy link and authorized domain that Settings shows, then save. 4. **Audience › Publish app.** Left in \"Testing\", Google signs accounts out after 7 days. 5. **Data Access**: paste the scopes Settings lists. 6. **Clients › Create client**: type **Desktop app**. Copy the client ID and secret (Google shows the secret only once) and paste both into Settings."
 },
 {
 "doc": "services/google",
@@ -880,6 +880,12 @@
 "anchor": "good-to-know",
 "title": "Good to know",
 "text": "- An unverified app can sign in up to 100 accounts over its whole life. - An account stops working if its password changes (for mail), if it's unused for six months, or if its owner removes Ringkeeper. Sign in again then. - A client's Workspace admin may need to trust your app's client ID."
+},
+{
+"doc": "services/google",
+"anchor": "docs",
+"title": "Docs",
+"text": "Choose **Docs: read** or **Docs: read, create and edit** when you sign in, or later with Change access. An account added before Docs was here doesn't have it: open it under Connections, choose **Change access**, tick Docs and sign in again. If your Google app was made before then too, first turn on the Google Docs API and add the `documents` and `documents.readonly` scopes under Data Access. - **Reading a document runs:** its title and text, tables as rows. - **Making a document waits for your approval.** It's in the account's Drive, and only the account can see it until someone shares it. - **Editing a document waits for your approval, every time:** replacing a piece of text everywhere it appears, or adding text at the end. A document may be someone else's, so unlike other Google writes, you can't set an edit to run without asking. If the document changes between the request and your approval, the edit doesn't run; ask again. - Ringkeeper can't undo an edit. Google Docs keeps every version: **File › Version history**."
 },
 {
 "doc": "services/google",
@@ -1978,5 +1984,35 @@
 "anchor": "what-it-can-do",
 "title": "What it can do",
 "text": "The tools are Cal.com's own, and **Connections** lists them once you've signed in. - **Reading runs.** Bookings, event types, schedules, availability, busy times, contacts, teams and Cal.com's help. - **Bookings wait for your approval, every time:** creating, rescheduling, cancelling or confirming one, marking an absence, adding an attendee. Each of these can email real people, so \"Trusted for an hour\" doesn't apply here. - **Every other change waits too:** creating or changing event types, schedules, routing forms, memberships, invites and your profile. - **Deleting needs the connection's name typed:** an event type, a schedule, a membership or a contact. It can't be approved from Slack, Telegram or a notification. - **Its tool for any API operation** goes by the operation's name: a `get` or `list` runs, a delete needs the name typed, and anything else waits. These rules go by a tool's name. You can make a tool stricter, never looser. Ringkeeper can't undo anything on Cal.com, and the card says so."
+},
+{
+"doc": "services/pagespeed",
+"anchor": "",
+"title": "PageSpeed Insights",
+"text": "Google's free check of a page's speed: the Lighthouse scores, Core Web Vitals from real visitors when Google has them, and the fixes that would save the most time."
+},
+{
+"doc": "services/pagespeed",
+"anchor": "where-to-get-the-key",
+"title": "Where to get the key",
+"text": "PageSpeed Insights needs a Google Cloud API key. It's free. 1. In the Google Cloud console, pick a project or make one. Your Google app's project works. No billing needed. 2. Turn on the PageSpeed Insights API. 3. Under **APIs & Services › Credentials**, choose **Create credentials › API key**. Restrict it to the PageSpeed Insights API. 4. Under **Connectors › Browse connectors**, choose **PageSpeed Insights** and paste the key. One key works for every client's sites, so add it as **your own tool** and link it to the projects that need it. **Test** checks the key on example.com. A `PAGESPEED_API_KEY` in a project's `.env` is found when you add the project."
+},
+{
+"doc": "services/pagespeed",
+"anchor": "what-it-can-do",
+"title": "What it can do",
+"text": "- **Check a page:** its address, on a phone (the default) or a computer, for performance and, if asked, accessibility, best practices and SEO. A check takes 10 to 60 seconds. - The answer is the part people act on: the scores out of 100, the lab metrics (Largest Contentful Paint, Total Blocking Time, Cumulative Layout Shift and more), real visitors' numbers when Google has enough of them, and up to five fixes with the time each would save."
+},
+{
+"doc": "services/pagespeed",
+"anchor": "whats-held",
+"title": "What's held",
+"text": "Nothing: it only reads. A check loads the page the way a visitor's browser would, and changes nothing. The key goes to Google in a header, never in an address."
+},
+{
+"doc": "services/pagespeed",
+"anchor": "recipes-that-use-it",
+"title": "Recipes that use it",
+"text": "- **Weekly speed check:** every Monday, checks the site's main pages and compares with last week. - **Monthly search and speed report:** puts Search Console's clicks next to each page's speed, with your Google account."
 }
 ]

@@ -19,8 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy
+from ringkeeper.adapters.vendors import ALL as VENDORS
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import Agent, InstanceType, Project, Routine
+from ringkeeper.models import Agent, Instance, InstanceType, Project, Routine
 from ringkeeper.names import slug
 from ringkeeper.scrub import scrub
 from ringkeeper.services import agents, bindings, projects, routine_events, routines
@@ -42,7 +43,9 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
     "folder": (),
 }
 KEPT_EVENT = ("source", "watch")  # what an exported event keeps: no names, no addresses
-KINDS = {kind.value for kind in InstanceType}
+# A kind of connection: a type, or one business system's (vendor:pagespeed), since every
+# business system shares the type vendor.
+KINDS = {kind.value for kind in InstanceType} | {f"vendor:{v.key}" for v in VENDORS}
 
 Text = Annotated[str, Field(max_length=20_000)]
 Line = Annotated[str, Field(min_length=1, max_length=120)]
@@ -116,9 +119,15 @@ class Recipe(_Strict):
 # --- Export ---
 
 
+def kind(instance: Instance) -> str:
+    """Its kind, as a recipe names it: a business system's own, else its type."""
+    vendor = instance.config.get("vendor") if instance.type is InstanceType.VENDOR else None
+    return f"vendor:{vendor}" if vendor else instance.type.value
+
+
 def _kind_of(project: Project, name: str) -> str | None:
     found = next((b.instance for b in project.bindings if b.instance.name == name), None)
-    return found.type.value if found is not None else None
+    return kind(found) if found is not None else None
 
 
 def export(session: Session, project: str, agent_name: str, description: str = "") -> Recipe:
@@ -256,7 +265,7 @@ def needs(session: Session, project: str, recipe: Recipe) -> dict[str, Any]:
     return {
         "required": sorted(watched),
         "connections": {
-            kind: [i.name for i in usable if i.type.value == kind] for kind in sorted(kinds)
+            wanted: [i.name for i in usable if kind(i) == wanted] for wanted in sorted(kinds)
         },
         "events": [
             list(EVENT_FIELDS[r.event.source]) if r.trigger == "event" and r.event else []
@@ -297,12 +306,12 @@ def add(
     owner = projects.get_project(session, project)
     linked = {b.instance.name: b.instance for b in owner.bindings}
     chosen: list[str] = []
-    for kind in recipe.agent.needs:
-        name = connections.get(kind)
+    for wanted in recipe.agent.needs:
+        name = connections.get(wanted)
         if name is None:
             continue  # added without it; the agent's page can link one later
-        if name not in linked or linked[name].type.value != kind:
-            raise RuleViolationError(f"{name} isn't a {kind} connection linked to {project}.")
+        if name not in linked or kind(linked[name]) != wanted:
+            raise RuleViolationError(f"{name} isn't a {wanted} connection linked to {project}.")
         chosen.append(name)
     agent = agents.create_agent(
         session, project,

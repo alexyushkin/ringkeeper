@@ -1,4 +1,4 @@
-"""Google accounts (Gmail, Drive, Calendar, Sheets, YouTube) through the owner's own Google
+"""Google accounts (Gmail, Drive, Calendar, Sheets, Docs, YouTube) through the owner's own Google
 app. The secret is JSON from services.google_oauth (the refresh and access
 tokens); the gateway refreshes it before each call. The connection's config
 says which account it is (`email`) and what it may be used for (`access`).
@@ -32,7 +32,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 from urllib.parse import quote
 
 import httpx2
@@ -66,6 +66,7 @@ DRIVE = "https://www.googleapis.com/drive/v3"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 CALENDAR = "https://www.googleapis.com/calendar/v3"
 SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
+DOCS = "https://docs.googleapis.com/v1"
 SEARCH_CONSOLE = "https://www.googleapis.com/webmasters/v3"
 ANALYTICS_ADMIN = "https://analyticsadmin.googleapis.com/v1beta"
 ANALYTICS_DATA = "https://analyticsdata.googleapis.com/v1beta"
@@ -104,6 +105,12 @@ Range = Annotated[
     Field(description="A range in A1 notation, e.g. Leads!A1:D20.", min_length=1, max_length=200),
 ]
 Rows = Annotated[list[list[str | int | float | bool | None]], Field(min_length=1, max_length=1000)]
+DocId = Annotated[
+    str, Field(description="The document id (in its URL, after /d/).", pattern=ID_PATTERN)
+]
+DocTitle = Annotated[str, Field(min_length=1, max_length=300)]
+DocText = Annotated[str, Field(min_length=1, max_length=100_000)]
+Find = Annotated[str, Field(min_length=1, max_length=1000)]
 When = Annotated[
     str,
     Field(
@@ -651,6 +658,111 @@ async def append_rows(target: Target, spreadsheet_id: SheetId, cells: Range, row
     return {"appended": updates.get("updatedRange"), "rows": updates.get("updatedRows")}
 
 
+# --- Docs ---
+
+
+def _doc_text(elements: list[Any]) -> str:
+    """A document's words, in order: paragraphs, then each table cell's, and a table of contents."""
+    parts: list[str] = []
+    for element in elements:
+        item = cast(JSON, element)
+        if "paragraph" in item:
+            runs = cast(list[JSON], cast(JSON, item["paragraph"]).get("elements") or [])
+            parts += [str(cast(JSON, r.get("textRun") or {}).get("content") or "") for r in runs]
+        elif "table" in item:
+            for row in cast(list[JSON], cast(JSON, item["table"]).get("tableRows") or []):
+                cells = cast(list[JSON], row.get("tableCells") or [])
+                text = "\t".join(_doc_text(cell.get("content") or []).strip() for cell in cells)
+                parts.append(text + "\n")
+        elif "tableOfContents" in item:
+            parts.append(_doc_text(cast(JSON, item["tableOfContents"]).get("content") or []))
+    return "".join(parts)
+
+
+@read
+async def read_doc(
+    target: Target, document_id: DocId, offset: Offset = 0, limit: PageLimit = PAGE_CHARS
+) -> JSON:
+    """Read a Google Doc: its title and its text, tables as tab-separated rows. A long one
+    comes in parts: total_chars says how long, next_offset where the next part starts."""
+    _need(target, "docs_read", "docs_write")
+    doc = await _call(target, DOCS, "GET", f"/documents/{document_id}")
+    body = cast(JSON, doc.get("body") or {})
+    return {
+        "document_id": doc.get("documentId"),
+        "title": doc.get("title"),
+        "revision_id": doc.get("revisionId"),
+    } | page(_doc_text(body.get("content") or []), offset, limit)
+
+
+def _link(document_id: str) -> str:
+    return f"https://docs.google.com/document/d/{document_id}/edit"
+
+
+@always_held
+async def create_doc(target: Target, title: DocTitle, text: DocText | None = None) -> JSON:
+    """Make a new Google Doc in the account's Drive, with this text in it. Only the account
+    can see it until someone shares it."""
+    _need(target, "docs_write")
+    made = await _call(target, DOCS, "POST", "/documents", json={"title": title})
+    document_id = str(made.get("documentId") or "")
+    if text:
+        insert: JSON = {"insertText": {"text": text, "endOfSegmentLocation": {}}}
+        await _call(target, DOCS, "POST", f"/documents/{document_id}:batchUpdate",
+                    json={"requests": [insert]})  # fmt: skip
+    return {"created": document_id, "title": made.get("title"), "link": _link(document_id)}
+
+
+class Replacement(TypedDict):
+    """Every match of `find` becomes `replace_with`."""
+
+    find: Find
+    replace_with: Annotated[str, Field(max_length=10_000)]
+    match_case: NotRequired[bool]  # True unless said
+
+
+async def _doc_revision(target: Target, document_id: str, **_edit: Any) -> JSON:
+    """The document as it is when the edit is held: approving a stale edit is refused."""
+    doc = await _call(target, DOCS, "GET", f"/documents/{document_id}",
+                      params={"fields": "revisionId"})  # fmt: skip
+    return {"revision_id": doc.get("revisionId")}
+
+
+@always_held
+async def edit_doc(
+    target: Target,
+    document_id: DocId,
+    replace: Annotated[list[Replacement], Field(max_length=50)] | None = None,
+    append: DocText | None = None,
+) -> JSON:
+    """Change a Google Doc: replace every match of a piece of text, and/or add text at the
+    end. Nothing else in it changes. If the document changes between the request and your
+    approval, the edit doesn't run."""
+    _need(target, "docs_write")
+    if not replace and not append:
+        raise ToolError("say what to change: replace, append, or both")
+    requests: list[JSON] = [
+        {"replaceAllText": {
+            "containsText": {"text": r["find"], "matchCase": r.get("match_case", True)},
+            "replaceText": r["replace_with"],
+        }}
+        for r in replace or []
+    ]  # fmt: skip
+    if append:
+        requests.append({"insertText": {"text": append, "endOfSegmentLocation": {}}})
+    done = await _call(target, DOCS, "POST", f"/documents/{document_id}:batchUpdate",
+                       json={"requests": requests})  # fmt: skip
+    replies = cast(list[JSON], done.get("replies") or [])
+    changed = [
+        int(cast(JSON, r.get("replaceAllText") or {}).get("occurrencesChanged") or 0)
+        for r in replies[: len(replace or [])]
+    ]
+    return {
+        "edited": document_id, "replaced": changed, "appended_chars": len(append or ""),
+        "link": _link(document_id),
+    }  # fmt: skip
+
+
 def secret_fragments(value: str) -> list[str]:
     try:
         data: Any = json.loads(value)
@@ -1069,6 +1181,9 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "read_sheet": ("sheets_read", "sheets_write"),
     "update_sheet": ("sheets_write",),
     "append_rows": ("sheets_write",),
+    "read_doc": ("docs_read", "docs_write"),
+    "create_doc": ("docs_write",),
+    "edit_doc": ("docs_write",),
     "list_search_sites": ("search_console_read",),
     "search_performance": ("search_console_read",),
     "list_analytics_properties": ("analytics_read",),
@@ -1114,6 +1229,7 @@ ADAPTER = Adapter(
             search_files, read_file, upload_file, share_file,
             list_events, create_event,
             read_sheet, update_sheet, append_rows,
+            read_doc, create_doc, replace(edit_doc, precondition=_doc_revision),
             list_search_sites, search_performance, list_analytics_properties, analytics_report,
             youtube_channel, youtube_videos, youtube_comments, youtube_report,
             upload_video, edit_video, set_video_privacy, delete_video, reply_to_comment,
@@ -1125,3 +1241,10 @@ ADAPTER = Adapter(
 WRITES = tuple(t.name for t in ADAPTER.tools if t.kind is ToolKind.WRITE)
 # Writes that always ask: no per-account setting lets them run by themselves.
 ALWAYS_ASKS = tuple(t.name for t in ADAPTER.tools if t.typed is not None)
+# Writes the owner can't set to run without asking either: a document may be someone else's.
+KEEPS_ASKING = (*ALWAYS_ASKS, "edit_doc")
+# Why, where there's more to say than "always asks you first" (the account's page shows it).
+ASKS_WHY = {
+    "send_mail": "More than 10 people at once needs the name typed.",
+    "edit_doc": "A document may be someone else's.",
+}

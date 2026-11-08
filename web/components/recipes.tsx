@@ -41,6 +41,7 @@ interface Needs {
 const KIND: Record<string, string> = {
   n8n: "n8n", github: "GitHub", vercel: "Vercel", airtable: "Airtable", google: "Google account", twilio: "Twilio",
   smtp: "SMTP", mailbox: "mailbox", resend: "Resend", supabase: "Supabase", neon: "Neon", http: "HTTP API",
+  "vendor:pagespeed": "PageSpeed Insights",
 };
 const FIELD: Record<string, [string, string]> = {
   base: ["Airtable base ID", "appXXXXXXXXXXXXXX"],

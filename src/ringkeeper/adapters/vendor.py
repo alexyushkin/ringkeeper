@@ -284,7 +284,7 @@ def _base(vendor: Vendor, fields: JSON, account: str | None) -> str:
 def _client(vendor: Vendor, fields: JSON, account: str | None) -> httpx2.AsyncClient:
     return httpx2.AsyncClient(
         base_url=_base(vendor, fields, account), headers=_headers(vendor, fields, account),
-        timeout=rest.TIMEOUT, transport=transport,
+        timeout=max(rest.TIMEOUT, vendor.timeout), transport=transport,
     )  # fmt: skip
 
 
@@ -728,7 +728,9 @@ async def probe(target: Target) -> str:
     if not vendor.probe:
         return f"Saved. {vendor.name} has nothing to read without changing something."
     op = next(o for o in vendor.ops if o.name == vendor.probe)
-    found = await run(vendor, op, fields)
+    asked = op.prepare({}, {}) if op.prepare is not None else None
+    found = await run(vendor, op, fields, query=asked)
+    found = op.after(found, {}) if op.after is not None else found
     return f"Connected to {vendor.name}" + (f": {vendor.who(found)}." if vendor.who else ".")
 
 

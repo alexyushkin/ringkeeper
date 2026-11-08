@@ -63,6 +63,7 @@ interface GoogleTool {
   allowed: boolean;
   rule: "ask" | "run" | null;
   fixed: boolean;
+  why?: string;
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -73,6 +74,7 @@ const APIS: [string, string][] = [
   ["Google Drive API", "drive.googleapis.com"],
   ["Google Calendar API", "calendar-json.googleapis.com"],
   ["Google Sheets API", "sheets.googleapis.com"],
+  ["Google Docs API", "docs.googleapis.com"],
   ["Search Console API", "searchconsole.googleapis.com"],
   ["Analytics Data API", "analyticsdata.googleapis.com"],
   ["Analytics Admin API", "analyticsadmin.googleapis.com"],
@@ -272,7 +274,7 @@ export function GoogleSettings() {
       <h2 className="font-semibold">Google app (one-time setup)</h2>
       <p className="text-sm">This connects Ringkeeper to Google once. Then add each Google account, as many as you need: one per client, or your own.</p>
       <p className="text-sm text-muted">
-        Gmail, Drive, Calendar, Sheets, YouTube and Google Ads, for your clients&apos; Google accounts and your own. They sign in through a Google app you create in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
+        Gmail, Drive, Calendar, Sheets, Docs, YouTube and Google Ads, for your clients&apos; Google accounts and your own. They sign in through a Google app you create in your own Google Cloud project: free, and no one else&apos;s app sees the accounts.
       </p>
       {data.configured ? (
         <>
@@ -527,7 +529,7 @@ export function GoogleAccount({ name, onChange }: { name: string; onChange: () =
                 {!t.allowed ? <Badge>Not given</Badge> : null}
               </div>
               <p className="text-xs text-muted">{t.description}</p>
-              {t.kind === "write" && t.allowed && t.fixed ? <p className="text-xs text-muted">Always asks you first. More than 10 people at once needs the name typed.</p> : null}
+              {t.kind === "write" && t.allowed && t.fixed ? <p className="text-xs text-muted">Always asks you first.{t.why ? ` ${t.why}` : ""}</p> : null}
               {t.kind === "write" && t.allowed && !t.fixed ? (
                 <Toggle label="Run without asking" checked={t.rule === "run"} onChange={(on) => void rule(t.name, on)} hint={t.rule === "run" ? "Runs and is logged; you're not asked." : "Asks you first."} />
               ) : null}

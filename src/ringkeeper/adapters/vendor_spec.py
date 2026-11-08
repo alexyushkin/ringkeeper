@@ -266,6 +266,8 @@ class Vendor:
     path_headers: Mapping[str, str] = field(default_factory=dict[str, str])
     # How many of the vendor's daily operations a call uses, where they're counted.
     meter: Callable[[Op, JSON, JSON | None], int] | None = None
+    # Seconds a call may take: longer for a service that does slow work per call (a page check).
+    timeout: float = 30.0
 
     def __post_init__(self) -> None:
         names = [op.name for op in self.ops]
