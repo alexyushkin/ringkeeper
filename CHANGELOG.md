@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Cal.com.** A new tile: sign in with your Cal.com account through Cal.com's own hosted
+  server. Reading runs. Bookings and every other change wait for your approval each time, and
+  deleting an event type or a schedule needs the name typed. A project can be kept to one team.
+  See [Cal.com](docs/services/calcom.md).
+
 ## 0.1.0-beta.30 (2026-11-08)
 
 - **Recipes.** An agent and its routines as one file, to start from or to share. New routine

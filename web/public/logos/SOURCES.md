@@ -15,6 +15,7 @@ The licenses below cover the collections' files. They don't grant any right to t
 | attio | `attio.svg`, `attio-dark.svg` | https://attio.com/brand | Attio's brand page: for referencing Attio in third-party materials, and names logo grids as a use. No warping, recoloring or redrawing. |
 | aws | `aws.svg`, `aws-dark.svg` | https://github.com/pheralb/svgl/blob/main/static/library/aws_light.svg | svgl (github.com/pheralb/svgl @ c0ec7ab), MIT for the collection |
 | azure | `azure.svg` | https://github.com/pheralb/svgl/blob/main/static/library/azure.svg | svgl (github.com/pheralb/svgl @ c0ec7ab), MIT for the collection |
+| calcom | `calcom.svg`, `calcom-dark.svg` | https://github.com/pheralb/svgl/blob/main/static/library/cal.svg | svgl (github.com/pheralb/svgl @ c0ec7ab), MIT for the collection. svgl points to Cal.com's brand site, https://design.cal.com/ |
 | close | `close.svg` | https://github.com/gilbarbara/logos/blob/main/logos/close.svg | gilbarbara/logos (github.com/gilbarbara/logos @ 22f03ff), CC0 1.0 for the collection. Its entry points to close.io, so this may be an older drawing. |
 | gohighlevel | `gohighlevel.svg` | https://marketing.gohighlevel.com/brandkit | HighLevel's brand kit, for partners and agencies: use as provided, not inside shapes, on pure white or dark blue. The arrow icon may be used where space is limited. |
 | microsoft | `microsoft.svg` | https://github.com/pheralb/svgl/blob/main/static/library/microsoft.svg | svgl (github.com/pheralb/svgl @ c0ec7ab), MIT for the collection |

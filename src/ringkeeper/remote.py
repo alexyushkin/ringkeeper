@@ -172,6 +172,12 @@ GUARDS: dict[str, Guard] = {
         why="deletes something in the account",
         never_trusted=True,
     ),
+    # A booking, a reschedule or a cancel emails real people, so every change waits, every time.
+    "scheduling": Guard(
+        frozenset({"delete", "remove", "unassign"}),
+        why="deletes something on a scheduling service",
+        never_trusted=True,
+    ),
     # A call rings a real person, a clone is someone's voice, and speech costs credits: all of
     # it waits, every time.
     "voice": Guard(
@@ -576,6 +582,24 @@ CATALOG: tuple[Remote, ...] = (
         signin=True, paste=None, category="Other", guard="ads",
         note="Pipeboard is a third party, not Meta. Budgets and launching ads need the name "
         "typed.",
+    ),
+    Remote(
+        "calcom", "Cal.com", "https://mcp.cal.com/mcp", signin=True, paste=None,
+        category="Other", guard="scheduling",
+        scope=(
+            ScopeField("team", "Cal.com team", ("teamId", "team_id"),
+                       "Optional: a team's ID number, to keep this project to that team. "
+                       "Leave empty for the whole account."),
+        ),
+        # Cal.com's own help, who you are, links into its app and its API catalog:
+        # none of them reach a team's bookings.
+        open_tools=frozenset({"search_docs", "get_me", "get_app_link",
+                              "find_api_operation", "describe_api_operation"}),
+        read_tools=frozenset({"get_app_link", "find_api_operation", "describe_api_operation",
+                              "calculate_routing_form_slots"}),
+        endpoint_tools={"call_api_operation": ("operationId", "operation_id", "operation")},
+        note="Reading runs. Bookings and every other change wait for your approval each time; "
+        "deleting an event type or a schedule needs the name typed.",
     ),
     Remote(
         "upwork", "Upwork", "https://mcp.upwork.com/mcp", signin=True, paste=None,

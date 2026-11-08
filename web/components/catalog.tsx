@@ -212,6 +212,11 @@ const SIGN_IN_CATEGORY: Record<string, Category> = {
   atlassian: "Dev tools",
 };
 
+// What else a search for a service you sign in to might say.
+const SIGN_IN_WORDS: Record<string, string[]> = {
+  calcom: ["calendar", "booking", "bookings", "scheduling", "schedule", "meetings", "appointments"],
+};
+
 // Services with no logo in lib/client/logos or public/logos: their initials on their color.
 const MARKS: Record<string, [string, string, string]> = {
   twilio: ["T", "#f22f46", "#fff"],
@@ -362,7 +367,7 @@ export function Catalog(target: Target) {
       sub: service.needs || (service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token"),
       category: SIGN_IN_CATEGORY[service.key] ?? ((service.category || "Other") as Category),
       badge: "Official",
-      words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/)],
+      words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/), ...(SIGN_IN_WORDS[service.key] ?? [])],
       open: () => setOpened({ service }),
     })),
     ...(vendors.data ?? []).map((vendor) => ({
