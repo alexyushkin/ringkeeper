@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Code, Details, Field, Loading, Select } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
+/** Where shared recipes, and the starters, are published. */
+const RECIPES_REPO = "https://github.com/alexyushkin/ringkeeper-recipes";
+
 interface Starter {
   key: string;
   name: string;
@@ -107,7 +110,21 @@ export function Recipes({ project, onAdded }: { project: string; onAdded: (routi
           </label>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-64 flex-1">
-              <Field label="From a link" value={link} onChange={setLink} placeholder="https://github.com/…/recipe.json" />
+              <Field
+                label="From a link"
+                value={link}
+                onChange={setLink}
+                placeholder="https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json"
+                hint={
+                  <>
+                    A GitHub page for a recipe file works. Shared recipes are in{" "}
+                    <a href={RECIPES_REPO} target="_blank" rel="noreferrer" className="text-accent underline">
+                      ringkeeper-recipes
+                    </a>
+                    .
+                  </>
+                }
+              />
             </div>
             <Button busy={busy} disabled={!link.trim().startsWith("https://")} onClick={() => void read({ url: link.trim() })}>
               Read it

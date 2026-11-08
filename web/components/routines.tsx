@@ -222,6 +222,9 @@ function RoutineFor({ project, onCreated }: { project: string; onCreated: (id: s
       <Button kind="primary" onClick={() => setMaking(true)}>
         Create an agent
       </Button>
+      <div className="pt-2">
+        <Recipes project={project} onAdded={(routine) => routine && onCreated(routine)} />
+      </div>
     </div>
   );
 }

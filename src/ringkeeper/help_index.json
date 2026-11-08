@@ -219,7 +219,7 @@
 "doc": "recipes",
 "anchor": "add-one",
 "title": "Add one",
-"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or acting on an email you forward to yourself. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
+"text": "On a project's Routines, **New routine** shows the routine templates and, below them, **recipes**: - **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or acting on an email you forward to yourself. - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub page for a file works too, like `https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json`. Shared recipes are in ringkeeper-recipes. Before anything is added you see the whole recipe: the agent's instructions, each routine with its prompt and when it runs, and what it needs: - **A connection of each kind the agent uses,** from the ones linked to this project. If the project has none of that kind, link one first, or add the recipe without it and give the agent one later on its page. A routine that watches a service (an n8n failure, a GitHub check) needs that connection before the recipe can be added. - **For a routine that runs when something happens,** what to watch: a repository, a website's address, an Airtable base and table, or a Vercel project. **Add to this project** adds the agent and its routines. The routines start paused: run each once from its page to check it, then turn it on. If the project already has an agent with that name, the new one gets a number (`fixer-2`); nothing already there changes."
 },
 {
 "doc": "recipes",
@@ -231,7 +231,7 @@
 "doc": "recipes",
 "anchor": "the-file",
 "title": "The file",
-"text": "A recipe is JSON with `\"ringkeeper_recipe\": 1`, its version. A later Ringkeeper reads older versions; an older one says to update before adding a newer one. The starters are in the recipes folder."
+"text": "A recipe is JSON with `\"ringkeeper_recipe\": 1`, its version. A later Ringkeeper reads older versions; an older one says to update before adding a newer one. The starters are published in ringkeeper-recipes, and kept the same as this repository's recipes folder."
 },
 {
 "doc": "notifications",

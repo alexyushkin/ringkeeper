@@ -1,11 +1,12 @@
 # Ringkeeper recipes
 
 Each file here is a [Ringkeeper](https://github.com/alexyushkin/ringkeeper) recipe: an agent
-and its routines, with no keys and no client's names. Ringkeeper ships these as its starters
-(they're the same files as `src/ringkeeper/recipes/`, and a test keeps them so).
+and its routines, with no keys and no client's names. Ringkeeper ships these as its starters:
+the same files are in its own `recipes/` folder, and a test there keeps them the same.
 
 To use one, in Ringkeeper open a project's Routines, click **New routine**, and pick it under
-recipes, or choose **Import a recipe from a file or a link** and paste the file's GitHub link.
+recipes, or choose **Import a recipe from a file or a link** and paste the file's GitHub link, like
+`https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json`.
 You see everything in it before it's added, and its routines start paused.
 
 | Recipe | What it does | Needs |
