@@ -136,7 +136,7 @@ def test_a_client_s_month_counts_only_their_projects_and_that_month(
     assert not found.estimated
     lines = client_month.summary_lines(found, cost=True)
     assert lines[0] == "3 tasks: 1 done, 1 didn't finish, 1 still open"
-    assert "2 changes checked before it ran: 1 approved, 1 declined" in lines
+    assert "2 changes waited for your approval: 1 approved, 1 declined" in lines
     assert lines[-1] == "AI cost: $2.00"
 
 
@@ -166,6 +166,7 @@ def test_the_report_downloads_as_markdown_pdf_and_csv(
     read = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
     assert f"{GI}: {label}" in read
     assert "Fix the contact form" in read
+    assert "• 2 tasks: 2 done" in read  # a real bullet, not "?"
 
     sheet = owner.get(f"/clients/{gi}/month.csv", params={"month": month})
     rows = list(csv.reader(io.StringIO(sheet.content.decode("utf-8-sig"))))

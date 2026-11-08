@@ -46,7 +46,7 @@ def _lines(markdown: str) -> list[tuple[str, str]]:
             out.append(("text", ""))
         elif line.startswith("- "):
             for i, part in enumerate(textwrap.wrap(line[2:], WRAP - 4) or [""]):
-                out.append(("text", ("  \x95 " if i == 0 else "     ") + part))
+                out.append(("text", ("  • " if i == 0 else "     ") + part))
         else:
             header = None if not line else header
             out += [("text", part) for part in (textwrap.wrap(line, WRAP) or [""])]

@@ -272,13 +272,13 @@ def summary_lines(found: Month, *, cost: bool) -> list[str]:
     lines = [f"{tasks}: {', '.join(parts)}" if found.tasks else "No tasks"]
     lines.append(f"{_count(found.changes, 'change')} made to {found.name}'s services")
     if found.held:
-        approvals = [f"{found.approved} approved"]
-        approvals += [f"{found.denied} declined"] if found.denied else []
-        approvals += [f"{found.expired} not decided in time"] if found.expired else []
-        approvals += [f"{found.waiting} still waiting"] if found.waiting else []
-        lines.append(
-            f"{_count(found.held, 'change')} checked before it ran: {', '.join(approvals)}"
-        )
+        decided = (
+            (found.approved, "approved"), (found.denied, "declined"),
+            (found.expired, "not decided in time"), (found.waiting, "still waiting"),
+        )  # fmt: skip
+        how = ", ".join(f"{n} {word}" for n, word in decided if n)
+        held = f"{_count(found.held, 'change')} waited for your approval"
+        lines.append(f"{held}: {how}" if how else held)
     if found.refused:
         lines.append(f"{_count(found.refused, 'call')} refused by Ringkeeper's checks")
     if cost:
