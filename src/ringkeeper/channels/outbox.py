@@ -5,6 +5,10 @@ Every channel (Telegram, each Slack and Discord one) is a key in `notifications`
 its prefs say not to send is recorded as skipped and never looked at again;
 what comes up in quiet hours waits for them to end. Only what happened after
 the channel was set up (`since`) and in the last day counts.
+
+A Slack or Discord channel set to take requests (config "requests") takes a DM from its
+approver as a new request, the same path as one typed in the app; anyone else is told
+no. Its news (what the router did, each task's end) goes back to that DM.
 """
 
 import logging
@@ -15,10 +19,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from ringkeeper.channels import cards, links
+from ringkeeper.channels import cards, links, news
 from ringkeeper.channels.prefs import APPROVALS, FAILURES, FINISHED, ROUTINES, Prefs
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
@@ -29,6 +33,8 @@ from ringkeeper.models import (
     Channel,
     Decision,
     DecisionStatus,
+    Message,
+    MessageRole,
     Notification,
     Project,
     Routine,
@@ -37,13 +43,22 @@ from ringkeeper.models import (
     TaskStatus,
     Thread,
 )
-from ringkeeper.services import inbox
+from ringkeeper.scrub import scrub
+from ringkeeper.services import inbox, threads
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 
 logger = logging.getLogger(__name__)
 
 SENT, RUNNING, CLOSED, FAILED, SKIPPED = "sent", "running", "closed", "failed", "skipped"
 LOOKBACK = timedelta(days=1)
+NEWS_CHARS = 600
+NOT_YOURS = "Not allowed: only the person set up for this channel can send requests here."
+REQUESTS_OFF = (
+    "New requests by DM are off. Turn them on in Ringkeeper (Settings > Notifications, this "
+    "channel), or use the app."
+)
+TEXT_ONLY = "Send a request as a text message."
+GOT_IT = "Got it. Working out which project it's for…"
 
 
 class ChannelError(RingkeeperError):
@@ -93,15 +108,34 @@ def due(
         return Due([], [])
     inbox.list_pending(session)  # expires stale ones first
     owners = _clients(session)
-    noted = select(Notification.decision_id).where(
-        Notification.channel == key, Notification.decision_id.is_not(None)
+    # Sent already, unless since snoozed: a snoozed one coming back is sent again.
+    noted = (
+        select(Notification.decision_id)
+        .join(Decision, Decision.id == Notification.decision_id)
+        .where(
+            Notification.channel == key,
+            or_(
+                Decision.snoozed_until.is_(None), Notification.created_at >= Decision.snoozed_until
+            ),
+        )
     )
     decisions: list[Decision] = []
-    for decision in session.scalars(
+    found = session.scalars(
         select(Decision)
-        .where(Decision.status == DecisionStatus.PENDING, Decision.id.not_in(noted))
+        .where(
+            Decision.status == DecisionStatus.PENDING,
+            Decision.id.not_in(noted),
+            inbox.awake(now),
+        )
         .order_by(Decision.created_at)
-    ):
+    ).all()
+    for decision in found:
+        if decision.snoozed_until is not None:  # back from a snooze: what was sent before goes
+            session.execute(
+                delete(Notification).where(
+                    Notification.channel == key, Notification.decision_id == decision.id
+                )
+            )
         if APPROVALS in prefs.events and prefs.covers(
             decision.project, owners.get(decision.project or "")
         ):
@@ -147,8 +181,15 @@ class Transport(Protocol):
 
     def update(self, ref: str, card: cards.Card) -> None: ...
 
-    def listen(self, stop: threading.Event, on_press: "OnPress") -> None:
-        """Takes button presses until `stop`; each is answered with what on_press says."""
+    def direct(self, user: str, card: cards.Card) -> str:
+        """A message in the DM with this person; returns its reference."""
+        ...
+
+    def listen(
+        self, stop: threading.Event, on_press: "OnPress", on_message: "OnMessage | None" = None
+    ) -> None:
+        """Takes button presses (and DMs, with on_message) until `stop`; each is answered
+        with what on_press or on_message says."""
         ...
 
     def close(self) -> None: ...
@@ -156,6 +197,8 @@ class Transport(Protocol):
 
 # (action, user id, who for the audit log) -> what to tell the person who pressed it
 OnPress = Callable[[str, str, str], str]
+# (user id, text, who for the audit log) -> what to say back in the DM, if anything
+OnMessage = Callable[[str, str, str], str | None]
 
 
 class Runner:
@@ -173,6 +216,12 @@ class Runner:
             self.prefs = Prefs.load(channel.prefs)
             self.since = channel.since
             self.approver = str(channel.config.get("approver") or "")
+            self.requests = bool(channel.config.get("requests"))
+
+    @property
+    def asker(self) -> str:
+        """How a request by DM from the approver is signed (the start of its author)."""
+        return f"{self.kind}:{self.approver}"
 
     def _link(self, session: Session, path: str) -> str | None:
         return links.open_url(session, self.settings, path)
@@ -180,7 +229,10 @@ class Runner:
     def send_due(self, now: datetime | None = None) -> int:
         sent = 0
         with session_scope() as session:
-            found = due(session, self.key, self.prefs, self.since, now or datetime.now(UTC))
+            found = due(
+                session, self.key, self.prefs, self.since, now or datetime.now(UTC),
+                own_threads=self.kind if self.requests else None,
+            )  # fmt: skip
             for decision in found.decisions:
                 link = self._link(session, links.decision_page(self.settings, decision))
                 sent += self._send(
@@ -235,6 +287,74 @@ class Runner:
                     closed += 1
         return closed
 
+    # --- Requests by DM ---
+
+    def on_message(self, user: str, text: str, who: str) -> str | None:
+        """A DM: from the approver, with requests on, a new request."""
+        if not self.approver or user != self.approver:
+            return NOT_YOURS
+        if not self.requests:
+            return REQUESTS_OFF
+        if not text.strip():
+            return TEXT_ONLY
+        try:
+            with session_scope() as session:
+                threads.post_message(session, text, author=who, source=self.kind)
+        except RingkeeperError as error:
+            return f"Not sent: {error}"
+        return GOT_IT
+
+    def send_news(self) -> int:
+        """For requests by DM: what the router did, and each task's end, back in the DM
+        (whatever the prefs say: these are answers to what was asked)."""
+        if not self.requests or not self.approver:
+            return 0
+        sent = 0
+        with session_scope() as session:
+            told = select(Notification.message_id).where(
+                Notification.channel == self.key, Notification.message_id.is_not(None)
+            )
+            mine = (
+                Message.source == self.kind,
+                Message.role == MessageRole.USER,
+                Message.author.startswith(self.asker, autoescape=True),
+                Message.created_at >= self.since,
+            )
+            for message in session.scalars(
+                select(Message)
+                .where(*mine, Message.routed_at.is_not(None), Message.id.not_in(told))
+                .order_by(Message.created_at)
+            ).all():
+                text = news.routed_text(session, message, NEWS_CHARS)
+                sent += self._send_direct(session, text, message_id=message.id)
+            ended = select(Notification.task_id).where(
+                Notification.channel == self.key, Notification.task_id.is_not(None)
+            )
+            for task in session.scalars(
+                select(Task)
+                .join(Message, Message.id == Task.message_id)
+                .where(
+                    *mine,
+                    Task.status.in_(list(TERMINAL_STATUSES)),
+                    Task.id.not_in(ended),
+                )
+                .order_by(Task.finished_at)
+            ).all():
+                sent += self._send_direct(session, news.finished_text(task), task_id=task.id)
+        return sent
+
+    def _send_direct(self, session: Session, text: str, **subject: uuid.UUID) -> int:
+        note = Notification(channel=self.key, chat_id=0, **subject)
+        try:
+            note.external_ref = self.transport.direct(self.approver, cards.Card(scrub(text)))
+            note.status = CLOSED  # nothing to update later
+        except ChannelError as error:
+            note.status, note.error = FAILED, str(error)[:500]
+            logger.warning("could not send to a %s DM: %s", self.kind, error)
+        session.add(note)
+        session.flush()
+        return int(note.status != FAILED)
+
     def on_press(self, action: str, user: str, who: str) -> str:
         reply = cards.press(
             self.settings, action, user=user, approver=self.approver, who=who,
@@ -257,6 +377,7 @@ class Runner:
                 try:
                     self.send_due()
                     self.close_finished()
+                    self.send_news()
                 except Exception:
                     logger.exception("%s notification pass failed", self.kind)
                 wake.wait(5.0)
@@ -267,7 +388,7 @@ class Runner:
     def _listen_forever(self, stop: threading.Event) -> None:
         while not stop.is_set():
             try:
-                self.transport.listen(stop, self.on_press)
+                self.transport.listen(stop, self.on_press, self.on_message)
             except Exception as error:
                 logger.warning("%s connection dropped: %s", self.kind, error)
             stop.wait(5.0)

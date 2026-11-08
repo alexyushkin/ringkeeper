@@ -8,6 +8,7 @@ import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
 import { WatchLine } from "@/components/watch-line";
+import { ScheduledList } from "@/components/scheduled";
 import { ScopeNote } from "@/components/scope-switcher";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
@@ -27,7 +28,7 @@ interface Thread {
   places: string[];
 }
 
-const SOURCE: Record<string, string> = { web: "the app", api: "another app", cli: "the command line", telegram: "Telegram" };
+const SOURCE: Record<string, string> = { web: "the app", api: "another app", cli: "the command line", telegram: "Telegram", slack: "Slack", discord: "Discord", pass: "a pass" };
 
 export default function Home() {
   const router = useRouter();
@@ -49,6 +50,7 @@ export default function Home() {
         <FirstSteps />
       </div>
       <WatchLine client={scope.client || undefined} project={scope.project || undefined} />
+      <ScheduledList />
       <DigestCard client={scope.client || undefined} />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
       <ScopeNote />

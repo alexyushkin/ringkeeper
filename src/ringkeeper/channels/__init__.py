@@ -144,7 +144,9 @@ def update_channel(
     target: str | None = None,
     approver: str | None = None,
     prefs: dict[str, Any] | None = None,
+    requests: bool | None = None,
 ) -> Channel:
+    """`requests`: take DMs from the approver as new requests."""
     if name is not None and name.strip():
         channel.name = name.strip()
     config = dict(channel.config)
@@ -152,6 +154,13 @@ def update_channel(
         config["target"] = _target(channel.kind, target)
     if approver is not None:
         config["approver"] = _approver(channel.kind, approver)
+    if requests is not None and requests != bool(config.get("requests")):
+        config["requests"] = requests
+        admin_audit.record(
+            session, f"channel.{channel.kind}",
+            f"{'turned on' if requests else 'turned off'} new requests by DM on {channel.name}",
+            by="owner",
+        )  # fmt: skip
     channel.config = config
     if prefs is not None:
         channel.prefs = Prefs.load(prefs).dump()

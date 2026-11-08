@@ -13,7 +13,8 @@ file with anything else in it is refused.
 On a project's Routines, **New routine** shows the routine templates and, below them,
 **recipes**:
 
-- **The starters:** a dozen common jobs, from fixing a failed n8n run to a weekly client report.
+- **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or
+  acting on an email you forward to yourself.
 - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub
   page for a file works too.
 
@@ -43,6 +44,10 @@ file, `<agent>.ringkeeper-recipe.json`. It keeps:
 
 It leaves out connection names, what an event watches, time zones, and anything that looks like
 a secret. Read it before you share it: what you wrote in the instructions and prompts is in it.
+
+A recipe's Gmail event may say which mail starts a run, in Gmail's search words: the Forward an
+email starter watches only `from:me to:me subject:(Fwd OR Fw)`. An exported recipe never has
+one, since a search can name a client.
 
 ## The file
 

@@ -301,6 +301,8 @@ def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
         message = threads.claim_unrouted(session)
         if message is None:
             return None
+        if threads.drop_if_late(session, message):
+            return message.id
         try:
             with session.begin_nested():  # all of the message's tasks, or none
                 route_message(session, settings, message, model)

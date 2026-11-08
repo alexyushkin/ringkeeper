@@ -4,6 +4,7 @@ Everything but /health needs the admin token (`public` vs `router`).
 """
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Response
@@ -30,6 +31,7 @@ from ringkeeper.schemas import (
     ThreadOut,
 )
 from ringkeeper.services import (
+    admin_audit,
     bindings,
     decisions,
     inbox,
@@ -101,9 +103,32 @@ def post_message(data: MessageIn, session: WriteSessionDep) -> MessageAccepted:
     """Queue a message for the router. Its reply lands in the thread."""
     message = threads.post_message(
         session, data.body, author=data.author, source=data.source, thread=data.thread_id,
-        input_kind=data.input, attachments=data.attachments,
+        input_kind=data.input, attachments=data.attachments, run_at=data.run_at,
     )  # fmt: skip
     return MessageAccepted(message_id=str(message.id), thread_id=str(message.thread_id))
+
+
+@router.get("/scheduled")
+def list_scheduled(session: SessionDep) -> list[dict[str, Any]]:
+    """Requests sent for later that haven't run yet, soonest first."""
+    return [
+        {
+            "id": str(m.id), "thread_id": str(m.thread_id), "body": m.body[:300],
+            "run_at": m.run_at.isoformat() if m.run_at else None,
+        }
+        for m in threads.scheduled(session)
+    ]  # fmt: skip
+
+
+@router.post("/messages/{message_id}/cancel")
+def cancel_message(message_id: uuid.UUID, session: WriteSessionDep) -> MessageOut:
+    """Stops a request sent for later before it runs."""
+    message = threads.cancel(session, message_id)
+    admin_audit.record(
+        session, "request.cancel", f"canceled a request sent for later: {message.body[:80]}",
+        by="owner",
+    )  # fmt: skip
+    return MessageOut.model_validate(message)
 
 
 @router.get("/threads/{thread_id}")
@@ -156,18 +181,20 @@ def list_decisions(
     thread: uuid.UUID | None = None,
     task: uuid.UUID | None = None,
     routine: uuid.UUID | None = None,
+    snoozed: bool | None = None,
     cursor: Annotated[str | None, Query(max_length=300)] = None,
 ) -> list[DecisionOut]:
     """Newest first; `client`/`project` narrow it to those projects' decisions.
     `category`: approvals (actions: Approvals and its badge) or questions (asked in
-    the conversation). `thread`, `task`, `routine`: only what belongs to it. The headers say how
-    many there are and how to get the next page."""
+    the conversation). `thread`, `task`, `routine`: only what belongs to it. `snoozed`: only
+    snoozed ones (true) or only the rest (false). The headers say how many there are and how
+    to get the next page."""
     # A write session: listing marks stale decisions expired first.
     page = inbox.page_of_decisions(
         session, status=status, kind=kind, limit=min(max(limit, 1), 1000), cursor=cursor,
         projects=projects.in_scope(session, client, project),
         approvals=None if category is None else category == "approval",
-        thread=thread, task=task, routine=routine,
+        thread=thread, task=task, routine=routine, snoozed=snoozed,
     )  # fmt: skip
     page.tell(response)
     owners = projects.owners(session)
@@ -177,6 +204,17 @@ def list_decisions(
 @router.get("/decisions/{decision_id}")
 def get_decision(decision_id: str, session: SessionDep) -> DecisionOut:
     return _decision_out(decisions.get_decision(session, decision_id))
+
+
+class SnoozeIn(BaseModel):
+    until: datetime | None  # None: wake it now
+
+
+@router.post("/decisions/{decision_id}/snooze")
+def snooze_decision(decision_id: str, data: SnoozeIn, session: WriteSessionDep) -> DecisionOut:
+    """Out of Approvals and its notifications until then; back, and notified again, after."""
+    decision = inbox.snooze(session, decision_id, data.until, by="owner")
+    return _decision_out(decision)
 
 
 @router.post("/decisions/{decision_id}/answer")

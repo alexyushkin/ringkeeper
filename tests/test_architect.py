@@ -176,10 +176,15 @@ def test_the_full_loop_with_checks_gating_escalation_and_the_review_cap() -> Non
     task = load(task_id)
     assert (task.status, task.phase) == (TaskStatus.WAITING, ArchitectPhase.AWAITING_PLAN)
     [plan] = pending(DecisionKind.PLAN)
+    estimate = (plan.payload or {}).get("estimate") or {}
     assert plan.payload == {
         "title": "Add format_plan()", "plan": "Add src/acme_web/plans.py + test",
-        "worker_prompt": "Write format_plan and a test.",
+        "worker_prompt": "Write format_plan and a test.", "estimate": estimate,
     }  # fmt: skip
+    # The card's model and cost: nothing finished like it yet, so no range.
+    assert (estimate["model"], estimate["low"], estimate["based_on"]) == (
+        get_settings().model_medium, None, 0,
+    )  # fmt: skip
 
     # 2. Plan gate: nothing runs until the plan is approved.
     run(manager)

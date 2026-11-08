@@ -26,6 +26,7 @@ export interface Channel {
   approver: string;
   about: Record<string, string>;
   prefs: Prefs;
+  requests?: boolean;
   running: boolean;
   error: string | null;
 }
@@ -210,6 +211,16 @@ export function ChannelCard({ channel, onChanged }: { channel: Channel; onChange
       <p className="text-sm text-muted">
         Only {channel.kind === "slack" ? "member" : "user"} ID {channel.approver} can answer from here; anyone else is told they&apos;re not allowed.
       </p>
+      <Toggle
+        label="Take new requests by DM"
+        checked={Boolean(channel.requests)}
+        onChange={(on) => put({ requests: on }).catch((err) => setError(message(err)))}
+        hint={
+          channel.kind === "slack"
+            ? `A DM to the app from member ID ${channel.approver} becomes a new request, the same as one typed here, and what happens to it comes back in that DM. Anyone else is told no. If DMs don't arrive, the app was made before DMs: copy the manifest from Add another Slack channel, paste it in the app's App Manifest page on api.slack.com, and reinstall the app.`
+            : `A DM to the bot from user ID ${channel.approver} becomes a new request, the same as one typed here, and what happens to it comes back in that DM. Anyone else is told no. The bot needs to share a server with you to take DMs.`
+        }
+      />
       <div className="flex flex-wrap gap-2">
         <Button busy={testing} onClick={test}>
           Send test

@@ -93,7 +93,7 @@ export function Shell({ children }: { children: ReactNode }) {
     if (new URLSearchParams(window.location.search).has("tour")) startTour();
   }, []);
   // Approvals only: a question waits in its conversation, not in this count.
-  const approvals = usePaged<Pending>("decisions", { status: "pending", category: "approval" }, 1);
+  const approvals = usePaged<Pending>("decisions", { status: "pending", category: "approval", snoozed: false }, 1);
   const settings = useApi<{ values: { paused: boolean } }>("settings");
   const start = useApi<{ tour_seen: boolean }>(ready ? "start" : null);
   useLive((event) => {

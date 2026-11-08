@@ -177,10 +177,10 @@ KIND_OF = {"n8n": InstanceType.N8N, "github": InstanceType.GITHUB, "vercel": Ins
            "airtable": InstanceType.AIRTABLE, "google": InstanceType.GOOGLE}  # fmt: skip
 
 
-def test_the_twelve_starters_each_add_cleanly(database_url: str) -> None:
+def test_the_starters_each_add_cleanly(database_url: str) -> None:
     del database_url
     found = recipes.starters()
-    assert len(found) == 12
+    assert len(found) == 13
     with session_scope() as session:
         make_project(session, ACME_SHOP)
         for kind, type_ in KIND_OF.items():
@@ -203,6 +203,21 @@ def test_the_twelve_starters_each_add_cleanly(database_url: str) -> None:
             assert made, key
             assert all(r.paused for r in made), key
             assert agent.instructions, key
+            if key == "forward-an-email":  # only mail you forward to yourself starts it
+                assert made[0].event == {
+                    "source": "gmail", "query": "from:me to:me subject:(Fwd OR Fw)",
+                    "connection": "acme-google",
+                }  # fmt: skip
+
+
+def test_only_a_gmail_event_has_a_search_and_an_export_never_keeps_one() -> None:
+    routine = {"name": "r", "prompt": "p", "trigger": "event"}
+    with pytest.raises(RuleViolationError):
+        recipes.parse_data({
+            "ringkeeper_recipe": 1, "name": "x", "agent": {"name": "a"},
+            "routines": [{**routine, "event": {"source": "github", "query": "is:open"}}],
+        })  # fmt: skip
+    assert "query" not in recipes.KEPT_EVENT
 
 
 def test_recipes_folder_matches_the_bundled_starters() -> None:
@@ -213,7 +228,7 @@ def test_recipes_folder_matches_the_bundled_starters() -> None:
         for p in (root / "src" / "ringkeeper" / "recipes").glob("*.json")
     }
     assert shared == bundled
-    assert len(shared) == 12
+    assert len(shared) == 13
 
 
 def test_recipes_through_the_api(two_clients: tuple[str, str], owner: TestClient) -> None:

@@ -49,6 +49,7 @@ from ringkeeper.models import (
 from ringkeeper.names import slug
 from ringkeeper.scrub import scrub, scrub_obj
 from ringkeeper.services import (
+    admin_audit,
     client_month,
     decisions,
     examples,
@@ -127,14 +128,75 @@ def list_pending(session: Session, *, kind: DecisionKind | None = None) -> Seque
 
 
 def list_waiting(session: Session) -> Sequence[Decision]:
-    """Pending and not yet past expiry, without marking anything: a read for polling."""
+    """Pending, not yet past expiry and not snoozed, without marking anything: a read for
+    polling."""
     now = datetime.now(UTC)
     query = (
         select(Decision)
-        .where(Decision.status == DecisionStatus.PENDING, Decision.expires_at > now)
+        .where(
+            Decision.status == DecisionStatus.PENDING,
+            Decision.expires_at > now,
+            awake(now),
+        )
         .order_by(Decision.created_at)
     )
     return session.scalars(query).all()
+
+
+def awake(now: datetime | None = None) -> ColumnElement[bool]:
+    """Not snoozed (any more), as a query."""
+    return or_(
+        Decision.snoozed_until.is_(None), Decision.snoozed_until <= (now or datetime.now(UTC))
+    )
+
+
+def notice_key(decision: Decision) -> str:
+    """What a notification is for: a snoozed decision coming back is a new one."""
+    if decision.snoozed_until is None:
+        return str(decision.id)
+    return f"{decision.id}:{decision.snoozed_until.isoformat()}"
+
+
+SNOOZE_SPARE = timedelta(minutes=5)  # it comes back at least this long before it runs out
+
+
+def snooze(session: Session, ident: str, until: datetime | None, *, by: str) -> Decision:
+    """An approval out of Approvals, its badge and notifications until `until`, then back
+    and notified again. None wakes it now. Never past when it runs out."""
+    expire_stale(session)
+    decision = get_decision(session, ident, lock=True)
+    _require_open(decision)
+    if not is_approval(decision):
+        raise RuleViolationError("Only an approval can be snoozed. Answer a question instead.")
+    if decision.answer:
+        raise RuleViolationError("This was already approved, so it can't be snoozed.")
+    now = datetime.now(UTC)
+    if until is None:
+        if decision.snoozed_until is None or decision.snoozed_until <= now:
+            return decision
+        decision.snoozed_until = None
+        admin_audit.record(
+            session, "decision.wake", f"woke a snoozed approval: {summary(decision, 80)}",
+            by=by, project=decision.project,
+        )  # fmt: skip
+        return decision
+    if until.tzinfo is None:
+        raise RuleViolationError("Give the time with its time zone.")
+    until = until.astimezone(UTC)
+    if until <= now + timedelta(minutes=1):
+        raise RuleViolationError("Choose a time at least a minute from now.")
+    if until > decision.expires_at - SNOOZE_SPARE:
+        raise RuleViolationError(
+            "It runs out before then, and nothing would change. Snooze it for less."
+        )
+    decision.snoozed_until = until
+    admin_audit.record(
+        session, "decision.snooze",
+        f"snoozed an approval until {until.isoformat(timespec='minutes')}: {summary(decision, 80)}",
+        by=by, project=decision.project,
+    )  # fmt: skip
+    session.flush()
+    return decision
 
 
 def list_decisions(
@@ -177,13 +239,17 @@ def page_of_decisions(
     thread: uuid.UUID | None = None,
     task: uuid.UUID | None = None,
     routine: uuid.UUID | None = None,
+    snoozed: bool | None = None,
     cursor: str | None = None,
 ) -> paging.Page[Decision]:
     """`projects`: only decisions about these (the client/project switcher). `approvals`: only
     actions (True) or only questions (False). `thread`, `task`, `routine`: only those that
-    belong to it, directly or through its tasks."""
+    belong to it, directly or through its tasks. `snoozed`: only snoozed ones (True) or only
+    the rest (False)."""
     expire_stale(session)
     query = select(Decision)
+    if snoozed is not None:
+        query = query.where(not_(awake()) if snoozed else awake())
     if approvals is not None:
         query = query.where(_approvals() if approvals else not_(_approvals()))
     if thread is not None:

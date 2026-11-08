@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal, cast
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx2
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy
@@ -73,6 +73,9 @@ class RecipeAgent(_Strict):
 class RecipeEvent(_Strict):
     source: str
     watch: Literal["checks", "issues"] | None = None
+    # Gmail only: which mail starts a run, in Gmail's search words (like "from:me"). A
+    # recipe's own; an exported one never has it, since a search can name a client.
+    query: Annotated[str, Field(min_length=1, max_length=300)] | None = None
 
     @field_validator("source")
     @classmethod
@@ -80,6 +83,12 @@ class RecipeEvent(_Strict):
         if value not in EVENT_FIELDS:
             raise ValueError(f"an event is one of {', '.join(EVENT_FIELDS)}")
         return value
+
+    @model_validator(mode="after")
+    def _query(self) -> "RecipeEvent":
+        if self.query is not None and self.source != "gmail":
+            raise ValueError("only a Gmail event has a search")
+        return self
 
 
 class RecipeRoutine(_Strict):

@@ -2,8 +2,9 @@
 
 One token in the vault: the bot's. It posts and updates messages over the REST
 API and takes button presses from the gateway (INTERACTION_CREATE, which needs no
-privileged intents). Invited with PERMISSIONS only: see the channel, send
-messages.
+privileged intents), and DMs to the bot (DIRECT_MESSAGES, not privileged either; a
+DM's text comes without the Message Content intent). Invited with PERMISSIONS only:
+see the channel, send messages.
 """
 
 import json
@@ -18,7 +19,7 @@ from websockets.sync.client import ClientConnection, connect
 
 from ringkeeper import scrub
 from ringkeeper.channels.cards import Button, Card
-from ringkeeper.channels.outbox import ChannelError, OnPress
+from ringkeeper.channels.outbox import ChannelError, OnMessage, OnPress
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ PERMISSIONS = VIEW_CHANNEL | SEND_MESSAGES
 TEXT_LIMIT = 1900  # a message is at most 2000 characters
 TEXT_CHANNEL, ANNOUNCEMENT_CHANNEL = 0, 5
 COMPONENT, EPHEMERAL = 3, 1 << 6
+DIRECT_MESSAGES = 1 << 12  # the gateway intent for DMs to the bot
 STYLES = {"primary": 3, "danger": 4}  # success (green), danger (red); others grey
 # Gateway opcodes
 DISPATCH, HEARTBEAT, IDENTIFY, RECONNECT, INVALID_SESSION, HELLO = 0, 1, 2, 7, 9, 10
@@ -128,9 +130,18 @@ class DiscordApi:
         channel, ident = ref.split("/", 1)
         self.call("PATCH", f"channels/{channel}/messages/{ident}", message(card))
 
-    # --- Button presses, over the gateway ---
+    def direct(self, user: str, card: Card) -> str:
+        """A message in the DM with this person."""
+        opened = self.call("POST", "users/@me/channels", {"recipient_id": user})
+        channel = str(cast(dict[str, Any], opened)["id"])
+        sent = self.call("POST", f"channels/{channel}/messages", message(card))
+        return f"{channel}/{cast(dict[str, Any], sent)['id']}"
 
-    def listen(self, stop: threading.Event, on_press: OnPress) -> None:
+    # --- Button presses and DMs, over the gateway ---
+
+    def listen(
+        self, stop: threading.Event, on_press: OnPress, on_message: OnMessage | None = None
+    ) -> None:
         gateway = cast(dict[str, Any], self.call("GET", "gateway/bot"))
         url = f"{gateway['url']}?v=10&encoding=json"
         with connect(url, open_timeout=15, proxy=None, max_size=8 * 1024 * 1024) as socket:
@@ -145,7 +156,7 @@ class DiscordApi:
             ).start()  # fmt: skip
             try:
                 socket.send(json.dumps({"op": IDENTIFY, "d": self._identify()}))
-                self._receive(socket, stop, on_press)
+                self._receive(socket, stop, on_press, on_message)
             finally:
                 beating.set()
 
@@ -153,7 +164,7 @@ class DiscordApi:
         system = platform.system().lower() or "unknown"
         return {
             "token": self._token,
-            "intents": 0,  # interactions arrive without any intents
+            "intents": DIRECT_MESSAGES,  # interactions arrive without any intents
             "properties": {"os": system, "browser": "ringkeeper", "device": "ringkeeper"},
         }
 
@@ -166,7 +177,13 @@ class DiscordApi:
             except ConnectionClosed:
                 return
 
-    def _receive(self, socket: ClientConnection, stop: threading.Event, on_press: OnPress) -> None:
+    def _receive(
+        self,
+        socket: ClientConnection,
+        stop: threading.Event,
+        on_press: OnPress,
+        on_message: OnMessage | None = None,
+    ) -> None:
         while not stop.is_set():
             try:
                 raw = socket.recv(timeout=1.0)
@@ -184,6 +201,25 @@ class DiscordApi:
                 return  # a fresh connection
             elif op == DISPATCH and event.get("t") == "INTERACTION_CREATE":
                 self._interaction(cast(dict[str, Any], event.get("d") or {}), on_press)
+            elif op == DISPATCH and event.get("t") == "MESSAGE_CREATE" and on_message is not None:
+                self._dm(cast(dict[str, Any], event.get("d") or {}), on_message)
+
+    def _dm(self, sent: dict[str, Any], on_message: OnMessage) -> None:
+        """A person's DM to the bot (never a server channel's message, nor a bot's)."""
+        author = cast(dict[str, Any], sent.get("author") or {})
+        if sent.get("guild_id") or author.get("bot") or not author.get("id"):
+            return
+        user = str(author["id"])
+        who = f"discord:{user}" + (f" ({author['username']})" if author.get("username") else "")
+        reply = on_message(user, str(sent.get("content") or ""), who)
+        if reply and sent.get("channel_id"):
+            try:
+                self.call(
+                    "POST", f"channels/{sent['channel_id']}/messages",
+                    {"content": scrub.scrub(reply)[:TEXT_LIMIT], "allowed_mentions": {"parse": []}},
+                )  # fmt: skip
+            except ChannelError as error:
+                logger.warning("could not answer a Discord DM: %s", error)
 
     def _interaction(self, interaction: dict[str, Any], on_press: OnPress) -> None:
         if interaction.get("type") != COMPONENT:

@@ -54,7 +54,7 @@ def status(session: SessionDep) -> dict[str, Any]:
     settings = runtime.effective(session)
     waiting = [
         {
-            "id": str(decision.id),
+            "id": inbox.notice_key(decision),  # a snoozed one back is notified again
             "kind": decision.kind.value,
             "project": decision.project,
             "summary": summary(decision, NOTICE_CHARS).text,

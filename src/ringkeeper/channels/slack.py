@@ -2,8 +2,10 @@
 
 Two tokens, both in the vault: the bot token (xoxb-, to post and update
 messages) and the app-level token (xapp-, with connections:write, to open the
-Socket Mode connection that brings button presses). Settings > Notifications >
-Slack walks through making the app from MANIFEST.
+Socket Mode connection that brings button presses, and DMs to the app when the
+channel takes requests). Settings > Notifications > Slack walks through making the
+app from MANIFEST. An app made before DMs (no im:history, no message.im event) gets
+button presses only, until its manifest is pasted again and it's reinstalled.
 """
 
 import json
@@ -17,22 +19,29 @@ from websockets.sync.client import connect
 
 from ringkeeper import scrub
 from ringkeeper.channels.cards import Button, Card
-from ringkeeper.channels.outbox import ChannelError, OnPress
+from ringkeeper.channels.outbox import ChannelError, OnMessage, OnPress
 
 logger = logging.getLogger(__name__)
 
 # Tests swap in httpx2.MockTransport.
 transport: httpx2.BaseTransport | None = None
 
-SCOPES = ["chat:write", "chat:write.public", "im:write", "channels:read", "groups:read"]
+SCOPES = [
+    "chat:write", "chat:write.public", "im:write", "im:history", "channels:read", "groups:read",
+]  # fmt: skip
 MANIFEST: dict[str, Any] = {
     "display_information": {
         "name": "Ringkeeper",
         "description": "Approvals and results from your Ringkeeper.",
     },
-    "features": {"bot_user": {"display_name": "Ringkeeper", "always_online": False}},
+    "features": {
+        "bot_user": {"display_name": "Ringkeeper", "always_online": False},
+        # DMs to the app: new requests, when the channel takes them
+        "app_home": {"messages_tab_enabled": True, "messages_tab_read_only_enabled": False},
+    },
     "oauth_config": {"scopes": {"bot": SCOPES}},
     "settings": {
+        "event_subscriptions": {"bot_events": ["message.im"]},
         "interactivity": {"is_enabled": True},
         "socket_mode_enabled": True,
         "org_deploy_enabled": False,
@@ -135,9 +144,18 @@ class SlackApi:
         channel, ts = ref.split("/", 1)
         self.call("chat.update", channel=channel, ts=ts, **blocks(card))
 
-    # --- Button presses, over Socket Mode ---
+    def direct(self, user: str, card: Card) -> str:
+        """A message in the DM with this person."""
+        opened = self.call("conversations.open", users=user)
+        channel = str(opened["channel"]["id"])
+        sent = self.call("chat.postMessage", channel=channel, **blocks(card), unfurl_links=False)
+        return f"{sent['channel']}/{sent['ts']}"
 
-    def listen(self, stop: threading.Event, on_press: OnPress) -> None:
+    # --- Button presses and DMs, over Socket Mode ---
+
+    def listen(
+        self, stop: threading.Event, on_press: OnPress, on_message: OnMessage | None = None
+    ) -> None:
         url = str(self.call("apps.connections.open", self._app)["url"])
         with connect(url, open_timeout=15, proxy=None) as socket:
             while not stop.is_set():
@@ -155,6 +173,25 @@ class SlackApi:
                     return  # Slack moves us to a fresh connection
                 if kind == "interactive":
                     self._interaction(cast(dict[str, Any], envelope.get("payload") or {}), on_press)
+                elif kind == "events_api" and on_message is not None:
+                    payload = cast(dict[str, Any], envelope.get("payload") or {})
+                    self._dm(cast(dict[str, Any], payload.get("event") or {}), on_message)
+
+    def _dm(self, event: dict[str, Any], on_message: OnMessage) -> None:
+        """A person's DM to the app (never the app's own messages, edits or joins)."""
+        if event.get("type") != "message" or event.get("channel_type") != "im":
+            return
+        if event.get("subtype") or event.get("bot_id") or not event.get("user"):
+            return
+        user = str(event["user"])
+        reply = on_message(user, str(event.get("text") or ""), f"slack:{user}")
+        if reply and event.get("channel"):
+            try:
+                self.call(
+                    "chat.postMessage", channel=str(event["channel"]), text=scrub.scrub(reply)
+                )
+            except ChannelError as error:
+                logger.warning("could not answer a Slack DM: %s", error)
 
     def _interaction(self, payload: dict[str, Any], on_press: OnPress) -> None:
         if payload.get("type") != "block_actions":

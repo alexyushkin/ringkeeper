@@ -3,14 +3,18 @@
 A user message is stored unrouted and the router (in the api service) is
 woken with NOTIFY. Routing writes the router's output onto the message, plus
 a short reply message in the same thread.
+
+A request sent for later (`run_at`) waits: the router leaves it until then, and it can be
+canceled before. One that comes due while Ringkeeper isn't running runs when it starts
+again, unless it's more than LATE past its time: then it's dropped, and the thread says so.
 """
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, cast, select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from ringkeeper import sensitive
@@ -21,10 +25,14 @@ from ringkeeper.services.decisions import MIN_ID_PREFIX
 from ringkeeper.storage import events
 
 MESSAGES_CHANNEL = "ringkeeper_messages"
-SOURCES = frozenset({"cli", "api", "web", "telegram", "pass"})
+SOURCES = frozenset({"cli", "api", "web", "telegram", "pass", "slack", "discord"})
 INPUTS = frozenset({"text", "voice"})  # voice: a transcript, confirmed by the user
 TITLE_CHARS = 80
 MAX_MESSAGE_CHARS = 20_000
+SOONEST = timedelta(minutes=1)  # sooner than this: just send it
+FURTHEST = timedelta(days=90)
+LATE = timedelta(hours=6)  # due longer ago than this when the router gets to it: dropped
+CANCELED = "Canceled. It won't run."
 
 
 def notify_router(session: Session) -> None:
@@ -69,10 +77,12 @@ def post_message(
     input_kind: str = "text",
     origin_chat_id: int | None = None,
     attachments: list[str] | None = None,
+    run_at: datetime | None = None,
 ) -> Message:
     """Store a user message (in a new thread unless one is given) for the router.
 
-    `origin_chat_id`: the Telegram chat it came from; its news goes only there."""
+    `origin_chat_id`: the Telegram chat it came from; its news goes only there. `run_at`:
+    sent for later, the router leaves it until then."""
     body = body.strip()
     if not body:
         raise RuleViolationError("Type a message first.")
@@ -84,6 +94,8 @@ def post_message(
         raise RuleViolationError(f"unknown message source '{source}'")
     if input_kind not in INPUTS:
         raise RuleViolationError(f"unknown message input '{input_kind}'")
+    if run_at is not None:
+        run_at = _when(run_at)
     body = sensitive.mask(body)
     if thread is None:
         title = body.splitlines()[0][:TITLE_CHARS]
@@ -95,12 +107,79 @@ def post_message(
         target.updated_at = datetime.now(UTC)
     message = Message(
         thread_id=target.id, role=MessageRole.USER, author=author, source=source, body=body,
-        input=input_kind, attachments=attachments or [],
+        input=input_kind, attachments=attachments or [], run_at=run_at,
     )  # fmt: skip
     session.add(message)
     session.flush()
     notify_router(session)
     return message
+
+
+def _when(run_at: datetime) -> datetime:
+    if run_at.tzinfo is None:
+        raise RuleViolationError("Give the time with its time zone.")
+    run_at = run_at.astimezone(UTC)
+    now = datetime.now(UTC)
+    if run_at < now + SOONEST:
+        raise RuleViolationError("Choose a time at least a minute from now, or just send it.")
+    if run_at > now + FURTHEST:
+        raise RuleViolationError("Choose a time in the next 90 days.")
+    return run_at
+
+
+def waiting(message: Message, now: datetime | None = None) -> bool:
+    """Sent for later and not yet due, nor canceled, nor routed."""
+    return (
+        message.run_at is not None
+        and message.routed_at is None
+        and message.canceled_at is None
+        and message.run_at > (now or datetime.now(UTC))
+    )
+
+
+def scheduled(session: Session, *, limit: int = 50) -> Sequence[Message]:
+    """Requests sent for later that haven't run, soonest first."""
+    return session.scalars(
+        select(Message)
+        .where(
+            Message.role == MessageRole.USER,
+            Message.run_at.is_not(None),
+            Message.routed_at.is_(None),
+            Message.canceled_at.is_(None),
+        )
+        .order_by(Message.run_at)
+        .limit(limit)
+    ).all()
+
+
+def cancel(session: Session, message_id: uuid.UUID) -> Message:
+    """Stops a request sent for later before it runs."""
+    message = get_message(session, message_id, lock=True)
+    if message.role is not MessageRole.USER or message.run_at is None:
+        raise RuleViolationError("Only a request sent for later can be canceled.")
+    if message.canceled_at is not None:
+        raise RuleViolationError("That request was already canceled.")
+    if message.routed_at is not None:
+        raise RuleViolationError("That request already ran, so it can't be canceled.")
+    message.canceled_at = datetime.now(UTC)
+    add_reply(session, message.thread_id, CANCELED, role=MessageRole.SYSTEM)
+    return message
+
+
+def drop_if_late(session: Session, message: Message, now: datetime | None = None) -> bool:
+    """A request sent for later that's long past its time (Ringkeeper wasn't running then)
+    doesn't run: true when it was dropped."""
+    now = now or datetime.now(UTC)
+    if message.run_at is None or now - message.run_at <= LATE:
+        return False
+    message.canceled_at = now
+    add_reply(
+        session, message.thread_id,
+        "This was due earlier, but Ringkeeper wasn't running then, so it didn't run. Send it "
+        "again if you still want it.",
+        role=MessageRole.SYSTEM,
+    )  # fmt: skip
+    return True
 
 
 def add_reply(
@@ -161,13 +240,17 @@ def thread_messages(session: Session, thread_id: uuid.UUID) -> Sequence[Message]
 
 
 def claim_unrouted(session: Session) -> Message | None:
-    """The oldest user message nobody has routed yet, locked against other routers."""
+    """The oldest user message nobody has routed yet, locked against other routers. One sent
+    for later waits until its time; a canceled one never comes."""
+    now = datetime.now(UTC)
     return session.scalars(
         select(Message)
         .where(
             Message.role == MessageRole.USER,
             Message.routed_at.is_(None),
             Message.route_error.is_(None),
+            Message.canceled_at.is_(None),
+            or_(Message.run_at.is_(None), Message.run_at <= now),
         )
         .order_by(Message.created_at)
         .limit(1)

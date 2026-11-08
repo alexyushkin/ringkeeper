@@ -54,6 +54,15 @@ audit log. Use the service's own hosted page, or a token it issued.
 
 A held action expires after 24 hours if nobody answers.
 
+## Snooze
+
+**Not now?** under an approval snoozes it for an hour, three hours, or until tomorrow at 9
+(only the times before it expires are offered). Until then it isn't in Approvals or its count,
+and nothing notifies you about it. Then it's back, with a fresh notification in the desktop app
+and your channels. Snoozed approvals are listed at the bottom of Approvals; **Wake it now**
+brings one back early. Snoozing is in Activity. The task that's waiting goes on waiting: a snooze
+doesn't approve or deny anything.
+
 J, K, A and D work on the Approvals page, and one action can be trusted for an hour:
 see [Working faster](working-faster.md#approvals-by-keyboard). On a business system or an
 add-on tool, that covers that one action on that connection, not everything it can do.
