@@ -60,9 +60,11 @@ refund them". It becomes a task in the pass's project, and only there, with ever
 has: its own conversation in Ringkeeper, the usual limits and spending cap, approvals for
 changes to production, and the audit log, under the pass's name.
 
-The app waits up to 2 minutes. If the task is done by then, it gets the result. If not, it gets
-the task's link and checks later with `ringkeeper_task_status`. If the task needs your approval
-for a change, the app gets the link to Approvals, as for a change it held itself.
+The app waits up to 50 seconds (Settings > Passes; AI apps commonly give up on a tool after about
+60). If the task is done by then, it gets the result. If not, it gets the task's link and checks
+later with `ringkeeper_task_status`. If the task needs your approval for a change, or the
+client is over its monthly cap, the app gets the link to Approvals, as for a change it held
+itself.
 
 ## When a change waits for approval
 

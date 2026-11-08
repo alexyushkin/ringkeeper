@@ -27,7 +27,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import admin_audit, holds, inbox, passes, tasks, threads
 
 SOURCE = "pass"
-WAIT_SECONDS = 120.0  # how long ringkeeper_ask waits for the task before saying it's running
+MAX_WAIT_SECONDS = 50  # AI apps commonly give up on a tool call after about 60 seconds
 CHECK_SECONDS = 1.0
 RESULT_CHARS = 4000
 OUTCOME_CHARS = 80
@@ -48,6 +48,13 @@ SAYS = {
     "failed": "It didn't finish.",
     "stopped": "It was stopped.",
 }
+
+
+def wait_seconds(session: Session, settings: Settings) -> float:
+    """How long ringkeeper_ask waits: Settings > Passes, at most MAX_WAIT_SECONDS."""
+    from ringkeeper.services.runtime import effective  # noqa: PLC0415
+
+    return float(min(effective(session, settings).pass_ask_wait_seconds, MAX_WAIT_SECONDS))
 
 
 def _outcome(request: str) -> str:

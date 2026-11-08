@@ -63,9 +63,11 @@ def approval(caller: Caller, decision_id: str) -> dict[str, Any]:
         return found
 
 
-def asked(caller: Caller, request: str) -> str:
+def asked(caller: Caller, request: str) -> tuple[str, float]:
+    """The task started, and how long to wait for it."""
     with session_scope() as session:
-        return str(pass_tasks.start(session, get_settings(), caller, request).id)
+        task = pass_tasks.start(session, get_settings(), caller, request)
+        return str(task.id), pass_tasks.wait_seconds(session, get_settings())
 
 
 def task_status(caller: Caller, task_id: str) -> dict[str, Any]:
@@ -74,19 +76,19 @@ def task_status(caller: Caller, task_id: str) -> dict[str, Any]:
 
 
 async def ask_and_wait(caller: Caller, request: str, ctx: Context | None = None) -> dict[str, Any]:
-    """Start the task and wait for it, up to WAIT_SECONDS: its result once it's done, where to
-    decide once it waits on the user, or that it's still running."""
-    task_id = await anyio.to_thread.run_sync(asked, caller, request)
+    """Start the task and wait for it (Settings > Passes, 50 seconds at most): its result once
+    it's done, where to decide once it waits on the user, or that it's still running."""
+    task_id, wait = await anyio.to_thread.run_sync(asked, caller, request)
     started = time.monotonic()
     while True:
         found = await anyio.to_thread.run_sync(task_status, caller, task_id)
         waited = time.monotonic() - started
         if found["status"] != "running":
             return found
-        if waited >= pass_tasks.WAIT_SECONDS:
+        if waited >= wait:
             return {**found, "says": pass_tasks.STILL_RUNNING}
         if ctx is not None:  # so the app knows it's still coming
-            await ctx.report_progress(waited, pass_tasks.WAIT_SECONDS, "Ringkeeper is on it")
+            await ctx.report_progress(waited, wait, "Ringkeeper is on it")
         await anyio.sleep(pass_tasks.CHECK_SECONDS)
 
 
@@ -128,7 +130,7 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
         ctx: Context,
     ) -> dict[str, Any]:
         """Hand Ringkeeper a request to do as a task in this project, with its usual approvals,
-        limits and audit log. Waits up to 2 minutes: returns the result if it's done, the
+        limits and audit log. Waits up to 50 seconds: returns the result if it's done, the
         approval link if it waits on the user, or the task_id to check later with task_status.
         The user sees the request and the task in Ringkeeper."""
         try:

@@ -70,6 +70,7 @@ class RuntimeIn(Input):
     effort_architect: Effort | None = None
     effort_worker: Effort | None = None
     task_budget_usd: Annotated[float, Field(gt=0, le=1000)] | None = None
+    pass_ask_wait_seconds: Annotated[int, Field(ge=5, le=50)] | None = None
     default_max_turns: Annotated[int, Field(ge=1, le=1000)] | None = None
     max_concurrent_workers: Annotated[int, Field(ge=1, le=64)] | None = None
     retention_days: Annotated[int, Field(ge=1, le=3650)] | None = None

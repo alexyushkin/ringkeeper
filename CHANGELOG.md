@@ -11,7 +11,9 @@ publishes it as the release notes and the app shows it with the update.
   of their mail connections: it waits in Approvals until you approve it. Clients & projects
   shows each client's cost this month. See [A client's month](docs/client-month.md).
 - **A monthly cap per client.** Set it on the client's page. Once a month's AI cost reaches it,
-  new tasks and routine runs for that client stop, and say why.
+  a new task or follow-up for that client waits in Approvals: run it anyway this once, raise the
+  cap, or don't run it (both ways of going on are in Activity). Routines skip their runs, and
+  Home says which client's routines are waiting.
 - **Passes: use a project's connections from Claude Desktop, Claude Code or Cursor.** Settings >
   Passes makes a pass for one project. Claude Desktop gets it as an extension file to double-click;
   Claude Code a command; Cursor a few lines of settings. Every call goes through Ringkeeper the same
@@ -20,7 +22,8 @@ publishes it as the release notes and the app shows it with the update.
   Approvals to give you. See [Passes](docs/passes.md).
 - **An app with a pass can hand Ringkeeper a whole request.** Its `ringkeeper_ask` tool starts a
   task in the pass's project, with the usual approvals, limits and audit log, and you see it in
-  Ringkeeper like any other. The app gets the result if it's done within 2 minutes, the task's
+  Ringkeeper like any other. The app gets the result if it's done within 50 seconds (a setting
+  under Settings > Passes, 50 at most), the task's
   link otherwise (and `ringkeeper_task_status` to check later), or the link to Approvals if a
   change waits for you.
 - **Claude Desktop keeps its pass across a Ringkeeper update.** The extension runs Ringkeeper from

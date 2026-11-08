@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ringkeeper import sensitive
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Message, MessageRole, Task, Thread
+from ringkeeper.models import Message, MessageRole, Task, TaskStatus, Thread
 from ringkeeper.services import titles
 from ringkeeper.services.decisions import MIN_ID_PREFIX
 from ringkeeper.storage import events
@@ -127,6 +127,8 @@ ASKS_PROJECT = "Which project is this for?"
 def working_on(session: Session, task: Task) -> str:
     """What a started task is, in the words the thread shows."""
     what = task.outcome or "the task"
+    if task.status is TaskStatus.NEEDS_INPUT:  # over the client's monthly cap: it asks first
+        return f"Waiting for your OK before starting in {titles.of(session, task.project)}: {what}"
     plan = " I'll show you a plan first." if task.phase is not None else ""
     return f"Working on it in {titles.of(session, task.project)}: {what}{plan}"
 

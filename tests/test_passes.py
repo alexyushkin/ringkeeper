@@ -424,7 +424,10 @@ def bundle_has_relay(path: Path) -> bool:
 def quick_asks(monkeypatch: pytest.MonkeyPatch, wait: float = 0.3) -> None:
     from ringkeeper.services import pass_tasks  # noqa: PLC0415
 
-    monkeypatch.setattr(pass_tasks, "WAIT_SECONDS", wait)
+    def waits(*_: object) -> float:
+        return wait
+
+    monkeypatch.setattr(pass_tasks, "wait_seconds", waits)
     monkeypatch.setattr(pass_tasks, "CHECK_SECONDS", 0.05)
     monkeypatch.setenv("RINGKEEPER_MODE", "desktop")  # the links are the app's signed ones
 
@@ -554,3 +557,19 @@ def test_task_status_shows_only_the_pass_s_own_tasks(
         passes.revoke(session, "acme-desktop", by="owner")
     with pytest.raises(Exception, match=r"error response|401"):  # refused at the door
         call(url, token, "ask", {"request": "Count the orders again"}, "ringkeeper")
+
+
+def test_ask_waits_50_seconds_at_most_and_it_s_a_setting(owner: TestClient) -> None:
+    from ringkeeper.services import pass_tasks  # noqa: PLC0415
+
+    def waits() -> float:
+        with session_scope() as session:
+            return pass_tasks.wait_seconds(session, get_settings())
+
+    assert waits() == 50  # AI apps commonly give up on a tool call after about 60 seconds
+    assert owner.patch("/settings", json={"pass_ask_wait_seconds": 20}).status_code == 200
+    assert waits() == 20
+    assert owner.get("/settings").json()["values"]["pass_ask_wait_seconds"] == 20
+    for wrong in (60, 120, 2):
+        assert owner.patch("/settings", json={"pass_ask_wait_seconds": wrong}).status_code == 422
+    assert waits() == 20

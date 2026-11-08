@@ -37,11 +37,14 @@ projects, never another client's.
 On the client's page, Settings > Monthly cap sets the most their tasks may cost in a month, in
 dollars. Once that month's AI cost reaches it:
 
-- New tasks for the client are refused, with the reason, wherever they come from.
-- A routine's run is skipped, and its history says why.
+- A new task for the client, or a follow-up to one, waits for you in Approvals instead of
+  running, wherever it came from. Choose **Run anyway this once**, **Raise the cap** (to more
+  than the client has used this month), or **Don't run it**. Running past the cap and raising it
+  are both in Activity.
+- Routines don't ask: their runs are skipped, their history says why, and Home says which
+  client's routines are waiting.
 - A task that's already running finishes. Its own spending cap still applies.
 
-The cap starts again on the 1st. To go on this month, raise it or clear it. Changes to the cap
-are in Activity.
+The cap starts again on the 1st. Changes to the cap are in Activity.
 
 The month follows this computer's calendar (the server's, for a server install).

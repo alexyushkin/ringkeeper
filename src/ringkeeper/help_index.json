@@ -159,7 +159,7 @@
 "doc": "passes",
 "anchor": "hand-ringkeeper-a-whole-request",
 "title": "Hand Ringkeeper a whole request",
-"text": "Besides using the connections itself, the app can give Ringkeeper a request with `ringkeeper_ask`, as if you'd typed it in Ringkeeper: \"find last week's failed orders and refund them\". It becomes a task in the pass's project, and only there, with everything a task has: its own conversation in Ringkeeper, the usual limits and spending cap, approvals for changes to production, and the audit log, under the pass's name. The app waits up to 2 minutes. If the task is done by then, it gets the result. If not, it gets the task's link and checks later with `ringkeeper_task_status`. If the task needs your approval for a change, the app gets the link to Approvals, as for a change it held itself."
+"text": "Besides using the connections itself, the app can give Ringkeeper a request with `ringkeeper_ask`, as if you'd typed it in Ringkeeper: \"find last week's failed orders and refund them\". It becomes a task in the pass's project, and only there, with everything a task has: its own conversation in Ringkeeper, the usual limits and spending cap, approvals for changes to production, and the audit log, under the pass's name. The app waits up to 50 seconds (Settings > Passes; AI apps commonly give up on a tool after about 60). If the task is done by then, it gets the result. If not, it gets the task's link and checks later with `ringkeeper_task_status`. If the task needs your approval for a change, or the client is over its monthly cap, the app gets the link to Approvals, as for a change it held itself."
 },
 {
 "doc": "passes",
@@ -201,7 +201,7 @@
 "doc": "client-month",
 "anchor": "a-monthly-cap",
 "title": "A monthly cap",
-"text": "On the client's page, Settings > Monthly cap sets the most their tasks may cost in a month, in dollars. Once that month's AI cost reaches it: - New tasks for the client are refused, with the reason, wherever they come from. - A routine's run is skipped, and its history says why. - A task that's already running finishes. Its own spending cap still applies. The cap starts again on the 1st. To go on this month, raise it or clear it. Changes to the cap are in Activity. The month follows this computer's calendar (the server's, for a server install)."
+"text": "On the client's page, Settings > Monthly cap sets the most their tasks may cost in a month, in dollars. Once that month's AI cost reaches it: - A new task for the client, or a follow-up to one, waits for you in Approvals instead of running, wherever it came from. Choose **Run anyway this once**, **Raise the cap** (to more than the client has used this month), or **Don't run it**. Running past the cap and raising it are both in Activity. - Routines don't ask: their runs are skipped, their history says why, and Home says which client's routines are waiting. - A task that's already running finishes. Its own spending cap still applies. The cap starts again on the 1st. Changes to the cap are in Activity. The month follows this computer's calendar (the server's, for a server install)."
 },
 {
 "doc": "notifications",

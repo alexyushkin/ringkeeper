@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
+from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
     AuditEvent,
     AuditOutcome,
@@ -28,9 +29,19 @@ from ringkeeper.models import (
     DecisionKind,
     DecisionStatus,
     InstanceType,
+    Routine,
     TaskStatus,
 )
-from ringkeeper.services import agents, calls, client_month, clients, pdf_text, routines, tasks
+from ringkeeper.services import (
+    agents,
+    calls,
+    client_month,
+    clients,
+    inbox,
+    pdf_text,
+    routines,
+    tasks,
+)
 from ringkeeper.vault import Vault, get_vault
 from tests import test_core_connections, test_web_api
 from tests.helpers import bind, make_instance, make_project
@@ -62,6 +73,7 @@ def ran(
         task.status, task.summary, task.outcome = status, summary or None, what
         task.created_at = datetime.now(UTC) - timedelta(days=days_ago)
         task.sessions[0].cost_usd = cost
+        task.sessions[0].status = status
 
 
 @pytest.fixture
@@ -189,7 +201,33 @@ def test_a_long_report_runs_onto_more_pages() -> None:
     assert "line 119" in reader.pages[-1].extract_text()
 
 
-def test_the_monthly_cap_stops_new_tasks_for_that_client_only(
+def over_cap_question(task_id: str) -> Decision:
+    with session_scope() as session:
+        [asked] = session.scalars(
+            select(Decision).where(Decision.task_id == uuid.UUID(task_id))
+        ).all()
+        session.expunge(asked)
+        return asked
+
+
+def answer(decision: Decision, reply: str) -> None:
+    with session_scope() as session:
+        inbox.answer(session, get_settings(), str(decision.id), inbox.Answer(text=reply),
+                     by="owner", via=inbox.Via.API)  # fmt: skip
+
+
+def new_task(project: str, prompt: str = "One more thing") -> str:
+    with session_scope() as session:
+        return str(tasks.create_task(session, get_settings(), project=project, prompt=prompt).id)
+
+
+def status_of(task_id: str) -> tuple[TaskStatus, list[TaskStatus]]:
+    with session_scope() as session:
+        task = tasks.get_task(session, task_id)
+        return task.status, [s.status for s in task.sessions]
+
+
+def test_over_the_monthly_cap_a_new_task_asks_first(
     two_clients: tuple[str, str], owner: TestClient
 ) -> None:
     gi, acme = two_clients
@@ -203,13 +241,61 @@ def test_the_monthly_cap_stops_new_tasks_for_that_client_only(
     assert listed[gi]["cap_usd"] == 1.0
     assert listed[acme]["cap_usd"] is None
 
-    with session_scope() as session, pytest.raises(client_month.CapReachedError) as reached:
-        tasks.create_task(session, get_settings(), project=SITE, prompt="One more thing")
-    assert f"{GI} has reached its monthly cap: $1.20 of $1.00" in str(reached.value)
-    with session_scope() as session:  # Acme has no cap
-        tasks.create_task(session, get_settings(), project=PORTAL, prompt="Acme's request")
+    # Over the cap, the task waits for the user instead of running (no worker picks it up).
+    first = new_task(SITE)
+    assert status_of(first) == (TaskStatus.NEEDS_INPUT, [TaskStatus.NEEDS_INPUT])
+    asked = over_cap_question(first)
+    assert asked.kind is DecisionKind.QUESTION
+    assert (asked.payload or {})["question"].startswith(
+        f"{GI} is over its monthly cap: $1.20 of $1.00 in "
+    )
+    with session_scope() as session:
+        shown = session.get(Decision, asked.id)
+        assert shown is not None
+        assert inbox.is_approval(shown)  # it's in Approvals
+        assert tasks.claim_next(session) is None
+    assert status_of(new_task(PORTAL))[0] is TaskStatus.QUEUED  # Acme has no cap
 
-    # A routine for the capped client records a skipped run, saying why.
+    answer(asked, "run once")
+    assert status_of(first) == (TaskStatus.QUEUED, [TaskStatus.QUEUED])
+
+    second = new_task(SITE, "And another")
+    with pytest.raises(RuleViolationError, match=r"above what .* has used this month \(\$1\.20\)"):
+        answer(over_cap_question(second), "raise:1.10")
+    answer(over_cap_question(second), "raise:5")
+    assert status_of(second)[0] is TaskStatus.QUEUED
+    assert {c["slug"]: c for c in owner.get("/clients").json()}[gi]["cap_usd"] == 5.0
+    assert status_of(new_task(SITE, "Under the new cap"))[0] is TaskStatus.QUEUED
+
+    owner.put(f"/clients/{gi}/cap", json={"cap_usd": 1.0})
+    third = new_task(SITE, "Not this one")
+    answer(over_cap_question(third), "don't run it")
+    with session_scope() as session:
+        stopped = tasks.get_task(session, third)
+        assert (stopped.status, stopped.error) == (
+            TaskStatus.STOPPED, f"not run: {GI} is over its monthly cap",
+        )  # fmt: skip
+        logged = session.scalars(
+            select(AuditEvent).where(AuditEvent.tool.in_(("client.cap", "client.cap.once")))
+        ).all()
+    said = [(e.tool, (e.reason or "").split(" (by")[0]) for e in logged]
+    assert said == [
+        ("client.cap", f"set {GI}'s monthly cap to $1.00"),
+        (
+            "client.cap.once",
+            f"ran a task for {GI} past its monthly cap, this once ($1.20 of $1.00)",
+        ),
+        ("client.cap", f"raised {GI}'s monthly cap to $5.00 (from $1.00) to run a task"),
+        ("client.cap", f"set {GI}'s monthly cap to $1.00"),
+    ]
+
+
+def test_routines_still_skip_over_the_cap_and_home_says_why(
+    two_clients: tuple[str, str], owner: TestClient
+) -> None:
+    gi, _ = two_clients
+    ran(SHOP, "This month", cost=1.2)
+    owner.put(f"/clients/{gi}/cap", json={"cap_usd": 1.0})
     with session_scope() as session:
         agents.create_agent(session, SITE, agents.AgentIn("checker"))
         data = routines.RoutineIn(
@@ -218,15 +304,17 @@ def test_the_monthly_cap_stops_new_tasks_for_that_client_only(
         routine = routines.create_routine(session, SITE, data)
         started = routines.start_run(session, get_settings(), routine, "manual")
         assert started.run.task_id is None
-        assert "monthly cap" in (started.run.skipped or "")
-
-    assert owner.put(f"/clients/{gi}/cap", json={"cap_usd": None}).status_code == 200
+        assert f"{GI} is over its monthly cap" in (started.run.skipped or "")
+        ident = routine.id
+    assert owner.get("/watching").json()["capped"] == []  # it's paused: nothing waits
     with session_scope() as session:
-        tasks.create_task(session, get_settings(), project=SITE, prompt="One more thing")
-        logged = session.scalars(select(AuditEvent).where(AuditEvent.tool == "client.cap")).all()
-    assert [e.reason.split(" (by")[0] for e in logged if e.reason] == [
-        f"set {GI}'s monthly cap to $1.00", f"removed {GI}'s monthly cap",
-    ]  # fmt: skip
+        found = session.get(Routine, ident)
+        assert found is not None
+        found.paused = False
+    capped = owner.get("/watching").json()["capped"]
+    assert capped == [{"client": gi, "name": GI, "used": 1.2, "cap": 1.0, "routines": 1}]
+    owner.put(f"/clients/{gi}/cap", json={"cap_usd": None})
+    assert owner.get("/watching").json()["capped"] == []
 
 
 SMTP = test_core_connections.SMTP_SECRET
@@ -286,14 +374,43 @@ def test_the_report_is_emailed_only_once_approved(
     assert GI in json.dumps(str(sent))
 
 
-def test_the_cap_is_checked_when_a_task_is_resumed(two_clients: tuple[str, str]) -> None:
+def test_over_the_cap_a_follow_up_asks_first(two_clients: tuple[str, str]) -> None:
     gi, _ = two_clients
     with session_scope() as session:
         task = tasks.create_task(session, get_settings(), project=SITE, prompt="Start")
-        task.status = TaskStatus.SUCCEEDED
+        task.status = task.sessions[0].status = TaskStatus.SUCCEEDED
         task.sessions[0].sdk_session_id = "sdk-1"
         task.sessions[0].cost_usd = 3.0
         ident = str(task.id)
         clients.get(session, gi).monthly_cap_usd = 2.0
-    with session_scope() as session, pytest.raises(client_month.CapReachedError):
+    with session_scope() as session:
         tasks.resume_task(session, get_settings(), ident, "And one more")
+    assert status_of(ident) == (TaskStatus.NEEDS_INPUT, [TaskStatus.SUCCEEDED])
+    asked = over_cap_question(ident)
+    assert "Run this follow-up anyway" in (asked.payload or {})["question"]
+
+    answer(asked, "Run anyway this once")  # as typed in a chat
+    with session_scope() as session:
+        task = tasks.get_task(session, ident)
+        assert [s.prompt for s in task.sessions] == ["Start", "And one more"]
+        assert task.sessions[1].sdk_session_id == "sdk-1"  # it goes on from there
+
+
+def test_ringkeeper_ask_over_the_cap_gives_the_approval_link(
+    two_clients: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ringkeeper.calls import Caller  # noqa: PLC0415
+    from ringkeeper.services import pass_tasks, passes  # noqa: PLC0415
+
+    gi, _ = two_clients
+    monkeypatch.setenv("RINGKEEPER_MODE", "desktop")
+    ran(SHOP, "This month", cost=1.2)
+    with session_scope() as session:
+        clients.get(session, gi).monthly_cap_usd = 1.0
+        passes.create(session, get_vault(), "gi-desktop", SITE)
+    app = Caller(SITE, "pass:gi-desktop", "pass:gi-desktop")
+    with session_scope() as session:
+        task = pass_tasks.start(session, get_settings(), app, "Check the site")
+        found = pass_tasks.status(session, get_settings(), app, str(task.id))
+    assert found["status"] == "held"
+    assert "%2Fapprovals&sig=" in found["open"]
