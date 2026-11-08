@@ -21,6 +21,7 @@ export const LOGO_FILES: Record<string, { dark?: boolean; wide?: boolean; bare?:
   attio: { dark: true },
   aws: { dark: true, wide: true },
   azure: {},
+  calcom: { dark: true, wide: true },
   close: {},
   gohighlevel: { bare: true },
   microsoft: {},

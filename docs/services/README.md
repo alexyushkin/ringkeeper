@@ -15,6 +15,7 @@ One page per kind of connection: where to get its key, what it can do, what wait
 - [Oracle Database](oracle.md)
 - [Clouds: AWS, Azure, Google Cloud and OCI](cloud.md)
 - [ElevenLabs (voice agents, calls and speech)](elevenlabs.md)
+- [Cal.com (bookings and scheduling)](calcom.md)
 - [Developer apps: your own registered apps](developer-apps.md)
 - [Bluesky](bluesky.md)
 - [Facebook Pages, Instagram and Threads](meta.md)

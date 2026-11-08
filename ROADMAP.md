@@ -30,6 +30,7 @@ Prove what Ringkeeper claims before adding more.
 ## After that: integrations
 
 - **Cal.com,** through its official remote MCP server. Bookings are held because they reach people.
+  Done: on main, out with the next release.
 - **Google Docs,** on the Google connection, and **PageSpeed Insights.**
 - **Make,** if its REST API works on the free plan.
 
