@@ -5,10 +5,18 @@ vault (so it isn't written into the app's settings) and the gateway's address fr
 app, then passes every call through to the gateway with that token. It decides nothing: the
 gateway checks each call as it does a task's. Tools are named by service: database_query,
 airtable_list_records, memory_recall, ringkeeper_check_approval.
+
+It exits when Ringkeeper quits, so it never holds the install folder while an update replaces
+it. Claude Desktop's relay (desktop/relay.js) starts it again once Ringkeeper is back.
 """
 
 import asyncio
 import json
+import os
+import sys
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,6 +29,9 @@ from ringkeeper import __version__
 ALWAYS = ("memory", "ringkeeper")  # besides each kind of connection the project has
 LISTS_ALL = "database"  # any service endpoint's list_instances names all of the project's
 NOT_RUNNING = "Ringkeeper isn't running. Start it, then restart this app."
+STOPPED = 75  # Ringkeeper quit or restarted: the relay starts the bridge again when it's back
+WATCH_SECONDS = 2.0
+MISSES = 2  # checks in a row that find it gone
 
 
 class BridgeError(Exception):
@@ -37,6 +48,40 @@ def gateway_of(data_dir: Path) -> str:
     if not isinstance(gateway, str):
         raise BridgeError(f"{NOT_RUNNING} (It may be an older version: update it.)")
     return gateway
+
+
+def still_running(data_dir: Path, gateway: str) -> bool:
+    """The app that wrote desktop.json is still the one this bridge talks to, and answers."""
+    try:
+        info = cast(dict[str, Any], json.loads((data_dir / "desktop.json").read_text("utf-8")))
+    except (OSError, ValueError):
+        return False  # removed when Ringkeeper quits
+    if info.get("gateway") != gateway:
+        return False  # it restarted, on another port
+    import httpx2  # noqa: PLC0415
+
+    try:
+        return httpx2.get(f"{gateway.rstrip('/')}/health", timeout=2).status_code == 200
+    except httpx2.HTTPError:
+        return False
+
+
+def watch(
+    data_dir: Path,
+    gateway: str,
+    *,
+    seconds: float = WATCH_SECONDS,
+    leave: Callable[[int], object] = os._exit,  # the stdio server would block a plain exit
+) -> None:
+    """Leave once Ringkeeper has gone: an update can't replace files a program is running."""
+    misses = 0
+    while True:
+        time.sleep(seconds)
+        misses = 0 if still_running(data_dir, gateway) else misses + 1
+        if misses >= MISSES:
+            print("Ringkeeper: Ringkeeper stopped, so this bridge did too.", file=sys.stderr)
+            leave(STOPPED)
+            return
 
 
 def _transport(gateway: str, token: str, service: str) -> StreamableHttpTransport:
@@ -64,7 +109,8 @@ def build(gateway: str, token: str, kinds: list[str], name: str) -> FastMCP:
         instructions=(
             "One Ringkeeper project's connections. Every call is checked by Ringkeeper. "
             "Changes to production wait for the user's approval in Ringkeeper; "
-            "ringkeeper_check_approval says what became of one."
+            "ringkeeper_check_approval says what became of one. ringkeeper_ask hands Ringkeeper "
+            "a whole request to do as a task in this project; ringkeeper_task_status follows it."
         ),
     )
     for kind in kinds:
@@ -88,4 +134,8 @@ def run(name: str, data_dir: Path, gateway: str | None = None) -> None:
             f"There's no pass named {name} in Ringkeeper. Check its name in Settings > Passes."
         ) from None
     kinds = asyncio.run(services(address, token))
+    if gateway is None:  # the desktop app's: follow it
+        threading.Thread(
+            target=watch, args=(data_dir, address), daemon=True, name="rk-watch"
+        ).start()
     build(address, token, kinds, name).run(show_banner=False)

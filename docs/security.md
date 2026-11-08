@@ -73,6 +73,14 @@ changes held, the call logged and its secrets removed. A pass can't reach the mo
 project or Ringkeeper's settings. The database keeps only a hash of its key, and revoking it stops
 the next call.
 
+With `ringkeeper_ask` the app can also hand Ringkeeper a request. It becomes a task in the pass's
+own project, with the same approvals, limits, spending cap and audit log as one you start, and the
+app can follow only the tasks its pass started.
+
+The bridge runs Ringkeeper's own Python from its install folder. Claude Desktop's extension adds a
+small relay, run on Claude's own Node, that starts the bridge again after Ringkeeper restarts. It
+holds no key and passes calls through unchanged.
+
 The link to Approvals that a held change gives the app is signed, and it works only on this
 computer. It brings Ringkeeper's window up there. (When Ringkeeper runs without its app window, it
 signs the browser that opened it in instead, with a one-time code.) Approving still takes your

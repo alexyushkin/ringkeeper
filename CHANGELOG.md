@@ -11,6 +11,14 @@ publishes it as the release notes and the app shows it with the update.
   way a task's does: only that project's connections, never another client's, changes to production
   held for your approval, and undo for 7 days. When a change is held, the app gets a link to it in
   Approvals to give you. See [Passes](docs/passes.md).
+- **An app with a pass can hand Ringkeeper a whole request.** Its `ringkeeper_ask` tool starts a
+  task in the pass's project, with the usual approvals, limits and audit log, and you see it in
+  Ringkeeper like any other. The app gets the result if it's done within 2 minutes, the task's
+  link otherwise (and `ringkeeper_task_status` to check later), or the link to Approvals if a
+  change waits for you.
+- **Claude Desktop keeps its pass across a Ringkeeper update.** The extension runs Ringkeeper from
+  its install folder, and the bridge stops when Ringkeeper quits, so it doesn't hold up an update.
+  Claude Desktop starts it again once Ringkeeper is back; Claude Code and Cursor reconnect it.
 - **Automation watch.** A routine can start when a client's n8n workflow run fails, a
   Vercel deploy fails, a GitHub check fails or an issue is opened, or a website stops
   answering. It's checked every 5 minutes, reading only, through the project's own

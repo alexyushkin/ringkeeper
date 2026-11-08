@@ -23,7 +23,7 @@ what you add to the app only starts Ringkeeper's bridge on this computer.
 2. Choose the app:
    - **Claude Desktop:** click **Save the extension**. It's saved into your Downloads folder as
      `Ringkeeper-<pass>.mcpb`. Double-click it, and Claude Desktop asks whether to install it.
-     You can also add it from Claude's Customize > Connectors.
+     If double-clicking doesn't open Claude, add the file from Claude's Customize > Connectors.
    - **Claude Code:** run the command in a terminal. It adds the pass for every folder you use
      Claude Code in.
    - **Cursor:** put the JSON in `.cursor/mcp.json` in your home folder, or in one project's
@@ -32,7 +32,11 @@ what you add to the app only starts Ringkeeper's bridge on this computer.
    to be running while you use it.
 
 The app then has tools named by service: `database_query`, `airtable_list_records`,
-`memory_recall`, and so on.
+`memory_recall`, and so on, and Ringkeeper's own: `ringkeeper_ask`, `ringkeeper_task_status`
+and `ringkeeper_check_approval`.
+
+The extension starts Ringkeeper from where it's installed (usually
+`%LOCALAPPDATA%\Programs\Ringkeeper` on Windows), so it keeps working after Ringkeeper updates.
 
 ### Claude Desktop by hand
 
@@ -48,6 +52,18 @@ yourself:
    under `mcpServers`, beside any servers already there.
 4. Start Claude.
 
+## Hand Ringkeeper a whole request
+
+Besides using the connections itself, the app can give Ringkeeper a request with
+`ringkeeper_ask`, as if you'd typed it in Ringkeeper: "find last week's failed orders and
+refund them". It becomes a task in the pass's project, and only there, with everything a task
+has: its own conversation in Ringkeeper, the usual limits and spending cap, approvals for
+changes to production, and the audit log, under the pass's name.
+
+The app waits up to 2 minutes. If the task is done by then, it gets the result. If not, it gets
+the task's link and checks later with `ringkeeper_task_status`. If the task needs your approval
+for a change, the app gets the link to Approvals, as for a change it held itself.
+
 ## When a change waits for approval
 
 The app is told the change is waiting, and gets a link to Ringkeeper's Approvals to give you.
@@ -62,8 +78,17 @@ same link while the change is waiting, and the result once it ran.
 **Revoke** stops it: the app's next call is refused, and the refusal is in Activity. **Remove**
 deletes a revoked pass and its key. What it did stays in Activity.
 
-**The app says Ringkeeper isn't running?** Start Ringkeeper, then restart the app: it starts
-the bridge only when it opens.
+## When Ringkeeper quits, restarts or updates
+
+The bridge stops when Ringkeeper does, so an update can replace Ringkeeper's files.
+
+- **Claude Desktop** starts it again by itself once Ringkeeper is back. In the meantime it's told
+  Ringkeeper isn't running and to try again in a minute.
+- **Claude Code:** run `/mcp` and reconnect the pass.
+- **Cursor:** turn the pass off and on again in Cursor's MCP settings.
+
+**The app says Ringkeeper isn't running?** Start Ringkeeper. If the app was opened before
+Ringkeeper, restart the app: it starts the bridge when it opens.
 
 **It says there's no pass by that name?** It was removed, or the name in the app's settings is
 different from the one in Settings > Passes.

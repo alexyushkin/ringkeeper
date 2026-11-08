@@ -42,3 +42,4 @@ if you'd use one of these, and say what you'd ask it to do.
 - Mailchimp, Klaviyo and Brevo: sending a campaign needs the name typed
 - ClickUp and Asana
 - WhatsApp through the existing Twilio connection: every message held
+- Passes for a server install, so an AI app on another computer reaches it over HTTPS

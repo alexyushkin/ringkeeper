@@ -12,11 +12,14 @@ used to call anything. Revoking a pass stops it on its next call.
 import hashlib
 import io
 import json
+import os
 import re
 import secrets
 import sys
 import zipfile
 from datetime import UTC, datetime
+from importlib import resources
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -128,20 +131,36 @@ def server_name(name: str) -> str:
     return f"ringkeeper-{name}"
 
 
+def python() -> str:
+    """The Python that runs Ringkeeper. The installed app's is in its install folder, the one
+    the app starts its backend with (shell/src/backend.rs): python\\python.exe on Windows,
+    python/bin/python3 on a Mac. An update puts the new version at that same path. A
+    developer's copy, run from its own virtual environment, gives that environment's."""
+    bundled = Path(sys.prefix) / ("python.exe" if sys.platform == "win32" else "bin/python3")
+    return str(bundled) if bundled.is_file() else sys.executable
+
+
 def launch(settings: Settings, name: str) -> dict[str, Any]:
-    """How an AI app on this computer starts the pass: this Python, Ringkeeper's bridge, and
+    """How an AI app on this computer starts the pass: Ringkeeper's Python, its bridge, and
     this install's data folder (and keychain name, when it isn't the usual one). No token:
     the bridge reads it from the vault."""
     env: dict[str, str] = {}
     if settings.keychain_service != Settings.model_fields["keychain_service"].default:
         env["RINGKEEPER_KEYCHAIN_SERVICE"] = settings.keychain_service
+    if os.environ.get("RINGKEEPER_ENV_FILE") == "":  # as the app runs it: no .env from the app
+        env["RINGKEEPER_ENV_FILE"] = ""
     args = ["-m", "ringkeeper", "mcp", "--pass", name, "--data-dir", str(settings.data_dir)]
-    return {"command": sys.executable, "args": args, "env": env}
+    return {"command": python(), "args": args, "env": env}
+
+
+RELAY = "server/relay.js"
 
 
 def extension(settings: Settings, name: str, project_title: str) -> bytes:
-    """The pass as a Claude Desktop extension (.mcpb): opening it installs it. It starts the
-    same bridge as the other apps, with this install's data folder; there's no key in it."""
+    """The pass as a Claude Desktop extension (.mcpb): opening it installs it. Claude runs its
+    relay on its own Node, and the relay starts the same bridge as the other apps from
+    Ringkeeper's install folder, again after an update. There's no key in it."""
+    started = launch(settings, name)
     manifest = {
         "manifest_version": "0.3",
         "name": server_name(name),
@@ -153,17 +172,21 @@ def extension(settings: Settings, name: str, project_title: str) -> bytes:
         ),
         "author": {"name": "Ringkeeper"},
         "server": {
-            "type": "python",
-            "entry_point": "server/main.py",
-            "mcp_config": launch(settings, name),
+            "type": "node",
+            "entry_point": RELAY,
+            "mcp_config": {
+                "command": "node",
+                "args": [f"${{__dirname}}/{RELAY}", started["command"], *started["args"]],
+                "env": started["env"],
+            },
         },
         "compatibility": {"platforms": ["win32", "darwin"]},
     }
     blob = io.BytesIO()
     with zipfile.ZipFile(blob, "w", zipfile.ZIP_DEFLATED) as bundle:
         bundle.writestr("manifest.json", json.dumps(manifest, indent=2))
-        # Not run: mcp_config starts Ringkeeper's own bridge, from Ringkeeper's install.
-        bundle.writestr("server/main.py", "# Ringkeeper's bridge is started by mcp_config.\n")
+        relay = resources.files("ringkeeper.desktop").joinpath("relay.js").read_text("utf-8")
+        bundle.writestr(RELAY, relay)
     return blob.getvalue()
 
 
