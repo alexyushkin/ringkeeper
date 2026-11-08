@@ -52,6 +52,8 @@ QUESTIONS = [
     ("How do I trust an action for an hour?", "Trust an action for an hour"),
     ("Where do I see what a task changed?", "Where do I see what a task changed?"),
     ("How do I move to a new computer?", "How do I move to a new computer?"),
+    ("How do I import a recipe?", "Add one"),
+    ("How do I export an agent as a recipe?", "Share your own"),
 ]
 
 # Features that don't exist: answered without a model, so nothing can be made up.

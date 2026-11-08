@@ -1,0 +1,23 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Inbox triage",
+  "description": "When new email arrives in the Gmail account, sorts what needs a reply from what doesn't, and drafts replies for the urgent ones.",
+  "agent": {
+    "name": "inbox-helper",
+    "instructions": "You triage this client's inbox. For each new email, say whether it needs a reply, how soon, and why. For the urgent ones, draft a short reply as a Gmail draft. Send nothing and delete nothing.",
+    "needs": [
+      "google"
+    ]
+  },
+  "routines": [
+    {
+      "name": "When new email arrives",
+      "prompt": "New email: {{event}}. Triage it, and draft a reply if it's urgent.",
+      "trigger": "event",
+      "event": {
+        "source": "gmail"
+      },
+      "max_runs_per_day": 40
+    }
+  ]
+}

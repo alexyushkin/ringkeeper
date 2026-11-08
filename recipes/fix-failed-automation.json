@@ -1,0 +1,23 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Fix a failed automation",
+  "description": "When an n8n workflow run fails, finds out why and proposes a fix for your approval.",
+  "agent": {
+    "name": "automation-fixer",
+    "instructions": "You look after this client's n8n workflows. When a run fails, read the execution and the workflow, explain what went wrong in plain words, and propose the smallest fix. Changes to production wait for approval. Never re-run a step that sends messages or charges money.",
+    "needs": [
+      "n8n"
+    ]
+  },
+  "routines": [
+    {
+      "name": "When an n8n run fails",
+      "prompt": "Something failed: {{event.what}} {{event.link}}\n\nFind out why and say what went wrong in plain words. If there's a fix, make it; changes to production wait for my approval.",
+      "trigger": "event",
+      "event": {
+        "source": "n8n"
+      },
+      "max_runs_per_day": 10
+    }
+  ]
+}

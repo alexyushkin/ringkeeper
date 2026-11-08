@@ -1,0 +1,23 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "New Airtable record check",
+  "description": "When a record is added to an Airtable table, checks it for missing or odd fields and notes what to fix.",
+  "agent": {
+    "name": "record-checker",
+    "instructions": "You check new records in this client's Airtable. Look for missing required fields, duplicates and values that look wrong, and write a short note on what to fix. Change records only when asked; changes wait for approval.",
+    "needs": [
+      "airtable"
+    ]
+  },
+  "routines": [
+    {
+      "name": "When a record is added",
+      "prompt": "A new record: {{event}}. Check it and note anything to fix.",
+      "trigger": "event",
+      "event": {
+        "source": "airtable"
+      },
+      "max_runs_per_day": 50
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Failed GitHub check",
+  "description": "When a check fails on the repository, finds the failing test or step and suggests a fix.",
+  "agent": {
+    "name": "ci-checker",
+    "instructions": "You look at failed GitHub checks for this client. Find the failing step and its error, explain it plainly, and suggest a fix. Open a pull request only if asked; never push to the default branch.",
+    "needs": [
+      "github"
+    ]
+  },
+  "routines": [
+    {
+      "name": "When a check fails",
+      "prompt": "A check failed: {{event.what}} {{event.link}}. Find the failing step and suggest a fix.",
+      "trigger": "event",
+      "event": {
+        "source": "github",
+        "watch": "checks"
+      }
+    }
+  ]
+}

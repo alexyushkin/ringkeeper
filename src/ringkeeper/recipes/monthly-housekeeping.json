@@ -1,0 +1,22 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Monthly housekeeping",
+  "description": "On the first of the month, looks for stale records, unused automations and expiring keys, and lists what to tidy up.",
+  "agent": {
+    "name": "housekeeper",
+    "instructions": "You do monthly housekeeping for this client: stale or duplicate records, automations that haven't run, keys or certificates that expire soon, and anything else worth tidying. List each with where it is and what to do. Read only: change nothing, send nothing.",
+    "needs": []
+  },
+  "routines": [
+    {
+      "name": "First of the month",
+      "prompt": "Do this month's housekeeping ({{today}}) and list what to tidy up.",
+      "trigger": "schedule",
+      "schedule": {
+        "every": "month",
+        "day": 1,
+        "time": "09:00"
+      }
+    }
+  ]
+}

@@ -266,6 +266,11 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
           </Button>
         ) : null}
         {existing ? (
+          <a href={`/bff/projects/${project}/agents/${existing.name}/recipe`} download className="inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 text-sm font-medium" title="The agent and its routines as one file, without keys or connection names">
+            Export as recipe
+          </a>
+        ) : null}
+        {existing ? (
           <ConfirmButton kind="secondary" question={existing.routines ? `Remove ${existing.name}? Its ${existing.routines} routine(s) go with it.` : `Remove ${existing.name}?`} confirm={`Remove ${existing.name}`} onConfirm={remove}>
             Remove
           </ConfirmButton>

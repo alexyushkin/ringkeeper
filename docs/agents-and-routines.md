@@ -36,7 +36,8 @@ minutes, a dollar cap with an API key) and runs per day keep it in check. Pause
 one routine, a project's, or all of them (also from the tray).
 
 Templates to start from: fix a failed automation, daily digest, new-lead follow-up
-draft, weekly report, data sync check.
+draft, weekly report, data sync check. Below them are [recipes](recipes.md): an agent with its
+routines, from the starters, a file or a link.
 
 ## Automation watch
 

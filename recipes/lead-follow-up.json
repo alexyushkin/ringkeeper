@@ -1,0 +1,21 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "New-lead follow-up draft",
+  "description": "When a form sends a new lead to the routine's webhook, drafts a short follow-up email for your review.",
+  "agent": {
+    "name": "lead-follow-up",
+    "instructions": "You draft first replies to new leads for this client: short, warm, specific to what they asked, with one clear next step. Save it as a draft; never send it yourself.",
+    "needs": []
+  },
+  "routines": [
+    {
+      "name": "When a lead arrives",
+      "prompt": "A new lead arrived: {{event}}. Draft a short follow-up email for my review.",
+      "trigger": "event",
+      "event": {
+        "source": "webhook"
+      },
+      "max_runs_per_day": 50
+    }
+  ]
+}

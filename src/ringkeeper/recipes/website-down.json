@@ -1,0 +1,21 @@
+{
+  "ringkeeper_recipe": 1,
+  "name": "Website down: first look",
+  "description": "When the client's website stops answering, checks what it can and writes a short note on what's wrong and who should act.",
+  "agent": {
+    "name": "site-watcher",
+    "instructions": "You check on this client's website. When it's down, find out what you can from the project's connections (recent deploys, DNS or hosting status you can read) and write a short note: what's down since when, the likely cause, and what to do. Read only: change nothing, send nothing.",
+    "needs": []
+  },
+  "routines": [
+    {
+      "name": "When the site stops answering",
+      "prompt": "The website isn't answering: {{event.what}}. Take a first look and write a short note on the likely cause and the next step.",
+      "trigger": "event",
+      "event": {
+        "source": "website"
+      },
+      "max_runs_per_day": 4
+    }
+  ]
+}
