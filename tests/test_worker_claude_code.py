@@ -1,6 +1,7 @@
 """The worker image fetches Claude Code on first start instead of shipping it."""
 
 import base64
+import gzip
 import hashlib
 import io
 import json
@@ -20,12 +21,13 @@ PROGRAM = b"#!/bin/sh\necho 'the real one'\n"
 
 def _package(program: bytes = PROGRAM) -> bytes:
     out = io.BytesIO()
-    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+    with tarfile.open(fileobj=out, mode="w") as tar:
         for name, data in (("package/package.json", b"{}"), ("package/claude", program)):
             info = tarfile.TarInfo(name)
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
-    return out.getvalue()
+    # A fixed time in the gzip header, so two calls a second apart give the same bytes.
+    return gzip.compress(out.getvalue(), mtime=0)
 
 
 def _integrity(data: bytes) -> str:
