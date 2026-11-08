@@ -32,3 +32,5 @@ Thumbs.db
 .desktop-data/
 # Sandbox secrets for the self-test
 scenarios.toml
+# Launch drafts, kept local
+docs/launch/

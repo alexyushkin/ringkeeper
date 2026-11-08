@@ -1010,7 +1010,7 @@ Releases, signing and the release checklist: [docs/RELEASING.md](RELEASING.md),
 
 ### Recording the demo again
 
-The README's GIF, the 90-second video and the three clips come from `scripts/demo/`. After a UI
+The README's GIF, the 1½-minute video and the three clips come from `scripts/demo/`. After a UI
 change, build the web app, then run it from a scratch install, as for `ringkeeper scenarios run`:
 
 ```
