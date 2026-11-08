@@ -12,6 +12,7 @@ from ringkeeper import __version__
 from ringkeeper.api import (
     about_routes,
     channels_routes,
+    client_month_routes,
     convenience_routes,
     desktop_routes,
     developer_routes,
@@ -189,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(remote_routes.callback)
     app.include_router(developer_routes.router)
     app.include_router(passes_routes.router)
+    app.include_router(client_month_routes.router)
     app.include_router(google_routes.router)
     app.include_router(google_routes.rules_router)
     app.include_router(routines_routes.router)

@@ -3,6 +3,7 @@
 import Link from "@/components/link";
 import { useState } from "react";
 
+import { money } from "@/components/client-month";
 import { Alert, Badge, Button, Card, Empty, Field, LinkButton, Loading, PageHeader } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { AUTONOMY } from "@/lib/client/words";
@@ -36,6 +37,11 @@ export default function ProjectsPage() {
           <section key={client.slug} className="mb-6">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-semibold text-muted">{client.name}</h2>
+              {client.month_usd || client.cap_usd ? (
+                <Link href={`${clientHref(client.slug)}#month`} className="text-xs text-muted hover:text-accent">
+                  {money(client.month_usd ?? 0)} this month{client.cap_usd ? ` of ${money(client.cap_usd)}` : ""}
+                </Link>
+              ) : null}
               <Link href={clientHref(client.slug)} className="ml-auto text-sm text-accent">
                 {client.connections === 1 ? "1 connection" : `${client.connections} connections`} ›
               </Link>

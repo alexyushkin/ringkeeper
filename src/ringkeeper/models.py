@@ -248,6 +248,8 @@ class Client(Base):
     slug: Mapped[str] = mapped_column(String(63), primary_key=True)
     name: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
+    # New tasks stop once the month's AI cost reaches it (services.client_month).
+    monthly_cap_usd: Mapped[float | None] = mapped_column(Numeric(10, 2, asdecimal=False))
 
 
 class Agent(TimestampMixin, Base):
