@@ -53,6 +53,7 @@ from ringkeeper.router.schema import (
 )
 from ringkeeper.services import examples, inbox, mentions, tasks, threads, titles
 from ringkeeper.services import help as help_answers
+from ringkeeper.services.client_month import CapReachedError
 from ringkeeper.services.runtime import current_settings
 
 logger = logging.getLogger(__name__)
@@ -309,9 +310,9 @@ def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
             if not isinstance(error, RingkeeperError):
                 logger.exception("routing message %s failed", message.id)
             threads.mark_routed(session, message, None, error=str(error) or type(error).__name__)
-            threads.add_reply(
-                session, message.thread_id, f"Routing failed: {error}", role=MessageRole.SYSTEM
-            )
+            # A client's monthly cap is a reason, not a failure: say it as it is.
+            said = str(error) if isinstance(error, CapReachedError) else f"Routing failed: {error}"
+            threads.add_reply(session, message.thread_id, said, role=MessageRole.SYSTEM)
         return message.id
 
 

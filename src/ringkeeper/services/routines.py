@@ -33,7 +33,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import AuthMode, Project, Routine, RoutineRun, Task
 from ringkeeper.schedules import catch_up, describe, next_after, parse
-from ringkeeper.services import agents, paging, projects, routine_events, tasks
+from ringkeeper.services import agents, client_month, paging, projects, routine_events, tasks
 from ringkeeper.services.runtime import effective
 
 TRIGGERS = ("schedule", "event", "manual")
@@ -369,6 +369,11 @@ def start_run(
         return _record(session, run)
     current = effective(session, settings)
     budget = routine.budget_usd if current.claude_auth_mode is AuthMode.API_KEY else None
+    try:
+        client_month.check_cap(session, routine.project.name, now)
+    except client_month.CapReachedError as reached:
+        run.skipped = str(reached)
+        return _record(session, run)
     task = tasks.create_task(
         session, settings, project=routine.project.name,
         prompt=render(routine, now=now, event=event, missed=missed),

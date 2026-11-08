@@ -42,7 +42,7 @@ from ringkeeper.api.supervisor import Supervisor
 from ringkeeper.claude_auth import ClaudeAuthError, credential_ref
 from ringkeeper.config import get_settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
-from ringkeeper.models import AuthMode, Env, Instance, InstanceType, ProjectInstance
+from ringkeeper.models import AuthMode, Client, Env, Instance, InstanceType, ProjectInstance
 from ringkeeper.schemas import (
     BindingIn,
     CleanList,
@@ -62,6 +62,7 @@ from ringkeeper.services import (
     admin_audit,
     bindings,
     claude_place,
+    client_month,
     clients,
     google_oauth,
     instances,
@@ -472,6 +473,20 @@ class ClientOut(BaseModel):
     name: str
     projects: int = 0
     connections: int = 0
+    month_usd: float = 0.0  # AI cost of this month's tasks (services.client_month)
+    cap_usd: float | None = None
+
+
+def _with_month(session: Session, listed: list[clients.Listed]) -> list[ClientOut]:
+    now = client_month.local_now()
+    spent = client_month.spend_by_client(session, now.year, now.month)
+    caps = dict(session.execute(select(Client.slug, Client.monthly_cap_usd)).tuples().all())
+    return [
+        ClientOut(
+            **c.__dict__, month_usd=round(spent.get(c.slug, 0.0), 4), cap_usd=caps.get(c.slug)
+        )
+        for c in listed
+    ]
 
 
 class MoveIn(Input):
@@ -484,13 +499,13 @@ def _client_out(session: Session, slug: str) -> ClientOut:
         raise HTTPException(
             404, detail="That client isn't here any more. Go back to Clients & projects."
         )
-    return ClientOut(**found.__dict__)
+    return _with_month(session, [found])[0]
 
 
 @router.get("/clients")
 def list_clients(session: SessionDep) -> list[ClientOut]:
     """Every client, with or without projects and connections."""
-    return [ClientOut(**c.__dict__) for c in clients.list_clients(session)]
+    return _with_month(session, clients.list_clients(session))
 
 
 @router.post("/clients", status_code=201)

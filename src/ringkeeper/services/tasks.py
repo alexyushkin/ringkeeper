@@ -35,7 +35,7 @@ from ringkeeper.models import (
     Thread,
     WorkerSession,
 )
-from ringkeeper.services import attachments, paging, projects, revocations
+from ringkeeper.services import attachments, client_month, paging, projects, revocations
 from ringkeeper.services.architect import brief
 from ringkeeper.services.decisions import MIN_ID_PREFIX, TASKS_CHANNEL, current_user
 from ringkeeper.services.runtime import effective as effective_settings
@@ -128,6 +128,7 @@ def create_task(
     record = projects.get_project(session, project)
     if not prompt.strip():
         raise RuleViolationError("Type what the task should do first.")
+    client_month.check_cap(session, record.name)  # the client's monthly cap, if they have one
     prompt += _attached(session, settings, record, message_id)
     mode = settings.claude_auth_mode
     if budget_usd is not None and mode is not AuthMode.API_KEY:
@@ -346,6 +347,7 @@ def resume_task(session: Session, settings: Settings, ident: str, prompt: str) -
         )
     if not prompt.strip():
         raise RuleViolationError("Type your follow-up first.")
+    client_month.check_cap(session, task.project)
     return add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)
 
 

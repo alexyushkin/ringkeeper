@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A client's month.** Each client's page has a This month tab: tasks and how they ended,
+  changes made and approved, refused calls, and the AI cost, for any month. Download it as a PDF
+  or Markdown report to send the client, or the tasks as CSV. Or draft it as an email from one
+  of their mail connections: it waits in Approvals until you approve it. Clients & projects
+  shows each client's cost this month. See [A client's month](docs/client-month.md).
+- **A monthly cap per client.** Set it on the client's page. Once a month's AI cost reaches it,
+  new tasks and routine runs for that client stop, and say why.
 - **Passes: use a project's connections from Claude Desktop, Claude Code or Cursor.** Settings >
   Passes makes a pass for one project. Claude Desktop gets it as an extension file to double-click;
   Claude Code a command; Cursor a few lines of settings. Every call goes through Ringkeeper the same

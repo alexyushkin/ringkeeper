@@ -8,11 +8,12 @@ import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { connectionTitle } from "@/components/connection-form";
 import { ProjectForm } from "@/components/forms";
+import { ClientMonth, MonthlyCap, money } from "@/components/client-month";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
 import { Alert, Badge, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
-import { clientName, projectName, useScope } from "@/lib/client/scope";
+import { clientName, projectName, sameClient, useScope } from "@/lib/client/scope";
 import { useRouter } from "next/navigation";
 
 /** One client: their projects and their connection library. A connection is added
@@ -20,6 +21,8 @@ import { useRouter } from "next/navigation";
 export function ClientView({ name }: { name: string }) {
   const library = useLibrary(name);
   const display = clientName(name);
+  const scope = useScope();
+  const client = scope.clients.find((c) => sameClient(c.slug, name));
   const tasks = useTaskSummary({ client: name });
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState<string | null>(null);
@@ -122,6 +125,7 @@ export function ClientView({ name }: { name: string }) {
         </Section>
       ),
     },
+    { key: "month", label: "This month", content: () => <ClientMonth slug={name} /> },
     { key: "tasks", label: "Tasks", count: tasks.count, content: () => <ScopedTasks client={name} /> },
     {
       key: "settings",
@@ -130,6 +134,9 @@ export function ClientView({ name }: { name: string }) {
         <>
           <Section id="new-project" title={`Add a project for ${display}`} defaultOpen={!library.projects.length}>
             <ProjectForm client={name} onSaved={() => library.reload()} />
+          </Section>
+          <Section id="monthly-cap" title="Monthly cap" summary={client?.cap_usd ? money(client.cap_usd) : "none"} defaultOpen={false}>
+            <MonthlyCap slug={name} name={display} cap={client?.cap_usd ?? null} onSaved={scope.reloadClients} />
           </Section>
           <Section id="client-name" title="Name" summary={display} defaultOpen={false}>
             <ClientSettings slug={name} name={display} hasWork={Boolean(library.projects.length || library.connections.length)} />
@@ -149,6 +156,7 @@ export function ClientView({ name }: { name: string }) {
         {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {everything.length} connection{everything.length === 1 ? "" : "s"}
         {production ? ` (${production} production)` : ""}
         {tasks.running ? ` · ${tasks.running} running` : ""}
+        {client?.month_usd ? ` · ${money(client.month_usd)} this month${client.cap_usd ? ` of ${money(client.cap_usd)}` : ""}` : ""}
       </p>
       <Tabs id={`client-${name}`} tabs={tabs} />
     </>

@@ -25,6 +25,9 @@ export interface Client {
   name: string;
   projects: number;
   connections: number;
+  /** AI cost of this month's tasks, and the monthly cap (services.client_month). */
+  month_usd?: number;
+  cap_usd?: number | null;
 }
 
 /** A project as the switcher and the names need it. */

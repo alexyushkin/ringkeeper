@@ -72,5 +72,5 @@ then Help › Report a problem in the app.
 - **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles.
 - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser.
 - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages.
-- **Billing:** no invoices, time tracking or client billing.
-- **Exporting tasks to spreadsheets:** there's no export of tasks to Excel. The Activity page can download its log as CSV, and a backup is a whole copy, for restoring.
+- **Billing:** no invoices or time tracking. A client's month shows what their tasks cost and gives a report to send them ([A client's month](client-month.md)), but billing them is up to you.
+- **Exporting everything to spreadsheets:** a client's month downloads its tasks as CSV, and the Activity page its log. There's no export of all tasks at once, and a backup is a whole copy, for restoring.
