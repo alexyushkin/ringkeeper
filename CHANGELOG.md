@@ -9,6 +9,11 @@ publishes it as the release notes and the app shows it with the update.
   server. Reading runs. Bookings and every other change wait for your approval each time, and
   deleting an event type or a schedule needs the name typed. A project can be kept to one team.
   See [Cal.com](docs/services/calcom.md).
+- **Shared recipes** are published in
+  [ringkeeper-recipes](https://github.com/alexyushkin/ringkeeper-recipes). Import from a link
+  shows an example from there, and links to it.
+- **Fixed:** on Routines, a project with no agents yet now offers the recipes too, not only
+  Create an agent.
 
 ## 0.1.0-beta.30 (2026-11-08)
 

@@ -16,7 +16,9 @@ On a project's Routines, **New routine** shows the routine templates and, below 
 - **The starters:** 13 common jobs, from fixing a failed n8n run to a weekly client report, or
   acting on an email you forward to yourself.
 - **Import a recipe from a file or a link:** a `.json` file, or an https link to one. A GitHub
-  page for a file works too.
+  page for a file works too, like
+  `https://github.com/alexyushkin/ringkeeper-recipes/blob/main/daily-digest.json`. Shared
+  recipes are in [ringkeeper-recipes](https://github.com/alexyushkin/ringkeeper-recipes).
 
 Before anything is added you see the whole recipe: the agent's instructions, each routine with
 its prompt and when it runs, and what it needs:
@@ -52,5 +54,6 @@ one, since a search can name a client.
 ## The file
 
 A recipe is JSON with `"ringkeeper_recipe": 1`, its version. A later Ringkeeper reads older
-versions; an older one says to update before adding a newer one. The starters are in the
-[recipes](https://github.com/alexyushkin/ringkeeper/tree/main/recipes) folder.
+versions; an older one says to update before adding a newer one. The starters are published in
+[ringkeeper-recipes](https://github.com/alexyushkin/ringkeeper-recipes), and kept the same as
+this repository's [recipes](https://github.com/alexyushkin/ringkeeper/tree/main/recipes) folder.
