@@ -128,7 +128,6 @@ def create_task(
     record = projects.get_project(session, project)
     if not prompt.strip():
         raise RuleViolationError("Type what the task should do first.")
-    client_month.check_cap(session, record.name)  # the client's monthly cap, if they have one
     prompt += _attached(session, settings, record, message_id)
     mode = settings.claude_auth_mode
     if budget_usd is not None and mode is not AuthMode.API_KEY:
@@ -188,7 +187,9 @@ def create_task(
     ]
     session.add_all(task.sessions)
     session.flush()
-    notify(session)
+    # Over the client's monthly cap it waits for the user: run it this once, or raise the cap.
+    if not client_month.ask_over_cap(session, settings, task):
+        notify(session)
     return task
 
 
@@ -347,7 +348,8 @@ def resume_task(session: Session, settings: Settings, ident: str, prompt: str) -
         )
     if not prompt.strip():
         raise RuleViolationError("Type your follow-up first.")
-    client_month.check_cap(session, task.project)
+    if client_month.ask_over_cap(session, settings, task, follow_up=prompt, role=role.value):
+        return latest_session(task)  # the follow-up waits for the user's answer
     return add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)
 
 

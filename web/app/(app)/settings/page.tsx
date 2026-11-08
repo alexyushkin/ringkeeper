@@ -47,6 +47,7 @@ interface Settings {
     effort_worker: string;
     default_max_turns: number;
     task_budget_usd: number;
+    pass_ask_wait_seconds: number;
     max_concurrent_workers: number;
     retention_days: number;
     digest_enabled: boolean;
@@ -155,7 +156,21 @@ export default function SettingsPage() {
               </div>
             ),
           },
-          { key: "passes", label: "Passes", content: () => <Passes /> },
+          {
+            key: "passes",
+            label: "Passes",
+            content: () => (
+              <div className="space-y-4">
+                <Passes />
+                <NumberSetting
+                  label="How long an app waits for ringkeeper_ask (seconds)"
+                  value={v.pass_ask_wait_seconds}
+                  onSave={(n) => change({ pass_ask_wait_seconds: n })}
+                  hint="5 to 50. After that the app gets the task's link and checks back later; most AI apps give up on a tool after about 60 seconds."
+                />
+              </div>
+            ),
+          },
         ]
       : []),
     {

@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # Each task may spend this much (API key mode); reaching it pauses the task and
     # asks whether to give it this much more.
     task_budget_usd: float = 1.0
+    # How long ringkeeper_ask waits for its task before saying it's still running. AI apps
+    # commonly give up on a tool call after about 60 seconds, so 50 is also the most.
+    pass_ask_wait_seconds: int = 50
     default_max_runtime_seconds: int = 30 * 60
     # Relative workspace_path values resolve against this, as the Docker host sees it.
     workspaces_root: str | None = None

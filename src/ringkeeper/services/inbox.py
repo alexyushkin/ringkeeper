@@ -48,7 +48,16 @@ from ringkeeper.models import (
 )
 from ringkeeper.names import slug
 from ringkeeper.scrub import scrub, scrub_obj
-from ringkeeper.services import decisions, examples, paging, projects, tasks, threads, titles
+from ringkeeper.services import (
+    client_month,
+    decisions,
+    examples,
+    paging,
+    projects,
+    tasks,
+    threads,
+    titles,
+)
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
 from ringkeeper.services.decisions import expire_stale, get_decision, notify_new
@@ -148,7 +157,10 @@ def _approvals() -> ColumnElement[bool]:
         Decision.kind.in_((DecisionKind.APPROVE, DecisionKind.PLAN)),
         and_(
             Decision.kind == DecisionKind.QUESTION,
-            Decision.payload["budget"].as_string().is_not(None),
+            or_(
+                Decision.payload["budget"].as_string().is_not(None),
+                Decision.payload["client_cap"].as_string().is_not(None),
+            ),
         ),
     )
 
@@ -201,7 +213,9 @@ def is_approval(decision: Decision) -> bool:
     conversation, never in Approvals, and not counted in its badge."""
     if decision.kind in (DecisionKind.APPROVE, DecisionKind.PLAN):
         return True
-    return decision.kind is DecisionKind.QUESTION and bool((decision.payload or {}).get("budget"))
+    payload = decision.payload or {}
+    asks_money = bool(payload.get("budget") or payload.get("client_cap"))
+    return decision.kind is DecisionKind.QUESTION and asks_money
 
 
 def quick_approval(decision: Decision) -> bool:
@@ -367,6 +381,9 @@ def _answer_question(
     payload = decision.payload or {}
     if payload.get("budget"):
         _answer_cap(session, settings, task, payload, reply, by)
+        return
+    if payload.get("client_cap"):
+        client_month.answer_over_cap(session, settings, task, payload, reply, by)
         return
     if payload.get("escalation"):
         # The architect loop hit its review cap: the answer goes to the architect,

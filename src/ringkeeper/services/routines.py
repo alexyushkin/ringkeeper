@@ -160,7 +160,8 @@ def watching(
     session: Session, project: str | None = None, client: str | None = None
 ) -> dict[str, Any]:
     """Home's Automation watch line: what's watched, the latest problem it found, and any
-    watch that can't look right now."""
+    watch that can't look right now. And clients over their monthly cap, whose routines
+    skip their runs until the cap is raised or the month ends."""
     watched = [
         r for r in list_routines(session, project, client)
         if r.trigger == "event" and _source(r.event) in WATCHED and not r.paused
@@ -178,7 +179,13 @@ def watching(
             for r in watched
             if (r.state or {}).get("error")
         ],
-    }
+        "capped": [
+            {"client": h.client, "name": h.name, "used": round(h.used, 2), "cap": h.cap,
+             "routines": h.routines}
+            for h in client_month.held_routines(session)
+            if client is None or h.client == client
+        ],
+    }  # fmt: skip
 
 
 def create_routine(

@@ -15,6 +15,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -33,12 +34,17 @@ from ringkeeper.models import (
     InstanceType,
     Project,
     ProjectInstance,
+    Routine,
+    SessionRole,
     Task,
     TaskStatus,
     WorkerSession,
 )
 from ringkeeper.scrub import scrub
 from ringkeeper.services import bindings, clients
+
+if TYPE_CHECKING:
+    from ringkeeper.config import Settings
 
 TITLE_CHARS = 120
 RESULT_CHARS = 300
@@ -116,22 +122,199 @@ def money(value: float) -> str:
     return f"${cents:,.2f}"
 
 
-def check_cap(session: Session, project: str, now: datetime | None = None) -> None:
-    """Refuse a new task once its client's AI cost this month has reached their cap."""
-    owner = session.scalar(select(Project.owner).where(Project.name == project))
-    if owner is None:
-        return
-    row = session.get(Client, owner)
-    if row is None or row.monthly_cap_usd is None:
-        return
-    when = (now or local_now()).astimezone()
-    used = spend(session, owner, when.year, when.month)
-    if used >= row.monthly_cap_usd:
-        raise CapReachedError(
-            f"{row.name} has reached its monthly cap: {money(used)} of "
-            f"{money(row.monthly_cap_usd)} in {label(when.year, when.month)}. Raise the cap on "
-            f"the client's page (Settings tab), or new tasks for {row.name} start next month."
+@dataclass(frozen=True)
+class Over:
+    """A client whose AI cost this month has reached their cap."""
+
+    client: Client
+    used: float
+    cap: float
+    month: str
+
+    def said(self) -> str:
+        return (
+            f"{self.client.name} is over its monthly cap: {money(self.used)} of "
+            f"{money(self.cap)} in {self.month}."
         )
+
+
+def over_cap(session: Session, project: str, now: datetime | None = None) -> Over | None:
+    owner = session.scalar(select(Project.owner).where(Project.name == project))
+    row = session.get(Client, owner) if owner is not None else None
+    if row is None or row.monthly_cap_usd is None:
+        return None
+    when = (now or local_now()).astimezone()
+    used = spend(session, row.slug, when.year, when.month)
+    if used < row.monthly_cap_usd:
+        return None
+    return Over(row, used, row.monthly_cap_usd, label(when.year, when.month))
+
+
+def check_cap(session: Session, project: str, now: datetime | None = None) -> None:
+    """For routines, which don't ask: refuse once the client's cap is reached."""
+    over = over_cap(session, project, now)
+    if over is not None:
+        raise CapReachedError(
+            f"{over.said()} Routines for {over.client.name} wait until you raise the cap on the "
+            "client's page, or until next month."
+        )
+
+
+RUN_ONCE, RAISE, DONT = "run once", "raise", "stop"
+
+
+def ask_over_cap(
+    session: Session,
+    settings: "Settings",
+    task: Task,
+    *,
+    follow_up: str | None = None,
+    role: str | None = None,
+) -> bool:
+    """Over the client's cap, a new task (or a follow-up) waits for the user instead of
+    running: run it anyway this once, raise the cap, or don't run it. Returns whether it asked."""
+    from ringkeeper.services import inbox  # noqa: PLC0415 (inbox answers through this module)
+
+    over = over_cap(session, task.project)
+    if over is None:
+        return False
+    was = task.status
+    task.status = TaskStatus.NEEDS_INPUT
+    for row in task.sessions:
+        if row.status is TaskStatus.QUEUED:
+            row.status = TaskStatus.NEEDS_INPUT
+    what = "this follow-up" if follow_up else "this task"
+    payload: dict[str, Any] = {
+        "question": f"{over.said()} Run {what} anyway, just this once, or raise the cap?",
+        "client_cap": {
+            "client": over.client.slug, "name": over.client.name,
+            "used": round(over.used, 2), "cap": over.cap,
+        },
+        "options": [RUN_ONCE, RAISE, DONT],
+        "was": was.value,
+    }  # fmt: skip
+    if follow_up is not None:
+        payload |= {"follow_up": follow_up, "role": role}
+    inbox.create(session, settings, DecisionKind.QUESTION, payload, project=task.project, task=task)
+    return True
+
+
+def answer_over_cap(
+    session: Session,
+    settings: "Settings",
+    task: Task,
+    payload: dict[str, Any],
+    reply: str,
+    by: str,
+) -> None:
+    """Run anyway this once ("run once"), raise the cap ("raise:150"), or don't ("stop").
+    Running past the cap and raising it are both in the audit log."""
+    from ringkeeper.services import admin_audit, tasks  # noqa: PLC0415
+
+    choice, amount = _read(reply)
+    asked = payload["client_cap"]
+    client = clients.get(session, str(asked["client"]))
+    follow_up = payload.get("follow_up")
+    if choice == DONT:
+        _dont(task, payload, client.name)
+        return
+    now = local_now()
+    used = spend(session, client.slug, now.year, now.month)
+    if choice == RAISE:
+        try:
+            new = round(float(amount.replace("$", "").replace(",", "")), 2)
+        except ValueError:
+            raise RuleViolationError("Type the new monthly cap in dollars, like 100.") from None
+        if new <= used:
+            raise RuleViolationError(
+                f"Raise it above what {client.name} has used this month ({money(used)})."
+            )
+        old = client.monthly_cap_usd
+        client.monthly_cap_usd = new
+        admin_audit.record(
+            session, "client.cap",
+            f"raised {client.name}'s monthly cap to {money(new)}"
+            + (f" (from {money(old)})" if old is not None else "") + " to run a task",
+            by=by, project=task.project, details={"task": str(task.id)},
+        )  # fmt: skip
+    elif choice == RUN_ONCE:
+        admin_audit.record(
+            session, "client.cap.once",
+            f"ran a task for {client.name} past its monthly cap, this once "
+            f"({money(used)} of {money(client.monthly_cap_usd or 0)})",
+            by=by, project=task.project, details={"task": str(task.id)},
+        )  # fmt: skip
+    else:
+        raise RuleViolationError("Choose Run anyway this once, Raise the cap, or Don't run it.")
+    if follow_up:
+        task.status = TaskStatus(payload["was"])
+        role = SessionRole(payload.get("role") or SessionRole.WORKER.value)
+        sdk_session = tasks.last_sdk_session(task, role)
+        if sdk_session is None:
+            raise RuleViolationError("This task can't be continued. Start a new task instead.")
+        tasks.add_session(session, settings, task, str(follow_up), role, sdk_session_id=sdk_session)
+        return
+    task.status = TaskStatus.QUEUED
+    for row in task.sessions:
+        if row.status is TaskStatus.NEEDS_INPUT:
+            row.status = TaskStatus.QUEUED
+    tasks.notify(session)
+
+
+def _read(reply: str) -> tuple[str, str]:
+    """The answer as the app sends it ("raise:150") or as typed in a chat ("raise 150",
+    "run anyway this once", "don't run it")."""
+    text = " ".join(reply.strip().lower().replace(":", " ").split())
+    if text.startswith(RAISE):
+        return RAISE, text.removeprefix(RAISE).replace("the cap", "").replace("to", "").strip()
+    if text.startswith("run"):
+        return RUN_ONCE, ""
+    if text in (DONT, "no", "don't run it", "dont run it", "don't"):
+        return DONT, ""
+    return text, ""
+
+
+def _dont(task: Task, payload: dict[str, Any], name: str) -> None:
+    if payload.get("follow_up"):  # the task stays as it was; the follow-up isn't sent
+        task.status = TaskStatus(payload["was"])
+        return
+    task.status = TaskStatus.STOPPED
+    task.finished_at = datetime.now(UTC)
+    task.error = f"not run: {name} is over its monthly cap"
+    for row in task.sessions:
+        if row.status is TaskStatus.NEEDS_INPUT:
+            row.status = TaskStatus.STOPPED
+
+
+@dataclass(frozen=True)
+class Held:
+    """A client over its cap whose routines are waiting (for Home)."""
+
+    client: str
+    name: str
+    used: float
+    cap: float
+    routines: int
+
+
+def held_routines(session: Session, now: datetime | None = None) -> list[Held]:
+    """Clients over their cap with routines turned on: those routines skip their runs."""
+    when = (now or local_now()).astimezone()
+    capped = session.scalars(select(Client).where(Client.monthly_cap_usd.is_not(None)))
+    found: list[Held] = []
+    for client in capped:
+        cap = client.monthly_cap_usd or 0.0
+        used = spend(session, client.slug, when.year, when.month)
+        if used < cap:
+            continue
+        count = session.scalar(
+            select(func.count(Routine.id))
+            .join(Project, Project.id == Routine.project_id)
+            .where(Project.owner == client.slug, Routine.paused.is_(False))
+        )
+        if count:
+            found.append(Held(client.slug, client.name, used, cap, int(count)))
+    return found
 
 
 @dataclass

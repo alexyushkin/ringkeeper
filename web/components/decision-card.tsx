@@ -195,7 +195,9 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
       {decision.kind === "question" ? (
         <div className="mt-3 space-y-3">
           <Markdown text={String(payload.question ?? decision.summary)} />
-          {typeof payload.budget === "number" ? (
+          {payload.client_cap ? (
+            <ClientCapAnswer cap={payload.client_cap as ClientCap} busy={busy === "answer"} onAnswer={(reply) => void answer(null, reply)} />
+          ) : typeof payload.budget === "number" ? (
             <div className="flex flex-wrap gap-2">
               <Button kind="primary" busy={busy === "answer"} onClick={() => answer(null, "continue")}>
                 Give it another ${payload.budget.toFixed(2)}
@@ -284,6 +286,47 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
           <Button disabled={!other} busy={busy === other} onClick={() => onAnswer(other)}>
             Use it
           </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface ClientCap {
+  name: string;
+  used: number;
+  cap: number;
+}
+
+/** Over a client's monthly cap: run this task anyway, just this once; raise the cap (above
+ * what the client has used); or don't run it. Both ways of going on are in Activity. */
+function ClientCapAnswer({ cap, busy, onAnswer }: { cap: ClientCap; busy: boolean; onAnswer: (reply: string) => void }) {
+  const [raising, setRaising] = useState(false);
+  const [amount, setAmount] = useState(String(Math.ceil(Math.max(cap.cap * 1.5, cap.used + 1))));
+  const value = Number(amount);
+  const valid = Number.isFinite(value) && value > cap.used;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <Button kind="primary" busy={busy} onClick={() => onAnswer("run once")}>
+          Run anyway this once
+        </Button>
+        <Button busy={busy} onClick={() => setRaising(true)}>
+          Raise the cap
+        </Button>
+        <Button kind="ghost" busy={busy} onClick={() => onAnswer("stop")}>
+          Don&apos;t run it
+        </Button>
+      </div>
+      {raising ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="max-w-48">
+            <Field label={`New monthly cap for ${cap.name} ($)`} value={amount} onChange={setAmount} inputMode="decimal" />
+          </div>
+          <Button kind="primary" busy={busy} disabled={!valid} onClick={() => onAnswer(`raise:${value}`)}>
+            Raise it and run
+          </Button>
+          {!valid ? <p className="text-sm text-bad">Above ${cap.used.toFixed(2)}, what {cap.name} has used this month.</p> : null}
         </div>
       ) : null}
     </div>
