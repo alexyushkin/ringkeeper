@@ -38,7 +38,7 @@ from ringkeeper.models import (
 from ringkeeper.scenarios.catalog import ACME_DB, APPROVE, DENY, TYPED, Row, Scenario
 from ringkeeper.scenarios.checks import ALLOWED, DECLINED, REFUSED, Evidence
 from ringkeeper.scenarios.world import World
-from ringkeeper.services import calls, decisions, inbox, routines, tasks, threads, undo
+from ringkeeper.services import calls, decisions, inbox, routines, tasks, threads, titles, undo
 from ringkeeper.services.calls import RefusalError
 from ringkeeper.vault import Vault
 
@@ -178,6 +178,13 @@ class Driver:
             seen.times_asked += 1
             wanted = scenario.project if isinstance(scenario.project, str) else None
             choice = scenario.pick or wanted or (candidates[0] if candidates else inbox.NO_PROJECT)
+            if scenario.answer_by_message and choice != inbox.NO_PROJECT and decision.thread_id:
+                # As a person would in a chat: a new message with just the project's name.
+                threads.post_message(
+                    session, titles.of(session, choice), author=AUTHOR, source="web",
+                    thread=str(decision.thread_id),
+                )  # fmt: skip
+                return
         self._say(session, str(decision.id), inbox.Answer(choice=choice))
 
     def _approve(self, ident: str, instance: str | None, how: str, seen: Evidence) -> None:

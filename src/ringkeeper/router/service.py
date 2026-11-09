@@ -50,7 +50,7 @@ from ringkeeper.models import (
     TaskRisk,
 )
 from ringkeeper.names import slug
-from ringkeeper.router import self_answer
+from ringkeeper.router import follow_up, self_answer
 from ringkeeper.router.model import RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
 from ringkeeper.router.schema import (
@@ -361,7 +361,19 @@ def route_message(
     session: Session, settings: Settings, message: Message, model: RouterModel
 ) -> Routed:
     """Route a claimed message inside the caller's transaction."""
-    context = build_context(session, settings, message)
+    answered = follow_up.answer_open_question(session, settings, message)
+    if answered is not None:  # it named the project the open question asked for
+        noted: dict[str, Any] = {
+            "answered": str(answered.decision.id), "decisions": [], "answer": answered.reply,
+            "tasks": [str(answered.task.id)] if answered.task is not None else [],
+        }  # fmt: skip
+        threads.mark_routed(session, message, noted)
+        return Routed(tasks=[answered.task] if answered.task else [], reply=answered.reply)
+    placed = follow_up.unplaced_request(session, message)
+    if placed is not None:  # the last request, routed to the project this one names
+        message.target_project = placed.project
+    request = placed.request if placed is not None else None
+    context = build_context(session, settings, message, request)
     system = system_prompt()
     model_id = router_model(settings)
     prompt = context.prompt

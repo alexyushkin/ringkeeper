@@ -101,6 +101,9 @@ Rules:
   agent on purpose: route to it, with high confidence.
 - If the message asks for nothing to be done (a greeting, thanks), return no
   tasks and answer in `reply`.
+- A short follow-up continues the open request in THREAD SO FAR: "yes", "do it", "the
+  Acme one", "use my own Google instead". Make the task the earlier request asked for,
+  changed as the follow-up says; don't ask what they'd like you to do.
 - `reply` is one short line for the operator.
 
 Answer with one JSON object and nothing else, matching this JSON schema:
@@ -155,7 +158,11 @@ def system_prompt() -> str:
     return SYSTEM_PROMPT + json_schema()
 
 
-def build_context(session: Session, settings: Settings, message: Message) -> Context:
+def build_context(
+    session: Session, settings: Settings, message: Message, request: str | None = None
+) -> Context:
+    """`request`: what to route instead of the message itself (an earlier request its
+    follow-up placed)."""
     projects = session.scalars(
         select(Project).options(selectinload(Project.bindings)).order_by(Project.name)
     ).all()
@@ -209,7 +216,7 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
     named = mentions.for_message(session, message)
     if named:
         sections.append(mentions.note(named))
-    sections.append("MESSAGE TO ROUTE:\n" + message.body)
+    sections.append("MESSAGE TO ROUTE:\n" + (request or message.body))
     return Context(
         owners={p.name: p.owner for p in projects},
         prompt="\n\n".join(sections),

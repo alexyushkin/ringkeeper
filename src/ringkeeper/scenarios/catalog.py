@@ -68,6 +68,7 @@ class Scenario:
     no_work: bool = False  # answered without starting a task
     asks: bool = False  # the router must ask which project
     pick: str | None = None  # the answer to "which project?", when that's asked
+    answer_by_message: bool = False  # answer it by sending just the project's name
     agent: str | None = None
     tools: tuple[str, ...] = ()  # each must have been used (part of the tool's name)
     held: int = 0  # how many approvals it must raise, at least
@@ -128,6 +129,13 @@ SCENARIOS: tuple[Scenario, ...] = (
         then=("Now add another file there, called more.txt, saying hi again.",),
         notes="Both of Demo Co's projects have a folder, so it asks once; the follow-up in the "
         "same conversation goes to the project picked, without asking again.",
+    ),
+    Scenario(
+        "answer-by-name", "Replying with just a project's name answers the question", "routing",
+        request="Add a file called notes.txt saying hi to Demo Co's project folder.",
+        asks=True, pick=SITE, project=SITE, answer_by_message=True, cost_ceiling=1.0,
+        notes="The reply is only the project's name, sent as a new message in the conversation: "
+        "the original request runs there, with no second question.",
     ),
     Scenario(
         "single-candidate", "A client with one project isn't asked about", "routing",
