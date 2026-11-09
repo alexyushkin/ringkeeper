@@ -32,7 +32,15 @@ from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import voice_local
 from ringkeeper.channels import links, telegram_state
-from ringkeeper.channels.news import finished_text, got_it, result_text, routed_text
+from ringkeeper.channels.news import (
+    LINK_PREFIX,
+    finished_text,
+    got_it,
+    offer_button,
+    result_text,
+    routed_text,
+    take_offer,
+)
 from ringkeeper.channels.outbox import due, task_event
 from ringkeeper.channels.prefs import ROUTINES
 from ringkeeper.config import Settings, get_settings
@@ -275,7 +283,12 @@ class Bridge:
         return closed
 
     def _notify(
-        self, session: Session, text: str, thread_id: uuid.UUID | None, **subject: uuid.UUID
+        self,
+        session: Session,
+        text: str,
+        thread_id: uuid.UUID | None,
+        markup: dict[str, Any] | None = None,
+        **subject: uuid.UUID,
     ) -> int:
         """News about a request: only to the chat it came from (if still allowed)."""
         thread = session.get(Thread, thread_id) if thread_id is not None else None
@@ -285,7 +298,7 @@ class Bridge:
         for chat in sorted(chats):
             note = Notification(channel=CHANNEL, chat_id=chat, **subject)
             try:
-                note.external_id = self.api.send_message(chat, scrub(text))
+                note.external_id = self.api.send_message(chat, scrub(text), markup)
                 note.status = CLOSED  # nothing to update later
                 sent += 1
             except TelegramError as error:
@@ -331,7 +344,13 @@ class Bridge:
             for task in finished:
                 path = links.task_page(self.settings, task.id)
                 text = result_text(task, links.open_url(session, self.settings, path))
-                sent += self._notify(session, text, task.thread_id, task_id=task.id)
+                offer = offer_button(task)
+                markup = (
+                    {"inline_keyboard": [[{"text": offer[0], "callback_data": offer[1]}]]}
+                    if offer
+                    else None
+                )
+                sent += self._notify(session, text, task.thread_id, markup, task_id=task.id)
         return sent
 
     # --- Incoming ---
@@ -369,6 +388,8 @@ class Bridge:
             feedback = self._press(parts[1], parts[2], user)
         elif len(parts) == 3 and parts[0] == CONFIRM_PREFIX:
             feedback = self._resolve(parts[1], parts[2], chat_id, user)
+        elif len(parts) == 2 and parts[0] == LINK_PREFIX:
+            feedback = take_offer(self.settings, parts[1])
         try:
             self.api.answer_callback(str(callback["id"]), scrub(feedback))
         except TelegramError as error:

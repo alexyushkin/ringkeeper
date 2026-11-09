@@ -46,7 +46,12 @@ KIND_LABELS = {
     DecisionKind.QUESTION: "Question",
 }
 CHOICE_LABELS = {"approve": "Approve", "deny": "Deny", inbox.NO_PROJECT: "None of these"}
-FAILED = (TaskStatus.FAILED, TaskStatus.TIMED_OUT, TaskStatus.BUDGET_EXCEEDED)
+FAILED = (
+    TaskStatus.FAILED,
+    TaskStatus.TIMED_OUT,
+    TaskStatus.BUDGET_EXCEEDED,
+    TaskStatus.NOT_DONE,
+)
 
 
 @dataclass(frozen=True)

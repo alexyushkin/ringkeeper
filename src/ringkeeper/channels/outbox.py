@@ -396,13 +396,23 @@ class Runner:
                 .order_by(Task.finished_at)
             ).all():
                 link = self._link(session, links.task_page(self.settings, task.id))
-                sent += self._send_direct(session, news.result_text(task, link), task_id=task.id)
+                offer = news.offer_button(task)
+                buttons = [cards.Button(offer[0], offer[1], style="primary")] if offer else []
+                text = news.result_text(task, link)
+                sent += self._send_direct(session, text, buttons, task_id=task.id)
         return sent
 
-    def _send_direct(self, session: Session, text: str, **subject: uuid.UUID) -> int:
+    def _send_direct(
+        self,
+        session: Session,
+        text: str,
+        buttons: list[cards.Button] | None = None,
+        **subject: uuid.UUID,
+    ) -> int:
         note = Notification(channel=self.key, chat_id=0, **subject)
         try:
-            note.external_ref = self.transport.direct(self.approver, cards.Card(scrub(text)))
+            card = cards.Card(scrub(text), buttons or [])
+            note.external_ref = self.transport.direct(self.approver, card)
             note.status = CLOSED  # nothing to update later
         except ChannelError as error:
             note.status, note.error = FAILED, str(error)[:500]
@@ -412,6 +422,10 @@ class Runner:
         return int(note.status != FAILED)
 
     def on_press(self, action: str, user: str, who: str) -> str:
+        if action.startswith(f"{news.LINK_PREFIX}:"):
+            if not self.approver or user != self.approver:
+                return cards.NOT_ALLOWED
+            return news.take_offer(self.settings, action.split(":", 1)[1])
         reply = cards.press(
             self.settings, action, user=user, approver=self.approver, who=who,
             via=inbox.Via(self.kind),

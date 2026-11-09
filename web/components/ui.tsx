@@ -39,6 +39,7 @@ const STATUS: Record<string, [Tone, string]> = {
   timed_out: ["bad", "Took too long"],
   stopped: ["neutral", "Stopped"],
   budget_exceeded: ["bad", "Over budget"],
+  not_done: ["bad", "Not done"],
 };
 
 export function StatusBadge({ status }: { status: string }) {

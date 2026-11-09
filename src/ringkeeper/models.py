@@ -129,6 +129,7 @@ class TaskStatus(enum.StrEnum):
     STOPPED = "stopped"
     BUDGET_EXCEEDED = "budget_exceeded"
     NEEDS_INPUT = "needs_input"  # a worker asked the user something; answering resumes it
+    NOT_DONE = "not_done"  # it ran, but couldn't do what was asked (it said why)
     WAITING = "waiting"  # blocked on a decision (an architect's plan) or another session
 
 
@@ -139,6 +140,7 @@ TERMINAL_STATUSES = frozenset(
         TaskStatus.TIMED_OUT,
         TaskStatus.STOPPED,
         TaskStatus.BUDGET_EXCEEDED,
+        TaskStatus.NOT_DONE,
     }
 )
 # Not running and not queued: a task in one of these can be resumed.
@@ -647,6 +649,9 @@ class Task(Base):
     failed_check_rounds: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     # A service's plan stopped part of this: why, and it isn't a failed attempt.
     plan_limit: Mapped[str | None] = mapped_column(Text)
+    # Not done for want of a connection the client has: {"instance", "project"} to link it
+    # and run the task again (services.link_offer).
+    offer: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     worker_prompt: Mapped[str | None] = mapped_column(Text)
     # The project agent it runs as (its instructions, connections, model): see agents.
     agent_id: Mapped[uuid.UUID | None] = mapped_column()

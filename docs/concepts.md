@@ -48,6 +48,11 @@ Nothing happens until you approve it, and everything is logged.
 5. The task goes on with the result and reports back in the conversation. Most
    data changes can be undone for 7 days ([what can and can't](undo.md)).
 
+A task that couldn't do what you asked ends as **Not done**, never Done, and says why: on its
+card, on its page, and in the chat you asked from. When what it lacked is a connection the
+client has but the project isn't linked to, it offers one click, like "Link General
+Informatics' Google to Website and retry", in the app and as a button in the chat.
+
 ### When it asks which project
 
 Ringkeeper asks only when the work clearly belongs to one project and more than one fits,

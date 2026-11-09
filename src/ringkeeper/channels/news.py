@@ -4,13 +4,17 @@ kinds only: never the worker prompt or outcome, so it can go to a chat. A reques
 router answered without starting anything (a question about Ringkeeper, how to do
 something) gets the answer the app shows."""
 
+import uuid
 from typing import Any, cast
 
 from sqlalchemy.orm import Session, object_session
 
+from ringkeeper.config import Settings
+from ringkeeper.db import session_scope
+from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import Message, Task, TaskStatus
 from ringkeeper.router.self_answer import is_question
-from ringkeeper.services import titles
+from ringkeeper.services import link_offer, titles
 from ringkeeper.telegram import text as telegram_text
 from ringkeeper.wording import task_status
 
@@ -35,6 +39,8 @@ def result_text(task: Task, link: str | None, limit: int = RESULT_CHARS) -> str:
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
     head = f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
     said = (task.summary if task.status is TaskStatus.SUCCEEDED else task.error) or ""
+    if task.status is TaskStatus.NOT_DONE and task.offer:
+        said += f"\n\n{task.offer['label']}?"
     if not said.strip():
         return head + (f"\n{link}" if link else "")
     shown = telegram_text.question(said, limit)
@@ -70,6 +76,30 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
         shown = telegram_text.question(str(said), limit)
         return "\n".join([shown.text, *([telegram_text.SHORTENED] if shown.cut else [])])
     return "\n".join([f"{head}:", *lines])
+
+
+LINK_PREFIX = "rkl"  # a chat button: link the connection a task lacked, and run it again
+
+
+def offer_button(task: Task) -> tuple[str, str] | None:
+    """(label, action) for a not-done task's one-click link, if it has one."""
+    if task.status is not TaskStatus.NOT_DONE or not task.offer:
+        return None
+    label = str(task.offer["label"])
+    return (label if len(label) <= 75 else "Link it and retry"), f"{LINK_PREFIX}:{task.id}"
+
+
+def take_offer(settings: Settings, ident: str) -> str:
+    """A chat's "Link ... and retry" pressed: what to tell the person."""
+    try:
+        uuid.UUID(ident)
+        with session_scope() as session:
+            again = link_offer.take(session, settings, ident)
+            return f"Linked. Running it again in {titles.of(session, again.project)}."
+    except ValueError:
+        return "This button no longer works. Open Ringkeeper."
+    except RingkeeperError as error:
+        return f"Not done: {error}"
 
 
 def finished_text(task: Task) -> str:

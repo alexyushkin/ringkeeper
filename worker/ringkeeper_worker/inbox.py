@@ -1,4 +1,5 @@
-"""ask_user: the worker's way to ask the operator something.
+"""ask_user: the worker's way to ask the operator something. not_done: its way to say
+it couldn't do what was asked, so the task doesn't end as done.
 
 The tool records the question and tells the agent to end its turn; a
 PreToolUse hook then refuses every further tool call, so the session ends
@@ -22,6 +23,7 @@ ASKED = (
     "of where you are; you'll be resumed in this same session with the answer."
 )
 BLOCKED = "You asked the operator a question; don't use more tools. End your turn now."
+NOTED = "Noted: the task will end as not done. End your turn with a one-line note of why."
 
 
 @dataclass
@@ -62,6 +64,26 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
             }
         }
 
-    server = create_sdk_mcp_server(SERVER_NAME, tools=[ask_user])
+    @tool(
+        "not_done",
+        "Say you couldn't do what was asked: a tool refused it, you lack the access or "
+        "connection it needs, or it can't be done. The task then ends as not done, with "
+        "your reason, instead of done. `needs`: the kind of connection that was missing, if "
+        "that's why: one of email, google, slack, database, airtable, n8n, github, vercel, "
+        "or empty. Still end your turn with a short note for the operator.",
+        {
+            "type": "object",
+            "properties": {"reason": {"type": "string"}, "needs": {"type": "string"}},
+            "required": ["reason"],
+        },
+    )
+    async def not_done(args: dict[str, Any]) -> dict[str, Any]:
+        reason = str(args.get("reason", "")).strip()[:MAX_QUESTION_CHARS]
+        if not reason:
+            return {"content": [{"type": "text", "text": "Say why."}], "is_error": True}
+        emit("ringkeeper.not_done", reason=reason, needs=str(args.get("needs") or "").strip())
+        return {"content": [{"type": "text", "text": NOTED}]}
+
+    server = create_sdk_mcp_server(SERVER_NAME, tools=[ask_user, not_done])
     hooks = {"PreToolUse": [HookMatcher(matcher=None, hooks=[block_after_asking])]}
     return server, hooks

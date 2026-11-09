@@ -166,6 +166,8 @@ async def run(config: WorkerConfig) -> bool:
         await asyncio.sleep(seconds)
     if (question := stub.get("ask_user")) and not config.resume:
         emit("ringkeeper.ask_user", question=str(question))
+    if reason := stub.get("not_done"):
+        emit("ringkeeper.not_done", reason=str(reason), needs=str(stub.get("needs", "")))
     session_id = config.resume or str(uuid.uuid4())
     subtype = str(stub.get("subtype", "success"))
     emit(

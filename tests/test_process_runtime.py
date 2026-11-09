@@ -19,7 +19,7 @@ from sqlalchemy import select
 from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import TERMINAL_STATUSES, SessionEvent, TaskStatus
+from ringkeeper.models import TERMINAL_STATUSES, InstanceType, SessionEvent, TaskStatus
 from ringkeeper.services import revocations, tasks
 from ringkeeper.vault import get_vault
 from ringkeeper.workers.env import TASK_ENV, TOKEN_ENV
@@ -285,3 +285,21 @@ def test_memory_sizes() -> None:
     assert parse_memory("2g") == 2 * 1024**3
     assert parse_memory("512m") == 512 * 1024**2
     assert parse_memory("1048576") == 1048576
+
+
+def test_a_task_that_couldn_t_do_it_ends_not_done_with_an_offer(
+    run_stub: Callable[..., Run],
+) -> None:
+    """From real use: an email task said "Done" after it couldn't send. The worker says it
+    wasn't done, and the client's mail connection the project lacks is offered."""
+    with session_scope() as session:
+        make_instance(session, "acme-mail", type=InstanceType.GMAIL, secret_ref="file://acme/mail")
+    reason = "There's no email connection here to send it with."
+    run = run_stub({"not_done": reason, "needs": "email"})
+    assert status_of(run.task_id) is TaskStatus.NOT_DONE
+    with session_scope() as session:
+        task = tasks.get_task(session, run.task_id)
+        assert task.error == reason
+        assert task.offer is not None
+        assert task.offer["instance"] == "acme-mail"
+        assert task.offer["label"].startswith("Link acme's acme-mail to Acme web and retry")
