@@ -46,6 +46,12 @@ publishes it as the release notes and the app shows it with the update.
   project (client page › Settings › Your own work). A project whose tasks can't use the web
   says so plainly. See [Where a request goes](docs/concepts.md#where-a-request-goes).
 
+- **Follow-ups answer the open question.** After "which project?", a reply with just the
+  name ("Blog", "Alexey, My Project") runs your request there, with no second question, in the
+  app and in chats. "Yes" or "do it" is the go-ahead on production, and a reply naming a project
+  places a request it couldn't place. Short follow-ups like "use my own Google instead"
+  continue the open request instead of asking what you'd like.
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how

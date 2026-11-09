@@ -43,7 +43,7 @@ def _routing(scenario: Scenario, seen: Evidence) -> list[str]:
     wrong: list[str] = []
     if scenario.asks and not seen.asked:
         wrong.append("it didn't ask which project this was for")
-    if scenario.asks and scenario.then and seen.times_asked > 1:
+    if scenario.asks and (scenario.then or scenario.answer_by_message) and seen.times_asked > 1:
         wrong.append("it asked which project again later in the same conversation")
     if scenario.no_work and seen.projects:
         wrong.append(f"it started work in {', '.join(seen.projects)}")
