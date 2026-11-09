@@ -57,6 +57,7 @@ export function ClientView({ name }: { name: string }) {
           ) : (
             <NoProjects client={name} />
           )}
+          {library.projects.length > 1 ? <DefaultProject slug={name} name={display} projects={library.projects} chosen={client?.default_project ?? null} onSaved={scope.reloadClients} /> : null}
         </Section>
       ),
     },
@@ -160,6 +161,33 @@ export function ClientView({ name }: { name: string }) {
       </p>
       <Tabs id={`client-${name}`} tabs={tabs} />
     </>
+  );
+}
+
+/** Where a request for this client goes when it needs no particular project: its email,
+ * Google or Slack. With one project, that one; with several, the one chosen here. */
+export function DefaultProject({ slug, name, projects, chosen, onSaved }: { slug: string; name: string; projects: string[]; chosen: string | null; onSaved: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  async function save(project: string) {
+    setError(null);
+    try {
+      await api(`clients/${slug}/default-project`, { method: "PUT", json: { project: project || null } });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return (
+    <div className="mt-3 space-y-1">
+      <Select
+        label="Default project"
+        value={chosen ?? ""}
+        onChange={(value) => void save(value)}
+        options={[["", "None: ask me"], ...projects.map((p): [string, string] => [p, projectName(p)])]}
+      />
+      <p className="text-xs text-muted">Where a request for {name} goes when any project would do, like reading their email or Google. Work on one project&apos;s site, code or data still asks if it&apos;s unclear which.</p>
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }
 

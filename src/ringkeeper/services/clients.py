@@ -108,6 +108,28 @@ def display(session: Session, text: str) -> str:
     return found.name if found is not None else text
 
 
+def default_project(session: Session, slug: str) -> str | None:
+    """Where a request for this client goes when it needs no particular project: the one
+    chosen on the client's page, or its only project. None: ask."""
+    owned = sorted(session.scalars(select(Project.name).where(Project.owner == slug)))
+    client = session.get(Client, slug)
+    if client is not None and client.default_project in owned:
+        return client.default_project
+    return owned[0] if len(owned) == 1 else None
+
+
+def set_default_project(session: Session, text: str, project: str | None) -> Client:
+    """Choose (or clear, with None) a client's default project: one of its own."""
+    client = get(session, text)
+    if project is not None:
+        owner = session.scalar(select(Project.owner).where(Project.name == project))
+        if owner is None or key(owner) != client.slug:
+            raise RuleViolationError(f"That project isn't one of {client.name}'s.")
+    client.default_project = project
+    session.flush()
+    return client
+
+
 def rename(session: Session, text: str, name: str) -> Client:
     """Change the name shown; the slug (URLs, IDs) stays."""
     client = get(session, text)

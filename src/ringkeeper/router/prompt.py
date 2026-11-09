@@ -61,6 +61,13 @@ Rules:
   lines, like adding a file or fixing a typo), medium (a few files or steps),
   high (design work, many files, or unclear requirements). Low features skip
   planning and run on a cheaper model, so don't inflate it.
+- project_specific: true when the work is about one project's own things (its code,
+  site, database, workflows). false when any of the client's projects would do, because
+  it only uses the client's own accounts (email, Google, Slack, calendar, documents):
+  then Ringkeeper sends it to the client's default project without asking.
+- why: only when you're unsure between projects (low confidence, with alternatives): one
+  short line for the operator saying why it could be either, naming them by title, like
+  "Both Website and Blog have a contact form." Otherwise leave it out.
 - outcome: one sentence saying what done looks like.
 - prompt: complete instructions for the worker who does this task. It sees only
   this prompt and its own project, so restate everything it needs from the

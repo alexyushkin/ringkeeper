@@ -34,7 +34,9 @@ approvals, the activity log, the task's steps and the demo databases. What the m
 doesn't count, and a tool call that failed doesn't count as using the tool.
 
 - **Routing:** the right project, an unclear request asked about, @-mentions, a request across two
-  projects, an agent named in the request, a routine's test run, Help, and memory.
+  projects, an agent named in the request, a routine's test run, Help, and memory. Also when it
+  shouldn't ask: a client's email going to its default project, a client with one project, and a
+  follow-up in the same conversation after it asked once.
 - **Holds:** a production change held, approved and undone; a denied change that doesn't happen; a
   delete that needs the connection's name typed; a development connection that isn't held; and
   instructions hidden in a customer's note that aren't followed.

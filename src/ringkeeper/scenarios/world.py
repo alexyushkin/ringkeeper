@@ -179,6 +179,8 @@ def build(
             description="Demo Co's marketing website: pages and copy, no customer data.",
         ),
     )  # fmt: skip
+    # Where Demo Co's work goes when any of its projects would do (its email).
+    clients.set_default_project(session, owner, SHOP)
 
     # A development copy of the shop's database: a change here isn't held.
     dev = sqlite_file.demo_folder() / "shop-dev.db"

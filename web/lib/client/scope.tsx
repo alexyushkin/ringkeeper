@@ -28,6 +28,7 @@ export interface Client {
   /** AI cost of this month's tasks, and the monthly cap (services.client_month). */
   month_usd?: number;
   cap_usd?: number | null;
+  default_project?: string | null;
 }
 
 /** A project as the switcher and the names need it. */

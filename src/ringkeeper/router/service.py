@@ -8,6 +8,11 @@ with the top two candidates, or whether to go ahead on production. A saved
 routing example that matches the message exactly settles a single-task message
 without asking which project.
 
+"Which project?" is asked only when it has to be (`settle_project`): never with one
+option; not again in a conversation where it was answered; and not for work any of a
+client's projects would do (its email, Google, Slack), which goes to the client's
+default project. Asking says why in one line, and offers to set that default.
+
 A question about Ringkeeper itself (its connections, projects, tasks, approvals,
 settings, costs) is answered from Ringkeeper's own records (router.self_answer):
 no project, no worker. A reply that starts nothing is recorded on the message
@@ -31,8 +36,10 @@ from ringkeeper.listen import start_listener
 from ringkeeper.model_choice import router_model
 from ringkeeper.models import (
     Agent,
+    Client,
     Decision,
     DecisionKind,
+    DecisionStatus,
     Env,
     InstanceType,
     Message,
@@ -53,7 +60,7 @@ from ringkeeper.router.schema import (
     RouterOutput,
     parse,
 )
-from ringkeeper.services import examples, inbox, mentions, tasks, threads, titles
+from ringkeeper.services import clients, examples, inbox, mentions, tasks, threads, titles
 from ringkeeper.services import help as help_answers
 from ringkeeper.services.runtime import current_settings
 
@@ -104,11 +111,86 @@ def _task_fields(task: RoutedTask) -> dict[str, Any]:
     }
 
 
-def _why_asking(session: Session, task: RoutedTask, threshold: float) -> str:
+def _why_asking(session: Session, task: RoutedTask) -> str:
+    """One plain line: why it's asked."""
     if task.touches:
         places = [titles.of(session, p) for p in [task.project, *task.touches]]
-        return f"it touches {', '.join(places)}"
-    return f"confidence {task.confidence:.2f} is below {threshold:.2f}"
+        return f"It would change {_either(places, 'and')}. Pick one, or send it as two requests."
+    if task.why.strip():
+        return task.why.strip()
+    places = [titles.of(session, c.project) for c in candidates(task)]
+    return f"It could be for {_either(places, 'or')}."
+
+
+def _either(names: list[str], word: str) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} {word} {names[-1]}"
+
+
+def _options(task: RoutedTask) -> list[str]:
+    """Every project the task might be for, best first."""
+    return list(dict.fromkeys([task.project, *(c.project for c in task.alternatives)]))
+
+
+def _firm(task: RoutedTask, project: str) -> RoutedTask:
+    update: dict[str, Any] = {
+        "project": project,
+        "confidence": 1.0,
+        "alternatives": [],
+        "touches": [],
+    }
+    return task.model_copy(update=update)
+
+
+def remembered(session: Session, message: Message) -> str | None:
+    """The project the operator chose when asked earlier in this conversation."""
+    return session.scalar(
+        select(Decision.project)
+        .where(
+            Decision.thread_id == message.thread_id,
+            Decision.kind == DecisionKind.ROUTE,
+            Decision.status == DecisionStatus.ANSWERED,
+            Decision.project.is_not(None),
+            Decision.created_at < message.created_at,
+        )
+        .order_by(Decision.created_at.desc())
+        .limit(1)
+    )
+
+
+def settle_project(
+    session: Session,
+    settings: Settings,
+    message: Message,
+    task: RoutedTask,
+    owners: dict[str, str],
+) -> RoutedTask:
+    """Where an unsure task goes without asking, if it can: the project chosen earlier in
+    this conversation, the only one it could be, or (for work any of a client's projects
+    would do) the client's default project."""
+    if task.touches or task.confidence >= settings.router_confidence_threshold:
+        return task
+    options = _options(task)
+    before = remembered(session, message)
+    if before is not None and (before in options or owners.get(before) == owners.get(task.project)):
+        return _firm(task, before)
+    if len(options) == 1:
+        return _firm(task, options[0])
+    whose = {owners.get(p) for p in options}
+    if len(whose) == 1 and not task.project_specific:
+        default = clients.default_project(session, str(whose.pop()))
+        if default is not None:
+            return _firm(task, default)
+    return task
+
+
+def _offer_default(session: Session, task: RoutedTask, owners: dict[str, str]) -> str | None:
+    """The client to offer a default project for: asked about work any of its projects
+    would do, and none chosen yet."""
+    whose = {owners.get(p) for p in _options(task)}
+    if task.project_specific or task.touches or len(whose) != 1:
+        return None
+    client = session.get(Client, str(next(iter(whose))))
+    return client.slug if client is not None and client.default_project is None else None
 
 
 def production_connection(session: Session, task: RoutedTask) -> str | None:
@@ -135,13 +217,16 @@ def _ask(
     message: Message,
     task: RoutedTask,
     production: str | None = None,
+    owners: dict[str, str] | None = None,
 ) -> Decision:
     payload: dict[str, Any] = {
         "message": message.body,
         "candidates": [c.model_dump() for c in candidates(task)],
         "task": _task_fields(task),
-        "reason": _why_asking(session, task, settings.router_confidence_threshold),
+        "reason": _why_asking(session, task),
     }
+    if production is None and (offer := _offer_default(session, task, owners or {})):
+        payload["offer_default"] = offer
     if production is not None:  # sure of the project; asking before it uses production
         payload["candidates"] = [{"project": task.project, "confidence": task.confidence}]
         payload["production"] = production
@@ -281,9 +366,10 @@ def route_message(
     output = mentions.settle(session, _apply_example(session, message, output), named)
     routed = Routed()
     threshold = settings.router_confidence_threshold
-    for task in output.tasks:
+    for found in output.tasks:
+        task = settle_project(session, settings, message, found, context.owners)
         if task.touches or task.confidence < threshold:
-            routed.decisions.append(_ask(session, settings, message, task))
+            routed.decisions.append(_ask(session, settings, message, task, owners=context.owners))
         elif (live := production_connection(session, task)) is not None:
             routed.decisions.append(_ask(session, settings, message, task, live))
         else:

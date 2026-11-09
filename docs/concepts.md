@@ -48,5 +48,18 @@ Nothing happens until you approve it, and everything is logged.
 5. The task goes on with the result and reports back in the conversation. Most
    data changes can be undone for 7 days ([what can and can't](undo.md)).
 
+### When it asks which project
+
+Ringkeeper asks only when the work clearly belongs to one project and more than one fits,
+and says why in one line, like "Both Website and Blog have a contact form." It doesn't ask:
+
+- **With one option.** If only one project could be meant, the work goes there.
+- **Again in the same conversation.** Once you've picked, later requests there go to the
+  same project unless they name another.
+- **For work any of a client's projects would do**, like reading their email or Google.
+  That goes to the client's **default project**: their only project, or the one you choose
+  on the client's Overview tab. The first time it would have asked, the question offers
+  to make your pick the default.
+
 See also: [Connections](connections.md), [Agents and routines](agents-and-routines.md),
 [Approvals and safety](approvals.md).
