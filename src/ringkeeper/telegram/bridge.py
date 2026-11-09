@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import voice_local
 from ringkeeper.channels import telegram_state
-from ringkeeper.channels.news import finished_text, routed_text
+from ringkeeper.channels.news import finished_text, got_it, routed_text
 from ringkeeper.channels.outbox import due, task_event
 from ringkeeper.channels.prefs import ROUTINES
 from ringkeeper.config import Settings, get_settings
@@ -471,7 +471,7 @@ class Bridge:
                 )  # fmt: skip
         except RingkeeperError as error:
             return f"Not sent: {error}"
-        return "Got it. Working out which project it's for…"
+        return got_it(body)
 
     def _hear(
         self, chat_id: int, user: dict[str, Any], note: VoiceNote, decision_id: str | None
@@ -552,7 +552,7 @@ class Bridge:
                         input_kind="voice", origin_chat_id=row.chat_id,
                     )  # fmt: skip
                     _close_confirmation(row, "confirmed")
-                    outcome = "✔ Sent. Working out which project it's for…"
+                    outcome = "✔ Sent. " + got_it(transcript).removeprefix("Got it. ")
                     feedback = "Sent"
                 else:
                     reply = inbox.Answer(text=transcript, voice=True)

@@ -3,6 +3,17 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how
+  many connections and clients do we have?", got "Nothing to do." It now gets the answer the
+  app shows, in the chat it came from. A question is no longer told "Working out which project
+  it's for…"; it gets "Looking into it…".
+- **Fixed:** answers about your setup, and a few messages when connecting, named a client by
+  its ID (general-informatics-llc) instead of its name (General Informatics LLC).
+- **Slack setup:** an ID starting with D or C is a conversation's, not yours. Ringkeeper now
+  says so, and where to find your member ID.
+
 ## 0.1.0-beta.31 (2026-11-08)
 
 - **Cal.com.** A new tile: sign in with your Cal.com account through Cal.com's own hosted

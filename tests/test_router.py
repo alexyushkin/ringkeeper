@@ -27,7 +27,7 @@ from ringkeeper.models import (
 from ringkeeper.router import self_answer
 from ringkeeper.router.model import Completion, sdk_env
 from ringkeeper.router.service import Router, route_next
-from ringkeeper.services import examples, inbox, threads
+from ringkeeper.services import clients, examples, inbox, threads
 from ringkeeper.services.inbox import Answer, Via
 from ringkeeper.vault import Secret
 from tests.fake_router import FakeModel, output, routed
@@ -367,6 +367,22 @@ def test_a_question_about_the_setup_is_answered_from_ringkeeper_s_own_data() -> 
         MessageRole.ROUTER,
         "You have 1 connection: globex-supabase-dev.",
     )
+
+
+def test_answers_name_clients_as_people_read_them() -> None:
+    """From real use: an answer listed "general-informatics-llc", the client's slug."""
+    with session_scope() as session:
+        clients.rename(session, "globex", "Globex Corporation")
+    ask("How many clients do we have?")
+    model = FakeModel([{"tasks": [], "about_ringkeeper": True}, "2 clients."])
+    route(model)
+    routing, data = model.calls[0][1], model.calls[1][1]
+    assert '"owner": "Globex Corporation"' in routing
+    assert '"name": "Globex Corporation"' in data
+    assert '"client": "Globex Corporation"' in data
+    assert '"whose": "Globex Corporation"' in data
+    assert '"globex"' not in data
+    assert "never by an id or slug" in model.calls[1][0]
 
 
 def test_the_router_can_say_a_message_is_about_ringkeeper() -> None:

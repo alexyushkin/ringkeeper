@@ -1,15 +1,27 @@
-"""What a request sent from a chat (Telegram, a Slack or Discord DM) gets back: what the
-router did with it, and each of its tasks' end. Projects, task ids and kinds only: never the
-worker prompt or outcome, so it can go to a chat."""
+"""What a request sent from a chat (Telegram, a Slack or Discord DM) gets back: that it
+arrived, what the router did with it, and each of its tasks' end. Projects, task ids and
+kinds only: never the worker prompt or outcome, so it can go to a chat. A request the
+router answered without starting anything (a question about Ringkeeper, how to do
+something) gets the answer the app shows."""
 
 from typing import Any, cast
 
 from sqlalchemy.orm import Session, object_session
 
 from ringkeeper.models import Message, Task, TaskStatus
+from ringkeeper.router.self_answer import is_question
 from ringkeeper.services import titles
 from ringkeeper.telegram import text as telegram_text
 from ringkeeper.wording import task_status
+
+GOT_IT = "Got it. Working out which project it's for…"
+LOOKING = "Got it. Looking into it…"
+
+
+def got_it(body: str) -> str:
+    """The first reply to a request. A question may need no project (Ringkeeper answers
+    it from its own records), so it isn't told one is being found."""
+    return LOOKING if is_question(body) else GOT_IT
 
 
 def routed_text(session: Session, message: Message, limit: int) -> str:
@@ -29,13 +41,12 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
     for _ident in routing.get("decisions", []):
         lines.append("? I need to know which project. I've sent that question separately.")
     if not lines:
-        # The router answered instead of making tasks: meant to be read, so it gets
-        # the room a question gets, with the same rules (no SQL or code).
+        # The router answered instead of making tasks: the words the app shows, meant to
+        # be read, so they get the room a question gets, with the same rules (no SQL or code).
         output = cast(dict[str, Any], routing.get("output") or {})
-        shown = telegram_text.question(str(output.get("reply") or "Nothing to do."), limit)
-        lines.append(shown.text)
-        if shown.cut:
-            lines.append(telegram_text.SHORTENED)
+        said = routing.get("answer") or output.get("reply") or "Nothing to do."
+        shown = telegram_text.question(str(said), limit)
+        return "\n".join([shown.text, *([telegram_text.SHORTENED] if shown.cut else [])])
     return "\n".join([f"{head}:", *lines])
 
 

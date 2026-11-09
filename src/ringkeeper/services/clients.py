@@ -102,6 +102,12 @@ def names(session: Session) -> dict[str, str]:
     return dict(session.execute(select(Client.slug, Client.name)).tuples().all())
 
 
+def display(session: Session, text: str) -> str:
+    """A client as people read it: its name, for its slug or a name typed."""
+    found = find(session, text)
+    return found.name if found is not None else text
+
+
 def rename(session: Session, text: str, name: str) -> Client:
     """Change the name shown; the slug (URLs, IDs) stays."""
     client = get(session, text)

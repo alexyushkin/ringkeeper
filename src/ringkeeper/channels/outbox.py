@@ -58,7 +58,6 @@ REQUESTS_OFF = (
     "channel), or use the app."
 )
 TEXT_ONLY = "Send a request as a text message."
-GOT_IT = "Got it. Working out which project it's for…"
 
 
 class ChannelError(RingkeeperError):
@@ -302,7 +301,7 @@ class Runner:
                 threads.post_message(session, text, author=who, source=self.kind)
         except RingkeeperError as error:
             return f"Not sent: {error}"
-        return GOT_IT
+        return news.got_it(text)
 
     def send_news(self) -> int:
         """For requests by DM: what the router did, and each task's end, back in the DM

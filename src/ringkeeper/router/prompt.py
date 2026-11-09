@@ -23,7 +23,7 @@ from ringkeeper.models import (
     Task,
 )
 from ringkeeper.router.schema import json_schema
-from ringkeeper.services import examples, mentions, threads
+from ringkeeper.services import clients, examples, mentions, threads
 
 SNIPPET_CHARS = 160
 
@@ -107,11 +107,13 @@ def _snippet(text: str, limit: int = SNIPPET_CHARS) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
-def _project_card(project: Project, agents: dict[str, list[Agent]]) -> dict[str, Any]:
+def _project_card(
+    project: Project, agents: dict[str, list[Agent]], owners: dict[str, str]
+) -> dict[str, Any]:
     return {
         "name": project.name,
         "title": project.title,
-        "owner": project.owner,
+        "owner": owners.get(project.owner, project.owner),  # the client as people read it
         "description": project.description,
         "aliases": project.aliases,
         "instances": [
@@ -159,9 +161,10 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
     agents: dict[str, list[Agent]] = {}
     for agent in session.scalars(select(Agent).order_by(Agent.name)):
         agents.setdefault(agent.project.name, []).append(agent)
+    owners = clients.names(session)
 
     sections = [
-        "PROJECTS:\n" + json.dumps([_project_card(p, agents) for p in projects], indent=1),
+        "PROJECTS:\n" + json.dumps([_project_card(p, agents, owners) for p in projects], indent=1),
         "THREAD SO FAR:\n"
         + ("\n".join(f"- {m.role}: {_snippet(m.body)}" for m in history) or "(new thread)"),
         "OPEN TASKS:\n"

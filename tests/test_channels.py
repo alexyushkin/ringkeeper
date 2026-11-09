@@ -21,7 +21,8 @@ from ringkeeper.channels import links
 from ringkeeper.channels import slack as slack_module
 from ringkeeper.channels.cards import NOT_ALLOWED, TEST_ACTION
 from ringkeeper.channels.discord import DiscordApi
-from ringkeeper.channels.outbox import GOT_IT, NOT_YOURS, REQUESTS_OFF, Runner
+from ringkeeper.channels.news import GOT_IT, LOOKING
+from ringkeeper.channels.outbox import NOT_YOURS, REQUESTS_OFF, Runner
 from ringkeeper.channels.slack import SlackApi
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
@@ -38,6 +39,7 @@ from ringkeeper.models import (
     Notification,
     TaskStatus,
 )
+from ringkeeper.router.service import route_next
 from ringkeeper.services import inbox, tasks, threads
 from ringkeeper.telegram import api as telegram_api
 from ringkeeper.telegram.api import BotApi
@@ -54,6 +56,7 @@ from tests.fake_chat import (
     listening,
     wait_for,
 )
+from tests.fake_router import FakeModel
 from tests.fake_telegram import BOT_TOKEN, ME, FakeTelegram
 from tests.helpers import make_instance
 
@@ -419,9 +422,12 @@ def asked(source: str) -> list[tuple[str, str]]:
         return [(m.body, m.author) for m in rows]
 
 
-def answer_it(source: str, reply: str = "The site is up.") -> None:
+def answer_it(source: str, reply: str = "The site is up.", body: str | None = None) -> None:
     with session_scope() as session:
-        message = session.scalars(select(Message).where(Message.source == source)).one()
+        found = select(Message).where(Message.source == source)
+        if body is not None:
+            found = found.where(Message.body == body)
+        message = session.scalars(found).one()
         threads.mark_routed(session, message, {"output": {"reply": reply}})
 
 
@@ -451,11 +457,16 @@ def test_a_slack_dm_from_the_approver_is_a_request_and_its_news_comes_back(
         slack.dm("I'm the bot", ME_SLACK, bot_id="B1")  # its own messages are never requests
         slack.dm("edited", ME_SLACK, subtype="message_changed")
         slack.dm("Is the Acme site up?", ME_SLACK)
+        wait_for(lambda: LOOKING in dm_texts(slack))  # a question: maybe no project at all
+        slack.dm("Add a line to acme-web's notes", ME_SLACK)
         wait_for(lambda: GOT_IT in dm_texts(slack))
-    assert asked("slack") == [("Is the Acme site up?", f"slack:{ME_SLACK}")]
-    answer_it("slack")
+    assert asked("slack") == [
+        ("Is the Acme site up?", f"slack:{ME_SLACK}"),
+        ("Add a line to acme-web's notes", f"slack:{ME_SLACK}"),
+    ]
+    answer_it("slack", body="Is the Acme site up?")
     assert rk.send_news() == 1
-    assert dm_texts(slack)[-1] == "Your request:\nThe site is up."
+    assert dm_texts(slack)[-1] == "The site is up."
     assert rk.send_news() == 0  # once
 
 
@@ -465,7 +476,7 @@ def test_dm_requests_are_off_until_turned_on(slack: FakeSlack) -> None:
     assert rk.on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == REQUESTS_OFF
     assert asked("slack") == []
     take_requests(ident)
-    assert runner(ident).on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == GOT_IT
+    assert runner(ident).on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == LOOKING
     assert len(asked("slack")) == 1
 
 
@@ -485,14 +496,63 @@ def test_a_discord_dm_from_the_approver_is_a_request(discord: FakeDiscord) -> No
         discord.dm("In a server channel", ME_DISCORD, guild_id="601")  # not a DM
         discord.dm("A bot", ME_DISCORD, author={"id": ME_DISCORD, "bot": True})
         discord.dm("Is the Acme site up?", ME_DISCORD)
-        wait_for(lambda: GOT_IT in said())
+        wait_for(lambda: LOOKING in said())
     [(body, author)] = asked("discord")
     assert body == "Is the Acme site up?"
     assert author.startswith(f"discord:{ME_DISCORD}")
     answer_it("discord")
     assert rk.send_news() == 1
     assert ("POST", "users/@me/channels", {"recipient_id": ME_DISCORD}) in discord.calls
-    assert said()[-1] == "Your request:\nThe site is up."
+    assert said()[-1] == "The site is up."
+
+
+SETUP_QUESTION = "how many connections and clients do we currently have?"
+SETUP_ANSWER = "13 connections and 4 clients."
+
+
+def answer_about_ringkeeper() -> None:
+    """The router as in real use: about Ringkeeper, answered from its own records."""
+    model = FakeModel([{"tasks": [], "about_ringkeeper": True}, SETUP_ANSWER])
+    assert route_next(get_settings(), model) is not None
+
+
+def test_a_question_about_ringkeeper_by_slack_dm_gets_the_answer(slack: FakeSlack) -> None:
+    """From real use: the app answered "13 connections and 4 clients", the DM got
+    "Your request: Nothing to do." It gets the app's answer, and isn't told a project
+    is being found."""
+    ident = add_slack()
+    take_requests(ident)
+    rk = runner(ident)
+    assert rk.on_message(ME_SLACK, SETUP_QUESTION, f"slack:{ME_SLACK}") == LOOKING
+    answer_about_ringkeeper()
+    assert rk.send_news() == 1
+    assert dm_texts(slack)[-1] == SETUP_ANSWER
+    assert rk.send_news() == 0
+
+
+def test_a_question_about_ringkeeper_by_discord_dm_gets_the_answer(
+    discord: FakeDiscord,
+) -> None:
+    ident = add_discord()
+    take_requests(ident)
+    rk = runner(ident)
+    assert rk.on_message(ME_DISCORD, SETUP_QUESTION, f"discord:{ME_DISCORD}") == LOOKING
+    answer_about_ringkeeper()
+    assert rk.send_news() == 1
+    assert [m.get("content", "") for m in discord.posted()][-1] == SETUP_ANSWER
+
+
+@pytest.mark.parametrize("given", ["D0123ABCD", "C0123ABCD"])
+def test_a_slack_conversation_id_is_not_a_member_id(slack: FakeSlack, given: str) -> None:
+    with session_scope() as session, pytest.raises(RuleViolationError) as refused:
+        channels.create_channel(
+            session, get_settings(), "slack", name="Ops", target="C1", approver=given,
+            tokens={"bot_token": SLACK_BOT, "app_token": SLACK_APP},
+        )  # fmt: skip
+    assert str(refused.value) == (
+        "That's a conversation's ID. Your member ID starts with U: "
+        "profile picture › Profile › ⋮ › Copy member ID."  # noqa: RUF001
+    )
 
 
 # --- Telegram follows its prefs ---

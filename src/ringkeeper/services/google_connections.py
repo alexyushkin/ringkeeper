@@ -23,7 +23,15 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType
 from ringkeeper.schemas import BindingIn, InstanceIn
-from ringkeeper.services import admin_audit, bindings, google_oauth, instances, projects, secrets_in
+from ringkeeper.services import (
+    admin_audit,
+    bindings,
+    clients,
+    google_oauth,
+    instances,
+    projects,
+    secrets_in,
+)
 
 RULES = ("ask", "run")
 
@@ -76,7 +84,8 @@ def check_start(session: Session, connection: dict[str, Any]) -> None:
             owner, str(connection["owner"])
         ):
             raise RuleViolationError(
-                f"'{found.title}' is {owner}'s project; this account is for {connection['owner']}."
+                f"'{found.title}' is {clients.display(session, owner)}'s project; this account "
+                f"is for {clients.display(session, str(connection['owner']))}."
             )
 
 
@@ -152,7 +161,8 @@ def _store(
             shared=shared, all_projects=shared and bool(connection.get("all_projects")),
         ),
     )  # fmt: skip
-    via = "your own account, shared tool" if shared else f"{owner}'s account"
+    whose = clients.display(session, owner)
+    via = "your own account, shared tool" if shared else f"{whose}'s account"
     admin_audit.record(
         session, "connection.create", f"added Google account {email} as {name} ({via})",
         by="owner", instance=name,

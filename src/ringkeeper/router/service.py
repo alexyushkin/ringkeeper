@@ -10,7 +10,8 @@ without asking which project.
 
 A question about Ringkeeper itself (its connections, projects, tasks, approvals,
 settings, costs) is answered from Ringkeeper's own records (router.self_answer):
-no project, no worker.
+no project, no worker. A reply that starts nothing is recorded on the message
+(`answer`), so a chat that asked gets the same words the app shows.
 """
 
 import logging
@@ -22,6 +23,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ringkeeper import sensitive
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -253,6 +255,7 @@ def route_message(
         meta |= {
             "output": output.model_dump(mode="json"), "about_ringkeeper": True,
             "cost_usd": (cost + helped.cost) or None, "tasks": [], "decisions": [],
+            "answer": sensitive.mask(helped.text),
         }  # fmt: skip
         threads.mark_routed(session, message, meta)
         threads.add_reply(
@@ -269,6 +272,7 @@ def route_message(
         meta |= {
             "output": output.model_dump(mode="json"), "about_ringkeeper": True,
             "cost_usd": (cost + spent) or None, "tasks": [], "decisions": [],
+            "answer": sensitive.mask(reply),
         }  # fmt: skip
         threads.mark_routed(session, message, meta)
         threads.add_reply(session, message.thread_id, reply)
@@ -290,6 +294,8 @@ def route_message(
         "tasks": [str(t.id) for t in routed.tasks],
         "decisions": [str(d.id) for d in routed.decisions],
     }
+    if not routed.tasks and not routed.decisions:  # an answer: what the thread shows
+        meta["answer"] = sensitive.mask(routed.reply)
     threads.mark_routed(session, message, meta)
     threads.add_reply(session, message.thread_id, routed.reply)
     return routed

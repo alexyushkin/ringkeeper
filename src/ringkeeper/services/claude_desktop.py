@@ -35,7 +35,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType
 from ringkeeper.schemas import BindingIn, InstanceIn
-from ringkeeper.services import admin_audit, bindings, instances, projects, secrets_in
+from ringkeeper.services import admin_audit, bindings, clients, instances, projects, secrets_in
 
 SOURCE = "claude-desktop"
 CONFIG_NAME = "claude_desktop_config.json"
@@ -325,9 +325,10 @@ def import_server(
     elif len({o.strip().casefold() for o in owners}) == 1:
         owner = owners.pop()
     else:
+        shown = sorted(clients.display(session, o) for o in owners)
         raise RuleViolationError(
             f"{server.name} is a client's connection, so its projects must all be one "
-            f"client's (these are {', '.join(sorted(owners))}'s). Make it a shared tool to "
+            f"client's (these are {', '.join(shown)}'s). Make it a shared tool to "
             "use it for several clients."
         )
     name = _free_name(session, server.name)
@@ -351,7 +352,7 @@ def import_server(
     )  # fmt: skip
     for project in linked:
         bindings.set_binding(session, BindingIn(project=project, instance=name))
-    kind = "shared tool" if shared else f"{owner}'s connection"
+    kind = "shared tool" if shared else f"{clients.display(session, owner)}'s connection"
     where = "all projects" if shared and all_projects else ", ".join(linked)
     admin_audit.record(
         session, "connection.import",
