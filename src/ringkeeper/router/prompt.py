@@ -134,6 +134,11 @@ def _project_card(
     }
 
 
+def _task_line(task: Task) -> str:
+    line = f"- {task.project} [{task.status}]: {_snippet(task.outcome or task.prompt)}"
+    return line + (f" -> result: {_snippet(task.summary, 400)}" if task.summary else "")
+
+
 def _decision_line(decision: Decision) -> str:
     payload = decision.payload or {}
     what = payload.get("question") or payload.get("message") or decision.tool or ""
@@ -182,6 +187,11 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
             or "(none)"
         ),
         "PENDING DECISIONS:\n" + ("\n".join(_decision_line(d) for d in pending) or "(none)"),
+        'THIS CONVERSATION\'S TASKS (what "it", "the result" or "do it for..." mean):\n'
+        + (
+            "\n".join(_task_line(t) for t in threads.thread_tasks(session, message.thread_id))
+            or "(none)"
+        ),
         "ROUTING EXAMPLES:\n"
         + (
             "\n".join(

@@ -14,12 +14,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from ringkeeper import sensitive
 from ringkeeper.errors import NotFoundError, RuleViolationError
-from ringkeeper.models import Message, MessageRole, Task, TaskStatus, Thread
+from ringkeeper.models import Message, MessageRole, Setting, Task, TaskStatus, Thread
 from ringkeeper.services import titles
 from ringkeeper.services.decisions import MIN_ID_PREFIX
 from ringkeeper.storage import events
@@ -113,6 +113,74 @@ def post_message(
     session.flush()
     notify_router(session)
     return message
+
+
+QUIET = timedelta(hours=2)  # a chat's next message after this starts a new conversation
+NEW_WORDS = frozenset({"new", "/new", "new conversation", "new chat", "start over"})
+STARTED_NEW = "OK. Your next message starts a new conversation."
+
+
+def starts_new(text: str) -> tuple[bool, str]:
+    """Whether a chat message starts a new conversation ("new", or "new: <request>"), and
+    the request in it, if any."""
+    said = text.strip()
+    if said.lower().rstrip(".!") in NEW_WORDS:
+        return True, ""
+    if said.lower().startswith("new:"):
+        return True, said[4:].strip()
+    return False, said
+
+
+def _fresh_key(source: str, who: str) -> str:
+    return f"chat-new:{source}:{who}"
+
+
+def start_fresh(session: Session, source: str, who: str) -> None:
+    """The next message from this chat starts a new conversation."""
+    key = _fresh_key(source, who)
+    row = session.get(Setting, key)
+    stamp = {"at": datetime.now(UTC).isoformat()}
+    if row is None:
+        session.add(Setting(key=key, value=stamp))
+    else:
+        row.value = stamp
+    session.flush()
+
+
+def chat_thread(
+    session: Session,
+    source: str,
+    who: str,
+    *,
+    chat_id: int | None = None,
+    now: datetime | None = None,
+) -> Thread | None:
+    """The conversation a chat's next message continues: its last one, unless it's been
+    quiet for 2 hours, was archived, or the person said "new" since. `who` is the start of
+    the author (Slack and Discord: "slack:U123"); Telegram goes by its chat."""
+    now = now or datetime.now(UTC)
+    query = (
+        select(Message)
+        .join(Thread, Thread.id == Message.thread_id)
+        .where(Message.source == source, Message.role == MessageRole.USER)
+    )
+    if chat_id is not None:
+        query = query.where(Thread.origin_chat_id == chat_id)
+    else:
+        query = query.where(Message.author.startswith(who, autoescape=True))
+    last = session.scalars(query.order_by(Message.created_at.desc()).limit(1)).first()
+    if last is None:
+        return None
+    thread = session.get_one(Thread, last.thread_id)
+    latest = session.scalar(
+        select(func.max(Message.created_at)).where(Message.thread_id == thread.id)
+    )
+    fresh = session.get(Setting, _fresh_key(source, who))
+    if fresh is not None and datetime.fromisoformat(str(fresh.value["at"])) > last.created_at:
+        return None
+    if thread.archived_at is not None or latest is None or latest < now - QUIET:
+        return None
+    return thread
 
 
 def _when(run_at: datetime) -> datetime:
@@ -230,6 +298,13 @@ def recent_messages(
     if before is not None:
         query = query.where(Message.created_at < before)
     rows = session.scalars(query.order_by(Message.created_at.desc()).limit(limit)).all()
+    return list(reversed(rows))
+
+
+def thread_tasks(session: Session, thread_id: uuid.UUID, limit: int = 10) -> list[Task]:
+    """The conversation's latest tasks, oldest first."""
+    query = select(Task).where(Task.thread_id == thread_id)
+    rows = session.scalars(query.order_by(Task.created_at.desc()).limit(limit)).all()
     return list(reversed(rows))
 
 

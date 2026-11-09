@@ -18,6 +18,13 @@ publishes it as the release notes and the app shows it with the update.
   name, and offers to make your pick the default. See
   [When it asks which project](docs/concepts.md#when-it-asks-which-project).
 
+- **Chats work like a conversation.** In Slack, Discord and Telegram, your messages
+  continue one conversation, so "publish the result here" or "now do it for Acme" knows
+  what came before. A new one starts after 2 hours of quiet or when you send **new**, and its
+  first reply links to it in the app. A task you asked for from a chat posts its actual result
+  there (tables as lines, with a link when it's long), and its approvals are posted in that
+  chat with their buttons. See [A chat is a conversation](docs/notifications.md#a-chat-is-a-conversation).
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how
