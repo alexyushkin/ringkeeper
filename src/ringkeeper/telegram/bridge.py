@@ -82,7 +82,7 @@ CONFIRM, REDO = "c", "r"
 ANSWER, REQUEST = "answer", "request"  # what a confirmed transcript becomes
 HEARD_CHARS = 3500  # Telegram caps a message at 4096 characters
 # sent -> running (an approved held write the gateway hasn't run yet) -> closed
-SENT, RUNNING, CLOSED, FAILED = "sent", "running", "closed", "failed"
+SENT, RUNNING, CLOSED, FAILED, SKIPPED = "sent", "running", "closed", "failed", "skipped"
 KIND_LABELS = {
     DecisionKind.ROUTE: "Which project?",
     DecisionKind.APPROVE: "Approval",
@@ -108,9 +108,11 @@ def callback_data(decision: Decision, index: int) -> str:
     return f"{CALLBACK_PREFIX}:{decision.id}:{index}"
 
 
-def render(decision: Decision, settings: Settings) -> str:
-    head = [KIND_LABELS[decision.kind]]
-    if decision.project:
+def render(decision: Decision, settings: Settings, *, closed: bool = False) -> str:
+    """A decision's message; `closed`: as it reads once decided, without what to do."""
+    go_ahead = decision.kind is DecisionKind.ROUTE and (decision.payload or {}).get("production")
+    head = ["Go ahead?" if go_ahead else KIND_LABELS[decision.kind]]
+    if decision.project and (decision.kind is not DecisionKind.ROUTE or go_ahead):
         head.append(titles.of(object_session(decision), decision.project))
     if decision.instance:
         head.append(decision.instance)
@@ -120,6 +122,8 @@ def render(decision: Decision, settings: Settings) -> str:
     lines = [" · ".join(head), shown.text]
     if shown.cut:
         lines.append(telegram_text.SHORTENED)
+    if closed:
+        return scrub("\n".join(lines))
     if decision.kind is DecisionKind.QUESTION:
         lines.append("Reply to this message with your answer.")
     if decision.kind is DecisionKind.PLAN and (
@@ -148,7 +152,7 @@ def keyboard(decision: Decision) -> dict[str, Any]:
     return {"inline_keyboard": [buttons[i : i + 2] for i in range(0, len(buttons), 2)]}
 
 
-def outcome_line(decision: Decision) -> str:
+def outcome_line(decision: Decision) -> str:  # noqa: PLR0911 (one per way it ended)
     who = person(decision.decided_by or (decision.answer or {}).get("by"))
     choice = (decision.answer or {}).get("choice")
     match decision.status:
@@ -156,12 +160,14 @@ def outcome_line(decision: Decision) -> str:
             return f"⏳ Approved by {who}. Running now."
         case DecisionStatus.EXPIRED:
             return "⌛ Ran out of time, so nothing was changed."
+        case DecisionStatus.EXECUTED:
+            return f"✔ Approved by {who}. It ran."
         case DecisionStatus.DENIED:
-            return f"✖ Denied by {who}."
+            return f"✖ Denied by {who}. Nothing was changed."
         case DecisionStatus.FAILED:
             return f"✖ Approved by {who}, but it failed. Open Ringkeeper to see why."
         case DecisionStatus.ANSWERED if choice:
-            return f"✔ Answered by {who}: {_label(decision, choice)}"
+            return f"✔ Answered by {who}: {_label(decision, choice)}."
         case _:
             return f"✔ {decision_status(decision.status).capitalize()} by {who}."
 
@@ -269,7 +275,7 @@ class Bridge:
                     continue
                 if note.external_id is None or (running and note.status == RUNNING):
                     continue
-                text = f"{render(decision, self.settings)}\n"
+                text = f"{render(decision, self.settings, closed=True)}\n"
                 text += outcome_line(decision)
                 try:
                     self.api.edit_message(note.chat_id, note.external_id, scrub(text))
@@ -327,6 +333,11 @@ class Bridge:
             ).all()
             for message in routed:
                 text = routed_text(session, message, self.settings.telegram_question_chars)
+                if not text:  # nothing to say: the question was sent on its own
+                    session.add(Notification(
+                        channel=CHANNEL, chat_id=0, status=SKIPPED, message_id=message.id
+                    ))  # fmt: skip
+                    continue
                 sent += self._notify(session, text, message.thread_id, message_id=message.id)
             ended = select(Notification.task_id).where(
                 Notification.channel == CHANNEL, Notification.task_id.is_not(None)
@@ -370,7 +381,9 @@ class Bridge:
                 answered = inbox.answer(
                     session, self.settings, ident, reply, by=_who(user), via=inbox.Via.TELEGRAM
                 )
-                return f"Done: {decision_status(answered.decision.status)}."
+                if reply.choice is None:
+                    return "Answered."
+                return inbox.pressed(answered.decision, reply.choice)
         except RingkeeperError as error:
             return f"Not done: {error}"
 

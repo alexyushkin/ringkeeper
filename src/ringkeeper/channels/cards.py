@@ -97,13 +97,18 @@ def _label(decision: Decision, choice: str) -> str:
     return CHOICE_LABELS.get(choice, inbox.chosen(decision, choice))
 
 
-def decision_card(decision: Decision, open_url: str | None) -> Card:
-    head = [KIND_LABELS[decision.kind]]
-    head += [part for part in (_project(decision), decision.instance) if part]
+def _head(decision: Decision) -> list[str]:
+    """What it is, where, and what it says: the start of its message, open or decided."""
+    go_ahead = decision.kind is DecisionKind.ROUTE and (decision.payload or {}).get("production")
+    head = ["Go ahead?" if go_ahead else KIND_LABELS[decision.kind]]
+    if decision.kind is not DecisionKind.ROUTE or go_ahead:
+        head += [part for part in (_project(decision), decision.instance) if part]
     shown = shown_text.body(decision, SUMMARY_CHARS, QUESTION_CHARS)
-    lines = [" · ".join(head), shown.text]
-    if shown.cut:
-        lines.append(SHORTENED)
+    return [" · ".join(head), shown.text, *([SHORTENED] if shown.cut else [])]
+
+
+def decision_card(decision: Decision, open_url: str | None) -> Card:
+    lines = _head(decision)
     if decision.kind is DecisionKind.PLAN and (
         estimate := (decision.payload or {}).get("estimate")
     ):
@@ -137,26 +142,34 @@ def _action(decision: Decision, options: list[str], choice: str) -> str:
     return f"{PREFIX}:{decision.id}:{options.index(choice)}"
 
 
-def outcome_line(decision: Decision) -> str:
+def outcome_line(decision: Decision) -> str:  # noqa: PLR0911 (one per way it ended)
+    """How it ended, as one sentence."""
     who = person(decision.decided_by or (decision.answer or {}).get("by"))
     choice = (decision.answer or {}).get("choice")
     match decision.status:
         case DecisionStatus.PENDING:
-            return f"Approved by {who}. Running now."
+            return f"⏳ Approved by {who}. Running now."
+        case DecisionStatus.EXECUTED:
+            return f"✔ Approved by {who}. It ran."
+        case DecisionStatus.APPROVED:
+            return f"✔ Approved by {who}."
+        case DecisionStatus.DENIED:
+            return f"✖ Denied by {who}. Nothing was changed."
         case DecisionStatus.EXPIRED:
-            return "Ran out of time, so nothing was changed."
+            return "⌛ Ran out of time, so nothing was changed."
         case DecisionStatus.FAILED:
-            return f"Approved by {who}, but it failed. Open it in Ringkeeper to see why."
+            return f"✖ Approved by {who}, but it failed. Open it in Ringkeeper to see why."
         case DecisionStatus.ANSWERED if choice:
-            return f"Answered by {who}: {_label(decision, choice)}."
+            return f"✔ Answered by {who}: {_label(decision, choice)}."
         case _:
-            return f"{decision_status(decision.status).capitalize()} by {who}."
+            return f"✔ {decision_status(decision.status).capitalize()} by {who}."
 
 
 def closed_card(decision: Decision, open_url: str | None) -> Card:
-    """The same message once it's decided: what happened, and no buttons but Open."""
-    card = decision_card(decision, open_url)
-    return Card(_clean(f"{card.text}\n{outcome_line(decision)}"), _open(open_url))
+    """The message once it's decided: what it was, and how it ended. No buttons but Open,
+    and none of the open card's instructions."""
+    lines = [*_head(decision), outcome_line(decision)]
+    return Card(_clean("\n".join(lines)), _open(open_url))
 
 
 def task_card(task: Task, open_url: str | None) -> Card:
@@ -201,11 +214,10 @@ def press(  # noqa: PLR0911 (one answer per way a press can go)
             if choice == "approve" and not inbox.quick_approval(decision):
                 # The button isn't offered for these; a forged press gets nowhere.
                 return "Approve this one in Ringkeeper."
-            answered = inbox.answer(
+            inbox.answer(
                 session, settings, str(decision.id), inbox.Answer(choice=choice), by=who, via=via
             )
-            label = _label(decision, choice).lower()
-            return f"Done: {label}. It's {decision_status(answered.decision.status)}."
+            return inbox.pressed(decision, choice)
     except (ValueError, IndexError):
         return "This button no longer works. Open Ringkeeper to answer."
     except RingkeeperError as error:

@@ -229,7 +229,7 @@ def test_slack_button_approves_once_and_only_for_the_approver(slack: FakeSlack) 
         assert status(held) is DecisionStatus.PENDING
 
         reply = slack.press(f"rk:{held}:0", ME_SLACK)
-        assert slack.replies[reply]["text"].startswith("Done: approve")
+        assert slack.replies[reply]["text"] == "Approved."
         assert status(held) is DecisionStatus.APPROVED
 
         reply = slack.press(f"rk:{held}:0", ME_SLACK)
@@ -356,7 +356,7 @@ def test_discord_button_approves_once_and_only_for_the_approver(discord: FakeDis
         }
         assert status(held) is DecisionStatus.PENDING
         reply = discord.press(f"rk:{held}:0", ME_DISCORD)
-        assert discord.callbacks[reply]["data"]["content"].startswith("Done: approve")
+        assert discord.callbacks[reply]["data"]["content"] == "Approved."
         assert status(held) is DecisionStatus.APPROVED
         assert discord.press(f"rk:{held}:0", ME_DISCORD) == reply + 1
         assert discord.callbacks[-1]["data"]["content"].startswith("Not done")
@@ -765,3 +765,57 @@ def test_an_approval_from_a_dm_task_goes_to_that_dm(slack: FakeSlack) -> None:
     assert card["channel"] == "D1"  # the DM, with its buttons
     assert any(b.get("value") == f"rk:{held}:0" for b in buttons(card))
     assert other not in str(slack.posted())
+
+
+# --- Wording in chats ---
+
+
+def route_question(slack: FakeSlack) -> tuple[Runner, str]:
+    ident = add_slack()
+    take_requests(ident)
+    rk = runner(ident)
+    rk.on_message(ME_SLACK, "Fix the contact form", f"slack:{ME_SLACK}")
+    with session_scope() as session:
+        message = session.scalars(select(Message).where(Message.source == "slack")).one()
+        decision = inbox.create(
+            session, get_settings(), DecisionKind.ROUTE,
+            {
+                "message": message.body, "reason": "Both Website and Blog have a contact form.",
+                "candidates": [{"project": "acme-web", "confidence": 0.5}],
+                "task": {"outcome": "INTERNAL OUTCOME TEXT", "prompt": "fix it"},
+            },
+            thread_id=message.thread_id, message_id=message.id,
+        )  # fmt: skip
+        threads.mark_routed(session, message, {"tasks": [], "decisions": [str(decision.id)]})
+        return rk, str(decision.id)
+
+
+def test_which_project_is_asked_once_in_plain_words(slack: FakeSlack) -> None:
+    rk, ident = route_question(slack)
+    assert rk.send_news() == 0  # no "I need to know which project" line
+    assert rk.send_news() == 0  # and it isn't tried again
+    rk.send_due()
+    [card] = [m for m in slack.posted() if m["text"].startswith("Which project?")]
+    assert card["text"] == "Which project?\nBoth Website and Blog have a contact form."
+    assert "INTERNAL" not in str(card)
+    labels = [b["text"]["text"] for b in buttons(card)]
+    assert labels[:2] == ["Acme web", "None of these"]  # names, not slugs
+    with session_scope() as session:
+        decision = session.get_one(Decision, uuid.UUID(ident))
+        assert inbox.pressed(decision, "acme-web") == "OK: Acme web."
+        assert inbox.pressed(decision, inbox.NO_PROJECT) == "OK, nothing was started."
+
+
+def test_a_decided_card_shows_how_it_ended(slack: FakeSlack) -> None:
+    ident = add_slack()
+    held = prod_connection()
+    rk = runner(ident)
+    rk.send_due()
+    with session_scope() as session:
+        row = session.get_one(Decision, uuid.UUID(held))
+        row.status, row.decided_by = DecisionStatus.EXECUTED, f"slack:{ME_SLACK} (alex)"
+        row.decided_at = datetime.now(UTC)
+    rk.close_finished()
+    text = slack.updated()[-1]["text"]
+    assert text.endswith("\n✔ Approved by alex (Slack). It ran.")
+    assert "Approve it in Ringkeeper" not in text  # the open card's instructions are gone

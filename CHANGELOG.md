@@ -30,6 +30,11 @@ publishes it as the release notes and the app shows it with the update.
   a connection the client has, it offers one click to link it to the project and run the task
   again, in the app and as a chat button.
 
+- **Plainer chat messages.** "Which project?" is asked once, with one line of why, and its
+  buttons show project names. The "I need to know which project" line is gone. Pressing a
+  button says "Approved.", "Denied." or "OK: Website.", and a decided card shows how it
+  ended ("✔ Approved by Alex (Slack). It ran.") instead of adding a line to the old one.
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how
