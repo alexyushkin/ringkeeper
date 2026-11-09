@@ -26,6 +26,7 @@ import pytest
 
 from ringkeeper import __version__, bridge
 from ringkeeper.config import get_settings
+from ringkeeper.desktop import server
 from ringkeeper.services import passes
 
 NODE = shutil.which("node")  # Claude Desktop runs the relay on its own
@@ -114,7 +115,8 @@ def test_the_bridge_leaves_when_ringkeeper_quits_or_restarts(tmp_path: Path, gat
     watching.start()
     watching.join(0.3)
     assert watching.is_alive()  # Ringkeeper is still there
-    (tmp_path / "desktop.json").unlink()  # Quit removes it, and an update quits first
+    # Quit removes it (and an update quits first), while the bridge may be reading it.
+    server.remove(tmp_path / "desktop.json")
     watching.join(5)
     assert left == [bridge.STOPPED]
 
