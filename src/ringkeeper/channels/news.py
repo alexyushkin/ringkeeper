@@ -18,10 +18,32 @@ GOT_IT = "Got it. Working out which project it's for…"
 LOOKING = "Got it. Looking into it…"
 
 
-def got_it(body: str) -> str:
+def got_it(body: str, link: str | None = None) -> str:
     """The first reply to a request. A question may need no project (Ringkeeper answers
-    it from its own records), so it isn't told one is being found."""
-    return LOOKING if is_question(body) else GOT_IT
+    it from its own records), so it isn't told one is being found. A new conversation
+    says where to follow it in the app."""
+    said = LOOKING if is_question(body) else GOT_IT
+    return f"{said}\nNew conversation: {link}" if link else said
+
+
+RESULT_CHARS = 1500  # fits Slack, Discord (2,000) and Telegram (4,096), with the link
+
+
+def result_text(task: Task, link: str | None, limit: int = RESULT_CHARS) -> str:
+    """A task's end, for the chat it was asked from: what it found or did, as its last
+    message said (tables as lines, no code or SQL), then where to read the rest."""
+    mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
+    head = f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
+    said = (task.summary if task.status is TaskStatus.SUCCEEDED else task.error) or ""
+    if not said.strip():
+        return head + (f"\n{link}" if link else "")
+    shown = telegram_text.question(said, limit)
+    tail = (
+        [f"The rest is in Ringkeeper: {link}" if link else telegram_text.SHORTENED]
+        if shown.cut
+        else []
+    )
+    return "\n".join([head, shown.text, *tail])
 
 
 def routed_text(session: Session, message: Message, limit: int) -> str:

@@ -31,8 +31,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import voice_local
-from ringkeeper.channels import telegram_state
-from ringkeeper.channels.news import finished_text, got_it, routed_text
+from ringkeeper.channels import links, telegram_state
+from ringkeeper.channels.news import finished_text, got_it, result_text, routed_text
 from ringkeeper.channels.outbox import due, task_event
 from ringkeeper.channels.prefs import ROUTINES
 from ringkeeper.config import Settings, get_settings
@@ -174,6 +174,16 @@ def heard(transcript: str, question: str = "") -> str:
     return f"I heard: {shown}" + (f"\n\n{question}" if question else "")
 
 
+def _origin_chat(session: Session, decision: Decision) -> int | None:
+    """The Telegram chat a decision's request came from."""
+    thread_id = decision.thread_id
+    if thread_id is None and decision.task_id is not None:
+        task = session.get(Task, decision.task_id)
+        thread_id = task.thread_id if task is not None else None
+    thread = session.get(Thread, thread_id) if thread_id is not None else None
+    return thread.origin_chat_id if thread is not None else None
+
+
 def _close_confirmation(row: VoiceConfirmation, status: str) -> None:
     # The transcript lives on in the answer or message it became, if any.
     row.status, row.transcript, row.resolved_at = status, None, datetime.now(UTC)
@@ -213,6 +223,7 @@ class Bridge:
         with session_scope() as session:
             prefs, since = telegram_state(session)
             found = due(session, CHANNEL, prefs, since, datetime.now(UTC), own_threads=CHANNEL)
+            origin = {d.id: _origin_chat(session, d) for d in found.decisions if d.id in found.mine}
             for task, routine in found.tasks:
                 text = (
                     routine_text(routine, task)
@@ -222,7 +233,8 @@ class Bridge:
                 sent += self._notify(session, text, None, task_id=task.id)
             for decision in found.decisions:
                 text = render(decision, self.settings)
-                for chat in sorted(self.chats):
+                there = origin.get(decision.id)  # asked from a chat: that chat only
+                for chat in [there] if there in self.chats else sorted(self.chats):
                     note = Notification(decision_id=decision.id, channel=CHANNEL, chat_id=chat)
                     try:
                         note.external_id = self.api.send_message(chat, text, keyboard(decision))
@@ -317,7 +329,9 @@ class Bridge:
                 .order_by(Task.finished_at)
             ).all()
             for task in finished:
-                sent += self._notify(session, finished_text(task), task.thread_id, task_id=task.id)
+                path = links.task_page(self.settings, task.id)
+                text = result_text(task, links.open_url(session, self.settings, path))
+                sent += self._notify(session, text, task.thread_id, task_id=task.id)
         return sent
 
     # --- Incoming ---
@@ -462,16 +476,36 @@ class Bridge:
             return None
 
     def _request(self, body: str, user: dict[str, Any], input_kind: str, chat_id: int) -> str:
-        """Post a request for the router, the same path as `ringkeeper ask`."""
+        """Post a request for the router, the same path as `ringkeeper ask`. It continues
+        the chat's conversation (see threads.chat_thread); "new" starts another."""
+        fresh, body = threads.starts_new(body)
         try:
             with session_scope() as session:
-                threads.post_message(
-                    session, body, author=_who(user), source=CHANNEL, input_kind=input_kind,
-                    origin_chat_id=chat_id,
-                )  # fmt: skip
+                if fresh:
+                    threads.start_fresh(session, CHANNEL, str(chat_id))
+                    if not body:
+                        return threads.STARTED_NEW
+                message = self._post(session, body, _who(user), input_kind, chat_id)
+                link = self._new_link(session, message)
         except RingkeeperError as error:
             return f"Not sent: {error}"
-        return got_it(body)
+        return got_it(body, link)
+
+    def _post(
+        self, session: Session, body: str, author: str, input_kind: str, chat_id: int
+    ) -> Message:
+        place = threads.chat_thread(session, CHANNEL, str(chat_id), chat_id=chat_id)
+        return threads.post_message(
+            session, body, author=author, source=CHANNEL, input_kind=input_kind,
+            origin_chat_id=chat_id, thread=str(place.id) if place is not None else None,
+        )  # fmt: skip
+
+    def _new_link(self, session: Session, message: Message) -> str | None:
+        """Where to follow a conversation that just started (None: it went on)."""
+        if len(threads.thread_messages(session, message.thread_id)) > 1:
+            return None
+        path = links.thread_page(self.settings, message.thread_id)
+        return links.open_url(session, self.settings, path)
 
     def _hear(
         self, chat_id: int, user: dict[str, Any], note: VoiceNote, decision_id: str | None
@@ -547,10 +581,7 @@ class Bridge:
                     )
                     feedback = "Send it again"
                 elif row.kind == REQUEST:
-                    threads.post_message(
-                        session, transcript, author=row.author, source=CHANNEL,
-                        input_kind="voice", origin_chat_id=row.chat_id,
-                    )  # fmt: skip
+                    self._post(session, transcript, row.author, "voice", row.chat_id)
                     _close_confirmation(row, "confirmed")
                     outcome = "✔ Sent. " + got_it(transcript).removeprefix("Got it. ")
                     feedback = "Sent"
