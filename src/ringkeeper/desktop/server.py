@@ -359,6 +359,20 @@ def single_instance(data_dir: Path) -> Generator[None]:
         handle.close()
 
 
+def remove(path: Path, tries: int = 20) -> None:
+    """Remove a file another process may be reading at that moment: a pass's bridge reads
+    desktop.json to see if Ringkeeper is still there, and Windows won't delete a file
+    that's open."""
+    for attempt in range(tries):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.05)
+
+
 def _write_runtime(data_dir: Path, info: dict[str, Any]) -> Path:
     path = data_dir / RUNTIME_FILE
     tmp = path.with_suffix(".tmp")
@@ -478,4 +492,4 @@ def run(  # noqa: PLR0915 (the whole start-up, in order)
             gateway.should_exit = True
             gateway_thread.join(10)
             if runtime is not None:
-                runtime.unlink(missing_ok=True)
+                remove(runtime)
