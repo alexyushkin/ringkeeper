@@ -39,7 +39,7 @@ def test_a_client_is_named_as_typed_and_listed_without_projects(owner: TestClien
     assert made.status_code == 201, made.text
     assert made.json() == {
         "slug": "seaside-windows-doors", "name": "Seaside Windows & Doors", "projects": 0,
-        "connections": 0, "month_usd": 0.0, "cap_usd": None, "default_project": None,
+        "connections": 0, "month_usd": 0.0, "cap_usd": None, "default_project": None, "own": False,
     }  # fmt: skip
     # Typing it again, in any case, is the same client.
     assert owner.post("/clients", json={"name": "seaside windows & doors"}).json()["slug"] == (

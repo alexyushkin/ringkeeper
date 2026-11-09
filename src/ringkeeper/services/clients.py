@@ -130,6 +130,22 @@ def set_default_project(session: Session, text: str, project: str | None) -> Cli
     return client
 
 
+def own_client(session: Session) -> str | None:
+    """The operator's own client, if one is marked."""
+    return session.scalar(select(Client.slug).where(Client.own.is_(True)).limit(1))
+
+
+def set_own(session: Session, text: str, own: bool) -> Client:
+    """Mark (or unmark) the operator's own client; only one is."""
+    client = get(session, text)
+    if own:
+        for other in session.scalars(select(Client).where(Client.own.is_(True))):
+            other.own = False
+    client.own = own
+    session.flush()
+    return client
+
+
 def rename(session: Session, text: str, name: str) -> Client:
     """Change the name shown; the slug (URLs, IDs) stays."""
     client = get(session, text)

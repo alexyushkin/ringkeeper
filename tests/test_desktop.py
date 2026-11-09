@@ -960,7 +960,7 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
     project = win.get("/bff/projects/seaside-newsletter").json()
     assert (project["owner"], project["description"]) == ("seaside", "Monthly email for Seaside")
     seaside = {"slug": "seaside", "name": "Seaside", "projects": 1, "connections": 0}
-    assert seaside | {"month_usd": 0.0, "cap_usd": None, "default_project": None} in (
+    assert seaside | {"month_usd": 0.0, "cap_usd": None, "default_project": None, "own": False} in (
         win.get("/bff/clients").json()
     )
     assert (

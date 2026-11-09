@@ -17,6 +17,9 @@ CRM = "demo-crm"
 AIRTABLE = "demo-airtable"
 # In Acme's database only: seen anywhere in a Demo Co task, it crossed clients.
 CANARY = "ACME-CANARY-7731"
+# The operator's own client and its one project: general work runs here.
+OWN_CLIENT = "Demo agency"
+DESK = "agency-desk"
 AGENT = "Stock Checker"
 AGENT_ID = "stock-checker"  # as a task records it
 ROUTINE = "Low stock check"
@@ -57,6 +60,7 @@ class Scenario:
     title: str
     covers: str
     request: str = ""
+    selected: str | None = None  # the project chosen at the top of the app when it's sent
     then: tuple[str, ...] = ()  # follow-ups in the same conversation
     routine: str | None = None  # run this routine as a test, instead of a request
     needs: str | None = None  # a sandbox from scenarios.toml; skipped without it
@@ -130,6 +134,18 @@ SCENARIOS: tuple[Scenario, ...] = (
         request="Take a look at Acme's orders and tell me how many there are.",
         project=ACME, tools=("query",), never_held=True, cost_ceiling=0.75,
         notes="Acme has one project, so there's nothing to choose.",
+    ),
+    Scenario(
+        "web-selected", "A web lookup runs in the project chosen at the top", "routing",
+        request="Look up on the web what year the Eiffel Tower opened, and tell me.",
+        selected=SITE, project=SITE, reply_has=("1889",), never_held=True, cost_ceiling=1.0,
+        notes="It needs no client's connection; the project chosen at the top decides.",
+    ),
+    Scenario(
+        "web-own", "With nothing chosen, general work runs in your own default project", "routing",
+        request="Look up on the web what year the Eiffel Tower opened, and tell me.",
+        project=DESK, reply_has=("1889",), never_held=True, cost_ceiling=1.0,
+        notes="Nothing is chosen at the top, so it runs in the operator's own client's project.",
     ),
     Scenario(
         "mention-project", "An @-mention decides the project", "routing",

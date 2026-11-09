@@ -399,7 +399,10 @@ class Driver:
     def _start(self, scenario: Scenario) -> uuid.UUID:
         with session_scope() as session:
             if scenario.routine is None:
-                sent = threads.post_message(session, scenario.request, author=AUTHOR, source="web")
+                sent = threads.post_message(
+                    session, scenario.request, author=AUTHOR, source="web",
+                    target_project=scenario.selected,
+                )  # fmt: skip
                 return sent.thread_id
             routine = session.scalars(select(Routine).where(Routine.name == scenario.routine)).one()
             started = routines.start_run(session, self.settings, routine, "test")

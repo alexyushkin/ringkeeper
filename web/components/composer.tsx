@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Spinner } from "@/components/ui";
 import { VoiceSetup, useLocalVoice } from "@/components/voice";
 import { api, useApi } from "@/lib/client/api";
+import { place, useScope } from "@/lib/client/scope";
 
 type Phase = "idle" | "recording" | "transcribing" | "heard";
 
@@ -58,6 +59,7 @@ function soon(): string {
 
 export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: { threadId?: string; onSent: (thread: string) => void; autoFocus?: boolean; prefix?: string }) {
   const [text, setText] = useState("");
+  const scope = useScope();
   const mentionable = useApi<Mentionable[]>("mentions");
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
   const [choice, setChoice] = useState(0);
@@ -155,7 +157,11 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
     setError(null);
     try {
       const result = await api<{ thread_id: string }>("messages", {
-        json: { body: `${prefix}${body}`, source: "web", input, author: "owner", thread_id: threadId ?? null, attachments: files.map((f) => f.id), run_at: later ? new Date(later).toISOString() : null },
+        json: {
+          body: `${prefix}${body}`, source: "web", input, author: "owner", thread_id: threadId ?? null,
+          attachments: files.map((f) => f.id), run_at: later ? new Date(later).toISOString() : null,
+          client: scope.client || null, project: scope.project || null,
+        },
       });
       setLater(null);
       setText("");
@@ -401,6 +407,12 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
         </ul>
       ) : null}
       {setup && !voice.ready ? <VoiceSetup status={voice.status} error={voice.error} onDownload={() => void voice.download()} onClose={() => setSetup(false)} /> : null}
+      {scope.client || scope.project ? (
+        <p className="px-1 text-xs">
+          Sending to <strong>{place(scope.client || null, scope.project || null)}</strong>
+          {scope.project ? "" : ": it picks the project"}
+        </p>
+      ) : null}
       <p className="px-1 text-xs text-muted">
         {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : "Hold the mic to speak, or drop files here. You'll see what I heard before anything is sent."}
       </p>

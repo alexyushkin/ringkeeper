@@ -53,6 +53,18 @@ card, on its page, and in the chat you asked from. When what it lacked is a conn
 client has but the project isn't linked to, it offers one click, like "Link General
 Informatics' Google to Website and retry", in the app and as a button in the chat.
 
+### Where a request goes
+
+The client and project chosen at the top of the app are a firm choice for new requests,
+like an @-mention: the box says "Sending to Alexey › My Project", and a request sent then
+goes to that project without asking.
+
+Work that needs no client's connection, like a web lookup, writing, or summarizing text
+you pasted, runs in the chosen project. With nothing chosen, it runs in your own client's
+default project: on that client's page, open **Settings › Your own work** and turn on
+"... is me". If the project's tasks can't use the web (its autonomy is strict or
+standard), Ringkeeper says so plainly instead of starting.
+
 ### When it asks which project
 
 Ringkeeper asks only when the work clearly belongs to one project and more than one fits,

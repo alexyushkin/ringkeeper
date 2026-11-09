@@ -255,6 +255,9 @@ class Client(Base):
     # Where a request goes that names the client and needs no particular project (its email,
     # Google, Slack). A project's slug; with one project, that one (services.clients).
     default_project: Mapped[str | None] = mapped_column(Text)
+    # The operator's own work: general requests (a web lookup, writing) go to its default
+    # project when nothing is chosen. One client at most.
+    own: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class Agent(TimestampMixin, Base):
@@ -820,6 +823,9 @@ class Message(Base):
     routing: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     routed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     route_error: Mapped[str | None] = mapped_column(Text)
+    # Chosen at the top of the app when it was sent: a firm choice, like an @-mention.
+    target_client: Mapped[str | None] = mapped_column(Text)
+    target_project: Mapped[str | None] = mapped_column(Text)
     # Sent for later: the router leaves it until then. Canceled: it never runs.
     run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     canceled_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
