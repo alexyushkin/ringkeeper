@@ -3,6 +3,7 @@
 import Link from "@/components/link";
 
 import { plainText } from "@/components/markdown";
+import { firstSentences, withoutTables } from "@/lib/markdown-table";
 import { StatusBadge, money, timeAgo } from "@/components/ui";
 import { taskHref } from "@/lib/client/routes";
 import { place } from "@/lib/client/scope";
@@ -43,7 +44,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
         {task.phase && task.status !== "succeeded" ? <span className="text-xs text-muted">{PHASE[task.phase] ?? task.phase}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(task.finished_at ?? task.created_at)}</span>
       </div>
-      <p className="mt-2 line-clamp-3 text-sm [overflow-wrap:anywhere]">{plainText(task.summary ?? task.outcome ?? "—")}</p>
+      <p className="mt-2 line-clamp-3 text-sm [overflow-wrap:anywhere]">{firstSentences(plainText(withoutTables(task.summary ?? task.outcome ?? "—")))}</p>
       {task.error && task.status !== "succeeded" ? <p className="mt-1 line-clamp-3 text-sm text-bad [overflow-wrap:anywhere]">{task.error}</p> : null}
       <p className="mt-2 text-xs text-muted">
         {task.turns} steps · {money(task.cost_usd)} · open the transcript ›

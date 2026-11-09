@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
+    "test": "node --test lib/*.test.mjs",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test"

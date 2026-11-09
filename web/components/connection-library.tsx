@@ -57,7 +57,7 @@ export interface LinkInfo {
   is_default: boolean;
 }
 
-export type LibraryConnection = ConnectionData & { links?: LinkInfo[]; scope_fields?: ScopeField[] };
+export type LibraryConnection = ConnectionData & { links?: LinkInfo[]; scope_fields?: ScopeField[]; suggested_title?: string | null };
 
 export function serviceName(connection: LibraryConnection, services: RemoteService[] = []): string {
   const remote = typeof connection.config.remote === "string" ? connection.config.remote : null;
@@ -380,6 +380,12 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         {connection.last_test_at ? <span className="ml-auto text-xs text-muted">tested {timeAgo(connection.last_test_at)}</span> : null}
       </div>
       {planLimit(connection) ? <Alert tone="warn">{planLimit(connection)}</Alert> : null}
+      {connection.suggested_title ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted">Another connection has this name too.</span>
+          <Button onClick={() => void patch({ title: connection.suggested_title }, "Renamed.")}>Rename it to “{connection.suggested_title}”</Button>
+        </div>
+      ) : null}
       {/* Why the last test failed, without opening anything. */}
       {connection.last_test_ok === false && connection.last_test_message ? <p className="text-sm text-bad">{connection.last_test_message}</p> : null}
       <p className="text-sm">

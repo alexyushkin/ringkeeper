@@ -27,7 +27,9 @@ here once per client.
   live data: every change on it waits for your approval. On staging and test data,
   a built-in service's changes run straight away, and are logged (texts and emails
   still wait).
-- **Its name** reads like "n8n · n8n.geninfos.com". Change it under Details › Change.
+- **Its name** reads like "n8n · n8n.geninfos.com". A Google account's says whose it is:
+  "Google · General Informatics LLC · info@…". Change it under Details › Change. If two
+  connections have the same name, the card offers a clearer one.
 - **Link to project…** on its card links it to any of the client's projects, and
   each project's Connections tab has **Link a connection**.
 - **Test connection** makes one read-only call and tells you what it found.

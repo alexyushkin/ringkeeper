@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, object_session, selectinload
 
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
@@ -84,6 +84,38 @@ def excluded(instance: Instance, project: Project) -> bool:
     return project.name in instance.except_projects or any(
         clients.key(c) == client for c in instance.except_clients
     )
+
+
+def google_title(session: Session, owner: str, email: str, *, shared: bool) -> str:
+    """A Google account's name: "Google · General Informatics LLC · info@…", so two clients'
+    accounts on one address don't read the same; your own is "Google · info@…"."""
+    if shared or owner == SHARED_OWNER:
+        return f"Google · {email}"
+    return f"Google · {clients.display(session, owner)} · {email}"
+
+
+def suggested_title(instance: Instance) -> str | None:
+    """A name to tell this connection apart, when another one has the same name."""
+    session = object_session(instance)
+    shown = (instance.title or instance.name).strip()
+    if session is None or not shown:
+        return None
+    same = session.scalars(
+        select(Instance.name).where(
+            Instance.id != instance.id,
+            func.lower(func.coalesce(Instance.title, Instance.name)) == shown.lower(),
+        )
+    ).first()
+    if same is None:
+        return None
+    email = str((instance.config or {}).get("email") or "")
+    if instance.type is InstanceType.GOOGLE and email:
+        better = google_title(session, instance.owner, email, shared=instance.shared)
+    elif instance.shared:
+        better = f"{shown} · yours"
+    else:
+        better = f"{shown} · {clients.display(session, instance.owner)}"
+    return better if better.lower() != shown.lower() else None
 
 
 def describe_reach(instance: Instance) -> str:

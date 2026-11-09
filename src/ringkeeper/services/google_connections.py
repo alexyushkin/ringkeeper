@@ -155,7 +155,8 @@ def _store(
         InstanceIn(
             # Every write waits for approval whatever the kind of data, so a Google
             # account is never "prod": that lets a project make one its default.
-            name=name, title=f"Google · {email}", type=InstanceType.GOOGLE, env=Env.DEV,
+            name=name, title=instances.google_title(session, owner, email, shared=shared),
+            type=InstanceType.GOOGLE, env=Env.DEV,
             secret_ref=ref, owner=owner,
             config={"email": email, "access": granted, "source": "signin", "app": found.app},
             shared=shared, all_projects=shared and bool(connection.get("all_projects")),

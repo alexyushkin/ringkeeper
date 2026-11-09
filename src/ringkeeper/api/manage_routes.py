@@ -670,6 +670,8 @@ class ConnectionOut(BaseModel):
     last_test_at: Any
     last_test_ok: bool | None
     last_test_message: str | None
+    # Another connection has the same name: what to call this one instead.
+    suggested_title: str | None = None
 
 
 def _scope_fields(instance: Instance) -> list[dict[str, str]]:
@@ -695,6 +697,7 @@ def _connection_out(instance: Instance) -> ConnectionOut:
         projects=instances.bound_project_names(instance), links=links,
         scope_fields=_scope_fields(instance), last_test_at=instance.last_test_at,
         last_test_ok=instance.last_test_ok, last_test_message=instance.last_test_message,
+        suggested_title=instances.suggested_title(instance),
     )  # fmt: skip
 
 

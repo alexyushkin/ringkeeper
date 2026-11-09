@@ -35,6 +35,11 @@ publishes it as the release notes and the app shows it with the update.
   button says "Approved.", "Denied." or "OK: Website.", and a decided card shows how it
   ended ("✔ Approved by Alex (Slack). It ran.") instead of adding a line to the old one.
 
+- **Tidier display.** Task cards show the first sentence or two in plain text, without
+  Markdown or tables. A long table on a task page stays one table to its last row, even when
+  its rows came from several pages. New Google connections are named "Google · <client> ·
+  <email>", and a connection that shares its name with another offers a clearer one.
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how
