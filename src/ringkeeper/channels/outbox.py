@@ -15,7 +15,7 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
@@ -80,6 +80,31 @@ def task_event(task: Task, routine: Routine | None) -> str | None:
 class Due:
     decisions: list[Decision]
     tasks: list[tuple[Task, Routine | None]]
+    # Of `decisions`: those from a task asked for in this chat, sent back to that chat.
+    mine: set[uuid.UUID] = field(default_factory=set[uuid.UUID])
+
+
+def asked_here(session: Session, decision: Decision, source: str, asker: str | None) -> bool:
+    """Whether a decision comes from a request sent from this chat: its conversation
+    started there (Slack and Discord: from this person's DM)."""
+    thread_id = decision.thread_id
+    if thread_id is None and decision.task_id is not None:
+        task = session.get(Task, decision.task_id)
+        thread_id = task.thread_id if task is not None else None
+    if thread_id is None:
+        return False
+    thread = session.get(Thread, thread_id)
+    if thread is None or thread.source != source:
+        return False
+    if asker is None:
+        return True
+    first = session.scalar(
+        select(Message.author)
+        .where(Message.thread_id == thread_id, Message.role == MessageRole.USER)
+        .order_by(Message.created_at)
+        .limit(1)
+    )
+    return bool(first and first.startswith(asker))
 
 
 def _clients(session: Session) -> dict[str, str]:
@@ -98,11 +123,13 @@ def due(
     since: datetime,
     now: datetime,
     own_threads: str | None = None,
+    asker: str | None = None,
 ) -> Due:
     """What this channel should send now. What it won't send is recorded as skipped.
 
-    `own_threads`: tasks asked for from this channel (Telegram) are left to its
-    own notices about them."""
+    `own_threads`: tasks asked for from this channel are left to its own notices about
+    them, and what they wait on (an approval, a question) is always sent, to that chat
+    (`asker`: only those asked by this person, for a Slack or Discord DM)."""
     if prefs.quiet(now):
         return Due([], [])
     inbox.list_pending(session)  # expires stale ones first
@@ -119,6 +146,7 @@ def due(
         )
     )
     decisions: list[Decision] = []
+    mine: set[uuid.UUID] = set()
     found = session.scalars(
         select(Decision)
         .where(
@@ -135,7 +163,10 @@ def due(
                     Notification.channel == key, Notification.decision_id == decision.id
                 )
             )
-        if APPROVALS in prefs.events and prefs.covers(
+        if own_threads is not None and asked_here(session, decision, own_threads, asker):
+            decisions.append(decision)
+            mine.add(decision.id)
+        elif APPROVALS in prefs.events and prefs.covers(
             decision.project, owners.get(decision.project or "")
         ):
             decisions.append(decision)
@@ -168,7 +199,7 @@ def due(
         else:
             _skip(session, key, task_id=task.id)
     session.flush()
-    return Due(decisions, tasks)
+    return Due(decisions, tasks, mine)
 
 
 class Transport(Protocol):
@@ -230,13 +261,13 @@ class Runner:
         with session_scope() as session:
             found = due(
                 session, self.key, self.prefs, self.since, now or datetime.now(UTC),
-                own_threads=self.kind if self.requests else None,
+                own_threads=self.kind if self.requests else None, asker=self.asker,
             )  # fmt: skip
             for decision in found.decisions:
                 link = self._link(session, links.decision_page(self.settings, decision))
-                sent += self._send(
-                    session, cards.decision_card(decision, link), SENT, decision_id=decision.id
-                )
+                card = cards.decision_card(decision, link)
+                here = decision.id in found.mine  # asked for in the DM: answered there
+                sent += self._send(session, card, SENT, direct=here, decision_id=decision.id)
             for task, routine in found.tasks:
                 if routine is not None and task_event(task, routine) == ROUTINES:
                     link = self._link(session, links.routine_page(routine.id))
@@ -247,10 +278,21 @@ class Runner:
                 sent += self._send(session, card, CLOSED, task_id=task.id)
         return sent
 
-    def _send(self, session: Session, card: cards.Card, status: str, **subject: uuid.UUID) -> int:
+    def _send(
+        self,
+        session: Session,
+        card: cards.Card,
+        status: str,
+        *,
+        direct: bool = False,
+        **subject: uuid.UUID,
+    ) -> int:
         note = Notification(channel=self.key, chat_id=0, **subject)
         try:
-            note.external_ref, note.status = self.transport.post(card), status
+            ref = (
+                self.transport.direct(self.approver, card) if direct else self.transport.post(card)
+            )
+            note.external_ref, note.status = ref, status
         except ChannelError as error:
             note.status, note.error = FAILED, str(error)[:500]
             logger.warning("could not send to %s: %s", self.kind, error)
@@ -296,12 +338,26 @@ class Runner:
             return REQUESTS_OFF
         if not text.strip():
             return TEXT_ONLY
+        fresh, text = threads.starts_new(text)
         try:
             with session_scope() as session:
-                threads.post_message(session, text, author=who, source=self.kind)
+                if fresh:
+                    threads.start_fresh(session, self.kind, self.asker)
+                    if not text:
+                        return threads.STARTED_NEW
+                place = threads.chat_thread(session, self.kind, self.asker)
+                message = threads.post_message(
+                    session, text, author=who, source=self.kind,
+                    thread=str(place.id) if place is not None else None,
+                )  # fmt: skip
+                link = (
+                    None
+                    if place
+                    else self._link(session, links.thread_page(self.settings, message.thread_id))
+                )
         except RingkeeperError as error:
             return f"Not sent: {error}"
-        return news.got_it(text)
+        return news.got_it(text, link)
 
     def send_news(self) -> int:
         """For requests by DM: what the router did, and each task's end, back in the DM
@@ -339,7 +395,8 @@ class Runner:
                 )
                 .order_by(Task.finished_at)
             ).all():
-                sent += self._send_direct(session, news.finished_text(task), task_id=task.id)
+                link = self._link(session, links.task_page(self.settings, task.id))
+                sent += self._send_direct(session, news.result_text(task, link), task_id=task.id)
         return sent
 
     def _send_direct(self, session: Session, text: str, **subject: uuid.UUID) -> int:

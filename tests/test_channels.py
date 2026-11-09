@@ -17,7 +17,7 @@ from sqlalchemy import select
 from ringkeeper import channels
 from ringkeeper.api.app import create_app
 from ringkeeper.channels import discord as discord_module
-from ringkeeper.channels import links
+from ringkeeper.channels import links, news
 from ringkeeper.channels import slack as slack_module
 from ringkeeper.channels.cards import NOT_ALLOWED, TEST_ACTION
 from ringkeeper.channels.discord import DiscordApi
@@ -431,6 +431,11 @@ def answer_it(source: str, reply: str = "The site is up.", body: str | None = No
         threads.mark_routed(session, message, {"output": {"reply": reply}})
 
 
+def starts(reply: str, said: list[str]) -> bool:
+    """A first reply was sent (a new conversation's also says where to follow it)."""
+    return any(s.startswith(reply) for s in said)
+
+
 def dm_texts(slack: FakeSlack) -> list[str]:
     return [m["text"] for m in slack.posted() if m["channel"] == "D1"]
 
@@ -457,9 +462,9 @@ def test_a_slack_dm_from_the_approver_is_a_request_and_its_news_comes_back(
         slack.dm("I'm the bot", ME_SLACK, bot_id="B1")  # its own messages are never requests
         slack.dm("edited", ME_SLACK, subtype="message_changed")
         slack.dm("Is the Acme site up?", ME_SLACK)
-        wait_for(lambda: LOOKING in dm_texts(slack))  # a question: maybe no project at all
+        wait_for(lambda: starts(LOOKING, dm_texts(slack)))  # a question: maybe no project at all
         slack.dm("Add a line to acme-web's notes", ME_SLACK)
-        wait_for(lambda: GOT_IT in dm_texts(slack))
+        wait_for(lambda: starts(GOT_IT, dm_texts(slack)))
     assert asked("slack") == [
         ("Is the Acme site up?", f"slack:{ME_SLACK}"),
         ("Add a line to acme-web's notes", f"slack:{ME_SLACK}"),
@@ -476,7 +481,8 @@ def test_dm_requests_are_off_until_turned_on(slack: FakeSlack) -> None:
     assert rk.on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == REQUESTS_OFF
     assert asked("slack") == []
     take_requests(ident)
-    assert runner(ident).on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}") == LOOKING
+    said = runner(ident).on_message(ME_SLACK, "Is the site up?", f"slack:{ME_SLACK}")
+    assert starts(LOOKING, [said or ""])
     assert len(asked("slack")) == 1
 
 
@@ -496,7 +502,7 @@ def test_a_discord_dm_from_the_approver_is_a_request(discord: FakeDiscord) -> No
         discord.dm("In a server channel", ME_DISCORD, guild_id="601")  # not a DM
         discord.dm("A bot", ME_DISCORD, author={"id": ME_DISCORD, "bot": True})
         discord.dm("Is the Acme site up?", ME_DISCORD)
-        wait_for(lambda: LOOKING in said())
+        wait_for(lambda: starts(LOOKING, said()))
     [(body, author)] = asked("discord")
     assert body == "Is the Acme site up?"
     assert author.startswith(f"discord:{ME_DISCORD}")
@@ -523,7 +529,7 @@ def test_a_question_about_ringkeeper_by_slack_dm_gets_the_answer(slack: FakeSlac
     ident = add_slack()
     take_requests(ident)
     rk = runner(ident)
-    assert rk.on_message(ME_SLACK, SETUP_QUESTION, f"slack:{ME_SLACK}") == LOOKING
+    assert starts(LOOKING, [rk.on_message(ME_SLACK, SETUP_QUESTION, f"slack:{ME_SLACK}") or ""])
     answer_about_ringkeeper()
     assert rk.send_news() == 1
     assert dm_texts(slack)[-1] == SETUP_ANSWER
@@ -536,7 +542,8 @@ def test_a_question_about_ringkeeper_by_discord_dm_gets_the_answer(
     ident = add_discord()
     take_requests(ident)
     rk = runner(ident)
-    assert rk.on_message(ME_DISCORD, SETUP_QUESTION, f"discord:{ME_DISCORD}") == LOOKING
+    said = rk.on_message(ME_DISCORD, SETUP_QUESTION, f"discord:{ME_DISCORD}")
+    assert starts(LOOKING, [said or ""])
     answer_about_ringkeeper()
     assert rk.send_news() == 1
     assert [m.get("content", "") for m in discord.posted()][-1] == SETUP_ANSWER
@@ -652,3 +659,109 @@ def test_no_open_button_without_an_address(
     ended_task("acme-web", TaskStatus.FAILED)
     assert runner(ident).send_due() == 1
     assert buttons(slack.posted()[0]) == []
+
+
+# --- Chats work like a conversation ---
+
+
+def chat_threads(source: str) -> list[str]:
+    with session_scope(commit=False) as session:
+        rows = session.scalars(
+            select(Message)
+            .where(Message.source == source, Message.role == MessageRole.USER)
+            .order_by(Message.created_at)
+        ).all()
+        return [str(m.thread_id) for m in rows]
+
+
+def age_chat(source: str, hours: float) -> None:
+    """Every message from the chat, as if sent `hours` ago."""
+    with session_scope() as session:
+        for message in session.scalars(select(Message).where(Message.thread_id.in_(
+            select(Message.thread_id).where(Message.source == source)
+        ))):  # fmt: skip
+            message.created_at = datetime.now(UTC) - timedelta(hours=hours)
+
+
+@pytest.mark.parametrize("kind", ["slack", "discord"])
+def test_dms_continue_one_conversation_until_quiet_or_new(
+    kind: str, slack: FakeSlack, discord: FakeDiscord
+) -> None:
+    ident = add_slack() if kind == "slack" else add_discord()
+    take_requests(ident)
+    rk = runner(ident)
+    me = ME_SLACK if kind == "slack" else ME_DISCORD
+    first = rk.on_message(me, "Read Acme's newest email", f"{kind}:{me}")
+    assert first is not None
+    assert first.startswith(GOT_IT)
+    assert "New conversation: https://rk.example/thread" in first  # where to follow it
+    assert rk.on_message(me, "Now publish the result here", f"{kind}:{me}") == GOT_IT
+    one, two = chat_threads(kind)
+    assert one == two  # the follow-up has the first request as context
+    age_chat(kind, 3)  # quiet for over 2 hours
+    rk.on_message(me, "Read Globex's newest email", f"{kind}:{me}")
+    assert len(set(chat_threads(kind))) == 2
+    assert rk.on_message(me, "new", f"{kind}:{me}") == threads.STARTED_NEW
+    rk.on_message(me, "Check the shop's orders", f"{kind}:{me}")
+    assert len(set(chat_threads(kind))) == 3
+    rk.on_message(me, "new: check the blog", f"{kind}:{me}")
+    assert len(set(chat_threads(kind))) == 4
+
+
+TABLE = (
+    "Three open orders:\n\n| Order | Customer | Total |\n|---|---|---|\n"
+    "| 1007 | Ana | $40 |\n| 1008 | Chloe | $12 |\n| 1009 | Ben | $7 |"
+)
+
+
+def test_a_dm_s_task_ends_with_its_result(slack: FakeSlack) -> None:
+    ident = add_slack()
+    take_requests(ident)
+    rk = runner(ident)
+    rk.on_message(ME_SLACK, "List the open orders", f"slack:{ME_SLACK}")
+    answer_it("slack")
+    with session_scope() as session:
+        message = session.scalars(select(Message).where(Message.source == "slack")).one()
+        task = tasks.create_task(
+            session, get_settings(), project="acme-web", prompt="list", thread_id=message.thread_id,
+            message_id=message.id,
+        )  # fmt: skip
+        task.status, task.finished_at, task.summary = (
+            TaskStatus.SUCCEEDED, datetime.now(UTC), TABLE,
+        )  # fmt: skip
+    rk.send_news()
+    said = dm_texts(slack)[-1]
+    assert said.startswith("✔ Acme web: done\nThree open orders:")
+    assert "1007 · Ana · $40" in said  # a table reads as lines
+    assert "|" not in said
+    assert "---" not in said
+
+
+def test_a_long_result_ends_with_a_link() -> None:
+    with session_scope() as session:
+        task = tasks.create_task(session, get_settings(), project="acme-web", prompt="list")
+        task.status, task.summary = TaskStatus.SUCCEEDED, "A long finding. " * 300
+        said = news.result_text(task, "https://rk.example/task?id=1")
+    assert len(said) < 1700
+    assert said.endswith("The rest is in Ringkeeper: https://rk.example/task?id=1")
+
+
+def test_an_approval_from_a_dm_task_goes_to_that_dm(slack: FakeSlack) -> None:
+    ident = add_slack(events=["failures"])  # the channel itself doesn't take approvals
+    take_requests(ident)
+    rk = runner(ident)
+    rk.on_message(ME_SLACK, "Mark order 1007 shipped", f"slack:{ME_SLACK}")
+    held = held_write()
+    with session_scope() as session:
+        message = session.scalars(select(Message).where(Message.source == "slack")).one()
+        task = tasks.create_task(
+            session, get_settings(), project="acme-web", prompt="ship",
+            thread_id=message.thread_id, message_id=message.id,
+        )  # fmt: skip
+        session.get_one(Decision, uuid.UUID(held)).task_id = task.id
+    other = held_write()  # not from a chat: the channel's prefs leave it out
+    assert rk.send_due() == 1
+    [card] = [m for m in slack.posted() if "Approval" in m["text"]]
+    assert card["channel"] == "D1"  # the DM, with its buttons
+    assert any(b.get("value") == f"rk:{held}:0" for b in buttons(card))
+    assert other not in str(slack.posted())

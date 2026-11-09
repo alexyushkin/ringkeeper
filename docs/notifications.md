@@ -50,6 +50,22 @@ A question that needs no project, such as "how many connections and clients do w
 have?" or how to do something in Ringkeeper, gets the same answer the app gives,
 in that DM. The same goes for requests from Telegram.
 
+### A chat is a conversation
+
+In a DM or a Telegram chat, your messages continue one Ringkeeper conversation, so a
+follow-up like "publish the result here" or "now do it for Acme" knows what came before:
+the earlier messages, and what each task did. The first reply of a conversation links to it
+in the app.
+
+A new conversation starts after 2 hours of quiet, or when you send **new**. You can also
+start one with a request: **new: check Acme's orders**.
+
+- **Results come back to the chat.** When a task you asked for from a chat ends, it posts
+  what it found or did, not just "done". Tables read as one line per row, and code or SQL
+  stays in the app. A long result shows its first part and a link to the rest.
+- **Approvals come back too.** When a task from a chat waits for your OK, its approval card
+  is posted in that chat, with its buttons, even if the channel isn't set to send approvals.
+
 - **Slack:** the app needs the manifest from this version (it adds direct messages).
   For an app set up before, copy the manifest from **Add another Slack channel**,
   paste it on the app's **App Manifest** page at api.slack.com, and reinstall the app.

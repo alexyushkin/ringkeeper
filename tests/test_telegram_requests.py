@@ -265,3 +265,37 @@ def test_a_routine_set_to_send_a_summary_sends_it_once(
         "✔ Routine Morning digest · Acme web: done\n3 new leads; nothing failed."
     )
     assert bridge.send_new() == 0
+
+
+def test_telegram_requests_continue_one_conversation(
+    bridge: Bridge, telegram: FakeTelegram
+) -> None:
+    telegram.text("count globex customers")
+    bridge.poll_once(0)
+    telegram.text("now do it for acme")
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == "Got it. Working out which project it's for…"
+    first, second = messages()
+    assert first.thread_id == second.thread_id
+    telegram.text("new")
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == threads.STARTED_NEW
+    telegram.text("count acme customers")
+    bridge.poll_once(0)
+    assert len({m.thread_id for m in messages()}) == 2
+
+
+def test_a_telegram_task_ends_with_its_result(bridge: Bridge, telegram: FakeTelegram) -> None:
+    telegram.text("list the open orders")
+    bridge.poll_once(0)
+    route_next(get_settings(), FakeModel([output(routed("acme-web"))]))
+    bridge.send_notices()
+    with session_scope() as session:
+        session.execute(
+            update(Task).values(
+                status=TaskStatus.SUCCEEDED, finished_at=datetime.now(UTC),
+                summary="| Order | Total |\n|---|---|\n| 1007 | $40 |",
+            )
+        )  # fmt: skip
+    bridge.send_notices()
+    assert telegram.sent[-1]["text"].startswith("✔ Acme web: done\nOrder · Total\n1007 · $40")

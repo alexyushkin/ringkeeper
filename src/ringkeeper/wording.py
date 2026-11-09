@@ -138,9 +138,30 @@ _MARKS = (
 )
 
 
+_ROW = re.compile(r"^\s*\|(.*)\|\s*$")
+_RULE = re.compile(r"^\s*:?-{2,}:?\s*$")
+
+
+def _rows(text: str) -> str:
+    """A Markdown table as one line per row ("Ana · 3 orders"), without its rule line."""
+    out: list[str] = []
+    for line in text.splitlines():
+        row = _ROW.match(line)
+        if row is None:
+            out.append(line)
+            continue
+        cells = [c.strip() for c in row.group(1).split("|")]
+        if all(_RULE.match(c) for c in cells if c):
+            continue
+        out.append(" · ".join(c for c in cells if c))
+    return "\n".join(out)
+
+
 def plain(text: str) -> str:
     """Claude's Markdown for places that can't show it: Telegram, Slack, the digest. Words
-    with stars or underscores in them, like snake_case or 2*3*4, stay as they are."""
+    with stars or underscores in them, like snake_case or 2*3*4, stay as they are. A table
+    reads as one line per row."""
+    text = _rows(text)
     for mark, words in _MARKS:
         text = mark.sub(words, text)
     return text
