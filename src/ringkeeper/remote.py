@@ -650,6 +650,21 @@ NATIVE: dict[str, ScopeSpec] = {
         ),
         frozenset({"list_endpoints"}),
     ),
+    # A service you host for several clients: a client's project sees only its workflows.
+    # Checked by the adapter on every call (adapters.n8n), not from the arguments.
+    "n8n": ScopeSpec(
+        "n8n",
+        (
+            ScopeField("tag", "Workflow tag", (), "Only workflows with this tag, like acme."),
+            ScopeField(
+                "project",
+                "n8n project",
+                (),
+                "Optional: only this n8n project's workflows (its ID, from the project's page).",
+                prefix=True,  # stands on its own, without a tag
+            ),
+        ),
+    ),
     "s3": ScopeSpec(
         "this storage",
         (

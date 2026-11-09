@@ -457,6 +457,15 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
                   </Button>
                 </>
               ) : null}
+              {connection.shared ? null : (
+                <ConfirmButton
+                  question={`Make ${connectionTitle(connection)} your own tool? Its projects keep it, and you can link it to other clients' projects too. Narrow each of those links (for n8n, to one workflow tag) so a client reaches only its own.`}
+                  confirm="Make it my tool"
+                  onConfirm={() => patch({ shared: true }, "It's your own tool now. Link it to a client's project, then narrow that link under Details.")}
+                >
+                  Make it my own tool
+                </ConfirmButton>
+              )}
               <ConfirmButton question={`Remove ${connectionTitle(connection)}? Its projects lose it too.`} confirm="Remove it" onConfirm={remove}>
                 Remove connection
               </ConfirmButton>

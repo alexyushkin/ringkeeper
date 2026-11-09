@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **A service you host for clients.** A client's connection can become your own tool
+  (Details › Change › Make it my own tool), and an n8n link can be narrowed to one workflow
+  tag or n8n project. The gateway checks it on every call: a client's project lists, reads
+  and changes only its own workflows and runs, and never sees another client's workflow
+  names. See [A service you host for clients](docs/connections.md#a-service-you-host-for-clients).
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how

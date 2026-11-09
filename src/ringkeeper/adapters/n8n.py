@@ -5,6 +5,11 @@ connection marked as test data: turning a workflow on or off, changing it,
 and retrying or stopping an execution (n8n's API has no "run this workflow
 now"; a retry runs a past execution again).
 
+A link can be narrowed to workflows with one tag, or in one n8n project (an n8n you host
+for several clients): then everything is checked here, on every call. A workflow outside it
+is refused, an execution counts by its workflow, and lists show only what's inside. n8n
+filters lists by tag and project itself, and the answers are checked again here.
+
 Endpoints follow n8n's own OpenAPI spec. `activate`/`deactivate` are marked
 deprecated in current n8n in favour of `publish`/`unpublish`, but they work
 there and are the only option on older self-hosted versions, so we use them.
@@ -14,6 +19,7 @@ import re
 from dataclasses import replace
 from typing import Annotated, Any, cast
 
+import anyio.from_thread
 import httpx2
 from pydantic import Field
 
@@ -107,6 +113,84 @@ async def _call(
     return cast(JSON, data) if isinstance(data, dict) else {"data": data}
 
 
+# --- A link narrowed to one tag or n8n project ---
+
+MAX_SCOPE_PAGES = 40  # 10,000 workflows: more than any one n8n we'd be pointed at
+
+
+def _scope(target: Target) -> tuple[str, str]:
+    return str(target.scope.get("tag") or ""), str(target.scope.get("project") or "")
+
+
+def _scope_params(target: Target) -> dict[str, str | None]:
+    tag, project = _scope(target)
+    return {"tags": tag or None, "projectId": project or None}
+
+
+def _in_scope(target: Target, workflow: JSON) -> bool:
+    """Whether a workflow, as n8n listed it, is inside the link's scope. The project is
+    also checked by n8n's own filter; where n8n says whose a workflow is, that's checked."""
+    tag, project = _scope(target)
+    if tag:
+        tags = cast(list[JSON], workflow.get("tags") or [])
+        if tag.casefold() not in {str(t.get("name") or "").casefold() for t in tags}:
+            return False
+    shared = cast(list[JSON], workflow.get("shared") or [])
+    if project and shared:
+        owners = {
+            str(s.get("projectId") or cast(JSON, s.get("project") or {}).get("id")) for s in shared
+        }
+        return project in owners
+    return True
+
+
+def _scope_words(target: Target) -> str:
+    tag, project = _scope(target)
+    parts = [f"tagged '{tag}'"] if tag else []
+    parts += [f"in n8n project {project}"] if project else []
+    return " and ".join(parts)
+
+
+async def _scoped_ids(target: Target) -> set[str]:
+    """Every workflow this link may use."""
+    found: set[str] = set()
+    cursor: str | None = None
+    for _ in range(MAX_SCOPE_PAGES):
+        params = {**_scope_params(target), "limit": 250, "cursor": cursor}
+        data = await _call(target, "GET", "/workflows", params=params)
+        for workflow in cast(list[JSON], data.get("data", [])):
+            if _in_scope(target, workflow):
+                found.add(str(workflow.get("id")))
+        cursor = cast(str | None, data.get("nextCursor"))
+        if not cursor:
+            break
+    return found
+
+
+async def check_workflow(target: Target, workflow_id: str) -> None:
+    """Refuses a workflow outside the link's scope (nothing to check without one)."""
+    if not target.scope:
+        return
+    if _id(workflow_id) not in await _scoped_ids(target):
+        raise ToolError(
+            f"workflow {workflow_id} isn't one this project may use: its link to "
+            f"'{target.name}' only reaches workflows {_scope_words(target)}"
+        )
+
+
+async def check_execution(target: Target, execution_id: str) -> None:
+    """An execution counts by its workflow."""
+    if not target.scope:
+        return
+    execution = await _call(target, "GET", f"/executions/{_id(execution_id)}")
+    workflow = str(execution.get("workflowId") or "")
+    if not workflow or workflow not in await _scoped_ids(target):
+        raise ToolError(
+            f"execution {execution_id} isn't one this project may use: its link to "
+            f"'{target.name}' only reaches workflows {_scope_words(target)}"
+        )
+
+
 def _page(data: JSON, key: str, summarize: Any = None) -> JSON:
     items = cast(list[JSON], data.get("data", []))
     return {
@@ -140,15 +224,21 @@ async def list_workflows(
         "name": name,
         "limit": limit,
         "cursor": cursor,
+        **(_scope_params(target) if target.scope else {}),
     }
-    return _page(
-        await _call(target, "GET", "/workflows", params=params), "workflows", _workflow_summary
-    )
+    data = await _call(target, "GET", "/workflows", params=params)
+    if not target.scope:
+        return _page(data, "workflows", _workflow_summary)
+    # n8n filtered it; nothing outside goes back, whatever it sent.
+    kept = [w for w in cast(list[JSON], data.get("data", [])) if _in_scope(target, w)]
+    page = _page({**data, "data": kept}, "workflows", _workflow_summary)
+    return {**page, "limited_to": _scope_words(target)}
 
 
 @read
 async def get_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Get one workflow, including its nodes and connections."""
+    await check_workflow(target, workflow_id)
     return await _call(target, "GET", f"/workflows/{_id(workflow_id)}")
 
 
@@ -164,7 +254,16 @@ async def list_executions(
 ) -> JSON:
     """List workflow executions, newest first, one page at a time."""
     params = {"workflowId": workflow_id, "status": status, "limit": limit, "cursor": cursor}
-    return _page(await _call(target, "GET", "/executions", params=params), "executions")
+    if not target.scope:
+        return _page(await _call(target, "GET", "/executions", params=params), "executions")
+    if workflow_id is not None:
+        await check_workflow(target, workflow_id)
+    allowed = await _scoped_ids(target)
+    params["projectId"] = _scope_params(target)["projectId"]
+    data = await _call(target, "GET", "/executions", params=params)
+    listed = cast(list[JSON], data.get("data", []))
+    kept = [e for e in listed if str(e.get("workflowId")) in allowed]
+    return {**_page({**data, "data": kept}, "executions"), "limited_to": _scope_words(target)}
 
 
 @read
@@ -174,6 +273,7 @@ async def get_execution(
     include_data: Annotated[bool, Field(description="Include per-node run data.")] = False,
 ) -> JSON:
     """Get one execution; set include_data for the detailed run data."""
+    await check_execution(target, execution_id)
     params = {"includeData": str(include_data).lower()}
     return await _call(target, "GET", f"/executions/{_id(execution_id)}", params=params)
 
@@ -181,12 +281,14 @@ async def get_execution(
 @always_held
 async def activate_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Activate (publish) a workflow so its triggers start running."""
+    await check_workflow(target, workflow_id)
     return await _call(target, "POST", f"/workflows/{_id(workflow_id)}/activate")
 
 
 @always_held
 async def deactivate_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     """Deactivate a workflow so its triggers stop running."""
+    await check_workflow(target, workflow_id)
     return await _call(target, "POST", f"/workflows/{_id(workflow_id)}/deactivate")
 
 
@@ -215,6 +317,7 @@ async def update_workflow(
     ] = False,
 ) -> JSON:
     """Replace a workflow's name, nodes, connections and settings."""
+    await check_workflow(target, workflow_id)
     body: JSON = {
         "name": name,
         "nodes": nodes,
@@ -247,6 +350,7 @@ async def retry_execution(
     ] = False,
 ) -> JSON:
     """Run a past execution again (a new execution; the old one stays as it was)."""
+    await check_execution(target, execution_id)
     path = f"/executions/{_execution(execution_id)}/retry"
     return await _call(target, "POST", path, body={"loadWorkflow": latest_version})
 
@@ -254,13 +358,39 @@ async def retry_execution(
 @always_held
 async def stop_execution(target: Target, execution_id: NumericExecutionId) -> JSON:
     """Stop an execution that's running or waiting."""
+    await check_execution(target, execution_id)
     return await _call(target, "POST", f"/executions/{_execution(execution_id)}/stop")
 
 
+def _screen(check: Any, key: str) -> Any:
+    """Before the call: outside the link's scope it's refused and recorded as refused, and a
+    write isn't held for an approval that would only refuse it (it checks again when it runs)."""
+
+    def screen(target: Target, args: JSON) -> JSON:
+        if target.scope and args.get(key):  # list_executions: only if it names one
+            anyio.from_thread.run(check, target, str(args[key]))
+        return args
+
+    return screen
+
+
 # What each change replaced is kept for 7 days, to put back (services.undo).
-update_workflow = replace(update_workflow, undo=undo_services.N8nWorkflowUndo())
-activate_workflow = replace(activate_workflow, undo=undo_services.N8nActiveUndo())
-deactivate_workflow = replace(deactivate_workflow, undo=undo_services.N8nActiveUndo())
+_by_workflow = _screen(check_workflow, "workflow_id")
+_by_execution = _screen(check_execution, "execution_id")
+update_workflow = replace(
+    update_workflow, undo=undo_services.N8nWorkflowUndo(), screen=_by_workflow
+)
+activate_workflow = replace(
+    activate_workflow, undo=undo_services.N8nActiveUndo(), screen=_by_workflow
+)
+deactivate_workflow = replace(
+    deactivate_workflow, undo=undo_services.N8nActiveUndo(), screen=_by_workflow
+)
+get_workflow = replace(get_workflow, screen=_by_workflow)
+get_execution = replace(get_execution, screen=_by_execution)
+list_executions = replace(list_executions, screen=_by_workflow)
+retry_execution = replace(retry_execution, screen=_by_execution)
+stop_execution = replace(stop_execution, screen=_by_execution)
 
 ADAPTER = Adapter(
     service=InstanceType.N8N,

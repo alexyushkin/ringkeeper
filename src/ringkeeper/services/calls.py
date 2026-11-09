@@ -226,6 +226,8 @@ def narrowed(call: ToolCall, spec: ToolSpec, auth: Authorized) -> JSON:
         raise RefusalError(f"{why}: the user can set it on the link", why)
     if not auth.scope or rules is None:
         return call.args
+    if call.service is InstanceType.N8N:
+        return call.args  # no argument says which tag a workflow has: the adapter checks
     try:
         if call.service is not InstanceType.MCP:
             return remote.narrow(rules, auth.scope, call.tool, call.args, _takes(spec))
@@ -285,7 +287,9 @@ def _target(vault: Vault, adapter: Adapter, auth: Authorized, project: str | Non
             "in again under Connections"
         ) from None
     secret.also_scrub(*adapter.secret_fragments(secret.reveal()))
-    return Target(auth.instance, auth.env, auth.base_url, secret, auth.config, project)
+    return Target(
+        auth.instance, auth.env, auth.base_url, secret, auth.config, project, dict(auth.scope)
+    )
 
 
 def _service_name(target: Target) -> str:

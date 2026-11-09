@@ -75,6 +75,32 @@ this computer, public documentation. **Connectors › Add your own tool**, searc
 then choose **For all projects** or link it to some. To leave a client or project out,
 open its card: Details › All projects › Except….
 
+## A service you host for clients
+
+Some services are yours but hold work for several clients, like your own n8n with each
+client's workflows on it. Make it your own tool, then link it to each client's project
+narrowed to that client's part:
+
+1. On the connection's card, open **Details › Change › Make it my own tool**. Ringkeeper
+   asks you to confirm it's you first. Its links stay as they were.
+2. **Link to project…** on the client's project.
+3. Open **Details**, and narrow that project's link. For n8n, choose a **workflow tag**
+   (like `acme`), an **n8n project**, or both.
+
+Ringkeeper then checks the scope on every call that project's tasks make:
+
+- **Lists** show only what's inside the scope. Ringkeeper asks n8n for only those
+  workflows, then checks what comes back, so the names of other clients' workflows never
+  reach the task, even on an older n8n that ignores the filter.
+- **A workflow outside the scope** is refused, whether a task reads it, changes it, or turns
+  it on or off. A change is refused when the task asks, so it never waits in Approvals.
+  It's checked again when you approve.
+- **Runs (executions)** count by their workflow: only that client's show, and another
+  client's can't be opened, retried or stopped.
+
+A link without a scope reaches the whole service, so narrow every client's link. Refusals
+are in Activity like any other.
+
 ## Where the key goes
 
 Into Ringkeeper's vault, encrypted with a key kept in Windows' credential store
