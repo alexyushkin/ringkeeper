@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { readTable, startsTable } from "@/lib/markdown-table";
+
 /**
  * The Markdown Claude writes, as React elements: paragraphs, headings, lists,
  * quotes, code, tables, bold, italics, strikethrough and links. No HTML from the
@@ -70,11 +72,9 @@ function blocks(lines: string[]): ReactNode[] {
       );
       continue;
     }
-    if (ROW.test(line) && DIVIDER.test(lines[i + 1] ?? "")) {
-      const head = cells(line);
-      const rows: string[][] = [];
-      i += 2;
-      while (i < lines.length && ROW.test(lines[i] ?? "")) rows.push(cells(lines[i++] ?? ""));
+    if (startsTable(lines, i)) {
+      const { head, rows, next } = readTable(lines, i);
+      i = next;
       out.push(
         <div key={key} className="overflow-x-auto">
           <table className="text-left">
@@ -126,9 +126,6 @@ function blocks(lines: string[]): ReactNode[] {
   return out;
 }
 
-function cells(row: string): string[] {
-  return row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-}
 
 interface List {
   ordered: boolean;
