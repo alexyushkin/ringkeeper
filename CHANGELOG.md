@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool
   (Details › Change › Make it my own tool), and an n8n link can be narrowed to one workflow
