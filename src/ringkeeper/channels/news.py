@@ -66,8 +66,8 @@ def routed_text(session: Session, message: Message, limit: int) -> str:
         task = session.get(Task, ident)
         if task is not None:
             lines.append(f"→ {titles.of(session, task.project)}: started")
-    for _ident in routing.get("decisions", []):
-        lines.append("? I need to know which project. I've sent that question separately.")
+    if not lines and routing.get("decisions"):
+        return ""  # it asked: the question is a message of its own, with its buttons
     if not lines:
         # The router answered instead of making tasks: the words the app shows, meant to
         # be read, so they get the room a question gets, with the same rules (no SQL or code).

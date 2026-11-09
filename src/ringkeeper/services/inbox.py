@@ -304,6 +304,20 @@ def options(decision: Decision) -> list[str]:
     return []
 
 
+def pressed(decision: Decision, choice: str) -> str:
+    """What a chat button says back once pressed: short, in plain words. The message itself
+    then shows how it ended."""
+    if choice == "approve":
+        return "Approved."
+    if choice == "deny":
+        return "Denied."
+    if choice == NO_PROJECT:
+        return "OK, nothing was started."
+    if decision.kind is DecisionKind.ROUTE:
+        return f"OK: {chosen(decision, choice)}."
+    return "Answered."
+
+
 def chosen(decision: Decision, option: str) -> str:
     """A choice as people read it: a project by its title."""
     if decision.kind is DecisionKind.ROUTE and option != NO_PROJECT:
@@ -743,10 +757,12 @@ def summary(decision: Decision, limit: int = 160) -> str:
             if decision.tool == "revert_change":
                 what = "Undoing a change"
             text = f"{what} on {_shown(decision)}: waits for your OK"
+        case DecisionKind.ROUTE if payload.get("production"):
+            text = f"It would use {payload['production']}, a production connection."
         case DecisionKind.ROUTE:
             candidates = payload.get("candidates", [])
             names = " or ".join(chosen(decision, c["project"]) for c in candidates)
-            text = f"Which project ({names})? {payload.get('task', {}).get('outcome', '')}"
+            text = str(payload.get("reason") or f"It could be for {names}.")
         case DecisionKind.PLAN:
             text = f"Plan ready: {payload.get('title') or 'review the plan'}"
         case DecisionKind.QUESTION:

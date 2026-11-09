@@ -157,7 +157,7 @@ def test_a_plan_is_approved_with_a_button(telegram: FakeTelegram) -> None:
 
     assert decision(plan).status is DecisionStatus.APPROVED
     assert decision(plan).answered_via == "telegram"
-    assert telegram.callbacks[-1]["text"] == "Done: approved."
+    assert telegram.callbacks[-1]["text"] == "Approved."
     with session_scope() as session:
         assert tasks.get_task(session, task_id).status is TaskStatus.QUEUED  # architect resumes
         event = session.scalars(
@@ -209,7 +209,7 @@ def test_a_held_write_approved_on_telegram_waits_for_the_gateway(telegram: FakeT
         row.decided_at = datetime.now(UTC)
         row.decided_by = "telegram:42 (@alice)"
     assert b.close_finished() == 1
-    assert "Approved and done by @alice" in telegram.edits[-1]["text"]
+    assert "✔ Approved by @alice (Telegram). It ran." in telegram.edits[-1]["text"]
 
 
 def test_a_question_is_answered_by_replying(telegram: FakeTelegram) -> None:
@@ -234,7 +234,7 @@ def test_a_question_is_answered_by_replying(telegram: FakeTelegram) -> None:
     answered = decision(question_id)
     assert answered.status is DecisionStatus.ANSWERED
     assert answered.answer == {"text": "plan_name"}
-    assert telegram.sent[-1]["text"] == "Done: answered."
+    assert telegram.sent[-1]["text"] == "Answered."
 
 
 def test_plain_messages_get_a_hint(telegram: FakeTelegram) -> None:

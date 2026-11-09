@@ -381,6 +381,11 @@ class Runner:
                 .order_by(Message.created_at)
             ).all():
                 text = news.routed_text(session, message, NEWS_CHARS)
+                if not text:  # nothing to say: the question was sent on its own
+                    session.add(Notification(
+                        channel=self.key, chat_id=0, status=SKIPPED, message_id=message.id
+                    ))  # fmt: skip
+                    continue
                 sent += self._send_direct(session, text, message_id=message.id)
             ended = select(Notification.task_id).where(
                 Notification.channel == self.key, Notification.task_id.is_not(None)

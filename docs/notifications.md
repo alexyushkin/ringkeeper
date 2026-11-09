@@ -81,3 +81,7 @@ Messages are a short summary (no secrets, code or full SQL) with **Approve**,
 - **Only you can answer.** A press from anyone else in the channel is refused
   with "not allowed".
 - **Open** brings the Ringkeeper window up at that page.
+- **Once decided,** the message shows how it ended, like "✔ Approved by Alex (Slack). It
+  ran.", and keeps only **Open**.
+- **"Which project?"** is asked once, with one line saying why, and a button for each
+  project by name.
