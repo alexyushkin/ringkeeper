@@ -13,6 +13,12 @@
 },
 {
 "doc": "concepts",
+"anchor": "where-a-request-goes",
+"title": "Where a request goes",
+"text": "The client and project chosen at the top of the app are a firm choice for new requests, like an @-mention: the box says \"Sending to Alexey › My Project\", and a request sent then goes to that project without asking. Work that needs no client's connection, like a web lookup, writing, or summarizing text you pasted, runs in the chosen project. With nothing chosen, it runs in your own client's default project: on that client's page, open **Settings › Your own work** and turn on \"... is me\". If the project's tasks can't use the web (its autonomy is strict or standard), Ringkeeper says so plainly instead of starting."
+},
+{
+"doc": "concepts",
 "anchor": "when-it-asks-which-project",
 "title": "When it asks which project",
 "text": "Ringkeeper asks only when the work clearly belongs to one project and more than one fits, and says why in one line, like \"Both Website and Blog have a contact form.\" It doesn't ask: - **With one option.** If only one project could be meant, the work goes there. - **Again in the same conversation.** Once you've picked, later requests there go to the same project unless they name another. - **For work any of a client's projects would do**, like reading their email or Google. That goes to the client's **default project**: their only project, or the one you choose on the client's Overview tab. The first time it would have asked, the question offers to make your pick the default. See also: Connections, Agents and routines, Approvals and safety."

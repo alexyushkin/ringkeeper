@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ringkeeper.models import Agent, Client, Instance, Project
+from ringkeeper.models import Agent, Client, Instance, Message, Project
 from ringkeeper.router.schema import Candidate, RoutedTask, RouterOutput
 from ringkeeper.services import clients as client_names
 
@@ -90,6 +90,22 @@ def find(session: Session, text: str) -> Mentions:
             found.projects.append(token)
         elif token in slugs and token not in found.clients:
             found.clients.append(token)
+    return found
+
+
+def for_message(session: Session, message: Message) -> Mentions:
+    """What a message names: its @-mentions, and the client and project chosen at the top of
+    the app when it was sent (a project chosen there decides, like an @-mention)."""
+    found = find(session, message.body)
+    project = message.target_project
+    if project and session.scalar(select(Project.name).where(Project.name == project)):
+        return Mentions(projects=[project], connections=found.connections, agents=found.agents)
+    client = message.target_client
+    if client and client not in found.clients and session.get(Client, client) is not None:
+        return Mentions(
+            clients=[*found.clients, client], projects=found.projects,
+            connections=found.connections, agents=found.agents,
+        )  # fmt: skip
     return found
 
 

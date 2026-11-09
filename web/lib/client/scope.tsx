@@ -29,6 +29,7 @@ export interface Client {
   month_usd?: number;
   cap_usd?: number | null;
   default_project?: string | null;
+  own?: boolean;
 }
 
 /** A project as the switcher and the names need it. */

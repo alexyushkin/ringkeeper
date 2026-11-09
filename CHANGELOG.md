@@ -40,6 +40,12 @@ publishes it as the release notes and the app shows it with the update.
   its rows came from several pages. New Google connections are named "Google · <client> ·
   <email>", and a connection that shares its name with another offers a clearer one.
 
+- **Requests that need no client connection.** The client and project chosen at the top are
+  a firm choice for new requests ("Sending to Alexey › My Project" under the box). Web
+  lookups, writing and summaries run in the chosen project, or in your own client's default
+  project (client page › Settings › Your own work). A project whose tasks can't use the web
+  says so plainly. See [Where a request goes](docs/concepts.md#where-a-request-goes).
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how

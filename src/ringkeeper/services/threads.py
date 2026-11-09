@@ -78,6 +78,8 @@ def post_message(
     origin_chat_id: int | None = None,
     attachments: list[str] | None = None,
     run_at: datetime | None = None,
+    target_client: str | None = None,
+    target_project: str | None = None,
 ) -> Message:
     """Store a user message (in a new thread unless one is given) for the router.
 
@@ -108,6 +110,7 @@ def post_message(
     message = Message(
         thread_id=target.id, role=MessageRole.USER, author=author, source=source, body=body,
         input=input_kind, attachments=attachments or [], run_at=run_at,
+        target_client=target_client, target_project=target_project,
     )  # fmt: skip
     session.add(message)
     session.flush()

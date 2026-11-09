@@ -104,6 +104,7 @@ def post_message(data: MessageIn, session: WriteSessionDep) -> MessageAccepted:
     message = threads.post_message(
         session, data.body, author=data.author, source=data.source, thread=data.thread_id,
         input_kind=data.input, attachments=data.attachments, run_at=data.run_at,
+        target_client=data.client, target_project=data.project,
     )  # fmt: skip
     return MessageAccepted(message_id=str(message.id), thread_id=str(message.thread_id))
 

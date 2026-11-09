@@ -10,7 +10,7 @@ import { connectionTitle } from "@/components/connection-form";
 import { ProjectForm } from "@/components/forms";
 import { ClientMonth, MonthlyCap, money } from "@/components/client-month";
 import { ScopedTasks, useTaskSummary } from "@/components/scoped-tasks";
-import { Alert, Badge, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, type Tab } from "@/components/ui";
+import { Alert, Badge, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { projectHref } from "@/lib/client/routes";
 import { clientName, projectName, sameClient, useScope } from "@/lib/client/scope";
@@ -136,6 +136,9 @@ export function ClientView({ name }: { name: string }) {
           <Section id="new-project" title={`Add a project for ${display}`} defaultOpen={!library.projects.length}>
             <ProjectForm client={name} onSaved={() => library.reload()} />
           </Section>
+          <Section id="own-client" title="Your own work" summary={client?.own ? "this is you" : "no"} defaultOpen={false}>
+            <OwnClient slug={name} name={display} own={Boolean(client?.own)} onSaved={scope.reloadClients} />
+          </Section>
           <Section id="monthly-cap" title="Monthly cap" summary={client?.cap_usd ? money(client.cap_usd) : "none"} defaultOpen={false}>
             <MonthlyCap slug={name} name={display} cap={client?.cap_usd ?? null} onSaved={scope.reloadClients} />
           </Section>
@@ -161,6 +164,32 @@ export function ClientView({ name }: { name: string }) {
       </p>
       <Tabs id={`client-${name}`} tabs={tabs} />
     </>
+  );
+}
+
+/** The operator's own client: work that needs no client's connection (a web lookup,
+ * writing, a summary) runs in its default project when nothing is chosen at the top. */
+export function OwnClient({ slug, name, own, onSaved }: { slug: string; name: string; own: boolean; onSaved: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  async function save(on: boolean) {
+    setError(null);
+    try {
+      await api(`clients/${slug}/own`, { method: "PUT", json: { own: on } });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <Toggle
+        label={`${name} is me`}
+        checked={own}
+        onChange={(on) => void save(on)}
+        hint="Work that needs no client's connection, like a web lookup, writing or a summary, runs in this client's default project when nothing is chosen at the top. Only one client can be you."
+      />
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }
 

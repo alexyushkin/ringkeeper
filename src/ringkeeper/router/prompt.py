@@ -68,6 +68,11 @@ Rules:
 - why: only when you're unsure between projects (low confidence, with alternatives): one
   short line for the operator saying why it could be either, naming them by title, like
   "Both Website and Blog have a contact form." Otherwise leave it out.
+- general: true for work that needs no client's connection: a web lookup, writing,
+  summarizing or translating text the operator pasted, brainstorming. It's still a task,
+  never a reply: pick any project, and Ringkeeper runs it in the project the operator
+  chose, or in their own client's default project. Never answer that no project covers it.
+- needs_web: true when the work has to look something up on the web.
 - outcome: one sentence saying what done looks like.
 - prompt: complete instructions for the worker who does this task. It sees only
   this prompt and its own project, so restate everything it needs from the
@@ -201,7 +206,7 @@ def build_context(session: Session, settings: Settings, message: Message) -> Con
             or "(none)"
         ),
     ]
-    named = mentions.find(session, message.body)
+    named = mentions.for_message(session, message)
     if named:
         sections.append(mentions.note(named))
     sections.append("MESSAGE TO ROUTE:\n" + message.body)

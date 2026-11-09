@@ -63,6 +63,7 @@ from ringkeeper.router.schema import (
 from ringkeeper.services import clients, examples, inbox, mentions, tasks, threads, titles
 from ringkeeper.services import help as help_answers
 from ringkeeper.services.runtime import current_settings
+from ringkeeper.workers.manager import DISALLOWED_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class Routed:
     decisions: list[Decision] = field(default_factory=list[Decision])
     reply: str = ""
     error: str | None = None
+    notes: list[str] = field(default_factory=list[str])  # why something didn't start
 
 
 def _retry_prompt(prompt: str, previous: str, error: str) -> str:
@@ -139,6 +141,31 @@ def _firm(task: RoutedTask, project: str) -> RoutedTask:
         "touches": [],
     }
     return task.model_copy(update=update)
+
+
+def _general(session: Session, message: Message, task: RoutedTask) -> RoutedTask:
+    """Work that needs no client's connection runs in the project chosen at the top of the
+    app (already settled, like a mention), or in the operator's own client's default."""
+    if not task.general or message.target_project:
+        return task
+    own = clients.own_client(session)
+    where = clients.default_project(session, own) if own is not None else None
+    return _firm(task, where) if where is not None else task
+
+
+def no_web(session: Session, task: RoutedTask) -> str | None:
+    """Why a task that needs the web can't have it in its project, in plain words."""
+    if not task.needs_web:
+        return None
+    project = session.scalar(select(Project).where(Project.name == task.project))
+    if project is None or "WebSearch" not in DISALLOWED_TOOLS[project.autonomy]:
+        return None
+    title = titles.of(session, project.name)
+    return (
+        f"Tasks in {title} can't use the web: its autonomy is {project.autonomy.value}, which "
+        f"turns web access off. To allow it, set {title} to relaxed on its Settings tab, "
+        "then send this again."
+    )
 
 
 def remembered(session: Session, message: Message) -> str | None:
@@ -303,6 +330,33 @@ def _reply(session: Session, routed: Routed, output: RouterOutput) -> str:
     return "\n".join(lines) or "Nothing to do."
 
 
+def _route_tasks(
+    session: Session,
+    settings: Settings,
+    message: Message,
+    output: RouterOutput,
+    owners: dict[str, str],
+) -> Routed:
+    """Start each task, or ask first (which project, or a go-ahead on production)."""
+    routed = Routed()
+    threshold = settings.router_confidence_threshold
+    for found in output.tasks:
+        task = settle_project(session, settings, message, _general(session, message, found), owners)
+        if task.touches or task.confidence < threshold:
+            routed.decisions.append(_ask(session, settings, message, task, owners=owners))
+        elif (live := production_connection(session, task)) is not None:
+            routed.decisions.append(_ask(session, settings, message, task, live))
+        elif (blocked := no_web(session, task)) is not None:
+            routed.notes.append(blocked)
+        else:
+            routed.tasks.append(_dispatch(session, settings, message, task))
+    said = _reply(session, routed, output)
+    nothing = not routed.tasks and not routed.decisions
+    lines = routed.notes if nothing and routed.notes else [*routed.notes, said]
+    routed.reply = chr(10).join(lines)
+    return routed
+
+
 def route_message(
     session: Session, settings: Settings, message: Message, model: RouterModel
 ) -> Routed:
@@ -331,7 +385,7 @@ def route_message(
         threads.add_reply(session, message.thread_id, reply, role=MessageRole.SYSTEM)
         return Routed(reply=reply, error=error)
 
-    named = mentions.find(session, message.body)
+    named = mentions.for_message(session, message)
     known = [*context.owners, *set(context.owners.values()), *context.aliases]
     if (output.about_ringkeeper and help_answers.is_how_to(message.body)) or (
         not named and help_answers.asks_how(message.body, known)
@@ -364,17 +418,7 @@ def route_message(
         return Routed(reply=reply)
 
     output = mentions.settle(session, _apply_example(session, message, output), named)
-    routed = Routed()
-    threshold = settings.router_confidence_threshold
-    for found in output.tasks:
-        task = settle_project(session, settings, message, found, context.owners)
-        if task.touches or task.confidence < threshold:
-            routed.decisions.append(_ask(session, settings, message, task, owners=context.owners))
-        elif (live := production_connection(session, task)) is not None:
-            routed.decisions.append(_ask(session, settings, message, task, live))
-        else:
-            routed.tasks.append(_dispatch(session, settings, message, task))
-    routed.reply = _reply(session, routed, output)
+    routed = _route_tasks(session, settings, message, output, context.owners)
     meta |= {
         "output": output.model_dump(mode="json"),
         "tasks": [str(t.id) for t in routed.tasks],

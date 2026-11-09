@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ringkeeper.adapters import sqlite_file
 from ringkeeper.config import Settings
-from ringkeeper.models import Env, InstanceType
+from ringkeeper.models import Autonomy, Env, InstanceType
 from ringkeeper.scenarios import demo_airtable, demo_service
 from ringkeeper.scenarios.catalog import (
     ACME,
@@ -25,9 +25,11 @@ from ringkeeper.scenarios.catalog import (
     AIRTABLE,
     CANARY,
     CRM,
+    DESK,
     DEV_DB,
     LONG_EMAIL_END,
     MAIL,
+    OWN_CLIENT,
     ROUTINE,
     SHOP,
     SHOP_DB,
@@ -177,8 +179,21 @@ def build(
         ProjectIn(
             name=SITE, owner=owner, aliases=["site"], workspace_path=str(folder),
             description="Demo Co's marketing website: pages and copy, no customer data.",
+            autonomy=Autonomy.RELAXED,  # no customer data; its tasks may use the web
         ),
     )  # fmt: skip
+    # The operator's own client, for work that needs no client's connection.
+    own = clients.ensure(session, OWN_CLIENT)
+    desk = workspaces.choose(settings, "ringkeeper-agency-desk", DESK)
+    workspaces.prepare(settings, desk)
+    projects.create_project(
+        session,
+        ProjectIn(
+            name=DESK, owner=own, workspace_path=str(desk), autonomy=Autonomy.RELAXED,
+            description="The operator's own work: research, writing, summaries. No client data.",
+        ),
+    )  # fmt: skip
+    clients.set_own(session, own, True)
     # Where Demo Co's work goes when any of its projects would do (its email).
     clients.set_default_project(session, owner, SHOP)
 

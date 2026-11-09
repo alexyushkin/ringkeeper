@@ -476,6 +476,11 @@ class ClientOut(BaseModel):
     month_usd: float = 0.0  # AI cost of this month's tasks (services.client_month)
     cap_usd: float | None = None
     default_project: str | None = None  # as chosen; with one project, that one is used
+    own: bool = False  # the operator's own client: general work goes here
+
+
+class OwnIn(Input):
+    own: bool
 
 
 class DefaultProjectIn(Input):
@@ -485,14 +490,18 @@ class DefaultProjectIn(Input):
 def _with_month(session: Session, listed: list[clients.Listed]) -> list[ClientOut]:
     now = client_month.local_now()
     spent = client_month.spend_by_client(session, now.year, now.month)
-    rows = session.execute(select(Client.slug, Client.monthly_cap_usd, Client.default_project))
-    caps = {slug: (cap, default) for slug, cap, default in rows}
+    rows = session.execute(
+        select(Client.slug, Client.monthly_cap_usd, Client.default_project, Client.own)
+    ).all()
+    caps = {slug: (cap, default) for slug, cap, default, _own in rows}
+    owns = {slug for slug, _cap, _default, own in rows if own}
     return [
         ClientOut(
             **c.__dict__,
             month_usd=round(spent.get(c.slug, 0.0), 4),
             cap_usd=caps.get(c.slug, (None, None))[0],
             default_project=caps.get(c.slug, (None, None))[1],
+            own=c.slug in owns,
         )
         for c in listed
     ]
@@ -525,6 +534,15 @@ def create_client(data: ClientIn, session: WriteSessionDep) -> ClientOut:
         raise HTTPException(422, detail="'you' stands for your own tools; pick another name.")
     admin_audit.record(session, "client.create", f"added client {data.name}", by=OWNER)
     return _client_out(session, slug)
+
+
+@router.put("/clients/{slug}/own")
+def set_own_client(slug: str, data: OwnIn, session: WriteSessionDep) -> ClientOut:
+    """Mark the operator's own client: general work goes to its default project."""
+    client = clients.set_own(session, slug, data.own)
+    said = f"marked {client.name} as your own" if data.own else f"unmarked {client.name}"
+    admin_audit.record(session, "client.own", said, by=OWNER)
+    return _client_out(session, client.slug)
 
 
 @router.put("/clients/{slug}/default-project")

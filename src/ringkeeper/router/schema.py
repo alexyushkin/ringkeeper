@@ -45,6 +45,10 @@ class RoutedTask(_Strict):
     project_specific: bool = True
     # When unsure between projects: one short line for the operator saying why.
     why: str = ""
+    # Needs no client's connection (a web lookup, writing, summarizing pasted text): it runs
+    # in the chosen project, or the operator's own client's default project.
+    general: bool = False
+    needs_web: bool = False  # it has to look something up on the web
 
 
 class RouterOutput(_Strict):

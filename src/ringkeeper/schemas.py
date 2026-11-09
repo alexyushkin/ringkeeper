@@ -177,6 +177,9 @@ class MessageIn(_Input):
     input: Literal["text", "voice"] = "text"  # voice: a transcript the user confirmed
     attachments: CleanList = Field(default_factory=list[str])  # ids from POST /attachments
     run_at: datetime | None = None  # sent for later: when the router takes it
+    # The client and project chosen at the top of the app: where it goes, firmly.
+    client: Slug | None = None
+    project: Slug | None = None
 
 
 class MessageAccepted(BaseModel):
