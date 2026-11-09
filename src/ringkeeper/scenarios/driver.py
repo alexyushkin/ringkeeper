@@ -175,6 +175,7 @@ class Driver:
             choice = candidates[0]
         else:
             seen.asked = True
+            seen.times_asked += 1
             wanted = scenario.project if isinstance(scenario.project, str) else None
             choice = scenario.pick or wanted or (candidates[0] if candidates else inbox.NO_PROJECT)
         self._say(session, str(decision.id), inbox.Answer(choice=choice))

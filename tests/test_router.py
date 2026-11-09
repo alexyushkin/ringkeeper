@@ -49,6 +49,10 @@ def projects(database_url: str) -> None:
     bind("globex-portal", "globex-supabase-dev", is_default=True)
 
 
+# A second candidate, so the router still has to ask.
+OR_WEB = [{"project": "acme-web", "confidence": 0.3}]
+
+
 def ask(body: str, thread: str | None = None) -> str:
     with session_scope() as session:
         message = threads.post_message(session, body, author="alice", source="cli", thread=thread)
@@ -176,7 +180,7 @@ def test_low_confidence_asks_with_the_top_two_candidates() -> None:
     ]
     assert payload["message"] == "update the report numbers"
     assert payload["task"]["prompt"] == "Work in acme-reports."
-    assert "below 0.80" in payload["reason"]
+    assert payload["reason"] == "It could be for Acme reports or Globex portal."  # plain words
 
 
 def test_the_threshold_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -194,7 +198,8 @@ def test_a_task_touching_two_projects_of_one_owner_is_asked_about() -> None:
     assert {c["project"] for c in (decision.payload or {})["candidates"]} == {
         "acme-web", "acme-reports",
     }  # fmt: skip
-    assert "touches" in (decision.payload or {})["reason"]
+    reason = (decision.payload or {})["reason"]
+    assert reason.startswith("It would change Acme web and Acme reports.")
 
 
 def test_a_task_across_owners_is_sent_back_to_be_split() -> None:
@@ -461,7 +466,7 @@ def test_an_unsure_route_asks_plainly() -> None:
                     routed(
                         "acme-reports",
                         0.4,
-                        alternatives=[{"project": "acme-web", "confidence": 0.3}],
+                        alternatives=OR_WEB,
                     )
                 )
             ]
@@ -476,13 +481,13 @@ def test_a_question_isn_t_dressed_as_a_start() -> None:
     # The model writes its line as if starting; Ringkeeper asked instead, so that's all it says.
     thread_id = ask("Read the newest request in acme's tracker and handle it")
     claim = "I'll read the newest request and check with you before changing anything."
-    route(FakeModel([output(routed("acme-reports", 0.5), reply=claim)]))
+    route(FakeModel([output(routed("acme-reports", 0.5, alternatives=OR_WEB), reply=claim)]))
     assert thread_bodies(thread_id)[-1][1] == threads.ASKS_PROJECT
 
 
 def test_answering_which_project_says_what_started() -> None:
     thread_id = ask("Update the report")
-    route(FakeModel([output(routed("acme-reports", 0.4, outcome="The report is current."))]))
+    route(FakeModel([output(routed("acme-reports", 0.4, outcome="Done.", alternatives=OR_WEB))]))
     [decision] = route_decisions()
     with session_scope() as session:
         inbox.answer(
@@ -492,13 +497,13 @@ def test_answering_which_project_says_what_started() -> None:
     bodies = [body for _, body in thread_bodies(thread_id)]
     assert bodies[-2:] == [
         threads.ASKS_PROJECT,
-        "Working on it in Acme reports: The report is current.",
+        "Working on it in Acme reports: Done.",
     ]  # the question isn't the thread's last word once the work runs
 
 
 def test_answering_none_says_nothing_started() -> None:
     thread_id = ask("Update the report")
-    route(FakeModel([output(routed("acme-reports", 0.4))]))
+    route(FakeModel([output(routed("acme-reports", 0.4, alternatives=OR_WEB))]))
     [decision] = route_decisions()
     with session_scope() as session:
         inbox.answer(

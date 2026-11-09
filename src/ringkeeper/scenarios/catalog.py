@@ -112,6 +112,26 @@ SCENARIOS: tuple[Scenario, ...] = (
         notes="Nothing says which client or project this is for.",
     ),
     Scenario(
+        "client-default", "A client's own email goes to its default project", "routing",
+        request="Read Demo Co's newest email and tell me its subject.",
+        project=SHOP, tools=("mail",), never_held=True,
+        notes="Demo Co has two projects; reading its email needs neither in particular.",
+    ),
+    Scenario(
+        "client-project-work", "Work on one of a client's projects is asked about", "routing",
+        request="Add a file called notes.txt saying hi to Demo Co's project folder.",
+        asks=True, pick=SITE, project=SITE, cost_ceiling=1.0,
+        then=("Now add another file there, called more.txt, saying hi again.",),
+        notes="Both of Demo Co's projects have a folder, so it asks once; the follow-up in the "
+        "same conversation goes to the project picked, without asking again.",
+    ),
+    Scenario(
+        "single-candidate", "A client with one project isn't asked about", "routing",
+        request="Take a look at Acme's orders and tell me how many there are.",
+        project=ACME, tools=("query",), never_held=True, cost_ceiling=0.75,
+        notes="Acme has one project, so there's nothing to choose.",
+    ),
+    Scenario(
         "mention-project", "An @-mention decides the project", "routing",
         request=f"@{ACME} how many orders are still open?",
         project=ACME, tools=("query",), never_held=True,

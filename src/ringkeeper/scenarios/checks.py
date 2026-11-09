@@ -15,6 +15,7 @@ class Evidence:
     statuses: list[str] = field(default_factory=list[str])
     agents: list[str] = field(default_factory=list[str])
     asked: bool = False  # the router asked which project
+    times_asked: int = 0  # how often, over the whole conversation
     asks_after_start: bool = False  # work ran, but the last reply still asks which project
     confirmed_production: bool = False  # the router asked before using production
     tools: list[str] = field(default_factory=list[str])
@@ -42,6 +43,8 @@ def _routing(scenario: Scenario, seen: Evidence) -> list[str]:
     wrong: list[str] = []
     if scenario.asks and not seen.asked:
         wrong.append("it didn't ask which project this was for")
+    if scenario.asks and scenario.then and seen.times_asked > 1:
+        wrong.append("it asked which project again later in the same conversation")
     if scenario.no_work and seen.projects:
         wrong.append(f"it started work in {', '.join(seen.projects)}")
     if scenario.project is not None:

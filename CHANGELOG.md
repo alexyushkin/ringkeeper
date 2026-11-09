@@ -11,6 +11,13 @@ publishes it as the release notes and the app shows it with the update.
   and changes only its own workflows and runs, and never sees another client's workflow
   names. See [A service you host for clients](docs/connections.md#a-service-you-host-for-clients).
 
+- **Fewer "which project?" questions.** It never asks with one option, doesn't ask again
+  in a conversation where you've answered, and sends work any of a client's projects would do
+  (their email, Google, Slack) to the client's **default project**: their only one, or the one
+  you pick on the client's page. When it does ask, it says why in one line, shows projects by
+  name, and offers to make your pick the default. See
+  [When it asks which project](docs/concepts.md#when-it-asks-which-project).
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how

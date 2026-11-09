@@ -250,6 +250,9 @@ class Client(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     # New tasks stop once the month's AI cost reaches it (services.client_month).
     monthly_cap_usd: Mapped[float | None] = mapped_column(Numeric(10, 2, asdecimal=False))
+    # Where a request goes that names the client and needs no particular project (its email,
+    # Google, Slack). A project's slug; with one project, that one (services.clients).
+    default_project: Mapped[str | None] = mapped_column(Text)
 
 
 class Agent(TimestampMixin, Base):

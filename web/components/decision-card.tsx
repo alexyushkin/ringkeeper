@@ -5,9 +5,9 @@ import Link from "@/components/link";
 import { Markdown } from "@/components/markdown";
 import { useState } from "react";
 
-import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, clock, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, Toggle, clock, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
-import { place, projectName } from "@/lib/client/scope";
+import { clientName, place, projectName } from "@/lib/client/scope";
 import { taskHref } from "@/lib/client/routes";
 import { KIND } from "@/lib/client/words";
 
@@ -339,6 +339,7 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
   const production = typeof payload.production === "string" ? payload.production : null;
   const projects = useApi<{ name: string }[]>(production ? null : "projects");
   const [other, setOther] = useState("");
+  const [remember, setRemember] = useState(false);
   const offered = decision.options.filter((o) => o !== NONE);
   const rest = (projects.data ?? []).map((p) => p.name).filter((name) => !offered.includes(name));
 
@@ -361,14 +362,21 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
       </div>
     );
   }
+  const why = typeof payload.reason === "string" ? payload.reason : "";
+  const offerFor = typeof payload.offer_default === "string" ? payload.offer_default : null;
+  async function pick(option: string) {
+    if (offerFor && remember && option !== NONE) await api(`clients/${offerFor}/default-project`, { method: "PUT", json: { project: option } }).catch(() => undefined);
+    onAnswer(option);
+  }
   return (
     <div className="mt-3 space-y-3">
-      <p className="text-sm">Which project is this for?</p>
+      <p className="text-sm">Which project is this for?{why ? ` ${why}` : ""}</p>
       {task.outcome ? <Markdown text={task.outcome} className="text-sm text-muted" /> : null}
+      {offerFor ? <Toggle label={`Use it for ${clientName(offerFor)} from now on`} checked={remember} onChange={setRemember} hint="For requests any of their projects could do, like their email or Google. You can change it on the client's page." /> : null}
       <div className="flex flex-wrap gap-2">
         {offered.map((option) => (
-          <Button key={option} busy={busy === option} onClick={() => onAnswer(option)}>
-            {option}
+          <Button key={option} busy={busy === option} onClick={() => void pick(option)}>
+            {projectName(option)}
           </Button>
         ))}
         <Button kind="ghost" busy={busy === NONE} onClick={() => onAnswer(NONE)}>
@@ -380,7 +388,7 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
           <div className="min-w-48 flex-1">
             <Select label="Another project" value={other} onChange={setOther} options={[["", "Choose…"], ...rest.map((name): [string, string] => [name, projectName(name)])]} />
           </div>
-          <Button disabled={!other} busy={busy === other} onClick={() => onAnswer(other)}>
+          <Button disabled={!other} busy={busy === other} onClick={() => void pick(other)}>
             Use it
           </Button>
         </div>

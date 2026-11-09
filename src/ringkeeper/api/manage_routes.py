@@ -475,15 +475,24 @@ class ClientOut(BaseModel):
     connections: int = 0
     month_usd: float = 0.0  # AI cost of this month's tasks (services.client_month)
     cap_usd: float | None = None
+    default_project: str | None = None  # as chosen; with one project, that one is used
+
+
+class DefaultProjectIn(Input):
+    project: Annotated[str | None, Field(max_length=200)] = None
 
 
 def _with_month(session: Session, listed: list[clients.Listed]) -> list[ClientOut]:
     now = client_month.local_now()
     spent = client_month.spend_by_client(session, now.year, now.month)
-    caps = dict(session.execute(select(Client.slug, Client.monthly_cap_usd)).tuples().all())
+    rows = session.execute(select(Client.slug, Client.monthly_cap_usd, Client.default_project))
+    caps = {slug: (cap, default) for slug, cap, default in rows}
     return [
         ClientOut(
-            **c.__dict__, month_usd=round(spent.get(c.slug, 0.0), 4), cap_usd=caps.get(c.slug)
+            **c.__dict__,
+            month_usd=round(spent.get(c.slug, 0.0), 4),
+            cap_usd=caps.get(c.slug, (None, None))[0],
+            default_project=caps.get(c.slug, (None, None))[1],
         )
         for c in listed
     ]
@@ -516,6 +525,22 @@ def create_client(data: ClientIn, session: WriteSessionDep) -> ClientOut:
         raise HTTPException(422, detail="'you' stands for your own tools; pick another name.")
     admin_audit.record(session, "client.create", f"added client {data.name}", by=OWNER)
     return _client_out(session, slug)
+
+
+@router.put("/clients/{slug}/default-project")
+def set_default_project(slug: str, data: DefaultProjectIn, session: WriteSessionDep) -> ClientOut:
+    """Where a request for this client goes when it needs no particular project."""
+    try:
+        client = clients.set_default_project(session, slug, data.project or None)
+    except RuleViolationError as error:
+        raise HTTPException(422, detail=str(error)) from None
+    said = (
+        f"set {client.name}'s default project to {data.project}"
+        if data.project
+        else f"cleared {client.name}'s default project"
+    )
+    admin_audit.record(session, "client.default_project", said, by=OWNER)
+    return _client_out(session, client.slug)
 
 
 @router.patch("/clients/{slug}")

@@ -40,6 +40,11 @@ class RoutedTask(_Strict):
     prompt: Text
     # One of the project's agents, when the operator names it ("ask the follow-up agent").
     agent: str | None = None
+    # False when any of its client's projects would do (the client's email, Google, Slack):
+    # then it goes to the client's default project instead of asking which.
+    project_specific: bool = True
+    # When unsure between projects: one short line for the operator saying why.
+    why: str = ""
 
 
 class RouterOutput(_Strict):
