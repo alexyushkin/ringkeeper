@@ -46,6 +46,7 @@ from ringkeeper.services import (
     cleanup,
     holds,
     inbox,
+    link_offer,
     memory,
     projects,
     revocations,
@@ -136,6 +137,8 @@ class Collected:
     errors: list[str] | None = None
     exit_code: int | None = None
     question: str | None = None  # the worker called ask_user
+    not_done: str | None = None  # the worker called not_done: why
+    needs: str = ""  # the kind of connection it said it lacked
     checks: dict[str, Any] | None = None  # architect loop: this worker turn's checks
     diff: str | None = None
 
@@ -197,6 +200,8 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
             f"Stopped at its spending cap (${job.budget_usd:.2f}). Send a follow-up to continue."
         )
     if subtype == "success" and not result.get("is_error") and collected.exit_code == 0:
+        if collected.not_done:  # it ran, but said it couldn't do it: never "done"
+            return TaskStatus.NOT_DONE, collected.not_done
         return TaskStatus.SUCCEEDED, None
     if subtype == "error_max_turns":
         return TaskStatus.FAILED, (
@@ -517,6 +522,9 @@ class Manager:
                 collected.diff = str(event.get("text") or "")
             elif event_type == "ringkeeper.ask_user" and not collected.question:
                 collected.question = str(event.get("question", "")) or None
+            elif event_type == "ringkeeper.not_done" and not collected.not_done:
+                collected.not_done = str(event.get("reason", "")) or None
+                collected.needs = str(event.get("needs", ""))
             elif event_type == "ringkeeper.error":
                 cast(list[str], collected.errors).append(str(event.get("message", "")))
             seq += 1
@@ -588,6 +596,8 @@ class Manager:
                 said = result.get("result")
                 if not job.feature and not waiting and isinstance(said, str) and said.strip():
                     task.summary = said.strip()[:SUMMARY_CHARS]
+                if status is TaskStatus.NOT_DONE:
+                    task.offer = link_offer.find(session, task, collected.needs)
                 if job.feature and not waiting:
                     review = {
                         "checks": collected.checks,

@@ -13,7 +13,7 @@ import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
-import { threadHref } from "@/lib/client/routes";
+import { taskHref, threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 
 interface Session {
@@ -41,6 +41,7 @@ interface Task {
   summary: string | null;
   error: string | null;
   plan_limit?: string | null;
+  offer?: { label: string } | null;
   prompt: string;
   thread_id: string | null;
   branch: string | null;
@@ -66,7 +67,7 @@ interface Event {
 type Block = { _kind?: string; text?: string; name?: string; input?: unknown; content?: unknown; is_error?: boolean };
 
 const ACTIVE = new Set(["queued", "running"]);
-const RESUMABLE = new Set(["succeeded", "failed", "stopped", "timed_out", "budget_exceeded", "needs_input"]);
+const RESUMABLE = new Set(["succeeded", "failed", "stopped", "timed_out", "budget_exceeded", "needs_input", "not_done"]);
 
 function blocks(payload: Record<string, unknown>): Block[] {
   const message = payload.message as { content?: unknown } | undefined;
@@ -236,7 +237,8 @@ export function TaskView({ id }: { id: string }) {
         </div>
         <Markdown text={t.summary ?? t.outcome ?? t.prompt} className="text-sm" />
         {t.plan_limit ? <Alert tone="warn">{t.plan_limit}</Alert> : null}
-        {t.error && t.status !== "succeeded" ? <Alert>{t.error}</Alert> : null}
+        {t.error && t.status !== "succeeded" ? <Alert>{t.status === "not_done" ? `Not done: ${t.error}` : t.error}</Alert> : null}
+        {t.offer ? <LinkAndRetry id={id} label={t.offer.label} onDone={(again) => router.push(taskHref(again))} /> : null}
         {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>
@@ -322,5 +324,32 @@ export function TaskView({ id }: { id: string }) {
         </div>
       )}
     </>
+  );
+}
+
+/** Not done for want of a connection the client has: link it to the project and run the
+ * task again, in one click. */
+function LinkAndRetry({ id, label, onDone }: { id: string; label: string; onDone: (again: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function take() {
+    setBusy(true);
+    setError(null);
+    try {
+      const again = await api<{ id: string }>(`tasks/${id}/link-and-retry`, { method: "POST" });
+      onDone(again.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <Button kind="primary" busy={busy} onClick={() => void take()}>
+        {label}
+      </Button>
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }

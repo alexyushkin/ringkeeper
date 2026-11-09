@@ -25,6 +25,11 @@ publishes it as the release notes and the app shows it with the update.
   there (tables as lines, with a link when it's long), and its approvals are posted in that
   chat with their buttons. See [A chat is a conversation](docs/notifications.md#a-chat-is-a-conversation).
 
+- **Honest outcomes.** A task that couldn't do what was asked ends as **Not done**, with its
+  reason, on its card, its page and in the chat it came from, instead of "Done". When it lacked
+  a connection the client has, it offers one click to link it to the project and run the task
+  again, in the app and as a chat button.
+
 ## 0.1.0-beta.32 (2026-11-09)
 
 - **Fixed:** a question about Ringkeeper sent from Slack, Discord or Telegram, such as "how

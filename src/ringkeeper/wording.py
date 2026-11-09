@@ -16,6 +16,7 @@ TASK_STATUS = {
     TaskStatus.TIMED_OUT: "stopped at its time limit",
     TaskStatus.STOPPED: "stopped",
     TaskStatus.BUDGET_EXCEEDED: "stopped at its spending cap",
+    TaskStatus.NOT_DONE: "not done",
     TaskStatus.NEEDS_INPUT: "waiting for your answer",
     TaskStatus.WAITING: "waiting for your approval",
 }

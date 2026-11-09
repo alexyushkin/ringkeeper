@@ -38,6 +38,7 @@ from ringkeeper.services import (
     calls,
     cleanup,
     clients,
+    link_offer,
     model_usage,
     paging,
     projects,
@@ -196,6 +197,7 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
         "kind": task.kind.value if task.kind else None,
         "phase": task.phase.value if task.phase else None, "outcome": task.outcome,
         "summary": task.summary, "error": task.error, "plan_limit": task.plan_limit,
+        "offer": task.offer,
         "thread_id": task.thread_id,
         "created_at": task.created_at, "started_at": task.started_at,
         "finished_at": task.finished_at, "turns": sum(s.turns or 0 for s in rows),
@@ -353,6 +355,12 @@ def delete_threads(data: DeleteIn, session: WriteSessionDep) -> dict[str, int]:
         session, current_settings(), data.ids, delete_branches=data.delete_branches, by=OWNER
     )
     return {"deleted": len(data.ids), "tasks": removed}
+
+
+@router.post("/tasks/{task_id}/link-and-retry", status_code=201)
+def link_and_retry(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
+    """Link the connection a task was missing to its project, and run it again."""
+    return _task_card(link_offer.take(session, current_settings(), task_id))
 
 
 @router.post("/tasks/{task_id}/stop")
