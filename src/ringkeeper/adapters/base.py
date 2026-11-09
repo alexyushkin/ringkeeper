@@ -56,6 +56,9 @@ class Target:
     secret: Secret = field(repr=False)
     config: JSON = field(default_factory=dict[str, Any])  # the connection's non-secret settings
     project: str | None = None  # the calling project (a push uses its folder)
+    # What the project's link is narrowed to (ringkeeper.remote), for an adapter that
+    # checks it itself: an n8n link limited to workflows with one tag.
+    scope: JSON = field(default_factory=dict[str, Any])
 
 
 Handler = Callable[..., Awaitable[JSON]]

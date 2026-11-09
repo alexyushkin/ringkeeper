@@ -19,6 +19,13 @@ workflow needs the connection's name typed. A replaced workflow stays a draft
 unless the agent asks to put it live; approval is refused if someone edited the
 workflow after it was held.
 
+## One n8n for several clients
+
+If your n8n holds several clients' workflows, make it your own tool and narrow each client
+project's link to a workflow tag or an n8n project. That project's tasks then see and change
+only those workflows and their runs. See
+[A service you host for clients](../connections.md#a-service-you-host-for-clients).
+
 ## Undo
 
 Replacing a workflow, and turning one on or off, can be reverted for 7 days

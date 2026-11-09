@@ -17,7 +17,15 @@ class FakeN8n:
     requests: list[httpx2.Request] = field(default_factory=list[httpx2.Request])
     clock: int = 0
 
-    def add_workflow(self, workflow_id: str, name: str, *, active: bool = False) -> None:
+    def add_workflow(
+        self,
+        workflow_id: str,
+        name: str,
+        *,
+        active: bool = False,
+        tags: tuple[str, ...] = ("acme",),
+        project: str = "p-agency",
+    ) -> None:
         self.workflows[workflow_id] = {
             "id": workflow_id,
             "name": name,
@@ -25,7 +33,8 @@ class FakeN8n:
             "nodes": [{"name": "Start", "type": "n8n-nodes-base.manualTrigger"}],
             "connections": {},
             "settings": {},
-            "tags": [{"id": "1", "name": "acme"}],
+            "tags": [{"id": str(i), "name": tag} for i, tag in enumerate(tags, 1)],
+            "shared": [{"projectId": project, "role": "workflow:owner"}],
             "updatedAt": self._tick(),
         }
 
@@ -48,6 +57,11 @@ class FakeN8n:
             if request.url.params.get("active") is not None:
                 wanted = request.url.params["active"] == "true"
                 items = [w for w in items if w["active"] == wanted]
+            if tags := request.url.params.get("tags"):  # n8n: any of these tags
+                wanted_tags = set(tags.split(","))
+                items = [w for w in items if wanted_tags & {g["name"] for g in w["tags"]}]
+            if project := request.url.params.get("projectId"):
+                items = [w for w in items if w["shared"][0]["projectId"] == project]
             return httpx2.Response(200, json={"data": items, "nextCursor": None})
         if parts[0] == "workflows" and len(parts) >= 2:
             workflow = self.workflows.get(parts[1])

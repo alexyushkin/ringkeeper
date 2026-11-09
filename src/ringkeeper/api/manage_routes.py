@@ -740,8 +740,13 @@ def update_connection(
     changes = data.model_dump(exclude_unset=True, exclude={"secret"})
     base_url = instance.base_url
     moved = "base_url" in changes and changes["base_url"] != instance.base_url
-    if moved or (instance.env is Env.PROD and changes.get("env", Env.PROD) is not Env.PROD):
-        check_recent_auth(request, token)  # a new address, or production's rules dropped
+    widened = bool(changes.get("shared")) and not instance.shared  # other clients can link it
+    if (
+        moved
+        or widened
+        or (instance.env is Env.PROD and changes.get("env", Env.PROD) is not Env.PROD)
+    ):
+        check_recent_auth(request, token)  # new address, wider reach, or prod's rules dropped
     if moved:
         if not data.secret:
             raise HTTPException(
