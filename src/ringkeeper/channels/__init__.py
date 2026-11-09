@@ -81,12 +81,20 @@ def get_channel(session: Session, ident: str | uuid.UUID) -> Channel:
     return channel
 
 
+CONVERSATION_ID = (
+    "That's a conversation's ID. Your member ID starts with U: "
+    "profile picture › Profile › ⋮ › Copy member ID."  # noqa: RUF001
+)
+
+
 def _target(kind: str, target: str) -> str:
     target = target.strip()
     if kind == "discord" and target.isdigit():
         return target  # a channel id; a DM is "user:<id>"
     if kind == "discord" and not (target.startswith("user:") and target[5:].isdigit()):
         raise RuleViolationError("Choose a channel, or a DM with your user ID.")
+    if kind == "slack" and target[:1] == "D":  # the DM's own ID, not the person's
+        raise RuleViolationError(CONVERSATION_ID)
     if kind == "slack" and target[:1] not in ("C", "G", "U", "W"):
         raise RuleViolationError("Choose a channel, or a DM with your member ID (U...).")
     return target
@@ -96,6 +104,8 @@ def _approver(kind: str, approver: str) -> str:
     approver = approver.strip()
     if kind == "discord" and not approver.isdigit():
         raise RuleViolationError("Your Discord user ID is a number (Copy User ID).")
+    if kind == "slack" and approver[:1] in ("C", "D", "G"):  # a channel's or DM's ID
+        raise RuleViolationError(CONVERSATION_ID)
     if kind == "slack" and not (approver[:1] in ("U", "W") and approver.isalnum()):
         raise RuleViolationError("Your Slack member ID starts with U (Profile > Copy member ID).")
     return approver

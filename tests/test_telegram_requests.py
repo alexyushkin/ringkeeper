@@ -72,7 +72,10 @@ def test_a_typed_request_goes_to_the_router(bridge: Bridge, telegram: FakeTelegr
     assert message.routed_at is None  # queued for the router
     with session_scope() as session:
         assert session.get_one(Thread, message.thread_id).source == "telegram"
-    assert telegram.sent[-1]["text"] == ("Got it. Working out which project it's for…")
+    assert telegram.sent[-1]["text"] == "Got it. Looking into it…"  # a question
+    telegram.text("add a line to acme-web's notes")
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == "Got it. Working out which project it's for…"
 
 
 def test_a_voice_request_is_confirmed_first(
@@ -175,7 +178,20 @@ def test_a_request_with_nothing_to_do_gets_the_routers_reply(
     bridge.poll_once(0)
     route_next(get_settings(), FakeModel([output(reply="Hi! Nothing to do.")]))
     bridge.send_notices()
-    assert telegram.sent[-1]["text"].endswith(":\nHi! Nothing to do.")
+    assert telegram.sent[-1]["text"] == "Hi! Nothing to do."
+
+
+def test_a_question_about_ringkeeper_gets_the_answer_the_app_shows(
+    bridge: Bridge, telegram: FakeTelegram
+) -> None:
+    """From real use (on Slack): the app answered, the chat got "Nothing to do."."""
+    telegram.text("how many connections and clients do we currently have?")
+    bridge.poll_once(0)
+    assert telegram.sent[-1]["text"] == "Got it. Looking into it…"
+    model = FakeModel([{"tasks": [], "about_ringkeeper": True}, "13 connections and 4 clients."])
+    route_next(get_settings(), model)
+    assert bridge.send_notices() == 1
+    assert telegram.sent[-1]["text"] == "13 connections and 4 clients."
 
 
 def test_a_long_router_reply_is_shown_in_full(bridge: Bridge, telegram: FakeTelegram) -> None:

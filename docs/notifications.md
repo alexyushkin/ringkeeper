@@ -33,6 +33,10 @@ Discord invite link that asks only to see channels and send messages. Then
 choose where it posts (a channel or a direct message) and your member or user
 ID. Tokens go into the vault.
 
+Your Slack member ID starts with U: your profile picture › Profile › ⋮ › Copy
+member ID. An ID starting with D or C is a conversation's (a DM's or a channel's),
+and Ringkeeper says so.
+
 ## New requests by DM
 
 Turn on **Take new requests by DM** on a Slack or Discord channel, and a direct
@@ -41,6 +45,10 @@ as one typed in Ringkeeper: it's routed to a project and runs with the usual
 approvals and limits. Ringkeeper answers in that DM with what it did, and again
 when each task ends. Only your member or user ID is taken; anyone else is told no,
 and messages in a channel are never requests.
+
+A question that needs no project, such as "how many connections and clients do we
+have?" or how to do something in Ringkeeper, gets the same answer the app gives,
+in that DM. The same goes for requests from Telegram.
 
 - **Slack:** the app needs the manifest from this version (it adds direct messages).
   For an app set up before, copy the manifest from **Add another Slack channel**,

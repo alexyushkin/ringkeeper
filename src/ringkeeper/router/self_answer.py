@@ -28,6 +28,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.router.model import RouterModel
 from ringkeeper.services import inbox
+from ringkeeper.services.clients import names as client_names
 
 RECENT_TASKS = 25
 
@@ -36,7 +37,9 @@ You are Ringkeeper, answering the operator's question about their own Ringkeeper
 setup. RINGKEEPER DATA below is everything you know: their projects and clients,
 connections, tasks, what is waiting for them, settings and costs. Answer from it
 only. Count carefully and give exact numbers and names. If the data doesn't say,
-say so plainly; never guess and never invent. You can't change anything: if they
+say so plainly; never guess and never invent. Name clients, projects and
+connections by their `name` as the data gives it, never by an id or slug. You
+can't change anything: if they
 want something changed, say where in the app to do it (Connectors, Clients &
 projects, Settings, Approvals). Answer in a few short sentences or a short list, plain text.
 """
@@ -51,6 +54,11 @@ _OURS = re.compile(r"\b(we|our|ours|my|mine|i|me|ringkeeper)\b", re.I)
 _ASKS = re.compile(
     r"^\s*(how|what|which|who|where|when|list|show|tell|do|does|are|is|did)\b|\?\s*$", re.I
 )
+
+
+def is_question(message: str) -> bool:
+    """Reads as a question ("how many...", "...?"), whatever it's about."""
+    return bool(_ASKS.search(message))
 
 
 def asks_about_setup(message: str, names: list[str]) -> bool:
@@ -70,6 +78,11 @@ def _since(session: Session, start: datetime) -> float:
     return round(float(total or 0), 2)
 
 
+def _shown(instance: Instance) -> str:
+    """A connection as people read it: its title, else its name."""
+    return instance.title or instance.name
+
+
 def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
     """Ringkeeper's own records, without secrets or addresses."""
     projects = session.scalars(
@@ -86,31 +99,36 @@ def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
         select(Decision).where(Decision.status == DecisionStatus.PENDING)
     ).all()
     now = datetime.now(UTC)
-    clients = sorted({p.owner for p in projects}, key=str.lower)
+    named = client_names(session)  # every client, with or without projects
+    owners = {p.owner for p in projects} | {i.owner for i in connections if not i.shared}
     shown = {p.name: p.title for p in projects}
     return {
         "today": now.date().isoformat(),
         "clients": [
-            {"name": c, "projects": sorted(p.title for p in projects if p.owner == c)}
-            for c in clients
+            {
+                "name": named.get(c, c),
+                "projects": sorted(p.title for p in projects if p.owner == c),
+            }
+            for c in sorted(set(named) | owners, key=lambda c: named.get(c, c).casefold())
         ],
         "projects": [
             {
                 "name": p.title,
-                "client": p.owner,
+                "client": named.get(p.owner, p.owner),
                 "description": p.description,
                 "other_names": [p.name, *p.aliases],
                 "autonomy": p.autonomy.value,
-                "connections": sorted(b.instance.name for b in p.bindings),
+                "connections": sorted(_shown(b.instance) for b in p.bindings),
             }
             for p in projects
         ],
         "connections": [
             {
-                "name": i.name,
+                "name": _shown(i),
+                "other_names": [i.name] if i.title and i.title != i.name else [],
                 "service": i.type.value,
                 "kind_of_data": i.env.value,
-                "whose": "yours (a shared tool)" if i.shared else i.owner,
+                "whose": "yours (a shared tool)" if i.shared else named.get(i.owner, i.owner),
                 "all_projects": i.all_projects,
                 "projects": sorted(b.project.title for b in i.bindings),
                 "last_test": None

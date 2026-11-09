@@ -33,7 +33,15 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType
 from ringkeeper.schemas import BindingIn, InstanceIn
-from ringkeeper.services import admin_audit, bindings, catalog, instances, projects, secrets_in
+from ringkeeper.services import (
+    admin_audit,
+    bindings,
+    catalog,
+    clients,
+    instances,
+    projects,
+    secrets_in,
+)
 
 HEADER_NAME_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
@@ -120,7 +128,8 @@ def check_new(session: Session, new: NewConnection) -> None:
         owner = found.owner
         if not new.shared and not bindings.same_client(owner, new.owner):
             raise RuleViolationError(
-                f"'{found.title}' is {owner}'s project; this connection is for {new.owner}."
+                f"'{found.title}' is {clients.display(session, owner)}'s project; this "
+                f"connection is for {clients.display(session, new.owner)}."
             )
 
 

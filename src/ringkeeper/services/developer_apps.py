@@ -50,6 +50,7 @@ from ringkeeper.schemas import BindingIn, InstanceIn
 from ringkeeper.services import (
     admin_audit,
     bindings,
+    clients,
     google_oauth,
     instances,
     mcp_oauth,
@@ -844,7 +845,10 @@ def check_start(session: Session, connection: JSON, vendor_key: str) -> None:
     if project and not connection.get("shared"):
         owner = projects.get_project(session, str(project)).owner
         if not bindings.same_client(owner, str(connection.get("owner") or "")):
-            raise RuleViolationError(f"That project is {owner}'s, not {connection.get('owner')}'s.")
+            raise RuleViolationError(
+                f"That project is {clients.display(session, owner)}'s, not "
+                f"{clients.display(session, str(connection.get('owner') or ''))}'s."
+            )
 
 
 def start(
