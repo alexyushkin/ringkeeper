@@ -332,6 +332,15 @@ def test_uncommitted_changes_are_never_carried_onto_a_task_branch(repo: Path) ->
     assert "README.md" in git(repo, "status", "--porcelain")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows files have no executable bit")
+def test_a_mode_alone_isnt_uncommitted_work(repo: Path) -> None:
+    """A mounted folder (Docker Desktop) can show every file as executable."""
+    (repo / "README.md").chmod(0o777)
+    workspace = Workspace(repo, "ringkeeper/t-1")
+    workspace.start()
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "ringkeeper/t-1"
+
+
 def test_checks_run_without_secrets_and_report_each_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
