@@ -46,6 +46,7 @@ from ringkeeper.services import (
     cleanup,
     holds,
     inbox,
+    interrupted,
     link_offer,
     memory,
     projects,
@@ -387,9 +388,7 @@ class Manager:
             self._finalize(
                 job,
                 jti,
-                Collected(
-                    errors=["Ringkeeper restarted during this task. Send a follow-up to continue."]
-                ),
+                Collected(errors=[interrupted.ERROR]),
                 None,
             )
 

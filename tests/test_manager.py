@@ -27,7 +27,7 @@ from ringkeeper.models import (
     TokenRevocation,
     WorkerSession,
 )
-from ringkeeper.services import inbox, revocations, runtime, tasks
+from ringkeeper.services import inbox, interrupted, revocations, runtime, tasks
 from ringkeeper.vault import get_vault
 from ringkeeper.workers.manager import Manager, resolve_workspace
 from ringkeeper.workers.runtime import WorkerSpec, daemon_path
@@ -535,7 +535,7 @@ def test_recover_marks_orphaned_sessions_failed() -> None:
     m.recover()
     done = task(task_id)
     assert done.status is TaskStatus.FAILED
-    assert done.error == "Ringkeeper restarted during this task. Send a follow-up to continue."
+    assert done.error == interrupted.ERROR
     assert revoked("orphan-jti")
     with session_scope() as session:
         assert session.get(TokenRevocation, "orphan-jti") is not None

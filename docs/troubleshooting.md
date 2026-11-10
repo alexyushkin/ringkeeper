@@ -46,6 +46,13 @@ When Claude itself can't answer, Ringkeeper says which of these it is, and what 
 
 When routing a request fails for any other reason, its reply has a **Try again** button.
 
+## A task stopped when Ringkeeper restarted
+
+A restart or an update stops tasks that were running. They say "Ringkeeper restarted during
+this task" and are listed on Home under **Cut short by a restart** for three days. **Resume**
+picks a task up where it stopped (one that hadn't got going starts over), and **Resume all**
+does them all. Sending a follow-up in the task's conversation works too.
+
 ## A connection's test fails
 
 Open the connection and press **Test connection** to see the service's own

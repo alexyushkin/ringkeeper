@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
+import { InterruptedList } from "@/components/interrupted";
 import { WatchLine } from "@/components/watch-line";
 import { ScheduledList } from "@/components/scheduled";
 import { ScopeNote } from "@/components/scope-switcher";
@@ -50,6 +51,7 @@ export default function Home() {
         <FirstSteps />
       </div>
       <WatchLine client={scope.client || undefined} project={scope.project || undefined} />
+      <InterruptedList />
       <ScheduledList />
       <DigestCard client={scope.client || undefined} />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
