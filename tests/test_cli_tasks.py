@@ -125,9 +125,10 @@ def test_detach_then_stop(live: Callable[[Callable[[WorkerSpec], Script]], FakeR
 
 def test_stop_all(live: Callable[[Callable[[WorkerSpec], Script]], FakeRuntime]) -> None:
     runtime = live(lambda _spec: Script(delay=30))
+    # Two projects: tasks in one project's folder run one at a time.
     ids = [
-        cli("task", "run", "--project", "acme-web", "--detach", f"job {i}").stdout.split()[2]
-        for i in range(2)
+        cli("task", "run", "--project", project, "--detach", "job").stdout.split()[2]
+        for project in ("acme-web", "globex-portal")
     ]
     deadline = time.monotonic() + 5
     while runtime.running < 2:
