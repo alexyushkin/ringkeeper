@@ -15,7 +15,7 @@ from ringkeeper_worker import inbox
 from ringkeeper_worker.agent import build_options
 from ringkeeper_worker.checks import run_checks
 from ringkeeper_worker.config import ConfigError, WorkerConfig, load
-from ringkeeper_worker.workspace import Workspace
+from ringkeeper_worker.workspace import Workspace, WorkspaceError
 
 TASK = {
     "task_id": "t-1",
@@ -265,8 +265,8 @@ def test_no_repo_records_changed_files(tmp_path: Path) -> None:
 
 
 def test_only_files_touched_during_the_run_are_committed(repo: Path) -> None:
-    # The user has an uncommitted edit; it must not be swept into the task branch.
-    (repo / "README.md").write_bytes(b"acme, edited by a human\r\n")
+    # The user has a file of their own, not committed; it must not be swept in.
+    (repo / "scratch.txt").write_text("mine\n", encoding="utf-8")
     (repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
     git(repo, "add", ".gitignore")
     git(repo, "commit", "-q", "-m", "ignore logs")
@@ -278,7 +278,58 @@ def test_only_files_touched_during_the_run_are_committed(repo: Path) -> None:
     outcome = workspace.finish("ringkeeper: task t-1 session 1")
     assert outcome.changed_files == ["NOTES.md"]
     assert git(repo, "show", "--name-only", "--format=", "ringkeeper/t-1") == "NOTES.md"
-    assert "README.md" in git(repo, "status", "--porcelain")  # still the user's, uncommitted
+    assert "scratch.txt" in git(repo, "status", "--porcelain")  # still the user's
+
+
+# --- The user's checkout is theirs ---
+
+
+def test_the_checkout_is_put_back_when_the_session_ends(repo: Path) -> None:
+    git(repo, "switch", "-q", "-c", "feature/login")
+    workspace = Workspace(repo, "ringkeeper/t-1")
+    workspace.start()
+    (repo / "NOTES.md").write_text("notes\n", encoding="utf-8")
+    outcome = workspace.release(workspace.finish("session 1"))
+    assert outcome is not None
+    assert outcome.branch == "ringkeeper/t-1"  # the work stays on its branch
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "feature/login"
+    assert not (repo / "NOTES.md").exists()  # it's on the task branch, not here
+
+
+def test_a_read_only_task_leaves_no_branch(repo: Path) -> None:
+    workspace = Workspace(repo, "ringkeeper/t-1")
+    workspace.start()
+    outcome = workspace.release(workspace.finish("session 1"))
+    assert outcome is not None
+    assert (outcome.branch, outcome.commit, outcome.changed_files) == (None, None, [])
+    assert git(repo, "branch", "--list", "ringkeeper/*") == ""
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "main"
+
+
+def test_a_resume_with_nothing_new_keeps_the_earlier_work(repo: Path) -> None:
+    first = Workspace(repo, "ringkeeper/t-1")
+    first.start()
+    (repo / "NOTES.md").write_text("one\n", encoding="utf-8")
+    first.release(first.finish("session 1"))
+    second = Workspace(repo, "ringkeeper/t-1")
+    second.start()
+    outcome = second.release(second.finish("session 2"))  # read only this time
+    assert outcome is not None
+    assert outcome.branch == "ringkeeper/t-1"
+    assert git(repo, "rev-list", "--count", "main..ringkeeper/t-1") == "1"
+
+
+def test_uncommitted_changes_are_never_carried_onto_a_task_branch(repo: Path) -> None:
+    (repo / "README.md").write_text("acme, edited by a human\n", encoding="utf-8")
+    workspace = Workspace(repo, "ringkeeper/t-1")
+    with pytest.raises(WorkspaceError) as refused:
+        workspace.start()
+    said = str(refused.value)
+    assert said.startswith("The project folder has changes that aren't committed (README.md)")
+    assert "git" not in said.lower()  # no raw git error
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "main"  # nothing changed
+    assert git(repo, "branch", "--list", "ringkeeper/*") == ""
+    assert "README.md" in git(repo, "status", "--porcelain")
 
 
 def test_checks_run_without_secrets_and_report_each_result(

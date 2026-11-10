@@ -655,6 +655,8 @@ class Task(Base):
     # Not done for want of a connection the client has: {"instance", "project"} to link it
     # and run the task again (services.link_offer).
     offer: Mapped[dict[str, Any] | None] = mapped_column(Doc)
+    # What became of its branch: "kept" (merged into the default branch) or "discarded".
+    branch_state: Mapped[str | None] = mapped_column(Text)
     worker_prompt: Mapped[str | None] = mapped_column(Text)
     # The project agent it runs as (its instructions, connections, model): see agents.
     agent_id: Mapped[uuid.UUID | None] = mapped_column()

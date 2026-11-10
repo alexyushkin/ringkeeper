@@ -11,6 +11,14 @@ publishes it as the release notes and the app shows it with the update.
   go-ahead only right after one. And a name sent after a greeting no longer re-routes the
   greeting: only a request the router said it couldn't place is placed by a name.
 
+- **Tasks leave your folder as they found it.** One task works in a project's folder at a
+  time (another waits, and says so). When a task ends, the folder is checked out as it was;
+  a task that changed no files leaves no branch, and the task page shows none. Uncommitted
+  changes are never carried onto a task's branch: the task doesn't start and says why. On a
+  task's Changes tab, **Keep these changes** merges its branch into main (refused plainly on a
+  conflict) and **Discard** deletes it, and a follow-up in the same conversation keeps working
+  on the same branch. See [A task's changes to files](docs/concepts.md#a-tasks-changes-to-files).
+
 ## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool

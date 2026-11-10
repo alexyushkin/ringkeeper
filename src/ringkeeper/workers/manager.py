@@ -414,6 +414,12 @@ class Manager:
             checks = list(project.checks)
             task_row = session.get(Task, job.task_id)
             agent = agents.of_task(session, task_row) if task_row is not None else None
+            # Its own branch, or its conversation's earlier one in this project.
+            branch = (
+                tasks.task_branch(session, task_row)
+                if task_row is not None
+                else tasks.branch_name(job.task_id)
+            )
             # Only the services this project (or its agent) is connected to: every other
             # endpoint would refuse it anyway, and each one's tools crowd the context.
             served = {
@@ -461,7 +467,7 @@ class Manager:
             "session_ordinal": job.ordinal,
             "prompt": prompt,
             "max_turns": job.max_turns,
-            "branch": tasks.branch_name(job.task_id),
+            "branch": branch,
             "mcp_servers": (
                 {"ringkeeper-architect": f"{base}/mcp/architect"}
                 if architect_role
