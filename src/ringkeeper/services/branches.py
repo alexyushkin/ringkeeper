@@ -24,7 +24,10 @@ from ringkeeper.models import TERMINAL_STATUSES, Task, TaskStatus
 from ringkeeper.services import projects, tasks
 from ringkeeper.services.workspaces import GIT_IDENTITY
 
-SAFE_GIT = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat")
+SAFE_GIT = (
+    "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat",
+    "-c", "core.fileMode=false",  # as the worker: a mode alone isn't a change
+)  # fmt: skip
 KEPT, DISCARDED = "kept", "discarded"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 

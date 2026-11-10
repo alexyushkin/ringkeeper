@@ -35,9 +35,11 @@ GIT_IDENTITY = {
 }
 MAX_SNAPSHOT_FILES = 50_000
 # core.longpaths: a deep project folder on Windows, where a branch's ref would pass 260.
+# core.fileMode off: a mounted folder (Docker Desktop) can show every file as executable,
+# and a mode alone isn't uncommitted work.
 SAFE_GIT = (
     "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat",
-    "-c", "core.longpaths=true",
+    "-c", "core.longpaths=true", "-c", "core.fileMode=false",
 )  # fmt: skip
 GIT_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
 
