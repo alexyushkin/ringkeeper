@@ -47,11 +47,11 @@ export default function Home() {
       <PageHeader title="What do you need?" subtitle="Say it in your own words. Ringkeeper sends it to the right client project." />
       <Composer onSent={(thread) => router.push(threadHref(thread))} />
       <Shortcuts project={scope.project || undefined} client={scope.client || undefined} />
+      <InterruptedList />
       <div className="mt-4">
         <FirstSteps />
       </div>
       <WatchLine client={scope.client || undefined} project={scope.project || undefined} />
-      <InterruptedList />
       <ScheduledList />
       <DigestCard client={scope.client || undefined} />
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
