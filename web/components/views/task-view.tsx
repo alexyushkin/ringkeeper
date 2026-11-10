@@ -11,7 +11,7 @@ import { TaskAgain } from "@/components/conveniences";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
-import { Alert, Badge, Button, Card, Code, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref, threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
@@ -45,6 +45,8 @@ interface Task {
   prompt: string;
   thread_id: string | null;
   branch: string | null;
+  branch_state?: string | null;
+  waiting_for_folder?: boolean;
   changed_files: string[];
   diff: string | null;
   turns: number;
@@ -261,10 +263,12 @@ export function TaskView({ id }: { id: string }) {
             <dt className="text-xs text-muted">Started</dt>
             <dd>{timeAgo(t.created_at)}</dd>
           </div>
-          <div>
-            <dt className="text-xs text-muted">Branch</dt>
-            <dd className="truncate">{t.branch ?? "–"}</dd>
-          </div>
+          {t.branch ? (
+            <div>
+              <dt className="text-xs text-muted">Branch</dt>
+              <dd className="truncate">{t.branch_state ? `${t.branch} (${t.branch_state})` : t.branch}</dd>
+            </div>
+          ) : null}
         </dl>
         <Details>
           <ul className="space-y-1 text-xs">
@@ -320,10 +324,51 @@ export function TaskView({ id }: { id: string }) {
               </li>
             ))}
           </ul>
+          {t.branch && !t.branch_state && !ACTIVE.has(t.status) ? <KeepOrDiscard id={id} branch={t.branch} onDone={task.reload} /> : null}
+          {t.branch_state === "kept" ? <p className="text-sm text-good">Kept: these changes were merged into the project&apos;s main branch.</p> : null}
+          {t.branch_state === "discarded" ? <p className="text-sm text-muted">Discarded: these changes were thrown away.</p> : null}
           {t.diff ? <Code>{t.diff}</Code> : <p className="text-sm text-muted">No file changes recorded for this task.</p>}
         </div>
       )}
     </>
+  );
+}
+
+/** A task's work sits on its own branch: keep it (merged into the project's main branch)
+ * or discard it. */
+function KeepOrDiscard({ id, branch, onDone }: { id: string; branch: string; onDone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function act(what: "keep" | "discard") {
+    setBusy(what);
+    setError(null);
+    try {
+      const done = await api<{ said: string }>(`tasks/${id}/${what}`, { method: "POST" });
+      setSaid(done.said);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div className="space-y-2 rounded-xl border border-line p-3">
+      <p className="text-sm">
+        These changes are on the branch <code>{branch}</code>, not in your main branch yet. A follow-up in this conversation keeps working on it.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button kind="primary" busy={busy === "keep"} onClick={() => void act("keep")}>
+          Keep these changes
+        </Button>
+        <ConfirmButton question="Discard these changes? The branch and what's on it are deleted." confirm="Discard them" onConfirm={() => act("discard")}>
+          Discard
+        </ConfirmButton>
+      </div>
+      {said ? <Alert tone="good">{said}</Alert> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }
 

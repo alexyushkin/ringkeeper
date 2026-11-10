@@ -1,12 +1,18 @@
 """What changed in /workspace, and the git rules.
 
-With a git repo: work happens on the task branch (`ringkeeper/<task-id>`),
-which is created from the default branch (origin's HEAD, else main or master)
-on the first session and reused by resumes, never from whatever happens to be
-checked out. The default branch is never moved: if the agent moved it anyway,
-its new tip is kept on `<task branch>-from-<name>` and the branch is put back.
-Nothing is pushed. Without a repo: a before/after snapshot gives the changed
-paths.
+With a git repo: work happens on the task branch (`ringkeeper/<task-id>`, or an
+earlier task's in the same conversation), which is created from the default branch
+(origin's HEAD, else main or master) on the first session and reused by resumes,
+never from whatever happens to be checked out. The default branch is never moved: if
+the agent moved it anyway, its new tip is kept on `<task branch>-from-<name>` and the
+branch is put back. Nothing is pushed.
+
+The user's checkout is theirs: when the session ends, whatever was checked out before
+is checked out again, and a task branch with no work on it is deleted. Uncommitted
+changes to tracked files are never carried onto a task branch: the session doesn't
+start, and says so in plain words.
+
+Without a repo: a before/after snapshot gives the changed paths.
 
 Git runs as the worker user, with a minimal environment (no Claude
 credential), never runs hooks or an fsmonitor, and commits with --no-verify:
@@ -38,6 +44,11 @@ GIT_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
 
 class WorkspaceError(Exception):
     pass
+
+
+def _listed(paths: list[str], most: int = 3) -> str:
+    shown = ", ".join(paths[:most])
+    return shown + (f" and {len(paths) - most} more" if len(paths) > most else "")
 
 
 @dataclass
@@ -106,6 +117,7 @@ class Workspace:
         self._before: dict[str, tuple[int, int]] = {}
         self._protected: tuple[str, str] | None = None  # (branch, sha) at start
         self._base: str | None = None
+        self._original: str | None = None  # what was checked out: a branch, or a sha
 
     def _sha(self, ref: str) -> str:
         return _git(self.root, "rev-parse", "--verify", "--quiet", ref, check=False)
@@ -126,21 +138,24 @@ class Workspace:
             self._before = _snapshot(self.root)
             return
         current = _git(self.root, "rev-parse", "--abbrev-ref", "HEAD")
+        self._original = current if current != "HEAD" else _git(self.root, "rev-parse", "HEAD")
         exists = self._sha(f"refs/heads/{self.branch}")
         default = self._default_branch()
+        if current != self.branch:
+            self._refuse_uncommitted()
         if default:
             self._protected = default
         elif current not in ("HEAD", self.branch):  # no default branch: protect what's out
             self._protected = (current, _git(self.root, "rev-parse", "HEAD"))
         if current != self.branch:
             if exists:
-                _git(self.root, "switch", self.branch)
+                self._switch(self.branch)
             elif default:
                 # Always from the default branch, never from whatever was checked out
                 # (e.g. an earlier task's branch that hasn't been merged).
-                _git(self.root, "switch", "-c", self.branch, default[0])
+                self._switch("-c", self.branch, default[0])
             else:
-                _git(self.root, "switch", "-c", self.branch)
+                self._switch("-c", self.branch)
         if default:
             # Where the task branch left the default branch, so the diff is only its own work.
             self._base = _git(self.root, "merge-base", default[1], "HEAD")
@@ -152,6 +167,45 @@ class Workspace:
         # run get committed, never edits already in the working tree (or line-ending
         # noise from a checkout made with different git settings on the host).
         self._before = _snapshot(self.root)
+
+    def _refuse_uncommitted(self) -> None:
+        """Uncommitted changes to tracked files would come along onto the task branch."""
+        status = _git(self.root, "status", "--porcelain", "--untracked-files=no", check=False)
+        # "XY path" (or "XY old -> new"); the output's first space can be stripped away.
+        rows = [line.split(maxsplit=1) for line in status.splitlines() if line.strip()]
+        changed = [row[1].split(" -> ")[-1] for row in rows if len(row) == 2]
+        if changed:
+            raise WorkspaceError(
+                f"The project folder has changes that aren't committed ({_listed(changed)}). "
+                "Ringkeeper works on a branch of its own and won't carry them over: commit or "
+                "stash them, then run this again. Nothing was changed."
+            )
+
+    def _switch(self, *args: str) -> None:
+        try:
+            _git(self.root, "switch", "-q", *args)
+        except WorkspaceError as error:
+            said = str(error).split("failed:", 1)[-1].strip().splitlines()
+            why = said[0] if said else "git refused"
+            raise WorkspaceError(
+                f"Ringkeeper couldn't switch the project folder to its own branch ({why}). "
+                "Nothing was changed."
+            ) from None
+
+    def _put_back(self) -> str | None:
+        """Check out what was checked out before the session. Returns a note if it can't."""
+        if not self._original or self._original == self.branch:
+            return None
+        now = _git(self.root, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+        if now == self._original:
+            return None
+        detached = not self._sha(f"refs/heads/{self._original}")
+        args = ("--detach", self._original) if detached else (self._original,)
+        try:
+            _git(self.root, "switch", "-q", *args)
+        except WorkspaceError:
+            return f"The folder stays on {self.branch}: {self._original} couldn't be checked out."
+        return None
 
     def _touched(self) -> list[str]:
         after = _snapshot(self.root)
@@ -186,9 +240,26 @@ class Workspace:
         outcome.restored = restored
         return outcome
 
+    def release(self, outcome: Outcome | None) -> Outcome | None:
+        """After the checks and the diff: check out what was checked out before, and delete
+        the task branch if nothing is on it (the outcome then names no branch)."""
+        if not self.git:
+            return outcome
+        empty = bool(self._base) and _git(
+            self.root, "rev-list", "--count", f"{self._base}..{self.branch}", check=False
+        ) in ("", "0")
+        note = self._put_back()
+        if empty and note is None:  # nothing on it: no branch left behind
+            _git(self.root, "branch", "-q", "-D", self.branch, check=False)
+            if outcome is not None:
+                outcome.branch = outcome.commit = None
+        if outcome is not None and note:
+            outcome.restored = "; ".join(n for n in (outcome.restored, note) if n)
+        return outcome
+
     def diff(self, limit: int = 60_000) -> str | None:
         """The task branch's cumulative diff against where it started (git only)."""
-        if not self.git or not self._base:
+        if not self.git or not self._base or not self._sha(f"refs/heads/{self.branch}"):
             return None
         text = _git(
             self.root, "diff", "--no-color", "--no-ext-diff", self._base, self.branch, check=False

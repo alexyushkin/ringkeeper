@@ -53,6 +53,18 @@ card, on its page, and in the chat you asked from. When what it lacked is a conn
 client has but the project isn't linked to, it offers one click, like "Link General
 Informatics' Google to Website and retry", in the app and as a button in the chat.
 
+### A task's changes to files
+
+A task that changes files in a project's folder works on a branch of its own, and leaves
+the folder checked out as it found it. To use the changes, open the task's **Changes** tab:
+**Keep these changes** merges them into the project's main branch, and **Discard** throws
+them away. A follow-up in the same conversation keeps working on the same branch, so it
+sees the earlier work. A task that only read changes nothing and leaves no branch.
+
+One task works in a project's folder at a time; another waits until it's done. If the
+folder has changes you haven't committed, the task doesn't start and says so: commit or
+stash them first.
+
 ### Where a request goes
 
 The client and project chosen at the top of the app are a firm choice for new requests,

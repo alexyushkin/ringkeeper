@@ -24,6 +24,7 @@ export interface TaskCard {
   turns: number;
   cost_usd: number | null;
   archived?: boolean;
+  waiting_for_folder?: boolean;
 }
 
 const PHASE: Record<string, string> = {
@@ -44,6 +45,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
         {task.phase && task.status !== "succeeded" ? <span className="text-xs text-muted">{PHASE[task.phase] ?? task.phase}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(task.finished_at ?? task.created_at)}</span>
       </div>
+      {task.waiting_for_folder ? <p className="mt-1 text-xs text-muted">Waiting for another task in this project to finish.</p> : null}
       <p className="mt-2 line-clamp-3 text-sm [overflow-wrap:anywhere]">{firstSentences(plainText(withoutTables(task.summary ?? task.outcome ?? "—")))}</p>
       {task.error && task.status !== "succeeded" ? <p className="mt-1 line-clamp-3 text-sm text-bad [overflow-wrap:anywhere]">{task.error}</p> : null}
       <p className="mt-2 text-xs text-muted">

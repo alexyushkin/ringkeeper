@@ -364,10 +364,20 @@ loaded, and the project's `autonomy` removes tools: `strict` has no Bash and
 no web access, `standard` has no web access.
 
 **Git:** if the workspace is a git repo, the worker commits on
-`ringkeeper/<task-id>` and never moves `main`. If the agent moves `main`
-anyway, it's put back and the moved commits are kept on a side branch. Only
-files the worker touched are committed, never your own uncommitted edits.
-Nothing is pushed. Without a repo, the task records the list of changed files.
+`ringkeeper/<task-id>` (or the branch of an earlier task in the same conversation
+and project, so a follow-up sees that work) and never moves `main`. If the agent
+moves `main` anyway, it's put back and the moved commits are kept on a side
+branch. Only files the worker touched are committed. Nothing is pushed. Without
+a repo, the task records the list of changed files.
+
+When the session ends, whatever was checked out before is checked out again, and
+a task branch with nothing on it is deleted (a read-only task leaves no branch).
+If the folder has uncommitted changes to tracked files, the session doesn't
+start: it says so, and nothing is carried onto the task branch. One task works in
+a project folder at a time; another for the same folder waits ("Waiting for
+another task in this project to finish"). On the task's Changes tab, **Keep these
+changes** merges the branch into the default branch (refused, with nothing
+merged, on a conflict) and **Discard** deletes it.
 
 **Nothing planted for your machine.** The workspace is your real folder, and
 git runs hooks and commands from `.git` on *your* machine later. So after the

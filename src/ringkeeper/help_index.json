@@ -13,6 +13,12 @@
 },
 {
 "doc": "concepts",
+"anchor": "a-tasks-changes-to-files",
+"title": "A task's changes to files",
+"text": "A task that changes files in a project's folder works on a branch of its own, and leaves the folder checked out as it found it. To use the changes, open the task's **Changes** tab: **Keep these changes** merges them into the project's main branch, and **Discard** throws them away. A follow-up in the same conversation keeps working on the same branch, so it sees the earlier work. A task that only read changes nothing and leaves no branch. One task works in a project's folder at a time; another waits until it's done. If the folder has changes you haven't committed, the task doesn't start and says so: commit or stash them first."
+},
+{
+"doc": "concepts",
 "anchor": "where-a-request-goes",
 "title": "Where a request goes",
 "text": "The client and project chosen at the top of the app are a firm choice for new requests, like an @-mention: the box says \"Sending to Alexey › My Project\", and a request sent then goes to that project without asking. Work that needs no client's connection, like a web lookup, writing, or summarizing text you pasted, runs in the chosen project. With nothing chosen, it runs in your own client's default project: on that client's page, open **Settings › Your own work** and turn on \"... is me\". If the project's tasks can't use the web (its autonomy is strict or standard), Ringkeeper says so plainly instead of starting."

@@ -35,6 +35,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.schemas import Input, NonEmpty
 from ringkeeper.services import (
+    branches,
     calls,
     cleanup,
     clients,
@@ -198,6 +199,8 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
         "phase": task.phase.value if task.phase else None, "outcome": task.outcome,
         "summary": task.summary, "error": task.error, "plan_limit": task.plan_limit,
         "offer": task.offer,
+        # Queued behind another task working in the same project folder.
+        "waiting_for_folder": bool(session and tasks.waits_for_folder(session, task)),
         "thread_id": task.thread_id,
         "created_at": task.created_at, "started_at": task.started_at,
         "finished_at": task.finished_at, "turns": sum(s.turns or 0 for s in rows),
@@ -246,7 +249,7 @@ def get_task(task_id: str, session: SessionDep) -> dict[str, Any]:
         **_task_card(task),
         "prompt": task.prompt, "risk": task.risk.value if task.risk else None,
         "complexity": task.complexity.value if task.complexity else None,
-        "branch": task.git_branch, "commit": task.git_commit,
+        "branch": task.git_branch, "commit": task.git_commit, "branch_state": task.branch_state,
         "changed_files": task.changed_files, "auth_mode": task.auth_mode.value,
         "review_round": task.review_round, "stop_requested": task.stop_requested,
         "diff": (diff.payload.get("text") if diff else None),
@@ -361,6 +364,20 @@ def delete_threads(data: DeleteIn, session: WriteSessionDep) -> dict[str, int]:
 def link_and_retry(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
     """Link the connection a task was missing to its project, and run it again."""
     return _task_card(link_offer.take(session, current_settings(), task_id))
+
+
+@router.post("/tasks/{task_id}/keep")
+def keep_changes(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
+    """Merge the task's branch into the project's default branch."""
+    said = branches.keep(session, current_settings(), task_id)
+    return {"said": said, "task": _task_card(tasks.get_task(session, task_id))}
+
+
+@router.post("/tasks/{task_id}/discard")
+def discard_changes(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
+    """Delete the task's branch and its changes."""
+    said = branches.discard(session, current_settings(), task_id)
+    return {"said": said, "task": _task_card(tasks.get_task(session, task_id))}
 
 
 @router.post("/tasks/{task_id}/stop")

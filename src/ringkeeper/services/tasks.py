@@ -86,6 +86,30 @@ def branch_name(task_id: uuid.UUID) -> str:
     return f"ringkeeper/{task_id}"
 
 
+def task_branch(session: Session, task: Task) -> str:
+    """The branch a task works on: its own, or, for a follow-up in the same conversation and
+    project, the earlier task's (not yet kept or discarded), so it sees that work."""
+    if task.git_branch:
+        return task.git_branch
+    if task.thread_id is not None:
+        earlier = session.scalar(
+            select(Task.git_branch)
+            .where(
+                Task.thread_id == task.thread_id,
+                Task.project == task.project,
+                Task.id != task.id,
+                Task.git_branch.is_not(None),
+                Task.branch_state.is_(None),
+                Task.created_at <= task.created_at,
+            )
+            .order_by(Task.created_at.desc())
+            .limit(1)
+        )
+        if earlier:
+            return earlier
+    return branch_name(task.id)
+
+
 def _attached(
     session: Session, settings: Settings, project: Project, message_id: uuid.UUID | None
 ) -> str:
@@ -417,16 +441,58 @@ def count_running(session: Session) -> int:
     )
 
 
+CLAIM_LOOKAHEAD = 50  # queued sessions looked at for one whose folder is free
+
+
+def _folder(project: Project | None, name: str) -> str:
+    """What two tasks share when they work in the same place: the project's folder."""
+    path = (project.workspace_path or "").strip() if project is not None else ""
+    return path.replace(chr(92), "/").rstrip("/").lower() or f"project:{name}"
+
+
+def busy_folders(session: Session) -> set[str]:
+    """The folders a running session is working in."""
+    rows = session.execute(
+        select(Task.project, Project)
+        .join(WorkerSession, WorkerSession.task_id == Task.id)
+        .outerjoin(Project, Project.name == Task.project)
+        .where(WorkerSession.status == TaskStatus.RUNNING)
+    ).all()
+    return {_folder(project, name) for name, project in rows}
+
+
+def folder_busy(session: Session, project_name: str) -> bool:
+    """A session is working in this project's folder now."""
+    project = session.scalar(select(Project).where(Project.name == project_name))
+    return _folder(project, project_name) in busy_folders(session)
+
+
+def waits_for_folder(session: Session, task: Task) -> bool:
+    """A queued task waiting because another task is working in its project's folder."""
+    if task.status is not TaskStatus.QUEUED:
+        return False
+    project = session.scalar(select(Project).where(Project.name == task.project))
+    return _folder(project, task.project) in busy_folders(session)
+
+
 def claim_next(session: Session) -> WorkerSession | None:
-    """The oldest queued session, locked, marked running (container not started yet)."""
-    worker_session = session.scalars(
+    """The oldest queued session whose project folder no other session is working in,
+    locked and marked running (container not started yet). One task at a time per folder:
+    two would switch branches under each other."""
+    busy = busy_folders(session)
+    queued = session.scalars(
         select(WorkerSession)
         .options(selectinload(WorkerSession.task))
         .where(WorkerSession.status == TaskStatus.QUEUED)
         .order_by(WorkerSession.created_at)
-        .limit(1)
+        .limit(CLAIM_LOOKAHEAD)
         .with_for_update(skip_locked=True)
-    ).first()
+    ).all()
+    places = {p.name: p for p in session.scalars(select(Project))}
+    worker_session = next(
+        (s for s in queued if _folder(places.get(s.task.project), s.task.project) not in busy),
+        None,
+    )
     if worker_session is None:
         return None
     now = datetime.now(UTC)

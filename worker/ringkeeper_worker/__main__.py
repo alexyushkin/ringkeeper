@@ -88,9 +88,10 @@ class Guard:
 
 def _finish(config: WorkerConfig, workspace: Workspace, guard: Guard) -> None:
     guard.protect()
+    outcome = None
     try:
         message = f"ringkeeper: task {config.task_id} session {config.session_ordinal}"
-        emit("ringkeeper.workspace", **workspace.finish(message).as_event())
+        outcome = workspace.finish(message)
     except WorkspaceError as error:
         emit("ringkeeper.error", message=str(error))
     if config.checks:
@@ -101,6 +102,12 @@ def _finish(config: WorkerConfig, workspace: Workspace, guard: Guard) -> None:
     diff = workspace.diff()
     if diff is not None:
         emit("ringkeeper.diff", text=diff)
+    try:  # the user's checkout as it was, and no empty branch left behind
+        outcome = workspace.release(outcome)
+    except WorkspaceError as error:
+        emit("ringkeeper.error", message=str(error))
+    if outcome is not None:
+        emit("ringkeeper.workspace", **outcome.as_event())
 
 
 def main() -> int:
