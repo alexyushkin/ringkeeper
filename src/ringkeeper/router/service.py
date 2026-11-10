@@ -47,7 +47,6 @@ from ringkeeper.models import (
     MessageRole,
     Project,
     Task,
-    TaskKind,
     TaskRisk,
 )
 from ringkeeper.names import slug
@@ -222,9 +221,9 @@ def _offer_default(session: Session, task: RoutedTask, owners: dict[str, str]) -
 
 
 def production_connection(session: Session, task: RoutedTask) -> str | None:
-    """The production connection a task would use, when it would: it changes production,
-    or it works with data and its project has a production connection. Then the operator
-    says go ahead first, so a vague request never reaches a client's live system."""
+    """The production connection a task would change, when it would (its risk is
+    prod-write). Then the operator says go ahead first. A read starts at once: the gateway
+    holds every change to production for approval anyway."""
     project = session.scalar(select(Project).where(Project.name == task.project))
     if project is None:
         return None
@@ -234,7 +233,7 @@ def production_connection(session: Session, task: RoutedTask) -> str | None:
     )  # fmt: skip
     if not live:
         return None
-    if task.risk is TaskRisk.PROD_WRITE or task.kind is TaskKind.DATA:
+    if task.risk is TaskRisk.PROD_WRITE:
         return live[0] if len(live) == 1 else ", ".join(live)
     return None
 

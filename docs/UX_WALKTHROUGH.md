@@ -27,8 +27,8 @@ need real accounts, and the installer, which stays on the clean CI runner.
 | ![First run before](ux-walkthrough/before-first-run.png) | ![First run now](ux-walkthrough/a01-first-run-claude.png) |
 | Before: API key first, even with subscription mode on | Now: your subscription first, setup-token first |
 
-Then **Try it with demo data**, and a first request. Anything that would use live
-data asks first, in the conversation:
+Then **Try it with demo data**, and a first request. A request that would change live data
+asks first, in the conversation (a read starts at once):
 
 ![Go ahead](ux-walkthrough/a05-go-ahead.png)
 

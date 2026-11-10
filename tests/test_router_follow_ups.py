@@ -88,7 +88,7 @@ def test_yes_is_the_go_ahead_on_production() -> None:
         )  # fmt: skip
     bind("gi-site", "gi-db")
     thread = say("How many orders came in today?")
-    route(output(routed("gi-site", 0.95, kind="data")))
+    route(output(routed("gi-site", 0.95, kind="data", risk="prod-write")))
     assert open_questions() == 1
     say("yes, go ahead", thread)
     route()
@@ -156,7 +156,7 @@ def test_ok_after_other_messages_isn_t_a_go_ahead() -> None:
         )  # fmt: skip
     bind("gi-site", "gi-db")
     thread = say("How many orders came in today?")
-    route(output(routed("gi-site", 0.95, kind="data")))
+    route(output(routed("gi-site", 0.95, kind="data", risk="prod-write")))
     say("thanks", thread)
     route(output(reply="You're welcome!"))
     say("what's the weather like", thread)

@@ -30,6 +30,11 @@ publishes it as the release notes and the app shows it with the update.
   or missing sign-in says where to sign in again. Any other routing failure has a **Try again**
   button. See [Claude is unavailable](docs/troubleshooting.md#claude-is-unavailable).
 
+- **Reads don't ask to go ahead.** A request that only reads a project with a production
+  connection starts at once; "Go ahead?" is asked only before a change to production, which
+  waits for your approval anyway. In the self-test, a scenario that shouldn't be held fails
+  if it was asked, and the report says when the self-test answered a go-ahead.
+
 ## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool

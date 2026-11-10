@@ -20,6 +20,8 @@ class Evidence:
     still_open: bool = False  # and still unanswered at the end
     asks_after_start: bool = False  # work ran, but the last reply still asks which project
     confirmed_production: bool = False  # the router asked before using production
+    go_aheads: list[str] = field(default_factory=list[str])  # those questions, answered yes
+    notes: list[str] = field(default_factory=list[str])  # said in the report, pass or fail
     tools: list[str] = field(default_factory=list[str])
     holds: list[str] = field(default_factory=list[str])
     typed_enforced: bool = False  # approving without the name was refused
@@ -81,6 +83,8 @@ def _holds(scenario: Scenario, seen: Evidence) -> list[str]:
         wrong.append(f"expected {scenario.held} approval(s), got {len(seen.holds)}")
     if scenario.never_held and seen.holds:
         wrong.append(f"held when it shouldn't have been: {', '.join(seen.holds)}")
+    if scenario.never_held and seen.confirmed_production:
+        wrong.append("it asked to go ahead on production before starting")
     if scenario.answer == TYPED and scenario.held and not seen.typed_enforced:
         wrong.append("approving without typing the connection's name wasn't refused")
     return wrong

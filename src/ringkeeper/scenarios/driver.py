@@ -171,7 +171,10 @@ class Driver:
         payload = decision.payload or {}
         candidates = [str(c["project"]) for c in payload.get("candidates", [])]
         if payload.get("production"):
-            seen.confirmed_production = True
+            seen.confirmed_production = True  # said in the report, and fails a never_held one
+            if str(decision.id) not in seen.go_aheads:
+                seen.go_aheads.append(str(decision.id))
+                seen.notes.append(f"it asked to go ahead on {payload['production']}; said yes")
             choice = candidates[0]
         else:
             if scenario.leave_open:  # left for the next request not to answer
