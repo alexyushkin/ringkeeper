@@ -3,6 +3,7 @@
 import { HelpExtras, type HelpAnswer } from "@/components/help-answer";
 import Link from "@/components/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
@@ -11,8 +12,8 @@ import { Markdown, plainText } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { CancelButton } from "@/components/scheduled";
-import { Alert, Badge, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
-import { useApi, useLive } from "@/lib/client/api";
+import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
+import { api, useApi, useLive } from "@/lib/client/api";
 import { projectName } from "@/lib/client/scope";
 
 interface Message {
@@ -22,7 +23,7 @@ interface Message {
   source: string;
   input: string;
   body: string;
-  routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] }; help?: HelpAnswer } | null;
+  routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] }; help?: HelpAnswer; retry?: string; claimed_at?: string; retry_after?: string; waiting?: string } | null;
   route_error: string | null;
   run_at?: string | null;
   canceled_at?: string | null;
@@ -82,6 +83,7 @@ export function ThreadView({ id }: { id: string }) {
                 <p className="text-xs font-medium text-muted">Ringkeeper</p>
                 <Markdown text={message.body} className="mt-1 text-sm" />
               {message.routing?.help ? <HelpExtras help={message.routing.help} /> : null}
+              {message.routing?.retry ? <TryAgain id={message.routing.retry} onDone={thread.reload} /> : null}
               </Card>
             )}
             {message.role === "user" && message.routing?.output?.tasks?.length ? (
@@ -102,12 +104,14 @@ export function ThreadView({ id }: { id: string }) {
             ) : null}
             {message.role === "user" && message.canceled_at ? (
               <p className="mt-1 ml-8 text-xs text-muted">Not run.</p>
+            ) : message.role === "user" && message.routing?.retry_after && !message.route_error ? (
+              <p className="mt-1 ml-8 text-xs text-muted">Waiting for Claude: it tries again {clock(message.routing.retry_after)}.</p>
             ) : message.role === "user" && message.run_at && !message.routing && !message.route_error && new Date(message.run_at).getTime() > Date.now() ? (
               <p data-later className="mt-1 ml-8 flex flex-wrap items-center gap-2 text-xs text-muted">
                 Sent for later: it runs {clock(message.run_at)}.
                 <CancelButton id={message.id} onDone={thread.reload} />
               </p>
-            ) : message.role === "user" && !message.routing && !message.route_error ? (
+            ) : message.role === "user" && (!message.routing || message.routing.claimed_at) && !message.route_error ? (
               <p className="mt-1 ml-8 text-xs text-muted">Finding the right project…</p>
             ) : null}
           </li>
@@ -139,5 +143,31 @@ export function ThreadView({ id }: { id: string }) {
         <Composer threadId={id} onSent={() => thread.reload()} />
       </div>
     </>
+  );
+}
+
+/** Routing failed for something other than Claude's side: send the same request again. */
+function TryAgain({ id, onDone }: { id: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function retry() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`messages/${id}/retry`, { method: "POST" });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-2 space-y-2">
+      <Button busy={busy} onClick={() => void retry()}>
+        Try again
+      </Button>
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
   );
 }

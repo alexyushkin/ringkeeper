@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
+from ringkeeper import claude_failures
 from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
@@ -96,7 +97,9 @@ def run_stub(
     runtime = ProcessRuntime(tmp_path / "workers")
     managers: list[Manager] = []
 
-    def run(stub: dict[str, Any], *, max_runtime_s: int = 120) -> Run:
+    def run(
+        stub: dict[str, Any], *, max_runtime_s: int = 120, until: tuple[TaskStatus, ...] = ()
+    ) -> Run:
         monkeypatch.setenv("RINGKEEPER_WORKER_STUB", json.dumps(stub))
         with session_scope() as session:
             task = tasks.create_task(
@@ -108,7 +111,10 @@ def run_stub(
         managers.append(manager)
         deadline = time.monotonic() + 90
         manager.tick()
-        while status_of(task_id) not in TERMINAL_STATUSES:  # ticks enforce the time limit
+        done = {*TERMINAL_STATUSES, *until}
+        while status_of(task_id) not in done or not sessions_ended(
+            task_id
+        ):  # ticks enforce the time limit
             assert time.monotonic() < deadline, "the worker didn't finish"
             time.sleep(0.2)
             manager.tick()
@@ -118,6 +124,11 @@ def run_stub(
     yield run
     for manager in managers:
         manager.wait_idle(30)
+
+
+def sessions_ended(task_id: str) -> bool:
+    with session_scope() as session:
+        return any(s.finished_at for s in tasks.get_task(session, task_id).sessions)
 
 
 def status_of(task_id: str) -> TaskStatus:
@@ -303,3 +314,48 @@ def test_a_task_that_couldn_t_do_it_ends_not_done_with_an_offer(
         assert task.offer is not None
         assert task.offer["instance"] == "acme-mail"
         assert task.offer["label"].startswith("Link acme's acme-mail to Acme web and retry")
+
+
+def test_overloaded_claude_is_tried_again_then_said_plainly(
+    run_stub: Callable[..., Run], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(claude_failures, "RETRY_WAITS", (0.0, 0.0, 0.0))
+    run = run_stub(
+        {"subtype": "error_during_execution", "result": "API Error: 529 overloaded_error",
+         "api_error_status": 529}
+    )  # fmt: skip
+    deadline = time.monotonic() + 60
+    while status_of(run.task_id) is not TaskStatus.FAILED or len(sessions_of(run.task_id)) < 4:
+        assert time.monotonic() < deadline, "it wasn't tried again"
+        time.sleep(0.2)
+        run.manager.tick()
+    run.manager.wait_idle(30)
+    with session_scope() as session:
+        task = tasks.get_task(session, run.task_id)
+        assert task.error == "Claude is overloaded right now. Ringkeeper tries again in a moment."
+    assert len(sessions_of(run.task_id)) == 4  # the first try and three more
+
+
+def test_a_usage_limit_pauses_new_tasks(run_stub: Callable[..., Run]) -> None:
+    run = run_stub(
+        {"subtype": "error_during_execution", "result": "Claude AI usage limit reached|4102444800"},
+        until=(TaskStatus.QUEUED,),
+    )
+    with session_scope() as session:
+        assert claude_failures.paused(session) is not None
+        task = tasks.get_task(session, run.task_id)
+        assert task.status is TaskStatus.QUEUED  # waiting, not failed
+        assert task.error is not None
+        assert task.error.startswith("Your Claude plan's limit is reached; it resets at")
+    run.manager.tick()
+    assert len(sessions_of(run.task_id)) == 2  # queued to go on, but nothing started
+    with session_scope() as session:
+        assert all(
+            s.status is not TaskStatus.RUNNING
+            for s in tasks.get_task(session, run.task_id).sessions
+        )
+
+
+def sessions_of(task_id: str) -> list[Any]:
+    with session_scope() as session:
+        return list(tasks.get_task(session, task_id).sessions)

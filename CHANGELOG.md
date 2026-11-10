@@ -24,6 +24,12 @@ publishes it as the release notes and the app shows it with the update.
   after 30 seconds. It now asks Claude with the database free, and applies the answer in a
   short step afterwards (skipping a request canceled in the meantime).
 
+- **When Claude is unavailable, it says so plainly and waits.** A reached usage limit pauses new
+  tasks and requests until it resets, says when on Home, and nothing fails because of it.
+  Overload, rate limits and network trouble are tried again a few times with a wait. An expired
+  or missing sign-in says where to sign in again. Any other routing failure has a **Try again**
+  button. See [Claude is unavailable](docs/troubleshooting.md#claude-is-unavailable).
+
 ## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool

@@ -3,12 +3,14 @@ use a fake. The real one runs Claude through the Agent SDK with every tool off.
 """
 
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import anyio
 
+from ringkeeper import claude_failures
 from ringkeeper.claude_auth import BILLING_ENV_VARS, ClaudeCredential
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError
@@ -19,6 +21,15 @@ GOOGLE_KEY_ENV = "RINGKEEPER_GOOGLE_KEY"  # services.claude_place
 
 class RouterModelError(RingkeeperError):
     pass
+
+
+class ClaudeUnavailableError(RouterModelError):
+    """Claude's side failed (a limit, the login, overload, the network): the message waits
+    and is routed again, instead of failing for good."""
+
+    def __init__(self, failure: claude_failures.Failure) -> None:
+        super().__init__(failure.message)
+        self.failure = failure
 
 
 @dataclass(frozen=True)
@@ -57,9 +68,10 @@ def with_google_key(env: dict[str, str], folder: str) -> dict[str, str]:
 
 
 class AgentSdkModel:
-    def __init__(self, vault: Vault, settings: Settings) -> None:
+    def __init__(self, vault: Vault, settings: Settings, sleep: Any = time.sleep) -> None:
         self._vault = vault
         self._settings = settings
+        self._sleep = sleep  # tests: no real waiting
 
     def complete(self, system: str, prompt: str, model: str) -> Completion:
         # Resolved per call, so `ringkeeper auth login` needs no restart.
@@ -70,7 +82,21 @@ class AgentSdkModel:
         with session_scope(commit=False) as session:
             credential = claude_place.credential(session, self._vault, self._settings)
             model = claude_place.model_for(claude_place.chosen(session), model) or model
-        return anyio.run(self._complete, credential, system, prompt, model)
+        return self.with_retries(
+            lambda: anyio.run(self._complete, credential, system, prompt, model)
+        )
+
+    def with_retries(self, call: Any) -> Completion:
+        """A transient failure (overloaded, rate limited, no network) is tried again a few
+        times, waiting longer each time; anything else on Claude's side is raised at once."""
+        for wait in (*claude_failures.RETRY_WAITS, None):
+            try:
+                return call()
+            except ClaudeUnavailableError as unavailable:
+                if wait is None or not unavailable.failure.transient:
+                    raise
+                self._sleep(wait)
+        raise AssertionError("unreachable")
 
     def ask(self, credential: ClaudeCredential, system: str, prompt: str, model: str) -> Completion:
         """One call with this credential, whatever is saved (the live check)."""
@@ -104,12 +130,24 @@ class AgentSdkModel:
             )
             texts: list[str] = []
             result: ResultMessage | None = None
-            async for message in query(prompt=prompt, options=options):
-                if isinstance(message, AssistantMessage):
-                    texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
-                elif isinstance(message, ResultMessage):
-                    result = message
+            said_error: str | None = None
+            try:
+                async for message in query(prompt=prompt, options=options):
+                    if isinstance(message, AssistantMessage):
+                        texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
+                        said_error = message.error or said_error
+                    elif isinstance(message, ResultMessage):
+                        result = message
+            except Exception as error:  # the CLI couldn't start or talk to Claude
+                if failure := claude_failures.classify(str(error)):
+                    raise ClaudeUnavailableError(failure) from None
+                raise
         if result is None or result.is_error:
+            told = [*(result.errors or []), result.result or ""] if result is not None else []
+            text = " ".join([*told, *texts])
+            status = result.api_error_status if result is not None else None
+            if failure := claude_failures.classify(text, status=status, error=said_error):
+                raise ClaudeUnavailableError(failure)
             detail = result.subtype if result is not None else "no result"
             raise RouterModelError(f"the router model call failed ({detail})")
         return Completion(result.result or "".join(texts), result.total_cost_usd)

@@ -319,6 +319,7 @@ def thread_messages(session: Session, thread_id: uuid.UUID) -> Sequence[Message]
 
 CLAIM_FOR = timedelta(minutes=10)  # a router that claimed a message and died: it's taken again
 CLAIMED = "claimed_at"
+RETRY_AFTER = "retry_after"
 
 
 def claim_unrouted(session: Session) -> Message | None:
@@ -342,8 +343,32 @@ def claim_unrouted(session: Session) -> Message | None:
 
 
 def _claimed(message: Message, now: datetime) -> bool:
-    stamp = (message.routing or {}).get(CLAIMED)
+    """Taken by a router just now, or waiting to be routed again later (Claude's side)."""
+    routing = message.routing or {}
+    if (later := routing.get(RETRY_AFTER)) and datetime.fromisoformat(str(later)) > now:
+        return True
+    stamp = routing.get(CLAIMED)
     return bool(stamp) and datetime.fromisoformat(str(stamp)) > now - CLAIM_FOR
+
+
+def wait_to_route(session: Session, message: Message, later: datetime, why: str) -> None:
+    """Back in the queue, to be routed again from `later` (Claude's side failed)."""
+    message.routing = {RETRY_AFTER: later.isoformat(), "waiting": why, "told": True}
+    session.flush()
+
+
+def retry_routing(session: Session, ident: str) -> Message:
+    """A message whose routing failed, routed again (the reply's Try again)."""
+    message = session.get(Message, uuid.UUID(ident))
+    if message is None or message.role is not MessageRole.USER:
+        raise NotFoundError("That message isn't here any more.")
+    if not message.route_error:
+        raise RuleViolationError("This message was routed; there's nothing to try again.")
+    message.route_error = message.routed_at = None
+    message.routing = None
+    session.flush()
+    notify_router(session)
+    return message
 
 
 def claim(session: Session, message: Message) -> None:
