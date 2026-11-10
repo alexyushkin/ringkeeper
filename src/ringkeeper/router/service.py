@@ -366,18 +366,23 @@ def _answer_meta(routed: Routed, output: RouterOutput) -> dict[str, Any]:
     return said
 
 
-def route_message(
-    session: Session, settings: Settings, message: Message, model: RouterModel
-) -> Routed:
-    """Route a claimed message inside the caller's transaction."""
-    answered = follow_up.answer_open_question(session, settings, message)
-    if answered is not None:  # it named the project the open question asked for
-        noted: dict[str, Any] = {
-            "answered": str(answered.decision.id), "decisions": [], "answer": answered.reply,
-            "tasks": [str(answered.task.id)] if answered.task is not None else [],
-        }  # fmt: skip
-        threads.mark_routed(session, message, noted)
-        return Routed(tasks=[answered.task] if answered.task else [], reply=answered.reply)
+@dataclass
+class Thought:
+    """What the model made of a message, worked out with the database read only: applied
+    later in a short write (route_next), so no writer waits on a model call."""
+
+    meta: dict[str, Any]
+    output: RouterOutput | None = None
+    error: str = ""
+    owners: dict[str, str] = field(default_factory=dict[str, str])
+    named: mentions.Mentions | None = None
+    helped: help_answers.Help | None = None  # a how-to, answered from the guide
+    answer: str | None = None  # a question about Ringkeeper, answered from its records
+    spent: float = 0.0
+
+
+def think(session: Session, settings: Settings, message: Message, model: RouterModel) -> Thought:
+    """Every model call routing a message makes. Reads only."""
     placed = follow_up.unplaced_request(session, message)
     if placed is not None:  # the last request, routed to the project this one names
         message.target_project = placed.project
@@ -400,46 +405,47 @@ def route_message(
             error = str(invalid)
             prompt = _retry_prompt(context.prompt, completion.text, error)
     meta: dict[str, Any] = {"model": model_id, "attempts": attempts, "cost_usd": cost or None}
+    thought = Thought(meta, output, error, context.owners)
     if output is None:
-        reply = f"I couldn't route this message: {error}"
-        threads.mark_routed(session, message, meta, error=error)
-        threads.add_reply(session, message.thread_id, reply, role=MessageRole.SYSTEM)
-        return Routed(reply=reply, error=error)
-
+        return thought
     named = mentions.for_message(session, message)
+    thought.named = named
     known = [*context.owners, *set(context.owners.values()), *context.aliases]
     if (output.about_ringkeeper and help_answers.is_how_to(message.body)) or (
         not named and help_answers.asks_how(message.body, known)
     ):
-        helped = help_answers.answer(session, settings, model, message.body)
-        meta |= {
-            "output": output.model_dump(mode="json"), "about_ringkeeper": True,
-            "cost_usd": (cost + helped.cost) or None, "tasks": [], "decisions": [],
-            "answer": sensitive.mask(helped.text),
-        }  # fmt: skip
-        threads.mark_routed(session, message, meta)
-        threads.add_reply(
-            session, message.thread_id, helped.text, routing={"help": helped.as_dict()}
-        )
-        return Routed(reply=helped.text)
-    if output.about_ringkeeper or (
-        not named
-        and self_answer.asks_about_setup(
-            message.body, [*context.owners, *set(context.owners.values()), *context.aliases]
-        )
+        thought.helped = help_answers.answer(session, settings, model, message.body)
+        thought.spent = thought.helped.cost
+    elif output.about_ringkeeper or (
+        not named and self_answer.asks_about_setup(message.body, known)
     ):
-        reply, spent = self_answer.answer(session, settings, model, message.body)
+        thought.answer, thought.spent = self_answer.answer(session, settings, model, message.body)
+    return thought
+
+
+def apply(session: Session, settings: Settings, message: Message, thought: Thought) -> Routed:
+    """Start what the model's answer says, inside the caller's transaction. No model calls."""
+    meta, output = thought.meta, thought.output
+    if output is None:
+        reply = f"I couldn't route this message: {thought.error}"
+        threads.mark_routed(session, message, meta, error=thought.error)
+        threads.add_reply(session, message.thread_id, reply, role=MessageRole.SYSTEM)
+        return Routed(reply=reply, error=thought.error)
+    cost = float(meta.get("cost_usd") or 0.0) + thought.spent
+    if thought.helped is not None or thought.answer is not None:
+        said = thought.helped.text if thought.helped is not None else str(thought.answer)
         meta |= {
             "output": output.model_dump(mode="json"), "about_ringkeeper": True,
-            "cost_usd": (cost + spent) or None, "tasks": [], "decisions": [],
-            "answer": sensitive.mask(reply),
+            "cost_usd": cost or None, "tasks": [], "decisions": [],
+            "answer": sensitive.mask(said),
         }  # fmt: skip
         threads.mark_routed(session, message, meta)
-        threads.add_reply(session, message.thread_id, reply)
-        return Routed(reply=reply)
-
+        extra = {"help": thought.helped.as_dict()} if thought.helped is not None else None
+        threads.add_reply(session, message.thread_id, said, routing=extra)
+        return Routed(reply=said)
+    named = mentions.for_message(session, message)
     output = mentions.settle(session, _apply_example(session, message, output), named)
-    routed = _route_tasks(session, settings, message, output, context.owners)
+    routed = _route_tasks(session, settings, message, output, thought.owners)
     meta |= {
         "output": output.model_dump(mode="json"),
         "tasks": [str(t.id) for t in routed.tasks],
@@ -452,26 +458,91 @@ def route_message(
     return routed
 
 
-def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
-    """Route the oldest unrouted message, if any. Returns its id."""
+def route_message(
+    session: Session, settings: Settings, message: Message, model: RouterModel
+) -> Routed:
+    """Route a message in one transaction (tests and tools; the router uses route_next)."""
+    answered = answer_follow_up(session, settings, message)
+    if answered is not None:
+        return answered
+    return apply(session, settings, message, think(session, settings, message, model))
+
+
+def answer_follow_up(session: Session, settings: Settings, message: Message) -> Routed | None:
+    """A reply that's just the name the open question asked for: answered, no model call."""
+    answered = follow_up.answer_open_question(session, settings, message)
+    if answered is None:
+        return None
+    noted: dict[str, Any] = {
+        "answered": str(answered.decision.id), "decisions": [], "answer": answered.reply,
+        "tasks": [str(answered.task.id)] if answered.task is not None else [],
+    }  # fmt: skip
+    threads.mark_routed(session, message, noted)
+    return Routed(tasks=[answered.task] if answered.task else [], reply=answered.reply)
+
+
+def _failed(message_id: uuid.UUID, error: Exception) -> None:
+    """Recorded on the message, so a failing message isn't retried forever."""
+    if not isinstance(error, RingkeeperError):
+        logger.exception("routing message %s failed", message_id)
+    with session_scope() as session:
+        message = session.get(Message, message_id)
+        if message is None or message.routed_at is not None:
+            return
+        threads.mark_routed(session, message, None, error=str(error) or type(error).__name__)
+        threads.add_reply(
+            session, message.thread_id, f"Routing failed: {error}", role=MessageRole.SYSTEM
+        )
+
+
+def _claim(settings: Settings) -> tuple[uuid.UUID | None, bool]:
+    """Take the next message in a short write: (its id, whether more is needed). A late one
+    is dropped, and a reply that answers the open question is answered here."""
+    caught: Exception | None = None
     with session_scope() as session:
         message = threads.claim_unrouted(session)
         if message is None:
-            return None
+            return None, False
+        ident = message.id
         if threads.drop_if_late(session, message):
-            return message.id
+            return ident, False
         try:
-            with session.begin_nested():  # all of the message's tasks, or none
-                route_message(session, settings, message, model)
+            with session.begin_nested():
+                if answer_follow_up(session, settings, message) is not None:
+                    return ident, False  # no model call needed
         except Exception as error:
-            # Recorded on the message, so a failing message isn't retried forever.
-            if not isinstance(error, RingkeeperError):
-                logger.exception("routing message %s failed", message.id)
-            threads.mark_routed(session, message, None, error=str(error) or type(error).__name__)
-            threads.add_reply(
-                session, message.thread_id, f"Routing failed: {error}", role=MessageRole.SYSTEM
-            )
-        return message.id
+            caught = error
+        else:
+            threads.claim(session, message)
+    if caught is not None:
+        _failed(ident, caught)
+        return ident, False
+    return ident, True
+
+
+def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
+    """Route the oldest unrouted message, if any. Returns its id.
+
+    Three steps, so a model call never holds the database: claim the message (a short
+    write), ask the model with the database read only, then apply the answer (a short write)
+    unless the message was canceled or routed meanwhile."""
+    ident, more = _claim(settings)
+    if ident is None or not more:
+        return ident
+    try:
+        with session_scope(commit=False) as session:
+            message = session.get_one(Message, ident)
+            thought = think(session, settings, message, model)
+            target = message.target_project
+        with session_scope() as session:
+            message = session.get_one(Message, ident)
+            if message.routed_at is None and message.canceled_at is None:
+                message.target_project = target or message.target_project
+                with session.begin_nested():  # all of the message's tasks, or none
+                    apply(session, settings, message, thought)
+    except Exception as error:
+        _failed(ident, error)
+    return ident
 
 
 class Router:

@@ -19,6 +19,11 @@ publishes it as the release notes and the app shows it with the update.
   conflict) and **Discard** deletes it, and a follow-up in the same conversation keeps working
   on the same branch. See [A task's changes to files](docs/concepts.md#a-tasks-changes-to-files).
 
+- **Fixed:** while the router waited on Claude, it held the database, so on the desktop app
+  anything else that saved (a setting, an approval, another request) waited, and could fail
+  after 30 seconds. It now asks Claude with the database free, and applies the answer in a
+  short step afterwards (skipping a request canceled in the meantime).
+
 ## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool

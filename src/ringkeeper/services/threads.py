@@ -317,11 +317,15 @@ def thread_messages(session: Session, thread_id: uuid.UUID) -> Sequence[Message]
     ).all()
 
 
+CLAIM_FOR = timedelta(minutes=10)  # a router that claimed a message and died: it's taken again
+CLAIMED = "claimed_at"
+
+
 def claim_unrouted(session: Session) -> Message | None:
-    """The oldest user message nobody has routed yet, locked against other routers. One sent
-    for later waits until its time; a canceled one never comes."""
+    """The oldest user message nobody has routed or claimed yet, locked against other
+    routers. One sent for later waits until its time; a canceled one never comes."""
     now = datetime.now(UTC)
-    return session.scalars(
+    found = session.scalars(
         select(Message)
         .where(
             Message.role == MessageRole.USER,
@@ -331,9 +335,21 @@ def claim_unrouted(session: Session) -> Message | None:
             or_(Message.run_at.is_(None), Message.run_at <= now),
         )
         .order_by(Message.created_at)
-        .limit(1)
+        .limit(20)
         .with_for_update(skip_locked=True)
-    ).first()
+    ).all()
+    return next((m for m in found if not _claimed(m, now)), None)
+
+
+def _claimed(message: Message, now: datetime) -> bool:
+    stamp = (message.routing or {}).get(CLAIMED)
+    return bool(stamp) and datetime.fromisoformat(str(stamp)) > now - CLAIM_FOR
+
+
+def claim(session: Session, message: Message) -> None:
+    """Taken by a router, which asks the model outside this transaction."""
+    message.routing = {CLAIMED: datetime.now(UTC).isoformat()}
+    session.flush()
 
 
 def mark_routed(
