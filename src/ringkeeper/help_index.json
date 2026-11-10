@@ -559,6 +559,12 @@
 },
 {
 "doc": "troubleshooting",
+"anchor": "a-task-stopped-when-ringkeeper-restarted",
+"title": "A task stopped when Ringkeeper restarted",
+"text": "A restart or an update stops tasks that were running. They say \"Ringkeeper restarted during this task\" and are listed on Home under **Cut short by a restart** for three days. **Resume** picks a task up where it stopped (one that hadn't got going starts over), and **Resume all** does them all. Sending a follow-up in the task's conversation works too."
+},
+{
+"doc": "troubleshooting",
 "anchor": "a-connections-test-fails",
 "title": "A connection's test fails",
 "text": "Open the connection and press **Test connection** to see the service's own message. Usually the key was revoked or expired: paste a new one. A database must be reachable from this computer (not `localhost` on another machine), and Ringkeeper never connects to addresses on this computer itself."

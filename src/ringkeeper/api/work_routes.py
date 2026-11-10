@@ -39,6 +39,7 @@ from ringkeeper.services import (
     calls,
     cleanup,
     clients,
+    interrupted,
     link_offer,
     model_usage,
     paging,
@@ -232,6 +233,18 @@ def list_tasks(
     return [_task_card(t, owners) for t in page.items]
 
 
+@router.get("/tasks/interrupted")
+def interrupted_tasks(session: SessionDep) -> list[dict[str, Any]]:
+    """Tasks a restart or an update cut short, newest first (Home: Resume, Resume all)."""
+    owners = projects.owners(session)
+    return [{**_task_card(t, owners), "prompt": t.prompt} for t in interrupted.listed(session)]
+
+
+@router.post("/tasks/interrupted/resume")
+def resume_all_interrupted(session: WriteSessionDep) -> dict[str, int]:
+    return {"resumed": interrupted.resume_all(session, current_settings())}
+
+
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str, session: SessionDep) -> dict[str, Any]:
     task = tasks.get_task(session, task_id)
@@ -364,6 +377,12 @@ def delete_threads(data: DeleteIn, session: WriteSessionDep) -> dict[str, int]:
 def link_and_retry(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
     """Link the connection a task was missing to its project, and run it again."""
     return _task_card(link_offer.take(session, current_settings(), task_id))
+
+
+@router.post("/tasks/{task_id}/resume-interrupted")
+def resume_interrupted(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
+    interrupted.resume(session, current_settings(), task_id)
+    return _task_card(tasks.get_task(session, task_id))
 
 
 @router.post("/tasks/{task_id}/keep")

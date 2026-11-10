@@ -11,6 +11,11 @@ publishes it as the release notes and the app shows it with the update.
   it's off asks once, with **Allow web for this project and retry**, in the app and in your
   chats. A project that had the web before keeps it.
 
+- **Resume tasks a restart cut short.** After a restart or an update, Home lists the tasks
+  that were running, with **Resume** for each and **Resume all**. A resumed task picks up
+  where it stopped. See
+  [A task stopped when Ringkeeper restarted](docs/troubleshooting.md#a-task-stopped-when-ringkeeper-restarted).
+
 - **Fixed:** on Windows, voice transcription could lose its "too large" or "busy" answer
   and report a dropped connection instead: the service now reads and drops a refused upload
   before closing. The speech-to-text tests that need Docker skip, with a reason, when it isn't
