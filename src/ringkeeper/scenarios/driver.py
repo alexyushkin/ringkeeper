@@ -18,6 +18,7 @@ from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import (
+    TERMINAL_STATUSES,
     Agent,
     AuditEvent,
     AuditOutcome,
@@ -45,10 +46,8 @@ from ringkeeper.vault import Vault
 AUTHOR = "self-test"
 POLL_SECONDS = 0.5
 ANSWER = "Use your best judgement and carry on. Don't ask again."
-RESTING = (
-    TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.TIMED_OUT, TaskStatus.STOPPED,
-    TaskStatus.BUDGET_EXCEEDED, TaskStatus.NEEDS_INPUT,
-)  # fmt: skip
+# Every ending, and waiting on an answer (a new ending counts too).
+RESTING = frozenset({*TERMINAL_STATUSES, TaskStatus.NEEDS_INPUT})
 OPEN = (DecisionStatus.PENDING, DecisionStatus.APPROVED)
 UNDO_SECONDS = 120
 
@@ -265,7 +264,7 @@ class Driver:
         seen.timed_out = True
         with session_scope() as session:
             for task in session.scalars(select(Task).where(Task.thread_id == thread)).all():
-                if task.status not in RESTING:
+                if task.status not in RESTING and task.status not in TERMINAL_STATUSES:
                     tasks.request_stop(session, str(task.id), by=AUTHOR)
 
     # --- What happened ---

@@ -46,6 +46,7 @@ SAYS = {
     "waiting": "It's waiting for the user in Ringkeeper, at the task link.",
     "done": "It's done.",
     "failed": "It didn't finish.",
+    "not done": "It ran, but couldn't do what was asked; `error` says why.",
     "stopped": "It was stopped.",
 }
 
@@ -108,6 +109,8 @@ def _state(task: Task, pending: list[Decision]) -> str:  # noqa: PLR0911 (one pe
         return "done"
     if task.status is TaskStatus.STOPPED:
         return "stopped"
+    if task.status is TaskStatus.NOT_DONE:
+        return "not done"
     if task.status in TERMINAL_STATUSES:
         return "failed"
     if task.status is TaskStatus.NEEDS_INPUT:
@@ -134,6 +137,6 @@ def status(session: Session, settings: Settings, caller: Caller, task_id: str) -
         found |= passes.approval_link(session, settings)
     if state == "done":
         found["result"] = scrub((task.summary or "")[:RESULT_CHARS])
-    if state in ("failed", "stopped") and task.error:
+    if state in ("failed", "not done", "stopped") and task.error:
         found["error"] = scrub(task.error)
     return found
