@@ -20,7 +20,7 @@ from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
-from ringkeeper import scrub
+from ringkeeper import claude_failures, scrub
 from ringkeeper.adapters import ADAPTERS, agent_name
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
@@ -137,6 +137,7 @@ class Collected:
     errors: list[str] | None = None
     exit_code: int | None = None
     question: str | None = None  # the worker called ask_user
+    claude_error: str | None = None  # an assistant message's error type (rate_limit, ...)
     not_done: str | None = None  # the worker called not_done: why
     needs: str = ""  # the kind of connection it said it lacked
     checks: dict[str, Any] | None = None  # architect loop: this worker turn's checks
@@ -144,6 +145,8 @@ class Collected:
 
 
 REPORT = "Try again; if it happens again, use Report a problem on the Help page."
+# What a task is told when it's run again after Claude's side failed.
+CONTINUE = "Claude's side failed for a moment. Continue where you left off."
 NO_RESULT = "The task stopped without finishing. Send a follow-up to continue, or try again."
 
 
@@ -168,6 +171,21 @@ def _cap(payload: dict[str, Any]) -> dict[str, Any]:
     if len(text) <= MAX_EVENT_BYTES:
         return payload
     return {"type": payload.get("type"), "truncated": True, "preview": text[:4000]}
+
+
+def claude_failure(collected: Collected) -> claude_failures.Failure | None:
+    """The session failed on Claude's side: a limit, the login, overload, the network."""
+    result = collected.result or {}
+    if result and not result.get("is_error") and collected.exit_code == 0:
+        return None
+    text = " ".join(
+        [str(result.get("result") or ""), *map(str, result.get("errors") or []),
+         *(collected.errors or [])]
+    )  # fmt: skip
+    status = result.get("api_error_status")
+    return claude_failures.classify(
+        text, status=status if isinstance(status, int) else None, error=collected.claude_error
+    )
 
 
 def outcome_status(  # noqa: PLR0911 (one return per outcome)
@@ -230,6 +248,7 @@ class Manager:
         self._killed: dict[uuid.UUID, TaskStatus] = {}
         self._threads: dict[uuid.UUID, threading.Thread] = {}
         self._wake = threading.Event()
+        self.retry_scale = 1.0  # tests: 0, so a retry after Claude's side failed is at once
 
     @property
     def settings(self) -> Settings:
@@ -294,6 +313,9 @@ class Manager:
             self.runtime.remove_volume(name)
         if settings.paused:  # "Stop everything": nothing new starts until resumed
             return
+        with session_scope(commit=False) as session:
+            if claude_failures.paused(session) is not None:  # until Claude's limit resets
+                return
         cap = settings.max_concurrent_workers
         started = 0
         while max_new is None or started < max_new:
@@ -517,6 +539,9 @@ class Manager:
             event_type = str(event.get("type", "worker.raw"))
             if event_type == "sdk.result" and isinstance(event.get("message"), dict):
                 collected.result = cast(dict[str, Any], event["message"])
+            elif event_type == "sdk.assistant" and isinstance(event.get("message"), dict):
+                said = cast(dict[str, Any], event["message"]).get("error")
+                collected.claude_error = str(said) if said else collected.claude_error
             elif event_type == "ringkeeper.workspace":
                 collected.workspace = event
             elif event_type == "ringkeeper.checks":
@@ -559,6 +584,49 @@ class Manager:
             session, self.settings, DecisionKind.QUESTION, payload, project=task.project, task=task
         )
         return TaskStatus.NEEDS_INPUT
+
+    def _on_claude_failure(
+        self,
+        session: Session,
+        job: Job,
+        row: WorkerSession,
+        task: Task,
+        failure: claude_failures.Failure,
+    ) -> TaskStatus:
+        """A usage limit: the task waits for the reset (nothing new starts until then). A
+        transient failure: tried again after a wait, a few times. A login: it says so."""
+        row.error = task.error = failure.message
+        if failure.kind is claude_failures.Kind.LOGIN:
+            return TaskStatus.FAILED
+        tries = sum(1 for s in task.sessions if s.error == failure.message)
+        if failure.kind is claude_failures.Kind.USAGE_LIMIT:
+            claude_failures.pause_until(session, failure)
+        elif tries > len(claude_failures.RETRY_WAITS):
+            return TaskStatus.FAILED  # tried enough: it says what happened
+        wait = (
+            0.0
+            if failure.kind is claude_failures.Kind.USAGE_LIMIT
+            else claude_failures.RETRY_WAITS[min(tries, len(claude_failures.RETRY_WAITS)) - 1]
+        )
+        task.status = TaskStatus.QUEUED
+        task.finished_at = None
+        threading.Timer(wait * self.retry_scale, self._try_again, args=(job.task_id,)).start()
+        return TaskStatus.QUEUED
+
+    def _try_again(self, task_id: uuid.UUID) -> None:
+        """Run a task again where it left off, after Claude's side failed."""
+        try:
+            with session_scope() as session:
+                task = session.get(Task, task_id)
+                if task is None or task.status is not TaskStatus.QUEUED or task.stop_requested:
+                    return
+                task.status = TaskStatus.FAILED  # resumable, for resume_task
+                tasks.resume_task(session, self.settings, str(task_id), CONTINUE)
+                if pause := claude_failures.paused(session):  # why it's waiting, on its card
+                    task.error = pause.message
+        except RingkeeperError as error:
+            logger.warning("couldn't try task %s again: %s", task_id, error)
+        self._wake.set()
 
     def _finalize(
         self, job: Job, jti: str | None, collected: Collected, killed: TaskStatus | None
@@ -614,6 +682,9 @@ class Manager:
                     architect_loop.advance(session, self.settings, row, status, review)
                 if status is TaskStatus.BUDGET_EXCEEDED and job.task_budget_usd is not None:
                     status = self._pause_at_cap(session, job, row, task)
+                failure = claude_failure(collected) if status is TaskStatus.FAILED else None
+                if failure is not None and not job.feature:
+                    status = self._on_claude_failure(session, job, row, task, failure)
                 if status is TaskStatus.NEEDS_INPUT and not waiting and collected.question:
                     payload = {"question": collected.question, "role": job.role.value}
                     inbox.create(

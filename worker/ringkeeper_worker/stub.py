@@ -181,7 +181,8 @@ async def run(config: WorkerConfig) -> bool:
             "total_cost_usd": stub.get("cost_usd"),
             "usage": {"input_tokens": 0, "output_tokens": 0},
             "model_usage": None,
-            "result": "stub done",
+            "result": str(stub.get("result", "stub done")),
+            "api_error_status": stub.get("api_error_status"),
             "model": config.model,
         },
     )

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import object_session
 
+from ringkeeper import claude_failures
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import SessionDep, WriteSessionDep
 from ringkeeper.config import get_settings
@@ -119,6 +120,21 @@ def list_scheduled(session: SessionDep) -> list[dict[str, Any]]:
         }
         for m in threads.scheduled(session)
     ]  # fmt: skip
+
+
+@router.post("/messages/{message_id}/retry")
+def retry_message(message_id: uuid.UUID, session: WriteSessionDep) -> MessageOut:
+    """A request whose routing failed, routed again."""
+    return MessageOut.model_validate(threads.retry_routing(session, str(message_id)))
+
+
+@router.get("/claude-status")
+def claude_status(session: SessionDep) -> dict[str, Any]:
+    """While Claude's usage limit lasts: when it resets, and what Home says."""
+    pause = claude_failures.paused(session)
+    if pause is None:
+        return {"waiting_until": None, "message": None}
+    return {"waiting_until": pause.until.isoformat(), "message": pause.message}
 
 
 @router.post("/messages/{message_id}/cancel")

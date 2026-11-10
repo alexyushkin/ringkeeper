@@ -23,12 +23,13 @@ import logging
 import threading
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper import sensitive
+from ringkeeper import claude_failures, sensitive
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -51,7 +52,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.names import slug
 from ringkeeper.router import follow_up, self_answer
-from ringkeeper.router.model import RouterModel
+from ringkeeper.router.model import ClaudeUnavailableError, RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
 from ringkeeper.router.schema import (
     Candidate,
@@ -481,8 +482,15 @@ def answer_follow_up(session: Session, settings: Settings, message: Message) -> 
     return Routed(tasks=[answered.task] if answered.task else [], reply=answered.reply)
 
 
+RETRY_ROUTING = timedelta(minutes=2)  # after Claude's side failed (not a usage limit)
+
+
 def _failed(message_id: uuid.UUID, error: Exception) -> None:
-    """Recorded on the message, so a failing message isn't retried forever."""
+    """Recorded on the message, so a failing message isn't retried by itself: its reply has
+    a Try again button (POST /messages/{id}/retry). On Claude's side, it waits instead."""
+    if isinstance(error, ClaudeUnavailableError):
+        _wait_for_claude(message_id, error.failure)
+        return
     if not isinstance(error, RingkeeperError):
         logger.exception("routing message %s failed", message_id)
     with session_scope() as session:
@@ -491,15 +499,36 @@ def _failed(message_id: uuid.UUID, error: Exception) -> None:
             return
         threads.mark_routed(session, message, None, error=str(error) or type(error).__name__)
         threads.add_reply(
-            session, message.thread_id, f"Routing failed: {error}", role=MessageRole.SYSTEM
-        )
+            session, message.thread_id, f"Routing failed: {error}", role=MessageRole.SYSTEM,
+            routing={"retry": str(message_id)},
+        )  # fmt: skip
+
+
+def _wait_for_claude(message_id: uuid.UUID, failure: claude_failures.Failure) -> None:
+    """The message goes back to be routed later: after a usage limit resets (nothing new
+    starts until then), or in a couple of minutes. The conversation is told once."""
+    with session_scope() as session:
+        message = session.get(Message, message_id)
+        if message is None or message.routed_at is not None:
+            return
+        if failure.kind is claude_failures.Kind.USAGE_LIMIT:
+            later = claude_failures.pause_until(session, failure).until
+        else:
+            later = datetime.now(UTC) + RETRY_ROUTING
+        told = bool((message.routing or {}).get("told"))
+        threads.wait_to_route(session, message, later, failure.message)
+        if not told:
+            threads.add_reply(session, message.thread_id, failure.message, role=MessageRole.SYSTEM)
 
 
 def _claim(settings: Settings) -> tuple[uuid.UUID | None, bool]:
     """Take the next message in a short write: (its id, whether more is needed). A late one
-    is dropped, and a reply that answers the open question is answered here."""
+    is dropped, and a reply that answers the open question is answered here. While Claude's
+    usage limit lasts, nothing is taken."""
     caught: Exception | None = None
     with session_scope() as session:
+        if claude_failures.paused(session) is not None:
+            return None, False
         message = threads.claim_unrouted(session)
         if message is None:
             return None, False

@@ -31,6 +31,21 @@ Open **Settings › Claude** and paste the key again. Keys start with
 too. Ringkeeper checks the key with Anthropic before saving it, and shows
 Anthropic's own message if it's refused.
 
+## Claude is unavailable
+
+When Claude itself can't answer, Ringkeeper says which of these it is, and what it does:
+
+- **Your Claude plan's limit is reached.** Home says when it resets. Nothing new starts
+  until then, and tasks and requests wait instead of failing: they go on by themselves after
+  the reset.
+- **Claude is overloaded, limiting how fast requests can go, or can't be reached** (check
+  this computer's internet connection). Ringkeeper tries again a few times, waiting longer each
+  time; a request waits and is routed again a couple of minutes later.
+- **The sign-in to Claude is missing or expired.** Sign in again in Settings › Claude, then
+  send the request again or use **Run again** on the task.
+
+When routing a request fails for any other reason, its reply has a **Try again** button.
+
 ## A connection's test fails
 
 Open the connection and press **Test connection** to see the service's own

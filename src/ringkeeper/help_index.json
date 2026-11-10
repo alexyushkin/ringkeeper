@@ -553,6 +553,12 @@
 },
 {
 "doc": "troubleshooting",
+"anchor": "claude-is-unavailable",
+"title": "Claude is unavailable",
+"text": "When Claude itself can't answer, Ringkeeper says which of these it is, and what it does: - **Your Claude plan's limit is reached.** Home says when it resets. Nothing new starts until then, and tasks and requests wait instead of failing: they go on by themselves after the reset. - **Claude is overloaded, limiting how fast requests can go, or can't be reached** (check this computer's internet connection). Ringkeeper tries again a few times, waiting longer each time; a request waits and is routed again a couple of minutes later. - **The sign-in to Claude is missing or expired.** Sign in again in Settings › Claude, then send the request again or use **Run again** on the task. When routing a request fails for any other reason, its reply has a **Try again** button."
+},
+{
+"doc": "troubleshooting",
 "anchor": "a-connections-test-fails",
 "title": "A connection's test fails",
 "text": "Open the connection and press **Test connection** to see the service's own message. Usually the key was revoked or expired: paste a new one. A database must be reachable from this computer (not `localhost` on another machine), and Ringkeeper never connects to addresses on this computer itself."

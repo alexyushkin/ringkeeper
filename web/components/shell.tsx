@@ -101,6 +101,7 @@ export function Shell({ children }: { children: ReactNode }) {
   });
   const count = approvals.total ?? 0;
   const paused = settings.data?.values.paused ?? false;
+  const claude = useApi<{ waiting_until: string | null; message: string | null }>("claude-status");
 
   const badge = count ? (
     <span className="ml-auto rounded-full bg-bad px-1.5 text-xs font-semibold text-white" aria-label={`${count} waiting`}>
@@ -180,6 +181,9 @@ export function Shell({ children }: { children: ReactNode }) {
               Resume
             </button>
           </div>
+        ) : null}
+        {claude.data?.waiting_until ? (
+          <div className="bg-warn px-4 py-2 text-sm text-ink">{claude.data.message}</div>
         ) : null}
         {DESKTOP ? <UpdateBanner /> : null}
         {DESKTOP ? <ScanOffer /> : null}
