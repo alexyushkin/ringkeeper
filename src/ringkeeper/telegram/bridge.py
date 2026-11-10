@@ -110,9 +110,9 @@ def callback_data(decision: Decision, index: int) -> str:
 
 def render(decision: Decision, settings: Settings, *, closed: bool = False) -> str:
     """A decision's message; `closed`: as it reads once decided, without what to do."""
-    go_ahead = decision.kind is DecisionKind.ROUTE and (decision.payload or {}).get("production")
-    head = ["Go ahead?" if go_ahead else KIND_LABELS[decision.kind]]
-    if decision.project and (decision.kind is not DecisionKind.ROUTE or go_ahead):
+    asks = inbox.asks(decision)
+    head = [asks or KIND_LABELS[decision.kind]]
+    if decision.project and (decision.kind is not DecisionKind.ROUTE or asks):
         head.append(titles.of(object_session(decision), decision.project))
     if decision.instance:
         head.append(decision.instance)
@@ -136,7 +136,9 @@ def render(decision: Decision, settings: Settings, *, closed: bool = False) -> s
 
 
 def _label(decision: Decision, choice: str) -> str:
-    return BUTTON_LABELS.get(choice, inbox.chosen(decision, choice))
+    return inbox.button(decision, choice) or BUTTON_LABELS.get(
+        choice, inbox.chosen(decision, choice)
+    )
 
 
 def keyboard(decision: Decision) -> dict[str, Any]:

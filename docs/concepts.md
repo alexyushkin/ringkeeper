@@ -77,8 +77,13 @@ buttons.
 Work that needs no client's connection, like a web lookup, writing, or summarizing text
 you pasted, runs in the chosen project. With nothing chosen, it runs in your own client's
 default project: on that client's page, open **Settings › Your own work** and turn on
-"... is me". If the project's tasks can't use the web (its autonomy is strict or
-standard), Ringkeeper says so plainly instead of starting.
+"... is me".
+
+Whether a project's tasks can use the web is its own setting (the project's Settings tab,
+**Web access**), apart from how independently it works. Left at the default, it's on for
+your own client's projects and off for a client's, so their data doesn't leave unless you
+allow it. A request that needs the web in a project where it's off says so and asks once,
+with **Allow web for this project and retry** (in the app and in your chats).
 
 ### When it asks which project
 

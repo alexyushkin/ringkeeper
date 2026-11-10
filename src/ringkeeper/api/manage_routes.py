@@ -76,6 +76,7 @@ from ringkeeper.services import (
     subscription,
     tasks,
     titles,
+    web_access,
     workspaces,
 )
 from ringkeeper.services.runtime import RuntimeIn, current_settings
@@ -350,6 +351,7 @@ class ProjectPatch(Input):
     repo_url: str | None = None
     workspace_path: str | None = None
     autonomy: str | None = None
+    web: bool | None = None
     checks: CleanList | None = None
     models: dict[ModelKey, ModelId] | None = None
 
@@ -407,6 +409,8 @@ def update_project(
     project = projects.get_project(session, name)
     if data.autonomy is not None and data.autonomy != project.autonomy:
         check_recent_auth(request, token)  # autonomy decides what runs without asking
+    if data.web and not web_access.allowed(session, project):
+        check_recent_auth(request, token)  # the web is a way out for a client's data
     settings = get_settings()
     folder: Path | None = None
     if settings.mode == "desktop":
@@ -421,7 +425,7 @@ def update_project(
             "description": project.description,
             "aliases": project.aliases, "repo_url": project.repo_url,
             "workspace_path": project.workspace_path, "autonomy": project.autonomy,
-            "checks": project.checks, "models": project.models,
+            "web": project.web, "checks": project.checks, "models": project.models,
         }
     )  # fmt: skip
     changes = data.model_dump(exclude_unset=True)

@@ -94,14 +94,16 @@ def _project(decision: Decision) -> str | None:
 
 
 def _label(decision: Decision, choice: str) -> str:
-    return CHOICE_LABELS.get(choice, inbox.chosen(decision, choice))
+    return inbox.button(decision, choice) or CHOICE_LABELS.get(
+        choice, inbox.chosen(decision, choice)
+    )
 
 
 def _head(decision: Decision) -> list[str]:
     """What it is, where, and what it says: the start of its message, open or decided."""
-    go_ahead = decision.kind is DecisionKind.ROUTE and (decision.payload or {}).get("production")
-    head = ["Go ahead?" if go_ahead else KIND_LABELS[decision.kind]]
-    if decision.kind is not DecisionKind.ROUTE or go_ahead:
+    asks = inbox.asks(decision)
+    head = [asks or KIND_LABELS[decision.kind]]
+    if decision.kind is not DecisionKind.ROUTE or asks:
         head += [part for part in (_project(decision), decision.instance) if part]
     shown = shown_text.body(decision, SUMMARY_CHARS, QUESTION_CHARS)
     return [" · ".join(head), shown.text, *([SHORTENED] if shown.cut else [])]

@@ -89,8 +89,7 @@ def test_a_project_without_the_web_says_so_plainly() -> None:
     route(output(routed("gi-site", 0.9, general=True, needs_web=True)))
     assert started() == []
     said = last_reply(thread)
-    assert said.startswith("Tasks in Website can't use the web: its autonomy is standard")
-    assert "set Website to relaxed on its Settings tab" in said
+    assert said == "Tasks in Website can't use the web: it's off for this project."
     assert "none of" not in said.lower()
 
 

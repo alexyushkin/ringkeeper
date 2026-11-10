@@ -360,8 +360,10 @@ as root with only four capabilities (setuid, setgid, kill, read-search); the
 agent, git and the project's checks all run as an unprivileged `worker`
 user. It is on a network that holds only the gateway, so it can't reach
 Postgres or the api by name. Settings files (user, project, local) aren't
-loaded, and the project's `autonomy` removes tools: `strict` has no Bash and
-no web access, `standard` has no web access.
+loaded, and the project's `autonomy` removes tools: `strict` has no Bash. Web
+access (WebFetch, WebSearch) is the project's own `web` setting
+(`services/web_access.py`): unset, on for the operator's own client's projects and off
+for a client's.
 
 **Git:** if the workspace is a git repo, the worker commits on
 `ringkeeper/<task-id>` (or the branch of an earlier task in the same conversation
@@ -737,7 +739,7 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 | Home | Your conversations, and a box to ask for something: typed, or hold the mic to speak ("I heard: ..." first, nothing is sent until you press Send). A conversation shows how the router split it, live task cards, and what Ringkeeper needs from you, with buttons. Questions about Ringkeeper itself ("how many connections do we have?") are answered from its own records, without a project. |
 | Approvals | Every action waiting for your OK, across conversations, in full: the SQL of a held write, a plan, more money for a task. The same card shows in the conversation and on the task page; answering it anywhere clears it everywhere. Questions ("which project?", a worker asking something) are asked in their conversation instead and aren't counted. Telegram only ever gets summaries. A held write that deletes or drops data needs the connection's name typed to approve. |
 | Tasks | Every task, by project and status. A task opens as a transcript: what the assistant said, each tool call (arguments and results folded away), check results, the model, steps and estimated cost, the branch, changed files and diff, and Stop and Resume. |
-| Clients & projects | Create and edit projects (description, other names, folder, repository, how independently it works, checks, model overrides) and link connections, with defaults. |
+| Clients & projects | Create and edit projects (description, other names, folder, repository, how independently it works, web access, checks, model overrides) and link connections, with defaults. |
 | Connections | Forms for databases (Supabase, Neon, any Postgres), n8n, Airtable, Vercel, Twilio and Gmail, each with a link to where you get the key; also on each project's page, where a new connection is linked to the project. Secrets go in once, through password fields, and are never shown again. Production has a red badge. **Test connection** runs one read-only call through the adapter. |
 | Activity | The audit log with filters, and a CSV export per client. |
 | Settings | Claude (API key, or your subscription for personal use when `RINGKEEPER_ALLOW_SUBSCRIPTION=1`), Telegram (including the requests toggle and its privacy note), models, how many tasks at once, transcript retention, passkeys, the recovery key, and **Stop everything**. |

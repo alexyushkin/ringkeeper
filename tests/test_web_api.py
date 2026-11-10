@@ -389,6 +389,7 @@ def test_loosening_connections_needs_a_recent_confirmation(
     assert bind.status_code == 403
     assert owner.put("/projects/acme-web/connections/acme-db", json={}).status_code == 200
     assert owner.patch("/projects/acme-web", json={"autonomy": "relaxed"}).status_code == 403
+    assert owner.patch("/projects/acme-web", json={"web": True}).status_code == 403
     assert owner.patch("/projects/acme-web", json={"description": "x"}).status_code == 200
 
 
