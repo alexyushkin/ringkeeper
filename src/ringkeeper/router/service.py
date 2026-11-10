@@ -379,6 +379,42 @@ class Thought:
     helped: help_answers.Help | None = None  # a how-to, answered from the guide
     answer: str | None = None  # a question about Ringkeeper, answered from its records
     spent: float = 0.0
+    placed: bool = False  # routed to the project a follow-up named (router.follow_up)
+
+
+def _against_selection(
+    session: Session,
+    settings: Settings,
+    message: Message,
+    output: RouterOutput,
+    owners: dict[str, str],
+    placed: bool = False,  # a reply named the project for it: the person's own choice
+) -> tuple[RouterOutput, list[RoutedTask]]:
+    """Tasks the model is sure belong to another client than the project chosen at the top
+    (and the message names nothing with @): asked about once, with both as buttons, instead
+    of being sent to the chosen project. The rest, to settle as usual."""
+    chosen = message.target_project
+    if not chosen or chosen not in owners or placed or mentions.find(session, message.body):
+        return output, []
+    threshold = settings.router_confidence_threshold
+    keep: list[RoutedTask] = []
+    elsewhere: list[RoutedTask] = []
+    for task in output.tasks:
+        sure = task.confidence >= threshold and task.project in owners and not task.general
+        if not sure or owners[task.project] == owners[chosen] or elsewhere:
+            keep.append(task)
+            continue
+        whose = clients.display(session, owners[task.project])
+        why = f"This looks like it's for {whose}, but {titles.of(session, chosen)} is selected."
+        elsewhere.append(
+            task.model_copy(
+                update={
+                    "confidence": 0.0, "touches": [], "why": why, "project_specific": True,
+                    "alternatives": [Candidate(project=chosen, confidence=0.0)],
+                }
+            )
+        )  # fmt: skip
+    return output.model_copy(update={"tasks": keep}), elsewhere
 
 
 def think(session: Session, settings: Settings, message: Message, model: RouterModel) -> Thought:
@@ -405,7 +441,7 @@ def think(session: Session, settings: Settings, message: Message, model: RouterM
             error = str(invalid)
             prompt = _retry_prompt(context.prompt, completion.text, error)
     meta: dict[str, Any] = {"model": model_id, "attempts": attempts, "cost_usd": cost or None}
-    thought = Thought(meta, output, error, context.owners)
+    thought = Thought(meta, output, error, context.owners, placed=placed is not None)
     if output is None:
         return thought
     named = mentions.for_message(session, message)
@@ -444,7 +480,11 @@ def apply(session: Session, settings: Settings, message: Message, thought: Thoug
         threads.add_reply(session, message.thread_id, said, routing=extra)
         return Routed(reply=said)
     named = mentions.for_message(session, message)
+    output, elsewhere = _against_selection(
+        session, settings, message, output, thought.owners, thought.placed
+    )
     output = mentions.settle(session, _apply_example(session, message, output), named)
+    output = output.model_copy(update={"tasks": [*output.tasks, *elsewhere]})
     routed = _route_tasks(session, settings, message, output, thought.owners)
     meta |= {
         "output": output.model_dump(mode="json"),

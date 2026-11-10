@@ -35,6 +35,10 @@ publishes it as the release notes and the app shows it with the update.
   waits for your approval anyway. In the self-test, a scenario that shouldn't be held fails
   if it was asked, and the report says when the self-test answered a go-ahead.
 
+- **The project chosen at the top no longer overrides the request.** An @-mention of another
+  project or client in the request wins, and a request clearly meant for another client's
+  project asks once, with both as buttons, instead of running in the chosen one.
+
 ## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool

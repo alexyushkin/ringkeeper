@@ -94,9 +94,12 @@ def find(session: Session, text: str) -> Mentions:
 
 
 def for_message(session: Session, message: Message) -> Mentions:
-    """What a message names: its @-mentions, and the client and project chosen at the top of
-    the app when it was sent (a project chosen there decides, like an @-mention)."""
+    """What a message names: its @-mentions, else the client and project chosen at the top of
+    the app when it was sent (a project chosen there decides, like an @-mention). An
+    @-mention of a project, client or agent in the message wins over the choice at the top."""
     found = find(session, message.body)
+    if found.projects or found.clients or found.agents:
+        return found
     project = message.target_project
     if project and session.scalar(select(Project.name).where(Project.name == project)):
         return Mentions(projects=[project], connections=found.connections, agents=found.agents)

@@ -117,3 +117,37 @@ def test_the_app_sends_the_chosen_project(owner: TestClient) -> None:
         assert (message.target_client, message.target_project) == ("alexey", "my-project")
     marked = owner.put("/clients/alexey/own", json={"own": True})
     assert marked.json()["own"] is True
+
+
+# --- The switcher vs. what the request says ---
+
+
+def decisions() -> list[Decision]:
+    with session_scope() as session:
+        found = session.scalars(select(Decision)).all()
+        session.expunge_all()
+        return list(found)
+
+
+def test_an_at_mention_wins_over_the_project_chosen_at_the_top() -> None:
+    ask("@Website fix the footer", target_client="alexey", target_project="my-project")
+    route(output(routed("my-project", 0.9)))
+    assert started() == ["gi-site"]
+
+
+def test_a_request_for_another_client_is_asked_about_once() -> None:
+    ask("Fix General Informatics' contact form", target_project="my-project")
+    route(output(routed("gi-site", 0.95)))  # the model is sure: another client's project
+    assert started() == []
+    [question] = decisions()
+    payload = question.payload or {}
+    assert payload["reason"] == (
+        "This looks like it's for General Informatics LLC, but My Project is selected."
+    )
+    assert [c["project"] for c in payload["candidates"]] == ["gi-site", "my-project"]
+
+
+def test_an_unsure_model_doesn_t_override_the_choice() -> None:
+    ask("Fix the contact form", target_project="my-project")
+    route(output(routed("gi-site", 0.4)))
+    assert started() == ["my-project"]
