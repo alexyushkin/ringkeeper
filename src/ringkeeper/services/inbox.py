@@ -58,6 +58,7 @@ from ringkeeper.services import (
     tasks,
     threads,
     titles,
+    web_access,
 )
 from ringkeeper.services.architect import MAX_REVIEWS
 from ringkeeper.services.audit import safe_text
@@ -313,9 +314,28 @@ def pressed(decision: Decision, choice: str) -> str:
         return "Denied."
     if choice == NO_PROJECT:
         return "OK, nothing was started."
+    if (decision.payload or {}).get("web"):
+        return f"OK: the web is allowed for {chosen(decision, choice)}. Trying again."
     if decision.kind is DecisionKind.ROUTE:
         return f"OK: {chosen(decision, choice)}."
     return "Answered."
+
+
+def button(decision: Decision, option: str) -> str | None:
+    """A choice's own words on a button, when it has them (else the caller's)."""
+    if decision.kind is DecisionKind.ROUTE and (decision.payload or {}).get("web"):
+        return web_access.NOT_NOW if option == NO_PROJECT else web_access.ALLOW
+    return None
+
+
+def asks(decision: Decision) -> str | None:
+    """What a route decision asks when it isn't "which project?": a go-ahead, or the web."""
+    payload = (decision.payload or {}) if decision.kind is DecisionKind.ROUTE else {}
+    if payload.get("production"):
+        return "Go ahead?"
+    if payload.get("web"):
+        return web_access.ASKS
+    return None
 
 
 def chosen(decision: Decision, option: str) -> str:
@@ -521,6 +541,19 @@ def _answer_route(
             threads.add_reply(session, decision.thread_id, NOT_STARTED)
         return None
     routed: dict[str, Any] = payload.get("task", {})
+    if payload.get("web"):  # "Allow web for this project and retry"
+        web_access.allow(session, choice, by=by)
+    elif routed.get("needs_web") and not web_access.allowed(
+        session, projects.get_project(session, choice)
+    ):  # the project picked can't use the web: ask that, then run it
+        ask = web_access.ask_payload(session, choice, str(payload.get("message") or ""), routed)
+        create(
+            session, settings, DecisionKind.ROUTE, ask,
+            thread_id=decision.thread_id, message_id=decision.message_id,
+        )  # fmt: skip
+        if decision.thread_id is not None:
+            threads.add_reply(session, decision.thread_id, str(ask["reason"]))
+        return None
     kind = TaskKind(routed["kind"]) if routed.get("kind") else None
     message = payload.get("message")
     if message:

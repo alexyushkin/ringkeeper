@@ -27,7 +27,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.router.model import RouterModel
-from ringkeeper.services import inbox
+from ringkeeper.services import inbox, web_access
 from ringkeeper.services.clients import names as client_names
 
 RECENT_TASKS = 25
@@ -118,6 +118,7 @@ def snapshot(session: Session, settings: Settings) -> dict[str, Any]:
                 "description": p.description,
                 "other_names": [p.name, *p.aliases],
                 "autonomy": p.autonomy.value,
+                "web": "on" if web_access.allowed(session, p) else "off",
                 "connections": sorted(_shown(b.instance) for b in p.bindings),
             }
             for p in projects

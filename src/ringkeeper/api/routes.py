@@ -41,6 +41,7 @@ from ringkeeper.services import (
     projects,
     threads,
     undo,
+    web_access,
 )
 
 public = APIRouter()
@@ -81,7 +82,11 @@ def get_project(name: str, session: SessionDep) -> ProjectDetailOut:
         )
         for b in bindings.sorted_bindings(project)
     ]
-    return ProjectDetailOut(**ProjectOut.model_validate(project).model_dump(), instances=bound)
+    return ProjectDetailOut(
+        **ProjectOut.model_validate(project).model_dump(), instances=bound,
+        web_allowed=web_access.allowed(session, project),
+        web_default=web_access.default(session, project),
+    )  # fmt: skip
 
 
 @router.get("/instances")

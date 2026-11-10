@@ -151,7 +151,7 @@ def test_worker_gets_the_session_config() -> None:
     assert config["max_turns"] == 9
     assert config["branch"] == f"ringkeeper/{task_id}"
     assert config["resume"] is None
-    assert config["disallowed_tools"] == ["WebFetch", "WebSearch"]  # standard autonomy
+    assert config["disallowed_tools"] == ["WebFetch", "WebSearch"]  # a client's: no web
     # Only the services the project is connected to.
     assert config["mcp_servers"] == {
         "ringkeeper-database": "http://gateway:8100/mcp/database",

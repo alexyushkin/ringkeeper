@@ -301,6 +301,8 @@ export function ProjectView({ name }: { name: string }) {
             <dd>{instances.length ? instances.map(connectionTitle).join(", ") : "None yet. Link one in the Connections tab."}{production ? ` (${production} production)` : ""}</dd>
             <dt className="text-muted">Works</dt>
             <dd>{autonomy}</dd>
+            <dt className="text-muted">Web access</dt>
+            <dd>{about.web_allowed ? "On: its tasks can look things up on the web" : "Off: its tasks can't use the web"}</dd>
           </dl>
         </Section>
         </>

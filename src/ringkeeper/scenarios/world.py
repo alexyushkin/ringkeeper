@@ -179,7 +179,7 @@ def build(
         ProjectIn(
             name=SITE, owner=owner, aliases=["site"], workspace_path=str(folder),
             description="Demo Co's marketing website: pages and copy, no customer data.",
-            autonomy=Autonomy.RELAXED,  # no customer data; its tasks may use the web
+            autonomy=Autonomy.RELAXED, web=True,  # no customer data; its tasks may use the web
         ),
     )  # fmt: skip
     # The operator's own client, for work that needs no client's connection.

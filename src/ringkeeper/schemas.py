@@ -84,6 +84,7 @@ class ProjectIn(_Input):
     repo_url: str | None = None
     workspace_path: str | None = None
     autonomy: Autonomy = Autonomy.STANDARD
+    web: bool | None = None  # its tasks can use the web; None: the default (web_access)
     # Shell commands run in the worker container after each worker turn.
     checks: CleanList = Field(default_factory=list[str])
     models: dict[ModelKey, ModelId] = Field(default_factory=dict[ModelKey, ModelId])
@@ -145,6 +146,7 @@ class ProjectOut(_Output):
     checks: list[str]
     models: dict[str, str]
     paused: bool = False  # its routines don't run on their own
+    web: bool | None = None  # its tasks can use the web; None: the default
 
 
 class InstanceOut(_Output):
@@ -167,6 +169,8 @@ class BoundInstanceOut(InstanceOut):
 
 class ProjectDetailOut(ProjectOut):
     instances: list[BoundInstanceOut]
+    web_allowed: bool = False  # what it is now: set, or the default (services.web_access)
+    web_default: bool = False  # what it is when it isn't set
 
 
 class MessageIn(_Input):

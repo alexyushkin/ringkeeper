@@ -5,6 +5,12 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Web access is a project setting of its own.** It no longer depends on how independently
+  a project works: on the project's Settings tab, **Web access** is on for your own client's
+  projects and off for a client's unless you change it. A request that needs the web where
+  it's off asks once, with **Allow web for this project and retry**, in the app and in your
+  chats. A project that had the web before keeps it.
+
 - **Fixed:** on Windows, voice transcription could lose its "too large" or "busy" answer
   and report a dropped connection instead: the service now reads and drops a refused upload
   before closing. The speech-to-text tests that need Docker skip, with a reason, when it isn't

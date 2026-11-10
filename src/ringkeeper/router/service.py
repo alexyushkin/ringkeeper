@@ -60,10 +60,18 @@ from ringkeeper.router.schema import (
     RouterOutput,
     parse,
 )
-from ringkeeper.services import clients, examples, inbox, mentions, tasks, threads, titles
+from ringkeeper.services import (
+    clients,
+    examples,
+    inbox,
+    mentions,
+    tasks,
+    threads,
+    titles,
+    web_access,
+)
 from ringkeeper.services import help as help_answers
 from ringkeeper.services.runtime import current_settings
-from ringkeeper.workers.manager import DISALLOWED_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +112,7 @@ def candidates(task: RoutedTask) -> list[Candidate]:
 
 def _task_fields(task: RoutedTask) -> dict[str, Any]:
     return {
+        "needs_web": task.needs_web,
         "prompt": task.prompt,
         "kind": task.kind.value,
         "risk": task.risk.value,
@@ -153,19 +162,12 @@ def _general(session: Session, message: Message, task: RoutedTask) -> RoutedTask
     return _firm(task, where) if where is not None else task
 
 
-def no_web(session: Session, task: RoutedTask) -> str | None:
-    """Why a task that needs the web can't have it in its project, in plain words."""
+def no_web(session: Session, task: RoutedTask) -> bool:
+    """A task that needs the web, in a project whose tasks can't use it."""
     if not task.needs_web:
-        return None
+        return False
     project = session.scalar(select(Project).where(Project.name == task.project))
-    if project is None or "WebSearch" not in DISALLOWED_TOOLS[project.autonomy]:
-        return None
-    title = titles.of(session, project.name)
-    return (
-        f"Tasks in {title} can't use the web: its autonomy is {project.autonomy.value}, which "
-        f"turns web access off. To allow it, set {title} to relaxed on its Settings tab, "
-        "then send this again."
-    )
+    return project is not None and not web_access.allowed(session, project)
 
 
 def remembered(session: Session, message: Message) -> str | None:
@@ -268,6 +270,15 @@ def _ask(
     )
 
 
+def _ask_web(session: Session, settings: Settings, message: Message, task: RoutedTask) -> Decision:
+    """Asked once: allow the web for the project and run it, or don't."""
+    payload = web_access.ask_payload(session, task.project, message.body, _task_fields(task))
+    return inbox.create(
+        session, settings, DecisionKind.ROUTE, payload,
+        thread_id=message.thread_id, message_id=message.id,
+    )  # fmt: skip
+
+
 def named_agent(session: Session, project: str, name: str | None) -> Agent | None:
     """The project's agent, however the model wrote its name: "Stock Checker" is stock-checker.
     A task without it could reach more than the agent can, so this mustn't miss on spelling."""
@@ -323,6 +334,8 @@ def _reply(session: Session, routed: Routed, output: RouterOutput) -> str:
         payload = decision.payload or {}
         if payload.get("production"):
             lines.append(f"Before I start: this would use {payload['production']} (production).")
+        elif payload.get("web"):
+            lines.append(str(payload["reason"]))
         else:
             lines.append(threads.ASKS_PROJECT)
     if output.reply and not routed.decisions:
@@ -346,8 +359,8 @@ def _route_tasks(
             routed.decisions.append(_ask(session, settings, message, task, owners=owners))
         elif (live := production_connection(session, task)) is not None:
             routed.decisions.append(_ask(session, settings, message, task, live))
-        elif (blocked := no_web(session, task)) is not None:
-            routed.notes.append(blocked)
+        elif no_web(session, task):
+            routed.decisions.append(_ask_web(session, settings, message, task))
         else:
             routed.tasks.append(_dispatch(session, settings, message, task))
     said = _reply(session, routed, output)

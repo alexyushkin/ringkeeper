@@ -52,6 +52,7 @@ from ringkeeper.services import (
     revocations,
     subscription,
     tasks,
+    web_access,
 )
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.tokens import TokenRole, issue_token, model_token_id
@@ -67,11 +68,12 @@ from ringkeeper.workers.runtime import (
 
 logger = logging.getLogger(__name__)
 
-# Tools removed from the agent's context by project autonomy. The container is
-# the sandbox either way; these narrow what the agent can try inside it.
+# Tools removed from the agent's context by project autonomy, and the web's unless the
+# project allows it (services.web_access). The container is the sandbox either way; these
+# narrow what the agent can try inside it.
 DISALLOWED_TOOLS = {
-    Autonomy.STRICT: ["Bash", "WebFetch", "WebSearch"],
-    Autonomy.STANDARD: ["WebFetch", "WebSearch"],
+    Autonomy.STRICT: ["Bash"],
+    Autonomy.STANDARD: [],
     Autonomy.RELAXED: [],
 }
 MAX_EVENT_BYTES = 64 * 1024
@@ -444,6 +446,7 @@ class Manager:
             project = projects.get_project(session, job.project)
             workspace = resolve_workspace(project.workspace_path, settings.workspaces_root)
             autonomy = project.autonomy
+            web = web_access.allowed(session, project)
             checks = list(project.checks)
             task_row = session.get(Task, job.task_id)
             agent = agents.of_task(session, task_row) if task_row is not None else None
@@ -507,7 +510,9 @@ class Manager:
                 else {f"ringkeeper-{name}": f"{base}/mcp/{name}" for name in endpoints}
             ),
             "disallowed_tools": (
-                architect.DISALLOWED_TOOLS if architect_role else DISALLOWED_TOOLS[autonomy]
+                architect.DISALLOWED_TOOLS
+                if architect_role
+                else [*DISALLOWED_TOOLS[autonomy], *([] if web else web_access.TOOLS)]
             ),
             "role": job.role.value,
             "checks": checks if job.feature and not architect_role else [],

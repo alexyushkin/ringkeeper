@@ -233,6 +233,8 @@ class Project(TimestampMixin, Base):
     memory: Mapped[dict[str, Any]] = mapped_column(Doc, server_default="{}")
     # Its routines don't run while paused (services.routines).
     paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Whether its tasks can use the web; None: the default (services.web_access).
+    web: Mapped[bool | None] = mapped_column(Boolean)
 
     bindings: Mapped[list["ProjectInstance"]] = relationship(
         back_populates="project",

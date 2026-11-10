@@ -18,9 +18,18 @@ export interface ProjectData {
   repo_url: string | null;
   workspace_path: string | null;
   autonomy: string;
+  web?: boolean | null; // its tasks can use the web; null: the default
+  web_allowed?: boolean; // what it is now
   checks: string[];
   models: Record<string, string>;
 }
+
+/** Web access, apart from autonomy: unset, on for your own projects and off for a client's. */
+const WEB: [string, string][] = [
+  ["", "Default: on for your own projects, off for a client's"],
+  ["on", "On: tasks can look things up on the web"],
+  ["off", "Off: tasks can't use the web"],
+];
 
 /** What adding a project answers. On the desktop: the folder it got. */
 export interface ProjectSaved {
@@ -41,6 +50,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
   const [folder, setFolder] = useState(existing?.workspace_path ?? "");
   const [repo, setRepo] = useState(existing?.repo_url ?? "");
   const [autonomy, setAutonomy] = useState(existing?.autonomy ?? "standard");
+  const [web, setWeb] = useState(existing?.web == null ? "" : existing.web ? "on" : "off");
   const [checks, setChecks] = useState((existing?.checks ?? []).join("\n"));
   const [models, setModels] = useState(
     Object.entries(existing?.models ?? {})
@@ -79,6 +89,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
       workspace_path: folder.trim() || null,
       repo_url: repo.trim() || null,
       autonomy,
+      web: web === "" ? null : web === "on",
       checks: lines(checks),
       models: Object.fromEntries(lines(models).map((l) => l.split("=").map((p) => p.trim()) as [string, string])),
     };
@@ -136,6 +147,7 @@ export function ProjectForm({ existing, client: forClient, onSaved }: { existing
         onChange={setAutonomy}
         options={Object.entries(AUTONOMY).map(([k, [label, help]]) => [k, `${label}: ${help}`])}
       />
+      <Select label="Web access" value={web} onChange={setWeb} options={WEB} />
       </div>
       <Details>
         <div className="space-y-4">

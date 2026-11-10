@@ -162,7 +162,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
     <Card className={destructive || decision.production ? "border-bad" : "border-warn"}>
       <div id={decision.id} className="flex flex-wrap items-center gap-2">
         <Badge tone={decision.kind === "approve" ? "bad" : decision.kind === "question" ? "accent" : "warn"}>
-          {decision.kind === "route" && typeof payload.production === "string" ? "Go ahead?" : decision.kind === "approve" && !decision.production ? "Change" : (KIND[decision.kind] ?? decision.kind)}
+          {decision.kind === "route" && typeof payload.production === "string" ? "Go ahead?" : decision.kind === "route" && typeof payload.web === "string" ? "Use the web?" : decision.kind === "approve" && !decision.production ? "Change" : (KIND[decision.kind] ?? decision.kind)}
         </Badge>
         {decision.project ? <span className="font-medium">{place(decision.client, decision.project)}</span> : null}
         {decision.production ? <Badge tone="bad">production</Badge> : null}
@@ -337,7 +337,8 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
   const payload = decision.payload ?? {};
   const task = (payload.task ?? {}) as { outcome?: string };
   const production = typeof payload.production === "string" ? payload.production : null;
-  const projects = useApi<{ name: string }[]>(production ? null : "projects");
+  const web = typeof payload.web === "string" ? payload.web : null;
+  const projects = useApi<{ name: string }[]>(production || web ? null : "projects");
   const [other, setOther] = useState("");
   const [remember, setRemember] = useState(false);
   const offered = decision.options.filter((o) => o !== NONE);
@@ -363,6 +364,24 @@ function RouteQuestion({ decision, busy, onAnswer }: { decision: Decision; busy:
     );
   }
   const why = typeof payload.reason === "string" ? payload.reason : "";
+  if (web) {
+    const project = offered[0] ?? decision.project ?? "";
+    return (
+      <div className="mt-3 space-y-3">
+        <p className="text-sm">{why}</p>
+        {task.outcome ? <Markdown text={task.outcome} className="text-sm text-muted" /> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button kind="primary" busy={busy === project} onClick={() => onAnswer(project)}>
+            Allow web for this project and retry
+          </Button>
+          <Button kind="ghost" busy={busy === NONE} onClick={() => onAnswer(NONE)}>
+            Not now
+          </Button>
+        </div>
+        <p className="text-xs text-muted">You can turn it off again on the project&apos;s Settings tab.</p>
+      </div>
+    );
+  }
   const offerFor = typeof payload.offer_default === "string" ? payload.offer_default : null;
   async function pick(option: string) {
     if (offerFor && remember && option !== NONE) await api(`clients/${offerFor}/default-project`, { method: "PUT", json: { project: option } }).catch(() => undefined);
