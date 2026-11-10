@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from ringkeeper.config import Settings
 from ringkeeper.errors import NotFoundError, RingkeeperError, RuleViolationError
-from ringkeeper.models import Setting, Task, TaskStatus, Thread
+from ringkeeper.models import TERMINAL_STATUSES, Setting, Task, TaskStatus, Thread
 from ringkeeper.services import admin_audit, projects, tasks, titles
 
 ACTIVE = (TaskStatus.QUEUED, TaskStatus.RUNNING)
@@ -76,13 +76,9 @@ def archive(session: Session, kind: str, ids: list[str], archived: bool, *, by: 
     return len(rows)
 
 
-# Tasks that didn't finish their work: failed, ran out of time or budget, or stopped.
-UNFINISHED = (
-    TaskStatus.FAILED,
-    TaskStatus.TIMED_OUT,
-    TaskStatus.BUDGET_EXCEEDED,
-    TaskStatus.STOPPED,
-)
+# Tasks that didn't finish their work: every ending but done (failed, not done, ran out of
+# time or budget, stopped; a new ending counts too).
+UNFINISHED = frozenset(TERMINAL_STATUSES - {TaskStatus.SUCCEEDED})
 
 
 def old_unfinished(session: Session, days: int) -> list[Task]:

@@ -12,13 +12,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper.config import Settings
-from ringkeeper.models import Decision, DecisionStatus, Project, Setting, Task, TaskStatus
+from ringkeeper.models import (
+    TERMINAL_STATUSES,
+    Decision,
+    DecisionStatus,
+    Project,
+    Setting,
+    Task,
+    TaskStatus,
+)
 from ringkeeper.services import announce, clients, inbox, titles
 from ringkeeper.wording import plain
 
 LAST_KEY = "digest.last"
 WINDOW = timedelta(days=1)
-FAILED = (TaskStatus.FAILED, TaskStatus.TIMED_OUT, TaskStatus.BUDGET_EXCEEDED)
+# Every ending that's a problem: all but done and stopped by you (a new one counts too).
+FAILED = frozenset(TERMINAL_STATUSES - {TaskStatus.SUCCEEDED, TaskStatus.STOPPED})
 
 
 @dataclass
@@ -47,7 +56,10 @@ def build(session: Session, now: datetime | None = None) -> dict[str, Any]:
         one.ran += 1
         if task.status in FAILED:
             title = shown.get(task.project) or titles.spoken(task.project)
-            one.failed.append(f"{title}: {plain(task.outcome or task.prompt)[:120]}")
+            what = plain(task.outcome or task.prompt)[:120]
+            if task.status is TaskStatus.NOT_DONE and task.error:  # with why
+                what = f"not done: {plain(task.error)[:120]}"
+            one.failed.append(f"{title}: {what}")
     pending = select(Decision).where(Decision.status == DecisionStatus.PENDING)
     for decision in session.scalars(pending):
         day(decision.project).waiting.append(inbox.summary(decision, 120))

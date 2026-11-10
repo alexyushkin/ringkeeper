@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Fixed:** a task that ran but couldn't do what was asked ("not done") was missed in places:
+  the morning summary now lists it as a problem with its reason, the client's month report
+  says "not done", cleanup counts it as unfinished, a Claude Desktop pass is told "not done"
+  and why, and the self-test no longer tries to stop it.
+
 - **Fixed:** a short new request that named a project ("List Acme's active workflows") could
   be taken as the answer to an older "which project?" question, and the request was lost. Only
   a reply that's just a name, sent right after the question, answers it now; "yes" counts as a

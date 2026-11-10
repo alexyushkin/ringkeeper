@@ -361,6 +361,7 @@ STATUS_WORDS = {
     TaskStatus.TIMED_OUT: "ran out of time",
     TaskStatus.BUDGET_EXCEEDED: "stopped at its spending cap",
     TaskStatus.STOPPED: "stopped",
+    TaskStatus.NOT_DONE: "not done",
 }
 
 
