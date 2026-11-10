@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fixed:** on Windows, voice transcription could lose its "too large" or "busy" answer
+  and report a dropped connection instead: the service now reads and drops a refused upload
+  before closing. The speech-to-text tests that need Docker skip, with a reason, when it isn't
+  running.
+
 ## 0.1.0-beta.34 (2026-11-10)
 
 - **Fixed:** a task that ran but couldn't do what was asked ("not done") was missed in places:

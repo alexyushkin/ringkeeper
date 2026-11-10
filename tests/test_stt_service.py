@@ -1,6 +1,7 @@
 """The stt service: request rules on a fake engine, then the real image with a recording."""
 
 import base64
+import os
 import socket
 import threading
 import time
@@ -11,6 +12,7 @@ from typing import Any
 import docker
 import httpx2
 import pytest
+from docker.errors import DockerException
 
 from ringkeeper_stt import whisper
 from ringkeeper_stt.config import ConfigError, SttConfig, load
@@ -149,6 +151,18 @@ def test_transcribe_and_limits(fake_stt: tuple[str, FakeEngine]) -> None:
         assert engine.decoded == [14, 4, 4]
 
 
+def test_a_refused_upload_still_gets_its_answer(fake_stt: tuple[str, FakeEngine]) -> None:
+    """The server answers before reading the body, then drops what was sent rather than
+    closing on unread bytes, which resets the connection and loses the 413 (Windows)."""
+    url, engine = fake_stt
+    body = b"OggS" + b"x" * 200_000
+    with httpx2.Client(base_url=url) as http:
+        for _ in range(30):
+            refused = http.post("/transcribe", content=body)
+            assert (refused.status_code, refused.json()["error"]) == (413, "too_large")
+    assert engine.decoded == []
+
+
 def test_a_negative_length_is_refused(fake_stt: tuple[str, FakeEngine]) -> None:
     url, _ = fake_stt
     host, port = url.removeprefix("http://").split(":")
@@ -200,7 +214,13 @@ def _audio_files(container: Any) -> list[str]:
 
 @pytest.fixture(scope="module")
 def stt_container() -> Iterator[tuple[str, Any]]:
-    client = docker.from_env()
+    if os.environ.get("RINGKEEPER_TEST_NO_DOCKER") == "1":
+        pytest.skip("needs Docker, and RINGKEEPER_TEST_NO_DOCKER=1")
+    try:
+        client = docker.from_env()
+        client.ping()
+    except DockerException:
+        pytest.skip("needs Docker to build and run the stt image, and there's no Docker here")
     client.images.build(path=str(ROOT / "stt"), tag=IMAGE, rm=True)
     port = free_port()
     container = client.containers.run(
