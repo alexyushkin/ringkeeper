@@ -64,7 +64,8 @@ export default function Home() {
         {threads.items?.map((thread) => {
           const running = (thread.tasks.running ?? 0) + (thread.tasks.queued ?? 0);
           const done = thread.tasks.succeeded ?? 0;
-          const failed = (thread.tasks.failed ?? 0) + (thread.tasks.timed_out ?? 0);
+          const failed = (thread.tasks.failed ?? 0) + (thread.tasks.timed_out ?? 0) + (thread.tasks.budget_exceeded ?? 0);
+          const notDone = thread.tasks.not_done ?? 0;
           return (
             <li key={thread.id} className="flex items-start gap-3">
               <span className="pt-5">
@@ -81,6 +82,7 @@ export default function Home() {
                   {running ? <Badge tone="accent">{running} working</Badge> : null}
                   {done ? <Badge tone="good">{done} done</Badge> : null}
                   {failed ? <Badge tone="bad">{failed} failed</Badge> : null}
+                  {notDone ? <Badge tone="bad">{notDone} not done</Badge> : null}
                   <Badge>from {SOURCE[thread.source] ?? "another app"}</Badge>
                   {thread.archived ? <Badge>archived</Badge> : null}
                 </div>
