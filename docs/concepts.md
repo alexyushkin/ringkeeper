@@ -69,7 +69,10 @@ stash them first.
 
 The client and project chosen at the top of the app are a firm choice for new requests,
 like an @-mention: the box says "Sending to Alexey › My Project", and a request sent then
-goes to that project without asking.
+goes to that project without asking. Two exceptions: an @-mention of another project or
+client in the request wins, and when the request is clearly for another client's project,
+it asks once ("This looks like it's for Acme, but My Project is selected"), with both as
+buttons.
 
 Work that needs no client's connection, like a web lookup, writing, or summarizing text
 you pasted, runs in the chosen project. With nothing chosen, it runs in your own client's
