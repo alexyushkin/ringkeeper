@@ -232,6 +232,17 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
     )
 
 
+def _save_result(row: WorkerSession, result: dict[str, Any]) -> None:
+    """What the SDK's result says about a session: turns, cost, tokens, its conversation."""
+    row.result_subtype = result.get("subtype")
+    row.turns = result.get("num_turns")
+    cost = result.get("total_cost_usd")
+    row.cost_usd = float(cost) if isinstance(cost, int | float) else None
+    row.usage = result.get("usage")
+    row.model_usage = result.get("model_usage")
+    row.sdk_session_id = result.get("session_id") or row.sdk_session_id
+
+
 class Manager:
     def __init__(
         self,
@@ -592,17 +603,18 @@ class Manager:
         row: WorkerSession,
         task: Task,
         failure: claude_failures.Failure,
-    ) -> TaskStatus:
+    ) -> tuple[TaskStatus, float | None]:
         """A usage limit: the task waits for the reset (nothing new starts until then). A
-        transient failure: tried again after a wait, a few times. A login: it says so."""
+        transient failure: tried again after a wait, a few times. A login: it says so.
+        Returns the status, and the wait before trying again (once this is committed)."""
         row.error = task.error = failure.message
         if failure.kind is claude_failures.Kind.LOGIN:
-            return TaskStatus.FAILED
+            return TaskStatus.FAILED, None
         tries = sum(1 for s in task.sessions if s.error == failure.message)
         if failure.kind is claude_failures.Kind.USAGE_LIMIT:
             claude_failures.pause_until(session, failure)
         elif tries > len(claude_failures.RETRY_WAITS):
-            return TaskStatus.FAILED  # tried enough: it says what happened
+            return TaskStatus.FAILED, None  # tried enough: it says what happened
         wait = (
             0.0
             if failure.kind is claude_failures.Kind.USAGE_LIMIT
@@ -610,8 +622,7 @@ class Manager:
         )
         task.status = TaskStatus.QUEUED
         task.finished_at = None
-        threading.Timer(wait * self.retry_scale, self._try_again, args=(job.task_id,)).start()
-        return TaskStatus.QUEUED
+        return TaskStatus.QUEUED, wait * self.retry_scale
 
     def _try_again(self, task_id: uuid.UUID) -> None:
         """Run a task again where it left off, after Claude's side failed."""
@@ -631,10 +642,19 @@ class Manager:
     def _finalize(
         self, job: Job, jti: str | None, collected: Collected, killed: TaskStatus | None
     ) -> None:
+        retry = self._record(job, jti, collected, killed)
+        if retry is not None:  # it reads the queued task: only once that's committed
+            threading.Timer(retry, self._try_again, args=(job.task_id,)).start()
+
+    def _record(
+        self, job: Job, jti: str | None, collected: Collected, killed: TaskStatus | None
+    ) -> float | None:
+        """How the session ended, saved. Returns the wait before trying it again, if any."""
         status, error = outcome_status(job, collected, killed)
         result = collected.result or {}
         workspace = collected.workspace or {}
         now = datetime.now(UTC)
+        retry: float | None = None  # tried again after this wait, once committed
         with session_scope() as session:
             row = session.get(WorkerSession, job.session_id)
             if row is not None:
@@ -642,13 +662,7 @@ class Manager:
                 row.finished_at = now
                 row.exit_code = collected.exit_code
                 row.error = error
-                row.result_subtype = result.get("subtype")
-                row.turns = result.get("num_turns")
-                cost = result.get("total_cost_usd")
-                row.cost_usd = float(cost) if isinstance(cost, int | float) else None
-                row.usage = result.get("usage")
-                row.model_usage = result.get("model_usage")
-                row.sdk_session_id = result.get("session_id") or row.sdk_session_id
+                _save_result(row, result)
                 task = row.task
                 task.status = status
                 task.finished_at = now
@@ -684,7 +698,7 @@ class Manager:
                     status = self._pause_at_cap(session, job, row, task)
                 failure = claude_failure(collected) if status is TaskStatus.FAILED else None
                 if failure is not None and not job.feature:
-                    status = self._on_claude_failure(session, job, row, task, failure)
+                    status, retry = self._on_claude_failure(session, job, row, task, failure)
                 if status is TaskStatus.NEEDS_INPUT and not waiting and collected.question:
                     payload = {"question": collected.question, "role": job.role.value}
                     inbox.create(
@@ -703,3 +717,4 @@ class Manager:
                     by=REVOKED_BY,
                     expires_at=job.started_at + timedelta(seconds=job.max_runtime_s),
                 )
+        return retry
