@@ -57,6 +57,8 @@ class RouterOutput(_Strict):
     # A question about Ringkeeper itself (the operator's connections, projects, clients,
     # tasks, approvals, settings, costs): answered from Ringkeeper's own data, no task.
     about_ringkeeper: bool = False
+    # It asks for work, but you can't tell which project: no tasks, and the reply says so.
+    unplaced: bool = False
 
 
 class InvalidOutputError(ValueError):

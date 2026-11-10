@@ -97,7 +97,7 @@ def test_yes_is_the_go_ahead_on_production() -> None:
 
 def test_naming_a_project_places_a_request_that_couldn_t_be_placed() -> None:
     thread = say("Look into the broken signup")
-    route(output(reply="I can't tell which project this is for."))  # nothing started
+    route({"tasks": [], "reply": "I can't tell which project this is for.", "unplaced": True})
     assert started() == []
     say("Alexey, My Project", thread)
     model = FakeModel([output(routed("gi-site", 0.9, prompt="Look into the broken signup."))])
@@ -124,3 +124,54 @@ def test_names_are_matched_as_whole_words() -> None:
         assert named_project(session, "website or blog") is None  # two: not an answer
         assert named_project(session, "blogging tips") is None
         assert inbox.NO_PROJECT
+
+
+# --- From a review: follow-ups mustn't swallow new requests ---
+
+
+def test_a_new_short_request_naming_a_project_isn_t_the_answer() -> None:
+    thread = say("Fix the contact form")
+    route(UNSURE)
+    say("List Blog's newest posts", thread)  # names a project, but asks for something new
+    route(output(routed("gi-blog", 0.95, prompt="List the newest posts.")))
+    assert started() == [("gi-blog", "List the newest posts.")]
+    assert open_questions() == 1  # the question is still open
+
+
+def test_a_greeting_isn_t_placed_by_the_next_message() -> None:
+    thread = say("thanks")
+    route(output(reply="You're welcome!"))
+    say("check My Project's leads", thread)
+    model = FakeModel([output(routed("my-project", 0.95, prompt="Check the leads."))])
+    assert route_next(get_settings(), model) is not None
+    assert started() == [("my-project", "Check the leads.")]
+    assert "MESSAGE TO ROUTE:\ncheck My Project's leads" in model.calls[0][1]
+
+
+def test_ok_after_other_messages_isn_t_a_go_ahead() -> None:
+    with session_scope() as session:
+        make_instance(
+            session, "gi-db", env=Env.PROD, owner="General Informatics LLC",
+            secret_ref="aws-sm://gi/db",
+        )  # fmt: skip
+    bind("gi-site", "gi-db")
+    thread = say("How many orders came in today?")
+    route(output(routed("gi-site", 0.95, kind="data")))
+    say("thanks", thread)
+    route(output(reply="You're welcome!"))
+    say("what's the weather like", thread)
+    route(output(reply="I can't check the weather."))
+    say("ok", thread)
+    route(output(reply="OK."))  # the model sees it; it isn't taken as the go-ahead
+    assert started() == []
+    assert open_questions() == 1
+
+
+def test_just_a_name_is_needed_to_place_an_unplaced_request() -> None:
+    thread = say("Look into the broken signup")
+    route({"tasks": [], "reply": "I can't tell which project this is for.", "unplaced": True})
+    say("Also fix My Project's footer", thread)  # more than a name: its own request
+    model = FakeModel([output(routed("my-project", 0.95, prompt="Fix the footer."))])
+    assert route_next(get_settings(), model) is not None
+    assert started() == [("my-project", "Fix the footer.")]
+    assert "MESSAGE TO ROUTE:\nAlso fix My Project's footer" in model.calls[0][1]

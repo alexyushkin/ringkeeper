@@ -174,6 +174,12 @@ class Driver:
             seen.confirmed_production = True
             choice = candidates[0]
         else:
+            if scenario.leave_open:  # left for the next request not to answer
+                if str(decision.id) not in seen.left_open:
+                    seen.left_open.append(str(decision.id))
+                    seen.asked = True
+                    seen.times_asked += 1
+                return
             seen.asked = True
             seen.times_asked += 1
             wanted = scenario.project if isinstance(scenario.project, str) else None
@@ -238,7 +244,8 @@ class Driver:
                     if ident not in noted:
                         noted.add(ident)
                         seen.holds.append(f"{decision.tool} on {decision.instance}")
-            calm = not waiting and all(t.status in RESTING for t in found)
+            open_ones = [d for d in waiting if str(d.id) not in seen.left_open]
+            calm = not open_ones and all(t.status in RESTING for t in found)
         for ident, instance in holds:
             self._approve(ident, instance, scenario.answer, seen)
         return calm
@@ -436,6 +443,13 @@ class Driver:
                     )
                 self._wait(thread, scenario, seen, deadline)
             ids = self._gather(thread, scenario, seen)
+            if seen.left_open:
+                with session_scope() as session:
+                    seen.still_open = all(
+                        decisions.get_decision(session, i).status is DecisionStatus.PENDING
+                        and not decisions.get_decision(session, i).answer
+                        for i in seen.left_open
+                    )
             seen.rows = [(r.sql, self._value(r), r.expected) for r in scenario.rows]
             if scenario.undo is not None:
                 self._undo(scenario.undo.before, ids, seen)
