@@ -34,7 +34,7 @@ from ringkeeper.workers.runtime import WorkerSpec, daemon_path
 from tests.conftest import CLAUDE_API_KEY as API_KEY
 from tests.conftest import CLAUDE_OAUTH_TOKEN
 from tests.fake_runtime import FakeRuntime, Script, line, result_line, workspace_line
-from tests.helpers import bind, make_instance
+from tests.helpers import bind, make_instance, make_project
 
 PROXY_VARS = ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]  # no credential: the model proxy
 
@@ -274,8 +274,12 @@ def test_worker_env_is_an_allowlist() -> None:
 @pytest.mark.usefixtures("task_registry")
 def test_concurrency_cap_queues_extra_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RINGKEEPER_MAX_CONCURRENT_WORKERS", "2")
+    with session_scope() as session:  # three folders: one task at a time works in each
+        make_project(session, "acme-blog", workspace_path="acme-blog")
     m, runtime = manager(lambda _spec: Script(delay=0.6))
-    ids = [run_task(prompt=f"task {i}") for i in range(3)]
+    ids = [
+        run_task(project, prompt="task") for project in ("acme-web", "globex-portal", "acme-blog")
+    ]
     m.tick()
     time.sleep(0.1)
     assert [task(i).status for i in ids] == [

@@ -142,8 +142,14 @@ def test_a_task_runs_as_a_local_process(desktop: dict[str, Any]) -> None:
         assert time.monotonic() < deadline, found
         time.sleep(0.3)
     assert found["status"] == "succeeded", found
-    notes = desktop["workspaces"] / "acme-web" / "NOTES.md"
-    assert notes.read_text(encoding="utf-8") == "desktop\n"
+    # The work is on the task's branch; the folder is checked out as it was before.
+    folder = desktop["workspaces"] / "acme-web"
+    assert not (folder / "NOTES.md").exists()
+    shown = subprocess.run(  # noqa: S603 (fixed argv)
+        ["git", "-C", str(folder), "show", f"ringkeeper/{task_id}:NOTES.md"],  # noqa: S607
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    assert shown.stdout == "desktop\n"
 
 
 def test_the_front_door_serves_the_exported_app(tmp_path: Path) -> None:
