@@ -80,6 +80,8 @@ def _line(r: Result) -> str:
         return f"| {r.scenario.key} | skipped | {_cell(r.why_skipped)} | | |"
     verdict = "pass" if r.passed else "**fail**"
     why = "; ".join(r.wrong) or (r.seen.crossing if r.scenario.pushed else "as expected")
+    if r.seen.notes and not r.wrong:  # what the self-test answered along the way
+        why += "; " + "; ".join(r.seen.notes)
     return (
         f"| {r.scenario.key} | {verdict} | {_cell(why)} | ${r.seen.cost:.3f} | {r.seen.minutes} |"
     )

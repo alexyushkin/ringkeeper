@@ -417,14 +417,14 @@ def test_what_counts_as_a_question_about_the_setup() -> None:
 # --- Production waits for a go-ahead ---
 
 
-def test_production_data_waits_for_a_go_ahead_in_the_conversation() -> None:
+def test_a_production_change_waits_for_a_go_ahead_in_the_conversation() -> None:
     with session_scope() as session:
         make_instance(
             session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db", owner="globex"
         )
     bind("globex-portal", "globex-db")
     thread_id = ask("How many orders did globex get today?")
-    route(FakeModel([output(routed("globex-portal", 0.97, kind="data"))]))
+    route(FakeModel([output(routed("globex-portal", 0.97, kind="data", risk="prod-write"))]))
     assert all_tasks() == []  # nothing reaches production yet
     [decision] = route_decisions()
     assert decision.payload is not None
@@ -588,3 +588,16 @@ def test_naming_an_agent_runs_the_task_as_it() -> None:
         found = session.get(Task, task.id)
         assert found is not None
         assert found.agent_id is not None
+
+
+def test_a_read_of_production_starts_without_asking() -> None:
+    """From a review: a read waited for a go-ahead; the gateway holds changes anyway."""
+    with session_scope() as session:
+        make_instance(
+            session, "globex-db", env=Env.PROD, secret_ref="aws-sm://globex/db", owner="globex"
+        )
+    bind("globex-portal", "globex-db")
+    ask("How many orders did globex get today?")
+    route(FakeModel([output(routed("globex-portal", 0.97, kind="data"))]))  # risk: read
+    assert [t.project for t in all_tasks()] == ["globex-portal"]
+    assert route_decisions() == []

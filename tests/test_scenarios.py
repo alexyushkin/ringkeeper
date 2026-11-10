@@ -70,6 +70,11 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
         (scenario(agent="Bo"), Evidence(), "Bo didn't run it"),
         (scenario(tools=("query",)), Evidence(tools=["list_tables"]), "didn't use query"),
         (scenario(held=1), Evidence(), "expected 1 approval"),
+        (
+            scenario(project=SHOP, never_held=True),
+            Evidence(projects=[SHOP], confirmed_production=True),
+            "asked to go ahead on production",
+        ),
         (scenario(never_held=True), Evidence(holds=["execute"]), "shouldn't have been"),
         (scenario(held=1, answer=TYPED), Evidence(holds=["execute"]), "wasn't refused"),
         (scenario(reply_has=("Ana",)), Evidence(replies="Bo"), "doesn't say 'Ana'"),
@@ -435,3 +440,13 @@ def test_a_report_s_transcript_names_no_folder_of_this_computer() -> None:
     assert "<workspaces>/demo-shop" in out
     assert r"<self-test folder>\data" in out
     assert r"~\notes" in out
+
+
+def test_a_go_ahead_the_self_test_answered_is_in_the_report() -> None:
+    """Not answered silently: a scenario that passed still says it was asked."""
+    seen = Evidence(projects=[SHOP], confirmed_production=True)
+    seen.notes.append("it asked to go ahead on Demo shop database; said yes")
+    text = report.render(
+        [report.result(scenario(project=SHOP), seen)], day="2026-11-10", model="m", credential="k"
+    )
+    assert "as expected; it asked to go ahead on Demo shop database; said yes" in text
