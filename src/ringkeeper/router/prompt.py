@@ -104,6 +104,9 @@ Rules:
 - A short follow-up continues the open request in THREAD SO FAR: "yes", "do it", "the
   Acme one", "use my own Google instead". Make the task the earlier request asked for,
   changed as the follow-up says; don't ask what they'd like you to do.
+- `unplaced`: true only when the message asks for work but you can't tell which project it
+  is for at all, so you return no tasks; say so in `reply`. A greeting, thanks or a question
+  you answered is never unplaced.
 - `reply` is one short line for the operator.
 
 Answer with one JSON object and nothing else, matching this JSON schema:

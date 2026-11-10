@@ -357,6 +357,15 @@ def _route_tasks(
     return routed
 
 
+def _answer_meta(routed: Routed, output: RouterOutput) -> dict[str, Any]:
+    """What a reply that started nothing records: its words, and whether the router said it
+    couldn't place the request (then a name sent next places it: router.follow_up)."""
+    said: dict[str, Any] = {"answer": sensitive.mask(routed.reply)}
+    if output.unplaced:
+        said["unplaced"] = True
+    return said
+
+
 def route_message(
     session: Session, settings: Settings, message: Message, model: RouterModel
 ) -> Routed:
@@ -437,7 +446,7 @@ def route_message(
         "decisions": [str(d.id) for d in routed.decisions],
     }
     if not routed.tasks and not routed.decisions:  # an answer: what the thread shows
-        meta["answer"] = sensitive.mask(routed.reply)
+        meta |= _answer_meta(routed, output)
     threads.mark_routed(session, message, meta)
     threads.add_reply(session, message.thread_id, routed.reply)
     return routed

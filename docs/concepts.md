@@ -79,11 +79,15 @@ and says why in one line, like "Both Website and Blog have a contact form." It d
   to make your pick the default.
 
 You can answer by replying, too, in the app or a chat: send just the project's name ("Blog",
-"the Acme one", "Alexey, My Project") and the request you sent runs there, with no second
-question. "None" or "neither" starts nothing. When it asks to go ahead on production,
-"yes" or "do it" is the go-ahead. If it couldn't tell where a request goes, a reply naming
-the project sends that request there. Other short follow-ups, like "use my own Google
-instead", continue the open request.
+"the Acme one", "Alexey, My Project") right after the question, and the request you sent
+runs there, with no second question. "None" or "neither" starts nothing. When it asks to go
+ahead on production, "yes" or "do it" is the go-ahead. If it said it couldn't tell where a
+request goes, a reply that's just the project's name sends that request there.
+
+Only a reply that's just a name, sent right after, counts as the answer. A message that asks
+for something ("List Acme's active workflows") is a new request even if it names a project,
+and the question stays open. Other short follow-ups, like "use my own Google instead",
+continue the open request.
 
 See also: [Connections](connections.md), [Agents and routines](agents-and-routines.md),
 [Approvals and safety](approvals.md).

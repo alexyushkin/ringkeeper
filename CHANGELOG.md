@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fixed:** a short new request that named a project ("List Acme's active workflows") could
+  be taken as the answer to an older "which project?" question, and the request was lost. Only
+  a reply that's just a name, sent right after the question, answers it now; "yes" counts as a
+  go-ahead only right after one. And a name sent after a greeting no longer re-routes the
+  greeting: only a request the router said it couldn't place is placed by a name.
+
 ## 0.1.0-beta.33 (2026-11-09)
 
 - **A service you host for clients.** A client's connection can become your own tool

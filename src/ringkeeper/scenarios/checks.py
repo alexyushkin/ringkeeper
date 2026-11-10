@@ -16,6 +16,8 @@ class Evidence:
     agents: list[str] = field(default_factory=list[str])
     asked: bool = False  # the router asked which project
     times_asked: int = 0  # how often, over the whole conversation
+    left_open: list[str] = field(default_factory=list[str])  # questions left unanswered
+    still_open: bool = False  # and still unanswered at the end
     asks_after_start: bool = False  # work ran, but the last reply still asks which project
     confirmed_production: bool = False  # the router asked before using production
     tools: list[str] = field(default_factory=list[str])
@@ -49,7 +51,7 @@ def _routing(scenario: Scenario, seen: Evidence) -> list[str]:
         wrong.append(f"it started work in {', '.join(seen.projects)}")
     if scenario.project is not None:
         wanted = (scenario.project,) if isinstance(scenario.project, str) else scenario.project
-        if scenario.pick is None and seen.asked:
+        if scenario.pick is None and seen.asked and not scenario.leave_open:
             wrong.append("it asked which project, though the request said")
         missing = [p for p in wanted if p not in seen.projects]
         if missing and scenario.pick is None:
@@ -57,6 +59,8 @@ def _routing(scenario: Scenario, seen: Evidence) -> list[str]:
         strays = [p for p in seen.projects if p not in wanted]
         if strays:
             wrong.append(f"work landed in {', '.join(strays)}")
+    if scenario.leave_open and seen.left_open and not seen.still_open:
+        wrong.append("a later request answered the open question instead of running as itself")
     if seen.asks_after_start:
         wrong.append(f"the reply asks which project, though work ran in {', '.join(seen.projects)}")
     if scenario.agent and scenario.agent not in seen.agents:

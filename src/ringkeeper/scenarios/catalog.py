@@ -69,6 +69,7 @@ class Scenario:
     asks: bool = False  # the router must ask which project
     pick: str | None = None  # the answer to "which project?", when that's asked
     answer_by_message: bool = False  # answer it by sending just the project's name
+    leave_open: bool = False  # don't answer "which project?": the next request mustn't either
     agent: str | None = None
     tools: tuple[str, ...] = ()  # each must have been used (part of the tool's name)
     held: int = 0  # how many approvals it must raise, at least
@@ -136,6 +137,20 @@ SCENARIOS: tuple[Scenario, ...] = (
         asks=True, pick=SITE, project=SITE, answer_by_message=True, cost_ceiling=1.0,
         notes="The reply is only the project's name, sent as a new message in the conversation: "
         "the original request runs there, with no second question.",
+    ),
+    Scenario(
+        "new-request-while-asked", "A new request doesn't answer an open question", "routing",
+        request="Can you take another look at the page we talked about?",
+        asks=True, leave_open=True, then=("Count the orders in Demo shop's database.",),
+        project=SHOP, tools=("query",), never_held=True, cost_ceiling=1.0,
+        notes="The question is left open; the next message names a project but asks for "
+        "something new, so it runs as its own request and the question stays open.",
+    ),
+    Scenario(
+        "thanks-then-request", "A request after a thank-you runs as itself", "routing",
+        request="Thanks!", then=("How many orders are in Demo shop's database?",),
+        project=SHOP, tools=("query",), never_held=True, cost_ceiling=0.75,
+        notes="The thank-you started nothing, and the next request isn't taken as placing it.",
     ),
     Scenario(
         "single-candidate", "A client with one project isn't asked about", "routing",
