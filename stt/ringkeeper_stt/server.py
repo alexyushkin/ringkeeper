@@ -28,6 +28,10 @@ MAX_HINT_CHARS = 500
 LANGUAGE = re.compile(r"[a-z]{2,3}(,[a-z]{2,3})*")
 MAX_IN_FLIGHT = 2  # requests read and decoded at once; one transcribes at a time
 SOCKET_TIMEOUT = 30.0  # seconds a client may stall while sending
+# A refused upload is still read (never decoded), up to this much, before the connection
+# closes: closing with unread bytes resets it, and the client loses the answer (Windows).
+DRAIN_BYTES = 1024 * 1024
+DRAIN_SECONDS = 2.0
 
 
 class DecodeError(Exception):
@@ -146,6 +150,20 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(payload)
 
+        def _refuse(self, status: int, body: dict[str, Any], length: int) -> None:
+            """Answer without reading the upload into the service, then drop what was sent
+            (up to DRAIN_BYTES), so the answer arrives before the connection closes."""
+            self.close_connection = True
+            self._send(status, body)
+            self.wfile.flush()
+            left = min(length, DRAIN_BYTES)
+            self.connection.settimeout(DRAIN_SECONDS)
+            try:
+                while left > 0 and (chunk := self.rfile.read1(min(left, 65536))):
+                    left -= len(chunk)
+            except OSError:
+                pass  # it stopped sending, or went away: either way, done
+
         def do_GET(self) -> None:
             if self.path == "/health":
                 self._send(200, {"status": "ok", "model": service.config.model})
@@ -166,13 +184,12 @@ def handler_for(service: Service) -> type[BaseHTTPRequestHandler]:
                 self._send(411, {"error": "length_required"})
                 return
             if length > service.config.max_bytes:
-                # Refused before reading a byte of it.
-                self.close_connection = True
-                self._send(413, {"error": "too_large", "max_bytes": service.config.max_bytes})
+                # Refused from Content-Length alone: none of it is decoded.
+                too_large = {"error": "too_large", "max_bytes": service.config.max_bytes}
+                self._refuse(413, too_large, length)
                 return
             if not service.slots.acquire(blocking=False):
-                self.close_connection = True
-                self._send(503, {"error": "busy"})
+                self._refuse(503, {"error": "busy"}, length)
                 return
             try:
                 query = parse_qs(url.query)
