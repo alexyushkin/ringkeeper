@@ -97,6 +97,10 @@ Rules:
   whenever the message asks about "we", "our" or "my" setup and names no
   client's system. Never send such a question to a project: a project's
   database is the client's data, not Ringkeeper's.
+- A request that names one of a project's connections (an instance) and asks to use or
+  read it ("List what demo-crm can do for Acme", "use acme-db to count orders") is a task
+  for a project with that connection, never `about_ringkeeper`, even when it asks what the
+  connection can do.
 - A request that is vague about what to read or change (no table, record,
   workflow or outcome named) gets a low confidence, so the operator is asked.
 - Questions about how to use Ringkeeper itself ("how do I link a connection?",

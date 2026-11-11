@@ -108,6 +108,13 @@ your own client's projects and off for a client's, so their data doesn't leave u
 allow it. A request that needs the web in a project where it's off says so and asks once,
 with **Allow web for this project and retry** (in the app and in your chats).
 
+A question about your setup ("how many connections do we have?") is answered from
+Ringkeeper's own records, without a project. A request that names a connection and asks to
+use or read it ("Use Demo CRM to list the tools it offers") is always a task in a project
+linked to that connection, even when it asks what the connection can do. Asking where a
+connection is linked, or whether its token is about to expire, is still a question about
+your setup.
+
 ### When it asks which project
 
 Ringkeeper asks only when the work clearly belongs to one project and more than one fits,

@@ -601,3 +601,60 @@ def test_a_read_of_production_starts_without_asking() -> None:
     route(FakeModel([output(routed("globex-portal", 0.97, kind="data"))]))  # risk: read
     assert [t.project for t in all_tasks()] == ["globex-portal"]
     assert route_decisions() == []
+
+
+# --- A request to use a connection is a task ---
+
+
+def test_a_request_to_use_a_connection_is_a_task_not_a_question() -> None:
+    """From Check my setup: "List what Demo CRM can do for Demo Co" was answered as a
+    question about Ringkeeper, without reaching the connection."""
+    ask("List what globex-supabase-dev can do for globex")
+    model = FakeModel([{"tasks": [], "about_ringkeeper": True}, output(routed("globex-portal"))])
+    route(model)
+    [task] = all_tasks()
+    assert task.project == "globex-portal"
+    assert "about_ringkeeper must be false" in model.calls[1][1]
+
+
+def test_a_model_that_keeps_calling_it_a_question_still_gets_a_task() -> None:
+    ask("Use globex-supabase-dev to list the tables")
+    about = {"tasks": [], "about_ringkeeper": True}
+    route(FakeModel([about, about]))
+    [task] = all_tasks()
+    assert (task.project, task.risk.value) == ("globex-portal", "read")
+    assert task.prompt.startswith("Use globex-supabase-dev to list the tables")
+
+
+def test_a_request_to_use_a_connection_answered_with_no_task_gets_one() -> None:
+    ask("List what globex-supabase-dev can do for globex")
+    route(FakeModel([output(reply="It can run queries."), output(routed("globex-portal"))]))
+    assert [t.project for t in all_tasks()] == ["globex-portal"]
+
+
+def test_a_question_about_where_a_connection_is_linked_stays_a_question() -> None:
+    thread_id = ask("Which projects is globex-supabase-dev linked to?")
+    route(FakeModel([{"tasks": [], "about_ringkeeper": True}, "Only Globex portal."]))
+    assert all_tasks() == []
+    assert thread_bodies(thread_id)[-1][1] == "Only Globex portal."
+
+
+def test_what_counts_as_using_a_connection() -> None:
+    crm = [("demo-crm", "Demo CRM"), ("acme-db", "")]
+    for message in (
+        "List what Demo CRM can do for Demo Co",
+        "Use demo-crm to list the tools it offers",
+        "In Demo shop, use Demo CRM to list the tools it offers",
+        "Please count the orders in acme-db",
+        "How many orders are there? Check acme-db",
+    ):
+        assert self_answer.uses_connection(message, crm) == (
+            "Demo CRM" if "crm" in message.lower() else "acme-db"
+        ), message
+    for message in (
+        "Which projects is Demo CRM linked to?",
+        "Is demo-crm's token about to expire?",
+        "How many connections do we have?",
+        "What can Demo CRM do?",  # a question about it, not a request to use it
+    ):
+        assert self_answer.uses_connection(message, crm) is None, message

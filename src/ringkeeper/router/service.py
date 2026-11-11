@@ -44,6 +44,7 @@ from ringkeeper.model_choice import router_model
 from ringkeeper.models import (
     Agent,
     Client,
+    Complexity,
     Decision,
     DecisionKind,
     DecisionStatus,
@@ -54,6 +55,7 @@ from ringkeeper.models import (
     MessageRole,
     Project,
     Task,
+    TaskKind,
     TaskRisk,
     TaskStatus,
 )
@@ -565,6 +567,49 @@ def _against_selection(
     return output.model_copy(update={"tasks": keep}), elsewhere
 
 
+USES_CONNECTION = (
+    "the message asks to use the connection {0}, so it's a task for a project linked to {0}: "
+    "about_ringkeeper must be false, with a task"
+)
+
+
+def _no_task(output: RouterOutput) -> bool:
+    """Answered as a question, or with no task at all."""
+    return output.about_ringkeeper or not output.tasks
+
+
+def _connections(session: Session) -> list[tuple[str, str]]:
+    return [
+        (i.name, i.title or "") for i in session.scalars(select(Instance).order_by(Instance.name))
+    ]
+
+
+def _connection_task(session: Session, connection: str, body: str) -> RouterOutput:
+    """The model kept calling a request to use a connection a question about Ringkeeper: a
+    read-only task in the project linked to it (asked which, with several)."""
+    instance = session.scalar(
+        select(Instance).where((Instance.title == connection) | (Instance.name == connection))
+    )
+    linked = sorted({b.project.name for b in instance.bindings}) if instance is not None else []
+    if not linked:
+        return RouterOutput(
+            tasks=[],
+            reply=f"{connection} isn't linked to any project yet, so no task can use it. Link it "
+            "on its card in Connectors.",
+        )
+    task = RoutedTask(
+        project=linked[0],
+        confidence=1.0 if len(linked) == 1 else 0.0,
+        alternatives=[Candidate(project=p, confidence=0.0) for p in linked[1:]],
+        kind=TaskKind.DATA,
+        risk=TaskRisk.READ,
+        complexity=Complexity.LOW,
+        outcome=f"Done: {body}",
+        prompt=f"{body}\n\nReport it in your final message.",
+    )
+    return RouterOutput(tasks=[task])
+
+
 def think(session: Session, settings: Settings, message: Message, model: RouterModel) -> Thought:
     """Every model call routing a message makes. Reads only."""
     placed = follow_up.unplaced_request(session, message)
@@ -579,15 +624,21 @@ def think(session: Session, settings: Settings, message: Message, model: RouterM
     error = ""
     attempts = 0
     cost = 0.0
+    # "List what Demo CRM can do for Acme" is work for Demo CRM, not a question about Ringkeeper.
+    uses = self_answer.uses_connection(request or message.body, _connections(session))
     for attempts in range(1, MAX_ATTEMPTS + 1):  # noqa: B007 (attempts is recorded below)
         completion = model.complete(system, prompt, model_id)
         cost += completion.cost_usd or 0.0
         try:
             output = parse(completion.text, context.owners)
+            if uses is not None and _no_task(output):
+                raise InvalidOutputError(USES_CONNECTION.format(uses))
             break
         except InvalidOutputError as invalid:
             error = str(invalid)
             prompt = _retry_prompt(context.prompt, completion.text, error)
+    if output is not None and uses is not None and _no_task(output):
+        output, error = _connection_task(session, uses, request or message.body), ""
     meta: dict[str, Any] = {"model": model_id, "attempts": attempts, "cost_usd": cost or None}
     thought = Thought(meta, output, error, context.owners, placed=placed is not None)
     if output is None:
@@ -596,12 +647,12 @@ def think(session: Session, settings: Settings, message: Message, model: RouterM
     thought.named = named
     known = [*context.owners, *set(context.owners.values()), *context.aliases]
     if (output.about_ringkeeper and help_answers.is_how_to(message.body)) or (
-        not named and help_answers.asks_how(message.body, known)
+        not named and uses is None and help_answers.asks_how(message.body, known)
     ):
         thought.helped = help_answers.answer(session, settings, model, message.body)
         thought.spent = thought.helped.cost
     elif output.about_ringkeeper or (
-        not named and self_answer.asks_about_setup(message.body, known)
+        not named and uses is None and self_answer.asks_about_setup(message.body, known)
     ):
         thought.answer, thought.spent = self_answer.answer(session, settings, model, message.body)
     return thought
