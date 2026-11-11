@@ -31,6 +31,11 @@ Confirm = Callable[[Reader, JSON, JSON, str | None], Awaitable[None]]
 # The vendor's own names for what a card shows, when the call only has IDs: `who`, `which`.
 Namer = Callable[[Reader, JSON, JSON, str | None], Awaitable[JSON]]
 READ, DRAFT, HELD, FINAL = "read", "draft", "held", "final"
+# Where `after` finds what a call can't give it: the file a download fetched, and the calling
+# project (a saved file goes in its folder).
+CONTENT, PROJECT = "@content", "@project"
+# What `after` makes of an answer: right away, or once something else is done (a file saved).
+After = Callable[[JSON, JSON], JSON | Awaitable[JSON]]
 # What a Field's value may look like when it becomes part of the address.
 HOST_LABEL = r"^[a-z0-9][a-z0-9-]{0,62}$"
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
@@ -94,7 +99,12 @@ class Op:
     # What the service is asked, from the call's query and the `local` values.
     prepare: Callable[[JSON, JSON], JSON] | None = None
     # The answer, made readable, from what came back and the `local` values.
-    after: Callable[[JSON, JSON], JSON] | None = None
+    after: After | None = None
+    # A file's content, fetched from this path under the operation's own once its details are
+    # read: the answer then holds it, as bytes, under CONTENT.
+    download: str = ""
+    # A read that's still audited: it shows a picture, or saves a file in the project.
+    audited: bool = False
     # What's sent, built from the call's plain values and its account. Raises ToolError for a
     # call that can't be sent, before it's held: so the card shows what will really happen.
     shape: Callable[[JSON, str | None], JSON] | None = None
@@ -122,14 +132,16 @@ def reads(
     method: str = "GET",
     local: tuple[str, ...] = (),
     prepare: Callable[[JSON, JSON], JSON] | None = None,
-    after: Callable[[JSON, JSON], JSON] | None = None,
+    after: After | None = None,
     only: tuple[str, ...] = (),
     answer: Callable[[JSON, str | None], JSON] | None = None,
     hint: str = "",
+    download: str = "",
+    audited: bool = False,
 ) -> Op:
     return Op(
         name, method, path, says, READ, params=(*params, *local), local=local, prepare=prepare,
-        after=after, only=only, answer=answer, hint=hint,
+        after=after, only=only, answer=answer, hint=hint, download=download, audited=audited,
     )  # fmt: skip
 
 

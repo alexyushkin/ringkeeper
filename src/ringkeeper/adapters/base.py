@@ -17,6 +17,9 @@ from ringkeeper.models import Env, InstanceType
 from ringkeeper.vault import Secret
 
 JSON = dict[str, Any]
+# Where a tool's answer holds a picture to show (an Image): the gateway sends it as an image,
+# and keeps it out of everything that reads or keeps text.
+IMAGE = "@image"
 
 
 class ToolKind(enum.StrEnum):
@@ -57,6 +60,16 @@ class PlanLimitError(ToolError):
             "with what doesn't need it."
         )
         self.shown = shown
+
+
+@dataclass(frozen=True)
+class Image:
+    """A picture a tool shows: a page drawn, or a picture from a file."""
+
+    data: bytes = field(repr=False)
+    mime: str
+    width: int
+    height: int
 
 
 @dataclass(frozen=True)
@@ -144,6 +157,9 @@ class ToolSpec:
     def hold_for(self, args: JSON) -> Hold:
         return self.holds(args) if self.holds is not None else self.hold
 
+    # Its answer can hold a picture (IMAGE): sent as an image, never as text.
+    shows: bool = False
+
 
 def _spec(
     kind: ToolKind, fn: Handler, precondition: Precondition | None, hold: Hold = Hold.PROD
@@ -182,6 +198,21 @@ def saves_draft(fn: Handler) -> ToolSpec:
     """Saves a draft: it reaches nobody, so it runs and is audited, unless the connection
     holds drafts too. Never needs the name typed."""
     return replace(_spec(ToolKind.WRITE, fn, None, Hold.DRAFT), typed=_never_typed)
+
+
+def _always(_target: Target, _args: JSON) -> bool:
+    return True
+
+
+def shows(fn: Handler) -> ToolSpec:
+    """A read that answers with a picture: it runs, and it's audited (never the picture)."""
+    return replace(_spec(ToolKind.READ, fn, None), logged=_always, shows=True)
+
+
+def saves(fn: Handler) -> ToolSpec:
+    """A read that puts a copy of a file in the project's folder. Nothing outside this computer
+    changes, so it runs without asking, and it's audited."""
+    return replace(_spec(ToolKind.READ, fn, None), logged=_always)
 
 
 def _never_typed(_args: JSON) -> str | None:
@@ -223,6 +254,9 @@ class Adapter:
     tools: Sequence[ToolSpec]
     # Pieces of a secret that can leak on their own (e.g. the password in a DSN).
     secret_fragments: Callable[[str], list[str]] = lambda _value: []
+    # Whether a connection with these settings can use a tool at all (a Google account given
+    # no YouTube access can't use YouTube's): the ones it can't aren't listed for it.
+    offers: Callable[[JSON, str], bool] | None = None
 
     def __post_init__(self) -> None:
         names = [t.name for t in self.tools]

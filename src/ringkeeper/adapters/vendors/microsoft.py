@@ -4,13 +4,16 @@ The same holds as a Google account. Reading runs and every write waits for appro
 is held, and more than 10 recipients needs the name typed, as for every email connection
 (adapters.mail). Deleting and sharing need the name typed.
 
+Reading an attachment or a OneDrive or SharePoint file, looking at a page of it, and saving a
+copy of it in the project run too; the last two are audited. A file's content comes from the
+signed link Graph answers with, which is followed once and never shown.
+
 A send whose recipients can't be counted from the call needs the name typed too: send_draft
 (they're in the draft) and reply_all (they're on the message).
 
 Left out on purpose:
 - Mail rules and mailbox settings: a forwarding rule or an auto-reply goes on running by itself.
 - /$batch, delta queries, and subscriptions.
-- A file's content: Graph answers with a redirect to a signed link, and a call answers JSON.
 - Uploads: a call's body is JSON, and a file isn't.
 - findMeetingTimes and getSchedule: reads sent by POST, which a table can't call a read.
 - Every other user's mailbox, calendar or drive: a call only reaches /me, and the drives and
@@ -21,11 +24,21 @@ import base64
 import binascii
 from typing import Any, cast
 
-from ringkeeper.adapters import extract, mail_text
+from ringkeeper.adapters import extract, files, mail_text
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.adapters.mail import BULK
-from ringkeeper.adapters.paging import PAGE_CHARS, page
-from ringkeeper.adapters.vendor_spec import JSON, Snapshot, Vendor, drafts, final, held, reads
+from ringkeeper.adapters.paging import PAGE_CHARS
+from ringkeeper.adapters.vendor_spec import (
+    CONTENT,
+    JSON,
+    PROJECT,
+    Snapshot,
+    Vendor,
+    drafts,
+    final,
+    held,
+    reads,
+)
 
 CATEGORY = "Email"
 # What each kind of access asks for at sign-in, by the access keys of services.google_oauth.
@@ -69,6 +82,9 @@ FLAGS = ("isRead", "flag", "categories", "importance")
 FLAGS_BACK = Snapshot("get_message", FLAGS, says="how the message was marked")
 FILE_BACK = Snapshot("get_file", ("name", "description"), says="the file's name and description")
 FILE = "/drives/{drive_id}/items/{item_id}"
+ATTACHMENT = "/me/messages/{message_id}/attachments/{attachment_id}"
+READING = ("pages", "inside", "offset", "limit")
+VIEWING = ("page", "picture", "inside")
 ACCESS = "changes who can reach a file"
 
 
@@ -195,7 +211,8 @@ def _thread(answer: JSON, local: JSON) -> JSON:
     }
 
 
-def _attachment(answer: JSON, local: JSON) -> JSON:
+def _attached(answer: JSON) -> tuple[JSON, bytes]:
+    """An attachment as Graph sends it: its name and type, and its bytes."""
     name = str(answer.get("name") or "attachment")
     kind = str(answer.get("contentType") or "")
     if not answer.get("contentBytes"):
@@ -204,14 +221,65 @@ def _attachment(answer: JSON, local: JSON) -> JSON:
         data = base64.b64decode(str(answer["contentBytes"]))
     except binascii.Error:
         raise ToolError(f"'{name}' came back damaged") from None
-    found = extract.extract(name, kind, data)
-    part = page(
-        found.text,
-        _number(local.get("offset"), 0),
-        _number(local.get("limit"), PAGE_CHARS, PAGE_CHARS) or PAGE_CHARS,
-    )
-    shown = {"name": name, "type": kind, "size": len(data)} | part
-    return shown | ({"read_note": found.note} if found.note else {})
+    return {"name": name, "type": kind, "size": len(data)}, data
+
+
+def _downloaded(answer: JSON) -> tuple[JSON, bytes]:
+    """A OneDrive or SharePoint file: its details, and the content fetched with them."""
+    data = cast(bytes, answer.get(CONTENT) or b"")
+    kind = str(cast(JSON, answer.get("file") or {}).get("mimeType") or "")
+    meta = {"id": answer.get("id"), "name": str(answer.get("name") or "file"), "type": kind}
+    return meta | {"size": len(data)}, data
+
+
+def _inside(local: JSON) -> str | None:
+    return str(local["inside"]) if local.get("inside") else None
+
+
+def _text(meta: JSON, data: bytes, local: JSON, see: str) -> JSON:
+    found = extract.extract(str(meta["name"]), str(meta["type"]), data, _inside(local))
+    pages = str(local["pages"]) if local.get("pages") else None
+    offset = _number(local.get("offset"), 0)
+    limit = _number(local.get("limit"), PAGE_CHARS, PAGE_CHARS) or PAGE_CHARS
+    return files.text_answer(meta, found, offset, limit, pages, see)
+
+
+def _view(meta: JSON, data: bytes, local: JSON) -> JSON:
+    page = _number(local.get("page"), 1) or 1
+    picture = _number(local.get("picture"), 0) or None
+    shown = extract.view(str(meta["name"]), str(meta["type"]), data, page, picture, _inside(local))
+    return files.picture_answer(meta, shown)
+
+
+async def _save(meta: JSON, data: bytes, local: JSON) -> JSON:
+    name, _kind, data = extract.opened(str(meta["name"]), str(meta["type"]), data, _inside(local))
+    return await files.save(cast(str | None, local.get(PROJECT)), name, data)
+
+
+def _attachment(answer: JSON, local: JSON) -> JSON:
+    meta, data = _attached(answer)
+    return _text(meta, data, local, "microsoft.view_attachment")
+
+
+def _attachment_view(answer: JSON, local: JSON) -> JSON:
+    return _view(*_attached(answer), local)
+
+
+async def _attachment_save(answer: JSON, local: JSON) -> JSON:
+    return await _save(*_attached(answer), local)
+
+
+def _file(answer: JSON, local: JSON) -> JSON:
+    meta, data = _downloaded(answer)
+    return _text(meta, data, local, "microsoft.view_file")
+
+
+def _file_view(answer: JSON, local: JSON) -> JSON:
+    return _view(*_downloaded(answer), local)
+
+
+async def _file_save(answer: JSON, local: JSON) -> JSON:
+    return await _save(*_downloaded(answer), local)
 
 
 def _who(found: JSON) -> str:
@@ -247,10 +315,16 @@ MICROSOFT = Vendor(
         reads("list_mail_folders", "/me/mailFolders", "Mail folders", *ODATA),
         reads("list_attachments", "/me/messages/{message_id}/attachments",
               "A message's attachments", "$top", prepare=_attachment_names, after=_listed),
-        reads("read_attachment", "/me/messages/{message_id}/attachments/{attachment_id}",
-              "The text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR "
-              "is installed, in parts if it's long", local=("offset", "limit"),
-              after=_attachment),
+        reads("read_attachment", ATTACHMENT, "The text of one attachment: PDF, Word, Excel, "
+              "PowerPoint, CSV, text, an attached email or a .zip (inside= a file in it), and "
+              "pictures where OCR is installed. A long one starts with its outline: read on "
+              "with pages=", local=READING, after=_attachment),
+        reads("view_attachment", ATTACHMENT, "One page of an attached PDF, or a picture, as an "
+              "image: better than the text for a table, a chart or a scan", local=VIEWING,
+              after=_attachment_view, audited=True),
+        reads("save_attachment", ATTACHMENT, "Save a copy of an attachment in the project's "
+              "folder (attachments/) to work on it there. Answers its path", local=("inside",),
+              after=_attachment_save, audited=True),
         final("send_mail", "POST", "/me/sendMail", "Send an email", _recipients_why, "message",
               "saveToSentItems", only=("message", "saveToSentItems")),
         final("reply", "POST", "/me/messages/{message_id}/reply", "Reply to the sender",
@@ -302,6 +376,15 @@ MICROSOFT = Vendor(
               *ODATA),
         reads("list_folder", f"{FILE}/children", "What's in a folder", *ODATA),
         reads("get_file", FILE, "One file or folder's details", "$select"),
+        reads("read_file", FILE, "A file's text: PDF, Word, Excel, PowerPoint, text, a .zip "
+              "(inside= a file in it). A long one starts with its outline: read on with pages=",
+              local=READING, download="/content", after=_file),
+        reads("view_file", FILE, "One page of a PDF, or a picture, as an image: better than "
+              "the text for a table, a chart or a scan", local=VIEWING, download="/content",
+              after=_file_view, audited=True),
+        reads("save_file", FILE, "Save a copy of a file in the project's folder "
+              "(attachments/) to work on it there. Answers its path", local=("inside",),
+              download="/content", after=_file_save, audited=True),
         reads("list_file_access", f"{FILE}/permissions", "Who can reach a file", "$select"),
         reads("search_files", "/search/query", "Search files by what's in them: body requests, "
               "with entityTypes driveItem and a query.queryString", "requests", method="POST"),

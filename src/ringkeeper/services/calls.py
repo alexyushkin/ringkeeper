@@ -33,9 +33,11 @@ from sqlalchemy.orm import Session
 from ringkeeper import plan_limits, remote, sensitive, signed_links
 from ringkeeper.adapters import ADAPTERS, agent_name, vendor
 from ringkeeper.adapters.base import (
+    IMAGE,
     JSON,
     Adapter,
     Hold,
+    Image,
     PlanLimitError,
     Target,
     ToolError,
@@ -388,6 +390,36 @@ def bound_instances(caller: Caller) -> list[dict[str, Any]]:
         ]
 
 
+def usable_tools(caller: Caller, adapter: Adapter) -> set[str] | None:
+    """The tools the calling project's connections of this kind can use: those their links
+    allow, and their accounts were given access for. None lists them all (no project, or no
+    connection of this kind: a call is refused anyway, and says why)."""
+    if caller.project is None:
+        return None
+    with session_scope() as session:
+        project = session.scalars(
+            select(Project).where(Project.name == caller.project)
+        ).one_or_none()
+        if project is None:
+            return None
+        agent = agents.for_worker_session(session, caller.session_id)
+        links = [
+            (list(b.allowed_tools or []), dict(b.instance.config or {}))
+            for b in _usable(project)
+            if b.instance_type == adapter.service
+            and (agent is None or b.instance.name in agent.connections)
+        ]
+    if not links:
+        return None
+    return {
+        spec.name
+        for allowed, config in links
+        for spec in adapter.tools
+        if (not allowed or spec.name in allowed)
+        and (adapter.offers is None or adapter.offers(config, spec.name))
+    }
+
+
 def token_revoked(jti: str) -> bool:
     with session_scope() as session:
         return revocations.is_revoked(session, jti)
@@ -430,6 +462,16 @@ def _which(call: ToolCall) -> str:
     return str(call.args.get("tool") or call.args.get("operation") or call.tool)
 
 
+def _saves_a_copy(call: ToolCall, spec: ToolSpec) -> bool:
+    """A read that saves a file in the project (save_attachment, microsoft.save_file)."""
+    named = _which(call).rsplit(".", 1)[-1]
+    return (
+        spec.logged is not None
+        and call.service is not InstanceType.MCP
+        and (named.startswith("save_"))
+    )
+
+
 async def _note_refused(call: ToolCall, name: str, message: str) -> None:
     await anyio.to_thread.run_sync(
         plan_notes.note_task, call.caller.session_id, f"{name}/{_which(call)}", message
@@ -459,13 +501,19 @@ async def _run_unheld(call: ToolCall, spec: ToolSpec, target: Target, auth: Auth
             partial(_record, call, AuditOutcome.FAILED, reason=limit.shown)
         )
         raise
+    # A picture goes to the agent as an image: never scrubbed as text, split into parts, or
+    # kept in the audit log, which says what was shown instead (name, page, size, type).
+    image = result.pop(IMAGE) if isinstance(result.get(IMAGE), Image) else None
     if spec.logged is not None and spec.logged(target, call.args):
-        await anyio.to_thread.run_sync(partial(_record, call, AuditOutcome.EXECUTED))
+        await anyio.to_thread.run_sync(
+            partial(_record, call, AuditOutcome.EXECUTED, result=scrub_obj(result))
+        )
     if call.service is InstanceType.MCP and call.tool == "list_tools":
         # The server's hints decide later calls without starting it first.
         await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
         result = _limit_listing(result, auth)
-    return continuations.fit(call.caller, scrub_obj(result))
+    shown = continuations.fit(call.caller, scrub_obj(result))
+    return shown if image is None else shown | {IMAGE: image}
 
 
 async def run_call(call: ToolCall, vault: Vault) -> JSON:
@@ -513,6 +561,14 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         )
 
     if not is_write:
+        if _saves_a_copy(call, spec) and await _db(
+            partial(setup_check.session_from_check, session_id=call.caller.session_id)
+        ):
+            reason = "Check my setup changes nothing, so no copy is saved"
+            await anyio.to_thread.run_sync(
+                partial(_record, call, AuditOutcome.REFUSED, reason=reason)
+            )
+            raise RefusalError(f"{reason}: read or view the file instead.", reason)
         return await _run_unheld(call, spec, target, auth)
 
     if await _db(partial(setup_check.session_from_check, session_id=call.caller.session_id)):

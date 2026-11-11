@@ -23,8 +23,11 @@ or reply with something, put it there. That isn't a request to send an email or
 post a message anywhere, unless the task says to send one.
 If you couldn't do what was asked (a tool refused it, you lack the access or the
 connection, or it can't be done), call the not_done tool with why before you end.
-Never end as if it were done. If the work needs the web and you have no web tools,
-say plainly that web access is off for this project's tasks.
+Never end as if it were done. The main thing asked for decides: if it isn't in your
+answer (you couldn't read the file, find the numbers, or make the change), call
+not_done, even when you did part of it or offer ways forward. If the work needs the
+web and you have no web tools, say plainly that web access is off for this
+project's tasks.
 Some tool calls are held for the operator's approval. They already see those,
 so never ask about a held call: end your turn as its result says, and you'll be
 resumed with what happened.
@@ -33,7 +36,9 @@ or has a next_offset, next_page or continuation, fetch the rest before you answe
 (offset=next_offset, or read_more with the continuation). If you can't or it isn't
 needed, say plainly that your answer is based on part of it. Never summarize part
 of something as if it were the whole. A write isn't repeated to see more of its
-result."""
+result. A long file starts with its outline: read the pages you need with pages=
+(next_pages), and look at a page with a table, a chart or a scan with the view
+tool (view_attachment, view_file)."""
 
 
 def build_options(

@@ -163,36 +163,48 @@ def test_with_the_reader_a_scanned_pdf_is_read(
     reader: ocr_local.LocalOcr, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downloaded(reader)
-    monkeypatch.setattr(extract, "find_spec", lambda _name="": True)  # Pillow, from the download
+    asked: list[bytes] = []
 
-    def pictures(_page: object) -> str:
+    def read(data: bytes, _suffix: str) -> str:
+        asked.append(data)
         return "Invoice 4217"
 
-    monkeypatch.setattr(extract, "_pdf_page_pictures", pictures)
+    monkeypatch.setattr(extract, "_ocr", read)
     found = extract.extract("scan.pdf", "application/pdf", SCAN)
     assert "Invoice 4217" in found.text
     assert found.note is None
+    assert asked
+    assert asked[0].startswith(b"\x89PNG")  # the page's picture, taken out by PDFium
 
 
 def test_a_long_scan_stops_and_says_so(
     reader: ocr_local.LocalOcr, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downloaded(reader)
-    monkeypatch.setattr(extract, "find_spec", lambda _name="": True)
     monkeypatch.setattr(extract, "OCR_BUDGET_SECONDS", -1)
     found = extract.extract("scan.pdf", "application/pdf", SCAN)
     assert found.note
-    assert "1 scanned pages weren't read" in found.note
+    assert "The pictures on pages 1 weren't read, for lack of time" in found.note
 
 
-def test_tesseract_without_pillow_still_offers_the_reader_for_a_scanned_pdf(
+def test_tesseract_alone_reads_a_scanned_pdf_without_pillow(
     reader: ocr_local.LocalOcr, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """PDFium takes the page's picture out, so the scan reader's Pillow isn't needed."""
     monkeypatch.setattr(extract.shutil, "which", lambda _name="": "tesseract")
-    monkeypatch.setattr(extract, "find_spec", lambda _name="": None)
+
+    class Done:
+        returncode = 0
+        stdout = b"Invoice 4217"
+
+    def run(*_args: object, **_kwargs: object) -> Done:
+        return Done()
+
+    monkeypatch.setattr(extract.subprocess, "run", run)
     found = extract.extract("scan.pdf", "application/pdf", SCAN)
-    assert found.note
-    assert extract.OFFERED in found.note
+    assert "Invoice 4217" in found.text
+    assert found.note is None
+    assert reader.status()["offer"] is False
 
 
 def test_a_server_has_nothing_to_offer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -38,7 +38,7 @@ from urllib.parse import quote
 import httpx2
 from pydantic import Field
 
-from ringkeeper.adapters import extract, mail_text, rest
+from ringkeeper.adapters import extract, files, mail_text, rest
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -51,7 +51,9 @@ from ringkeeper.adapters.base import (
     always_held,
     final,
     read,
+    saves,
     saves_draft,
+    shows,
 )
 from ringkeeper.adapters.mail import bulk_reason
 from ringkeeper.adapters.mail_text import (
@@ -296,16 +298,8 @@ async def read_mail(
     return _message_fields(message, offset, limit, include_quoted) | {"id": message_id}
 
 
-@read
-async def read_attachment(
-    target: Target,
-    message_id: MessageId,
-    attachment_id: AttachmentId,
-    offset: Offset = 0,
-    limit: PageLimit = PAGE_CHARS,
-) -> JSON:
-    """Read the text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR is
-    installed. Long ones come in parts, like read_mail."""
+async def _attachment(target: Target, message_id: str, attachment_id: str) -> tuple[JSON, bytes]:
+    """One attachment: how the message lists it, and its bytes."""
     _need(target, "mail_read")
     message = await _call(
         target, GMAIL, "GET", f"/messages/{message_id}", params={"format": "full"}
@@ -322,10 +316,52 @@ async def read_attachment(
         )
         data = str(fetched.get("data") or "")
     content = _bytes(data)
-    found = extract.extract(str(part.get("filename")), str(part.get("mimeType") or ""), content)
-    answer = {k: v for k, v in _listed(part).items() if k != "id"} | {"size": len(content)}
-    answer |= page(found.text, offset, limit)
-    return answer | ({"read_note": found.note} if found.note else {})
+    return {k: v for k, v in _listed(part).items() if k != "id"} | {"size": len(content)}, content
+
+
+@read
+async def read_attachment(
+    target: Target,
+    message_id: MessageId,
+    attachment_id: AttachmentId,
+    pages: files.Pages = None,
+    inside: files.Inside = None,
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+) -> JSON:
+    """Read one attachment's text: PDF, Word, Excel, PowerPoint, CSV, text, an attached email or
+    a .zip (`inside` reads a file in it), and pictures where OCR is installed. A long file
+    starts with its outline: read on with pages=. view_attachment shows a page as an image."""
+    meta, content = await _attachment(target, message_id, attachment_id)
+    found = extract.extract(str(meta["name"]), str(meta["type"]), content, inside)
+    return files.text_answer(meta, found, offset, limit, pages, "view_attachment")
+
+
+@shows
+async def view_attachment(
+    target: Target,
+    message_id: MessageId,
+    attachment_id: AttachmentId,
+    page: files.PageNumber = 1,
+    picture: files.PictureNumber = None,
+    inside: files.Inside = None,
+) -> JSON:
+    """Look at one page of an attached PDF, or a picture (attached, or on a slide or in a Word
+    document), as an image: better than its text for a table, a chart or a scan."""
+    meta, content = await _attachment(target, message_id, attachment_id)
+    shown = extract.view(str(meta["name"]), str(meta["type"]), content, page, picture, inside)
+    return files.picture_answer(meta, shown)
+
+
+@saves
+async def save_attachment(
+    target: Target, message_id: MessageId, attachment_id: AttachmentId, inside: files.Inside = None
+) -> JSON:
+    """Save a copy of an attachment in the project's folder (attachments/), to work on it there.
+    Answers its path. Nothing changes in the mailbox."""
+    meta, content = await _attachment(target, message_id, attachment_id)
+    name, _kind, content = extract.opened(str(meta["name"]), str(meta["type"]), content, inside)
+    return await files.save(target.project, name, content)
 
 
 @read
@@ -494,22 +530,29 @@ EXPORTS = {
     "application/vnd.google-apps.spreadsheet": "text/csv",
     "application/vnd.google-apps.presentation": "text/plain",
 }
+# A Doc, a Sheet or a Slides deck saved to work on: as the Office file it opens as.
+SAVED_AS = {
+    "application/vnd.google-apps.document": (extract.WORD, ".docx"),
+    "application/vnd.google-apps.spreadsheet": (extract.EXCEL, ".xlsx"),
+    "application/vnd.google-apps.presentation": (extract.DECK, ".pptx"),
+}
 
 
-@read
-async def read_file(
-    target: Target, file_id: FileId, offset: Offset = 0, limit: PageLimit = PAGE_CHARS
-) -> JSON:
-    """Read a file's text: Docs and Slides as text, Sheets as CSV, text files as they are, and
-    the text inside PDF, Word and Excel files. A long file comes in parts: total_chars says how
-    long, next_offset where the next part starts."""
+async def _drive_file(
+    target: Target, file_id: str, exports: dict[str, str]
+) -> tuple[JSON, str, httpx2.Response]:
+    """A Drive file's details, the type its content comes as, and its content: a Doc, a Sheet
+    or a deck exported as `exports` says."""
     _need(target, "drive_files", "drive_read_all")
     meta = await _call(
         target, DRIVE, "GET", f"/files/{file_id}", params={"fields": "id,name,mimeType"}
     )
     mime = str(meta.get("mimeType") or "")
-    if mime in EXPORTS:
-        path, params = f"/files/{file_id}/export", {"mimeType": EXPORTS[mime]}
+    if mime in exports:
+        path, params = f"/files/{file_id}/export", {"mimeType": exports[mime]}
+    elif mime.startswith("application/vnd.google-apps."):
+        kind = mime.rsplit(".", 1)[-1]
+        raise ToolError(f"'{meta.get('name')}' is a Google {kind}, which has nothing to read here")
     else:
         path, params = f"/files/{file_id}", {"alt": "media"}
     try:
@@ -519,13 +562,61 @@ async def read_file(
         raise ToolError(f"cannot reach Google: {type(error).__name__}") from None
     if response.status_code >= 400:
         raise ToolError(f"Google returned {response.status_code}: {rest.error_message(response)}")
-    name = str(meta.get("name") or "")
-    answer: JSON = {"id": file_id, "name": meta.get("name"), "type": mime}
-    if mime in EXPORTS:
-        return answer | page(response.text, offset, limit)
-    found = extract.extract(name, mime, response.content)
-    answer |= page(found.text, offset, limit)
-    return answer | ({"read_note": found.note} if found.note else {})
+    return (
+        {"id": file_id, "name": meta.get("name"), "type": mime},
+        exports.get(mime, mime),
+        response,
+    )
+
+
+@read
+async def read_file(
+    target: Target,
+    file_id: FileId,
+    pages: files.Pages = None,
+    inside: files.Inside = None,
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+) -> JSON:
+    """Read a file's text: Docs and Slides as text, Sheets as CSV, text files as they are, and
+    what's in PDF, Word, Excel, PowerPoint and .zip files. A long file starts with its outline:
+    read on with pages=. view_file shows a page as an image."""
+    answer, kind, response = await _drive_file(target, file_id, EXPORTS)
+    if answer["type"] in EXPORTS:
+        found = extract.Extracted(response.text, "text")
+    else:
+        found = extract.extract(str(answer["name"] or ""), kind, response.content, inside)
+    return files.text_answer(answer, found, offset, limit, pages, "view_file")
+
+
+@shows
+async def view_file(
+    target: Target,
+    file_id: FileId,
+    page: files.PageNumber = 1,
+    picture: files.PictureNumber = None,
+    inside: files.Inside = None,
+) -> JSON:
+    """Look at one page of a file (a PDF, a Doc, a Sheet or a Slides deck), or a picture, as an
+    image: better than its text for a table, a chart or a scan."""
+    pdf = dict.fromkeys(EXPORTS, extract.PDF)
+    answer, kind, response = await _drive_file(target, file_id, pdf)
+    shown = extract.view(str(answer["name"] or ""), kind, response.content, page, picture, inside)
+    return files.picture_answer(answer, shown)
+
+
+@saves
+async def save_file(target: Target, file_id: FileId, inside: files.Inside = None) -> JSON:
+    """Save a copy of a Drive file in the project's folder (attachments/), to work on it there:
+    a Doc, Sheet or Slides deck as Word, Excel or PowerPoint. Answers its path. Nothing changes
+    in Drive."""
+    office = {k: kind for k, (kind, _suffix) in SAVED_AS.items()}
+    answer, kind, response = await _drive_file(target, file_id, office)
+    name = str(answer["name"] or "file")
+    if answer["type"] in SAVED_AS:
+        name = files.suffixed(name, SAVED_AS[str(answer["type"])][1])
+    name, _kind, content = extract.opened(name, kind, response.content, inside)
+    return await files.save(target.project, name, content)
 
 
 @always_held
@@ -1204,12 +1295,16 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "search_mail": ("mail_read",),
     "read_mail": ("mail_read",),
     "read_attachment": ("mail_read",),
+    "view_attachment": ("mail_read",),
+    "save_attachment": ("mail_read",),
     "get_thread": ("mail_read",),
     "send_mail": ("mail_send", "mail_drafts"),
     "create_draft": ("mail_drafts",),
     "trash_mail": ("mail_trash",),
     "search_files": ("drive_files", "drive_read_all"),
     "read_file": ("drive_files", "drive_read_all"),
+    "view_file": ("drive_files", "drive_read_all"),
+    "save_file": ("drive_files", "drive_read_all"),
     "upload_file": ("drive_files",),
     "share_file": ("drive_files",),
     "list_events": ("calendar_read", "calendar_write"),
@@ -1238,6 +1333,13 @@ NEEDS: dict[str, tuple[str, ...]] = {
 SCHEDULED = frozenset({"upload_video", "set_video_privacy"})
 
 
+def _offered(config: JSON, tool: str) -> bool:
+    """Whether an account given this access can use the tool (the others aren't listed)."""
+    wanted = NEEDS.get(tool)
+    given = {str(a) for a in cast(list[Any], config.get("access") or [])}
+    return wanted is None or bool(set(wanted) & given)
+
+
 def _asks_first(spec: ToolSpec) -> ToolSpec:
     """A write: checked for its access before it's held, so nobody approves a call that
     can only fail. (Still a write: it asks first.)"""
@@ -1260,9 +1362,9 @@ ADAPTER = Adapter(
     tools=tuple(
         _asks_first(t) if t.kind is ToolKind.WRITE else t
         for t in (
-            search_mail, read_mail, read_attachment, get_thread, send_mail, create_draft,
-            trash_mail,
-            search_files, read_file, upload_file, share_file,
+            search_mail, read_mail, read_attachment, view_attachment, save_attachment,
+            get_thread, send_mail, create_draft, trash_mail,
+            search_files, read_file, view_file, save_file, upload_file, share_file,
             list_events, create_event,
             read_sheet, update_sheet, append_rows,
             read_doc, create_doc, replace(edit_doc, precondition=_doc_revision),
@@ -1273,6 +1375,7 @@ ADAPTER = Adapter(
         )
     ),
     secret_fragments=secret_fragments,
+    offers=_offered,
 )  # fmt: skip
 WRITES = tuple(t.name for t in ADAPTER.tools if t.kind is ToolKind.WRITE)
 # Saving a draft: runs without asking unless the account holds drafts too (its own setting).
