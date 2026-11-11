@@ -137,6 +137,23 @@ class DiscordApi:
         sent = self.call("POST", f"channels/{channel}/messages", message(card))
         return f"{channel}/{cast(dict[str, Any], sent)['id']}"
 
+    def attach(self, user: str, files: list[tuple[str, bytes]]) -> None:
+        """Files in the DM with this person, in one message (at most 10, Discord's limit)."""
+        opened = self.call("POST", "users/@me/channels", {"recipient_id": user})
+        channel = str(cast(dict[str, Any], opened)["id"])
+        sent = files[:10]
+        payload = {"attachments": [{"id": i, "filename": name} for i, (name, _) in enumerate(sent)]}
+        try:
+            response = self._http.post(
+                f"channels/{channel}/messages",
+                data={"payload_json": json.dumps(payload)},
+                files=[(f"files[{i}]", (name, data)) for i, (name, data) in enumerate(sent)],
+            )
+        except httpx2.HTTPError:
+            raise ChannelError("Couldn't send a file to Discord. Try again later.") from None
+        if response.status_code >= 400:
+            raise ChannelError("Discord didn't take a file. Check the bot, then try again.")
+
     # --- Button presses and DMs, over the gateway ---
 
     def listen(

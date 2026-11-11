@@ -10,6 +10,7 @@ import { place } from "@/lib/client/scope";
 
 export interface TaskCard {
   id: string;
+  files?: number; // how many files it made or changed
   project: string;
   client?: string | null;
   status: string;

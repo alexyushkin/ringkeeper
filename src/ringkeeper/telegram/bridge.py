@@ -63,7 +63,7 @@ from ringkeeper.models import (
     VoiceConfirmation,
 )
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, plan_cost, threads, titles
+from ringkeeper.services import inbox, plan_cost, task_files, threads, titles
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.storage.sql import insert
 from ringkeeper.telegram import text as telegram_text
@@ -364,7 +364,21 @@ class Bridge:
                     else None
                 )
                 sent += self._notify(session, text, task.thread_id, markup, task_id=task.id)
+                self._attach(session, task)
         return sent
+
+    def _attach(self, session: Session, task: Task) -> None:
+        """The task's files under its result, in the chat the request came from."""
+        files = task_files.attachments(session, self.settings, task)
+        thread = session.get(Thread, task.thread_id) if task.thread_id is not None else None
+        origin = thread.origin_chat_id if thread is not None else None
+        chats = {origin} & self.chats if origin is not None else self.chats
+        for chat in sorted(chats) if files else []:
+            for name, data in files:
+                try:
+                    self.api.send_document(chat, name, data)
+                except TelegramError as error:
+                    logger.warning("could not attach a task's file in Telegram: %s", error)
 
     # --- Incoming ---
 

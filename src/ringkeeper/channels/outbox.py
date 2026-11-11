@@ -44,7 +44,7 @@ from ringkeeper.models import (
     Thread,
 )
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, threads
+from ringkeeper.services import inbox, task_files, threads
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 
 logger = logging.getLogger(__name__)
@@ -213,6 +213,10 @@ class Transport(Protocol):
 
     def direct(self, user: str, card: cards.Card) -> str:
         """A message in the DM with this person; returns its reference."""
+        ...
+
+    def attach(self, user: str, files: list[tuple[str, bytes]]) -> None:
+        """Files in the DM with this person (a task's, under its result)."""
         ...
 
     def listen(
@@ -405,7 +409,18 @@ class Runner:
                 buttons = [cards.Button(offer[0], offer[1], style="primary")] if offer else []
                 text = news.result_text(task, link)
                 sent += self._send_direct(session, text, buttons, task_id=task.id)
+                self._attach(session, task)
         return sent
+
+    def _attach(self, session: Session, task: Task) -> None:
+        """The task's files under its result, when they're small enough."""
+        files = task_files.attachments(session, self.settings, task)
+        if not files:
+            return
+        try:
+            self.transport.attach(self.approver, files)
+        except ChannelError as error:
+            logger.warning("could not attach a task's files in %s: %s", self.kind, error)
 
     def _send_direct(
         self,

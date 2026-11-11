@@ -28,6 +28,7 @@ transport: httpx2.BaseTransport | None = None
 
 SCOPES = [
     "chat:write", "chat:write.public", "im:write", "im:history", "channels:read", "groups:read",
+    "files:write",
 ]  # fmt: skip
 MANIFEST: dict[str, Any] = {
     "display_information": {
@@ -150,6 +151,38 @@ class SlackApi:
         channel = str(opened["channel"]["id"])
         sent = self.call("chat.postMessage", channel=channel, **blocks(card), unfurl_links=False)
         return f"{sent['channel']}/{sent['ts']}"
+
+    def _form(self, method: str, **fields: str) -> dict[str, Any]:
+        """A method that takes form fields (file uploads)."""
+        try:
+            response = self._http.post(
+                method, data=fields, headers={"Authorization": f"Bearer {self._bot}"}
+            )
+            data = cast(dict[str, Any], response.json())
+        except (httpx2.HTTPError, ValueError):
+            raise ChannelError(
+                "Couldn't reach Slack. Check this computer is online, then try again."
+            ) from None
+        if not data.get("ok"):
+            raise ChannelError(said(str(data.get("error") or response.status_code)))
+        return data
+
+    def attach(self, user: str, files: list[tuple[str, bytes]]) -> None:
+        """Files in the DM with this person: each uploaded, then shared there together. An
+        app made before files:write says so (paste the manifest again and reinstall)."""
+        opened = self.call("conversations.open", users=user)
+        channel = str(opened["channel"]["id"])
+        done: list[dict[str, str]] = []
+        for name, data in files:
+            got = self._form("files.getUploadURLExternal", filename=name, length=str(len(data)))
+            try:
+                uploaded = self._http.post(str(got["upload_url"]), content=data)
+            except httpx2.HTTPError:
+                raise ChannelError("Couldn't upload a file to Slack. Try again later.") from None
+            if uploaded.status_code >= 300:
+                raise ChannelError("Slack didn't take a file. Try again later.")
+            done.append({"id": str(got["file_id"]), "title": name})
+        self._form("files.completeUploadExternal", files=json.dumps(done), channel_id=channel)
 
     # --- Button presses and DMs, over Socket Mode ---
 

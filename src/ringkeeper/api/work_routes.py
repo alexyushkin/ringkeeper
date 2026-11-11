@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
@@ -44,6 +44,7 @@ from ringkeeper.services import (
     model_usage,
     paging,
     projects,
+    task_files,
     tasks,
     titles,
     undo,
@@ -217,6 +218,7 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
         "finished_at": task.finished_at, "turns": sum(s.turns or 0 for s in rows),
         "cost_usd": _cost(rows), "sessions": len(rows),
         "archived": task.archived_at is not None,
+        "files": len(task.changed_files),  # files it made or changed (GET .../files)
     }  # fmt: skip
 
 
@@ -395,6 +397,38 @@ def link_and_retry(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
 def resume_interrupted(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
     interrupted.resume(session, current_settings(), task_id)
     return _task_card(tasks.get_task(session, task_id))
+
+
+class FileIn(BaseModel):
+    path: str = Field(max_length=1000)
+    reveal: bool = False  # show it in its folder instead of opening it
+
+
+@router.get("/tasks/{task_id}/files")
+def task_files_of(task_id: str, session: SessionDep) -> list[dict[str, Any]]:
+    """The files the task made or changed, where each is now."""
+    task = tasks.get_task(session, task_id)
+    return [
+        {
+            "path": f.path, "size": f.size, "on_branch": f.on_branch, "runs": f.runs,
+            "can_open": current_settings().mode == "desktop" and f.size is not None,
+        }
+        for f in task_files.listed(session, current_settings(), task)
+    ]  # fmt: skip
+
+
+@router.post("/tasks/{task_id}/files/open")
+def open_task_file(task_id: str, data: FileIn, session: SessionDep) -> dict[str, bool]:
+    """Desktop: open a file the task made in its app, or show it in its folder (a program
+    or script is only ever shown). A file only on the task's branch opens from a copy."""
+    settings = current_settings()
+    if settings.mode != "desktop":
+        raise HTTPException(
+            422, detail="Files open on the computer Ringkeeper runs on: only in the desktop app."
+        )
+    task = tasks.get_task(session, task_id)
+    task_files.show(task_files.local_file(session, settings, task, data.path), reveal=data.reveal)
+    return {"ok": True}
 
 
 @router.post("/tasks/{task_id}/keep")
