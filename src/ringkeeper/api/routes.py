@@ -39,6 +39,7 @@ from ringkeeper.services import (
     instances,
     mentions,
     projects,
+    tasks,
     threads,
     undo,
     web_access,
@@ -140,6 +141,19 @@ def claude_status(session: SessionDep) -> dict[str, Any]:
     if pause is None:
         return {"waiting_until": None, "message": None}
     return {"waiting_until": pause.until.isoformat(), "message": pause.message}
+
+
+@router.post("/claude-status/try-now")
+def try_claude_now(session: WriteSessionDep) -> dict[str, Any]:
+    """Stop waiting for the usage limit's reset: requests and tasks go on now (and wait
+    again if Claude still says the limit is reached)."""
+    if claude_failures.clear(session):
+        admin_audit.record(
+            session, "claude.try_now", "stopped waiting for Claude's limit", by="owner"
+        )
+        threads.notify_router(session)
+        tasks.notify(session)
+    return claude_status(session)
 
 
 @router.post("/messages/{message_id}/cancel")

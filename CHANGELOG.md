@@ -21,6 +21,12 @@ publishes it as the release notes and the app shows it with the update.
   back. Retries wait 2, 5 and 15 minutes, then every half hour, and stop after 12 hours with
   **Try again**.
 
+- **The usage-limit pause can be cut short, and only Claude starts it.** Home's notice has
+  **Try now**, and changing Claude's sign-in, key or place in Settings stops the wait too. Only
+  Claude's own signals pause anything: a task that failed while reading about an API's "rate
+  limit reached", or got "Internal Server Error" from n8n, is an ordinary failure and no longer
+  pauses everything.
+
 - **Web access is a project setting of its own.** It no longer depends on how independently
   a project works: on the project's Settings tab, **Web access** is on for your own client's
   projects and off for a client's unless you change it. A request that needs the web where

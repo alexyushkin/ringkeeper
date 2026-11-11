@@ -18,7 +18,7 @@ from typing import Any, cast
 import anthropic
 from sqlalchemy.orm import Session
 
-from ringkeeper import netpolicy
+from ringkeeper import claude_failures, netpolicy
 from ringkeeper.adapters import (
     gmail,
     http_api,
@@ -92,7 +92,9 @@ def check_anthropic_key(key: str, workspace: str | None = None) -> None:
 def store_claude(
     session: Session, settings: Settings, mode: AuthMode, value: str, workspace: str | None = None
 ) -> Stored:
-    """`workspace` is the key's Anthropic workspace, if it needs one (checked with it)."""
+    """`workspace` is the key's Anthropic workspace, if it needs one (checked with it). A new
+    sign-in or key may not have the limit an old one reached: nothing waits for it now."""
+    claude_failures.clear(session)
     value = normalize(value)
     check_format(mode, value)
     if mode is AuthMode.API_KEY:
