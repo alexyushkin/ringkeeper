@@ -131,6 +131,7 @@ export default function ConnectionsPage() {
                     </Link>
                     {c.type === "google" ? null : <EnvBadge env={c.env} />}
                     {label(c) !== connectionTitle(c) ? <span className="text-xs text-muted">{label(c)}</span> : null}
+                    {(c.links ?? []).length || c.all_projects ? null : <Badge tone="warn">Not linked to any project</Badge>}
                     {c.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
                     {planLimit(c) ? <Badge tone="warn">Plan limit</Badge> : c.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
                   </div>
@@ -140,12 +141,10 @@ export default function ConnectionsPage() {
                     {(c.links ?? []).length ? (
                       <span className="text-muted">Used by {(c.links ?? []).map((l) => (Object.keys(l.scope).length ? `${projectName(l.project)} (${scopeText(l.scope, c.scope_fields)})` : projectName(l.project))).join(", ")}</span>
                     ) : (
-                      <>
-                        <span className="text-muted">Not linked yet · </span>
-                        <Link href={`${clientHref(client)}#connections/${encodeURIComponent(c.name)}/link`} className="text-accent">
-                          Link to a project ›
-                        </Link>
-                      </>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="text-muted">No task can use it until a project does.</span>
+                        <LinkButton href={`${clientHref(client)}#connections/${encodeURIComponent(c.name)}/link`}>Link</LinkButton>
+                      </span>
                     )}
                   </p>
                 </li>
