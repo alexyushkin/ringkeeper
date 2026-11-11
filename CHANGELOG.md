@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A GitHub link can be pinned to several repositories.** On the same screen, **Add another
+  repository**. Every call is checked against the list, and listing repositories shows only
+  those. Your own GitHub connection linked to a project with no repository pinned now warns:
+  "This project could reach every repository this token can."
 - **Fixed:** a request from Slack reached the router and the task with Slack's markup in it
   ("<mailto:a@b.com|a@b.com>", "&amp;"). It's plain text now, as you wrote it: a link keeps its
   address, and Discord mentions and Telegram links read as words too.

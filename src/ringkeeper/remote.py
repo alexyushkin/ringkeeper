@@ -37,6 +37,19 @@ class ScopeField:
     # A cloud's CLI flag that carries it, in a command tool (`Remote.command_tools`).
     flags: tuple[str, ...] = ()
     every_command: bool = True  # every command takes the flag, so it can be added to any
+    # Several values, comma-separated ("acme/web,acme/api"): a call names one of them, and is
+    # filled in only when there's just one.
+    many: bool = False
+    plural: str = ""  # its label for several ("repositories"); empty: the label and an s
+
+    @property
+    def several(self) -> str:
+        return self.plural or f"{self.label.lower()}s"
+
+
+def values(value: str) -> list[str]:
+    """A field's values: one, or several separated by commas."""
+    return [v.strip() for v in value.split(",") if v.strip()]
 
 
 @dataclass(frozen=True)
@@ -634,11 +647,21 @@ NATIVE: dict[str, ScopeSpec] = {
         (ScopeField("base", "Airtable base", ("base_id",), "The base ID (app...)."),),
         frozenset({"whoami"}),
     ),
-    # A project's link pins one repository; the account-wide tools (list_repos) aren't
-    # available on it.
+    # A project's link pins one repository or several; list_repos then lists only those
+    # (adapters.github), and every other call has to name one of them.
     "github": ScopeSpec(
         "GitHub",
-        (ScopeField("repo", "Repository", ("repo",), "owner/name, like acme-inc/website."),),
+        (
+            ScopeField(
+                "repo",
+                "Repository",
+                ("repo",),
+                "owner/name, like acme-inc/website.",
+                many=True,
+                plural="repositories",
+            ),
+        ),
+        frozenset({"list_repos"}),
     ),
     # A folder or API path: the call has to stay under it.
     "http": ScopeSpec(
@@ -716,6 +739,13 @@ def check_scope(spec: ScopeSpec | None, scope: Mapping[str, Any]) -> dict[str, s
     if unknown := sorted(set(cleaned) - {f.key for f in fields}):
         what = spec.name if spec is not None else "This connection"
         raise ScopeError(f"{what} can't be narrowed by {', '.join(unknown)}")
+    for f in fields:
+        if f.key not in cleaned:
+            continue
+        found = list(dict.fromkeys(values(cleaned[f.key])))  # in order, once each
+        if len(found) > 1 and not f.many:
+            raise ScopeError(f"Only one {f.label.lower()} here.")
+        cleaned[f.key] = ",".join(found)
     for before, f in itertools.pairwise(fields):
         if f.key in cleaned and before.key not in cleaned and not f.prefix:
             raise ScopeError(f"Set the {before.label} before the {f.label}.")
@@ -755,17 +785,18 @@ def narrow(
         wanted = scope.get(f.key)
         if wanted is None:
             continue
+        allowed = values(wanted) if f.many else [wanted]
         given = [a for a in f.args if result.get(a) is not None]
         for arg in given:
-            fits = under(wanted, str(result[arg])) if f.prefix else str(result[arg]) == wanted
-            if not fits:
-                raise ScopeError(
-                    f"this project's link to {spec.name} is limited to {f.label.lower()} "
-                    f"'{wanted}'; '{tool}' was given {arg}='{result[arg]}'"
-                )
+            _check_given(spec, f, wanted, tool, arg, str(result[arg]))
         if given:
             continue
         fillable = [a for a in f.args if a in names or a in result]
+        if fillable and len(allowed) > 1:
+            raise ScopeError(
+                f"this project's link to {spec.name} reaches the {f.several} "
+                f"{', '.join(repr(v) for v in allowed)}: name one as {fillable[0]}"
+            )
         if fillable:
             result[fillable[0]] = wanted
         elif index == 0 and takes is None:
@@ -779,6 +810,30 @@ def narrow(
                 f"link is limited to {f.label.lower()} '{wanted}', so it isn't available here"
             )
     return result
+
+
+def _check_given(
+    spec: ScopeSpec, f: ScopeField, wanted: str, tool: str, arg: str, said: str
+) -> None:
+    """A value a call names is inside the link's: under its path, one of its values, or it."""
+    allowed = values(wanted) if f.many else [wanted]
+    if f.prefix:
+        fits = under(wanted, said)
+    elif f.many:
+        fits = said.casefold() in {v.casefold() for v in allowed}
+    else:
+        fits = said == wanted
+    if fits:
+        return
+    limited = (
+        f"{f.label.lower()} '{wanted}'"
+        if len(allowed) == 1
+        else f"the {f.several} {', '.join(repr(v) for v in allowed)}"
+    )
+    raise ScopeError(
+        f"this project's link to {spec.name} is limited to {limited}; "
+        f"'{tool}' was given {arg}='{said}'"
+    )
 
 
 def _narrow_command(

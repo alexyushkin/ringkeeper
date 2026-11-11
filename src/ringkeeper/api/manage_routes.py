@@ -688,7 +688,7 @@ class ConnectionOut(BaseModel):
     # Each project's link: what it's narrowed to (empty: the whole connection).
     links: list[dict[str, Any]] = []
     # What a link can be narrowed by (ringkeeper.remote); empty: it can't.
-    scope_fields: list[dict[str, str]] = []
+    scope_fields: list[dict[str, Any]] = []
     last_test_at: Any
     last_test_ok: bool | None
     last_test_message: str | None
@@ -696,10 +696,10 @@ class ConnectionOut(BaseModel):
     suggested_title: str | None = None
 
 
-def _scope_fields(instance: Instance) -> list[dict[str, str]]:
+def _scope_fields(instance: Instance) -> list[dict[str, Any]]:
     rules = remote.spec_for(instance.type.value, instance.config)
     fields = rules.fields if rules is not None else ()
-    return [{"key": f.key, "label": f.label, "hint": f.hint} for f in fields]
+    return [{"key": f.key, "label": f.label, "hint": f.hint, "many": f.many} for f in fields]
 
 
 def _connection_out(instance: Instance) -> ConnectionOut:
