@@ -7,7 +7,9 @@ endpoint that hands out a secret or signs in as someone else stays out of reach.
 Each operation says what it needs:
 
 - `reads`: runs. Reports and lookups.
-- `held`: always waits for approval, even on test data. Drafts and edits.
+- `drafts`: saves a draft that reaches nobody: runs and is logged, unless the connection
+  holds drafts too. `remove` names the operation that deletes it, which is how it's undone.
+- `held`: always waits for approval, even on test data. Edits.
 - `final`: also needs the connection's name typed, in the app itself. It sends to real
   people, publishes, posts to the books, moves money, deletes, changes who has access or
   adds ongoing cost. No setting lets one run by itself.
@@ -28,7 +30,7 @@ Reader = Callable[[str, JSON, JSON | None], Awaitable[JSON]]
 Confirm = Callable[[Reader, JSON, JSON, str | None], Awaitable[None]]
 # The vendor's own names for what a card shows, when the call only has IDs: `who`, `which`.
 Namer = Callable[[Reader, JSON, JSON, str | None], Awaitable[JSON]]
-READ, HELD, FINAL = "read", "held", "final"
+READ, DRAFT, HELD, FINAL = "read", "draft", "held", "final"
 # What a Field's value may look like when it becomes part of the address.
 HOST_LABEL = r"^[a-z0-9][a-z0-9-]{0,62}$"
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
@@ -106,6 +108,10 @@ class Op:
     declares: str = ""
     # Asked once, when the call is held. If the vendor doesn't say, the card shows the IDs.
     names: Namer | None = None
+    # A draft's: the operation that deletes what it saved (its undo), and which path value
+    # takes the saved thing's id.
+    remove: str = ""
+    remove_key: str = ""
 
 
 def reads(
@@ -142,6 +148,26 @@ def held(
     return Op(
         name, method, path, says, HELD, params=params, only=only, undo=undo, money=money,
         shape=shape, hint=hint,
+    )  # fmt: skip
+
+
+def drafts(
+    name: str,
+    method: str,
+    path: str,
+    says: str,
+    *params: str,
+    remove: str,
+    remove_key: str,
+    only: tuple[str, ...] = (),
+    hint: str = "",
+    after: Callable[[JSON, JSON], JSON] | None = None,
+) -> Op:
+    """Saves a draft: runs unless the connection holds drafts too, and is undone by `remove`
+    with the saved id as `remove_key`."""
+    return Op(
+        name, method, path, says, DRAFT, params=params, only=only, hint=hint, remove=remove,
+        remove_key=remove_key, after=after,
     )  # fmt: skip
 
 
@@ -280,7 +306,7 @@ class Vendor:
         for op in self.ops:
             if op.level == FINAL and op.why is None:
                 raise ValueError(f"{self.key}.{op.name} needs the name typed: say why")
-            if op.level not in (READ, HELD, FINAL):
+            if op.level not in (READ, DRAFT, HELD, FINAL):
                 raise ValueError(f"{self.key}.{op.name}: what does it need?")
             if op.level == READ and op.method not in ("GET", "HEAD") and not self._reads(op):
                 raise ValueError(f"{self.key}.{op.name} changes something, so it can't only read")

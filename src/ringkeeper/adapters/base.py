@@ -29,7 +29,18 @@ class Hold(enum.StrEnum):
 
     PROD = "prod"  # on production connections, unless the binding preapproves it
     ALWAYS = "always"  # reaches real people or costs money: even on test data
-    NEVER = "never"  # nobody else sees it (a draft): runs, and is audited
+    NEVER = "never"  # nobody else sees it: runs, and is audited
+    # A saved draft: it reaches nobody, so it runs and is audited, unless the connection
+    # holds drafts too (`holds_drafts`).
+    DRAFT = "draft"
+
+
+HOLD_DRAFTS = "hold_drafts"  # in a connection's config: drafts wait for approval too
+
+
+def holds_drafts(config: "JSON") -> bool:
+    """The owner wants this connection's drafts held for approval too."""
+    return bool(config.get(HOLD_DRAFTS))
 
 
 class ToolError(RingkeeperError):
@@ -127,6 +138,11 @@ class ToolSpec:
     # Puts a call's arguments where the tool reads them, before they're checked, so holds and
     # approval cards see them there too.
     tidy: Callable[[JSON], JSON] | None = None
+    # The hold rule per call, for a tool whose calls differ (a vendor's operations).
+    holds: Callable[[JSON], Hold] | None = None
+
+    def hold_for(self, args: JSON) -> Hold:
+        return self.holds(args) if self.holds is not None else self.hold
 
 
 def _spec(
@@ -157,8 +173,15 @@ def always_held(fn: Handler) -> ToolSpec:
 
 
 def draft(fn: Handler) -> ToolSpec:
-    """A write only the user sees (a saved draft): never held, still audited."""
+    """A write nobody else sees (a test to the connection's own address): never held, still
+    audited."""
     return _spec(ToolKind.WRITE, fn, None, Hold.NEVER)
+
+
+def saves_draft(fn: Handler) -> ToolSpec:
+    """Saves a draft: it reaches nobody, so it runs and is audited, unless the connection
+    holds drafts too. Never needs the name typed."""
+    return replace(_spec(ToolKind.WRITE, fn, None, Hold.DRAFT), typed=_never_typed)
 
 
 def _never_typed(_args: JSON) -> str | None:

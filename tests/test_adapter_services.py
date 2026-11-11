@@ -65,7 +65,7 @@ def test_every_service_has_its_adapter_and_sends_hold_always() -> None:
     assert holds == {
         (InstanceType.TWILIO, "send_sms"): Hold.ALWAYS,
         (InstanceType.GMAIL, "send_email"): Hold.ALWAYS,
-        (InstanceType.GMAIL, "create_draft"): Hold.NEVER,
+        (InstanceType.GMAIL, "create_draft"): Hold.DRAFT,
         (InstanceType.N8N, "activate_workflow"): Hold.ALWAYS,
         (InstanceType.N8N, "deactivate_workflow"): Hold.ALWAYS,
         (InstanceType.N8N, "update_workflow"): Hold.ALWAYS,
@@ -74,6 +74,7 @@ def test_every_service_has_its_adapter_and_sends_hold_always() -> None:
         (InstanceType.MCP, "call_tool"): Hold.ALWAYS,
         # Every Google write asks first (unless the owner lets that tool run, per account).
         **{(InstanceType.GOOGLE, tool): Hold.ALWAYS for tool in google.WRITES},
+        (InstanceType.GOOGLE, "create_draft"): Hold.DRAFT,
         # And every GitHub write: issues, comments, pull requests, merges, pushes.
         **{(InstanceType.GITHUB, tool): Hold.ALWAYS for tool in github.WRITES},
     }

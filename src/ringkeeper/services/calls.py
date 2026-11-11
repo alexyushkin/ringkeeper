@@ -41,6 +41,7 @@ from ringkeeper.adapters.base import (
     ToolError,
     ToolKind,
     ToolSpec,
+    holds_drafts,
 )
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
@@ -517,8 +518,11 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
     if await _db(partial(setup_check.session_from_check, session_id=call.caller.session_id)):
         return await _hold(call, spec, target)  # Check my setup changes nothing: the user decides
 
-    held = spec.hold is Hold.ALWAYS or (
-        spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved
+    hold = spec.hold_for(call.args)
+    held = (
+        hold is Hold.ALWAYS
+        or (hold is Hold.DRAFT and holds_drafts(auth.config))
+        or (hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved)
     )
     trusted = False
     # A call that needs the name typed always asks: `trusts` refuses it too.

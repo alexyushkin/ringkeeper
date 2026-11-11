@@ -11,7 +11,7 @@ import pytest
 
 from ringkeeper.adapters import google
 from ringkeeper.adapters.base import Hold, Target, ToolError, ToolKind
-from ringkeeper.models import Env
+from ringkeeper.models import Env, Instance
 from ringkeeper.services import google_connections, google_oauth
 from ringkeeper.vault import Secret
 
@@ -158,5 +158,6 @@ def test_an_edit_cant_be_set_to_run_without_asking() -> None:
     """A document may be someone else's: unlike other Google writes, the owner can't let an edit
     run by itself."""
     assert "edit_doc" in google.KEEPS_ASKING
-    assert google_connections._rule({"edit_doc": "run"}, "edit_doc") == "ask"  # pyright: ignore[reportPrivateUsage]
-    assert google_connections._rule({"create_doc": "run"}, "create_doc") == "run"  # pyright: ignore[reportPrivateUsage]
+    rule = google_connections._rule  # pyright: ignore[reportPrivateUsage]
+    assert rule(Instance(config={}), {"edit_doc": "run"}, "edit_doc") == "ask"
+    assert rule(Instance(config={}), {"create_doc": "run"}, "create_doc") == "run"

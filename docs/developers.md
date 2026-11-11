@@ -111,7 +111,7 @@ gateway  /mcp/database  /mcp/n8n  /mcp/airtable  /mcp/vercel  /mcp/twilio  /mcp/
    ├─ write, prod           → hold as a decision, audit
    │                           unless the tool is in preapproved_writes
    ├─ send (a text, email)  → always hold, even on test data
-   └─ draft (Gmail)         → run, audit
+   └─ draft (an email draft) → run, audit; held if the connection's hold_drafts is on
    ▼
 adapter (one per service)  ← secret resolved from the vault, never returned
 ```
@@ -208,8 +208,8 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/airtable` | `list_bases`, `list_tables`, `list_records`, `get_record` | `create_records`, `update_records`, `delete_records` |
 | `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
-| `/mcp/gmail` | `search_messages`, `get_message`, `read_attachment`, `get_thread` | `create_draft` (never held), `send_email` (always held) |
-| `/mcp/google` | `search_mail`, `read_mail`, `read_attachment`, `get_thread`, `search_files`, `read_file`, `list_events`, `read_sheet` | `send_mail`, `create_draft`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account) |
+| `/mcp/gmail` | `search_messages`, `get_message`, `read_attachment`, `get_thread` | `create_draft` (runs unless the connection holds drafts), `send_email` (always held) |
+| `/mcp/google` | `search_mail`, `read_mail`, `read_attachment`, `get_thread`, `search_files`, `read_file`, `list_events`, `read_sheet` | `send_mail`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account); `create_draft` runs unless the account holds drafts |
 | `/mcp/github` | `list_repos`, `get_repo`, `list_issues`, `get_issue`, `list_pulls`, `get_pull`, `get_file`, `list_branches`, `list_commits`, `list_check_runs` | `create_issue`, `comment`, `update_issue`, `create_pull`, `merge_pull` (name typed), `push_branch` (all always held) |
 | `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
@@ -250,7 +250,8 @@ A worker only gets the endpoints of the services its project is connected to.
   agent) and a change to them is audited. Override any tool on its card, under Details › Tools and approvals.
 - **gmail:** IMAP and SMTP with an app password (no Google OAuth); the secret is
   JSON with the address and the app password. Reading never marks mail as
-  read. Drafts run without asking; sending always waits for approval. The
+  read. Drafts run without asking (unless the connection holds drafts) and can be undone
+  (the draft is deleted); sending always waits for approval. The
   simple fallback to a Google account connection.
 - **github:** a token (fine-grained, limited to the client's repositories, or
   classic), on github.com or a GitHub Enterprise Server address. A project's

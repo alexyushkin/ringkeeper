@@ -11,6 +11,7 @@ import { clientName, place, projectName } from "@/lib/client/scope";
 import { taskHref } from "@/lib/client/routes";
 import { useSendKeys } from "@/lib/client/use-send-keys";
 import { KIND } from "@/lib/client/words";
+import { collapsed, emailOf, type Email } from "@/lib/approvals";
 
 export interface Decision {
   id: string;
@@ -107,6 +108,35 @@ function PlanCost({ estimate }: { estimate: Estimate }) {
  * it in one place clears it everywhere (each list reloads on the live event).
  * `inline`: in a conversation or on a task page, without the link back to the task.
  */
+/** An email or draft, as it will go: To, Subject and the body (a long body cut after 12
+ * lines, with a button for the rest). */
+function EmailShown({ email }: { email: Email }) {
+  const [whole, setWhole] = useState(false);
+  const cut = collapsed(email.body);
+  return (
+    <dl data-email className="grid gap-1 rounded-md border border-line p-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4">
+      <dt className="text-muted">To</dt>
+      <dd className="break-words">{email.to.join(", ") || "(nobody named)"}</dd>
+      {email.cc.length ? (
+        <>
+          <dt className="text-muted">Cc</dt>
+          <dd className="break-words">{email.cc.join(", ")}</dd>
+        </>
+      ) : null}
+      <dt className="text-muted">Subject</dt>
+      <dd className="font-medium">{email.subject || "(no subject)"}</dd>
+      <dd className="mt-2 sm:col-span-2">
+        <p className="whitespace-pre-wrap break-words rounded-md bg-sunken p-2">{cut && !whole ? cut.shown : email.body || "(empty)"}</p>
+        {cut ? (
+          <button type="button" className="mt-1 text-sm text-accent" onClick={() => setWhole(!whole)}>
+            {whole ? "Show less" : `Show all ${cut.total} lines`}
+          </button>
+        ) : null}
+      </dd>
+    </dl>
+  );
+}
+
 export function DecisionCard({ decision, onDone, inline = false }: { decision: Decision; onDone: () => void; inline?: boolean }) {
   const title = useConnectionTitles();
   const [text, setText] = useState("");
@@ -126,6 +156,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
     },
     { verb: "ask for changes" },
   );
+  const email = decision.kind === "approve" ? emailOf(decision.args) : null;
 
   async function trustAndApprove() {
     setBusy("trust");
@@ -226,6 +257,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
               <p className="mt-1 text-xs text-muted">If that isn&apos;t true, deny this.</p>
             </div>
           ) : null}
+          {email ? <EmailShown email={email} /> : null}
           {typeof decision.args?.sql === "string" ? <Code>{decision.args.sql}</Code> : null}
           {typeof decision.args?.sql === "string" && decision.args.params ? <Code>{`Values: ${JSON.stringify(decision.args.params)}`}</Code> : null}
           {decision.undo ? (
@@ -233,7 +265,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
               {decision.undo.possible ? `You can revert this for ${decision.undo.days} days after it runs (on its task page).` : `Can't be undone: ${decision.undo.why}`}
             </p>
           ) : null}
-          <Details>
+          <Details label="Show details">
             <p className="mb-1 text-xs text-muted">Exactly what it will send ({decision.tool?.replace(/_/g, " ")})</p>
             <Code>{JSON.stringify(decision.args, null, 2)}</Code>
           </Details>

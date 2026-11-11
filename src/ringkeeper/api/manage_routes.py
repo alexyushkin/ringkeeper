@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy, remote
 from ringkeeper.adapters import vendor
-from ringkeeper.adapters.base import ToolError
+from ringkeeper.adapters.base import HOLD_DRAFTS, ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import (
     OWNER,
@@ -660,6 +660,8 @@ class ConnectionPatch(Input):
     except_clients: CleanList | None = None
     except_projects: CleanList | None = None
     base_url: str | None = None
+    # Its drafts wait for approval too (by default, saving a draft runs: it reaches nobody).
+    hold_drafts: bool | None = None
     # Required with a new base_url: the key goes wherever the address points, so
     # an address can't be changed to send the stored key somewhere else.
     secret: str | None = Field(default=None, repr=False)
@@ -775,10 +777,12 @@ def _vendor_config(kind: InstanceType, secret: str, env: Env) -> dict[str, Any]:
         raise HTTPException(422, detail=f"{message[:1].upper()}{message[1:]}.") from None
 
 
-def _with_expiry(instance: Instance, changes: dict[str, Any]) -> dict[str, Any]:
+def _with_config(instance: Instance, changes: dict[str, Any]) -> dict[str, Any]:
     config = dict(instance.config or {})
     if "expires_at" in changes:
         config["expires_at"] = changes["expires_at"] or None
+    if changes.get("hold_drafts") is not None:
+        config[HOLD_DRAFTS] = bool(changes["hold_drafts"])
     return config
 
 
@@ -815,7 +819,7 @@ def update_connection(
     merged = InstanceIn(
         name=instance.name, title=changes.get("title"), type=instance.type,
         env=changes.get("env", instance.env), secret_ref=instance.secret_ref, owner=owner,
-        base_url=base_url, config=_with_expiry(instance, changes), shared=shared,
+        base_url=base_url, config=_with_config(instance, changes), shared=shared,
         all_projects=everywhere,
         # Exceptions only mean something for all projects; turning that off drops them.
         except_clients=left_out if everywhere and shared else [],

@@ -7,11 +7,12 @@ import { useEffect, useState } from "react";
 
 import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
-import { DecisionCard, type Decision } from "@/components/decision-card";
+import { type Decision } from "@/components/decision-card";
 import { Markdown, plainText } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { TaskFiles } from "@/components/task-files";
+import { Waiting } from "@/components/waiting";
 import { CancelButton } from "@/components/scheduled";
 import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -132,13 +133,6 @@ export function ThreadView({ id }: { id: string }) {
         ))}
       </ol>
 
-      {waiting.length ? (
-        <div className="mt-4 space-y-3">
-          {waiting.map((d) => (
-            <DecisionCard key={d.id} decision={d} onDone={pending.reload} />
-          ))}
-        </div>
-      ) : null}
 
       {tasks.data?.length ? (
         <>
@@ -157,6 +151,9 @@ export function ThreadView({ id }: { id: string }) {
           </div>
         </>
       ) : null}
+
+      {/* Under the latest result, where the reader is. */}
+      <Waiting decisions={waiting} onDone={pending.reload} />
 
       <Changes thread={id} />
 

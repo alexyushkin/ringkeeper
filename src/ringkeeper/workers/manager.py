@@ -46,6 +46,7 @@ from ringkeeper.services import (
     claude_place,
     cleanup,
     connection_note,
+    drafts,
     holds,
     inbox,
     interrupted,
@@ -725,7 +726,8 @@ class Manager:
                 # the architect), shown on its card, its routine run and in channels.
                 said = result.get("result")
                 if not job.feature and not waiting and isinstance(said, str) and said.strip():
-                    task.summary = kept_result(said, links.task_page(self.settings, task.id))
+                    kept = kept_result(said, links.task_page(self.settings, task.id))
+                    task.summary = drafts.linked(session, task, kept)  # where its drafts are
                 if status is TaskStatus.NOT_DONE:
                     task.offer = link_offer.find(session, task, collected.needs)
                 if job.feature and not waiting:
