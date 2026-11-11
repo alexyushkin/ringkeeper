@@ -132,6 +132,14 @@ SCENARIOS: tuple[Scenario, ...] = (
         "same conversation goes to the project picked, without asking again.",
     ),
     Scenario(
+        "follow-up-stays", "A follow-up stays in its conversation's project", "routing",
+        request="List the tables in Acme orders' database",
+        project=ACME, tools=("list_tables",), never_held=True,
+        then=("Thanks. Now say that again in one or two sentences.",), cost_ceiling=0.75,
+        notes="The follow-up names nothing, so it runs in Acme orders too, even though it "
+        "needs no connection (general work otherwise runs in your own client's project).",
+    ),
+    Scenario(
         "answer-by-name", "Replying with just a project's name answers the question", "routing",
         request="Add a file called notes.txt saying hi to Demo Co's project folder.",
         asks=True, pick=SITE, project=SITE, answer_by_message=True, cost_ceiling=1.0,

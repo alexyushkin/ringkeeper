@@ -97,6 +97,11 @@ you pasted, runs in the chosen project. With nothing chosen, it runs in your own
 default project: on that client's page, open **Settings › Your own work** and turn on
 "... is me".
 
+A follow-up stays where its conversation's work is. Once a conversation has a task in a
+project, a later message there that names no other project, client or connection runs in
+the same project, even if it needs no connection ("Thanks. Now say that again in two
+sentences").
+
 Whether a project's tasks can use the web is its own setting (the project's Settings tab,
 **Web access**), apart from how independently it works. Left at the default, it's on for
 your own client's projects and off for a client's, so their data doesn't leave unless you
