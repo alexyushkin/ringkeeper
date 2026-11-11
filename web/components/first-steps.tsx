@@ -6,6 +6,7 @@ import Link from "@/components/link";
 import { fillRequest } from "@/components/composer";
 import { Alert, Button, Card, ConfirmButton } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
+import { clientHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 
 export interface DemoInfo {
@@ -17,7 +18,7 @@ export interface DemoInfo {
 }
 
 interface Start {
-  checklist: { claude: boolean; project: boolean; connection: boolean; task: boolean; done: boolean; dismissed: boolean; unlinked: string[] };
+  checklist: { claude: boolean; project: boolean; connection: boolean; task: boolean; done: boolean; dismissed: boolean; unlinked: Unlinked[] };
   suggestions: string[];
   demo: DemoInfo | null;
   demo_offered: boolean;
@@ -39,7 +40,7 @@ export function FirstSteps() {
     <div className="mb-6 space-y-3">
       {whats_new ? <WhatsNew {...whats_new} onSeen={start.reload} /> : null}
       {showList ? <Checklist steps={checklist} demoOffered={demo_offered && !demo} onChange={start.reload} /> : null}
-      {!showList && checklist.unlinked.length ? <Unlinked names={checklist.unlinked} /> : null}
+      {!showList && checklist.unlinked.length ? <UnlinkedNote names={checklist.unlinked} /> : null}
       {demo ? <DemoCard demo={demo} onRemoved={start.reload} /> : null}
       {tries.length ? <Suggestions items={tries} /> : null}
     </div>
@@ -148,18 +149,27 @@ function Checklist({ steps, demoOffered, onChange }: { steps: Start["checklist"]
   );
 }
 
-/** Where Link goes: the first unlinked connection's Link to project…, on Connectors. */
-function linkHref(names: string[]): string {
-  return `/connections#connections/${encodeURIComponent(names[0] ?? "")}/link`;
+/** A connection linked to no project, and whose it is ("you": your own tool). */
+interface Unlinked {
+  name: string;
+  client: string;
 }
 
-function unlinkedText(names: string[]): string {
-  const n = names.length;
+/** Where Link goes: the first one's Link to project…, where its card is. */
+function linkHref(unlinked: Unlinked[]): string {
+  const first = unlinked[0];
+  if (!first) return "/connections";
+  const at = first.client === "you" ? "/connections" : clientHref(first.client);
+  return `${at}#connections/${encodeURIComponent(first.name)}/link`;
+}
+
+function unlinkedText(unlinked: Unlinked[]): string {
+  const n = unlinked.length;
   return `${n === 1 ? "1 connection isn't" : `${n} connections aren't`} linked to any project, so no task can use ${n === 1 ? "it" : "them"}`;
 }
 
 /** Home, when Get started is done or hidden: connections no task can use yet. */
-function Unlinked({ names }: { names: string[] }) {
+function UnlinkedNote({ names }: { names: Unlinked[] }) {
   return (
     <Card className="flex flex-wrap items-center gap-3">
       <span className="flex-1 text-sm">{unlinkedText(names)}.</span>
