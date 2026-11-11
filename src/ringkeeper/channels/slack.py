@@ -18,6 +18,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 from ringkeeper import scrub
+from ringkeeper.channels import plain
 from ringkeeper.channels.cards import Button, Card
 from ringkeeper.channels.outbox import ChannelError, OnMessage, OnPress
 
@@ -217,7 +218,8 @@ class SlackApi:
         if event.get("subtype") or event.get("bot_id") or not event.get("user"):
             return
         user = str(event["user"])
-        reply = on_message(user, str(event.get("text") or ""), f"slack:{user}")
+        said = plain.from_slack(str(event.get("text") or ""))  # as written, without the markup
+        reply = on_message(user, said, f"slack:{user}")
         if reply and event.get("channel"):
             try:
                 self.call(

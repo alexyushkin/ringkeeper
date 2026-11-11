@@ -286,6 +286,18 @@ def test_telegram_requests_continue_one_conversation(
     assert len({m.thread_id for m in messages()}) == 2
 
 
+def test_a_telegram_link_s_address_reaches_the_request(
+    bridge: Bridge, telegram: FakeTelegram
+) -> None:
+    telegram.text(
+        "count the orders in the sheet",
+        entities=[{"type": "text_link", "offset": 24, "length": 5, "url": "https://x.example/s"}],
+    )
+    bridge.poll_once(0)
+    [request] = [m.body for m in messages() if m.author != "ringkeeper" and m.role.value == "user"]
+    assert request == "count the orders in the sheet (https://x.example/s)"
+
+
 def test_a_telegram_task_s_files_come_with_its_result(
     bridge: Bridge, telegram: FakeTelegram, tmp_path: Path
 ) -> None:

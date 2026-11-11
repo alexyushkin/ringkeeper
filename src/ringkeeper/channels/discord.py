@@ -18,6 +18,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import ClientConnection, connect
 
 from ringkeeper import scrub
+from ringkeeper.channels import plain
 from ringkeeper.channels.cards import Button, Card
 from ringkeeper.channels.outbox import ChannelError, OnMessage, OnPress
 
@@ -228,7 +229,9 @@ class DiscordApi:
             return
         user = str(author["id"])
         who = f"discord:{user}" + (f" ({author['username']})" if author.get("username") else "")
-        reply = on_message(user, str(sent.get("content") or ""), who)
+        mentions = cast(list[dict[str, Any]], sent.get("mentions") or [])
+        said = plain.from_discord(str(sent.get("content") or ""), mentions)
+        reply = on_message(user, said, who)
         if reply and sent.get("channel_id"):
             try:
                 self.call(
