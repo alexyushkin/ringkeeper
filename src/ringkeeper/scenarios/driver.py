@@ -58,13 +58,20 @@ def _blocks(event: SessionEvent) -> list[dict[str, Any]]:
 
 
 def tool_names(events: list[SessionEvent]) -> list[str]:
-    """The tools that ran. A call that came back as an error doesn't count as using the tool."""
+    """The tools that ran. A call that came back as an error doesn't count as using the tool.
+    A connection added from another app is called through one generic tool, so that call
+    is named with the connection and tool it reached ("... call_tool demo-mail list_emails")."""
     called: dict[str, str] = {}
     for event in events:
         if event.type == "sdk.assistant":
             for block in _blocks(event):
                 if block.get("_kind") == "ToolUseBlock":
-                    called[str(block.get("id"))] = str(block.get("name"))
+                    name = str(block.get("name"))
+                    args = block.get("input")
+                    if name.endswith("__call_tool") and isinstance(args, dict):
+                        reached = cast(dict[str, Any], args)
+                        name = f"{name} {reached.get('instance', '')} {reached.get('tool', '')}"
+                    called[str(block.get("id"))] = name
     failed = {
         str(block.get("tool_use_id"))
         for event in events
