@@ -385,6 +385,10 @@ async def test_a_gmail_draft_runs_on_production(
     result = await run_call(
         ToolCall(ACME, InstanceType.GMAIL, "create_draft", "acme-gmail", draft), vault
     )
+    message_id = result.pop("message_id")
+    link = result.pop("link")
     assert result == {"saved": "draft", "to": ["anna@acme.example"], "subject": "Re: Invoice"}
+    assert message_id.startswith("<")  # how its undo finds it
+    assert "rfc822msgid:" in link  # where it opens
     assert len(imap.appended) == 1
     assert audit_rows()[-1].outcome is AuditOutcome.EXECUTED
