@@ -9,15 +9,24 @@ from sqlalchemy import select
 
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Message, Project, Task
+from ringkeeper.models import (
+    Decision,
+    DecisionKind,
+    DecisionStatus,
+    InstanceType,
+    Message,
+    Project,
+    Task,
+)
 from ringkeeper.router import follow_up
 from ringkeeper.router.prompt import SYSTEM_PROMPT
 from ringkeeper.router.service import route_next
 from ringkeeper.scenarios.catalog import SCENARIOS
 from ringkeeper.scenarios.checks import ALLOWED, DECLINED, Evidence, judge
 from ringkeeper.services import clients, threads
+from ringkeeper_worker.agent import HEADLESS_NOTE
 from tests.fake_router import FakeModel, output, routed
-from tests.helpers import make_project
+from tests.helpers import bind, make_instance, make_project
 
 ADD = "Add a file called notes.txt saying hi to Demo Co's project folder."
 
@@ -133,6 +142,22 @@ def test_client_level_work_still_goes_to_the_default_project() -> None:
     assert len(started()) == 1
 
 
+def test_naming_a_connection_decides_without_asking() -> None:
+    with session_scope() as session:
+        make_instance(
+            session,
+            "demo-crm",
+            type=InstanceType.MCP,
+            secret_ref="file://demo/crm",
+            owner="demo-co",
+        )
+    bind("demo-shop", "demo-crm", is_default=True)
+    ask("Use demo-crm to export Demo Co's contact list.")
+    route(output(routed("demo-shop", 0.95)))
+    assert started() == ["demo-shop"]
+    assert open_questions() == 0
+
+
 def test_naming_the_project_or_choosing_it_doesn_t_ask() -> None:
     ask("Add a file called notes.txt saying hi to Demo site's folder.")
     route(output(routed("demo-site", 0.95)))
@@ -168,3 +193,9 @@ def test_a_name_that_didn_t_answer_is_said_plainly() -> None:
 
 def test_the_router_doesn_t_invent_limits() -> None:
     assert "Don't add limits the operator didn't state" in SYSTEM_PROMPT
+    assert 'never "reply with\n  it"' in SYSTEM_PROMPT
+
+
+def test_the_worker_knows_its_final_message_is_the_answer() -> None:
+    assert "Your final message is what the operator reads" in HEADLESS_NOTE
+    assert "That isn't a request to send an email" in HEADLESS_NOTE

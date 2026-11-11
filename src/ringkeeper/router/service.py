@@ -20,6 +20,7 @@ no project, no worker. A reply that starts nothing is recorded on the message
 """
 
 import logging
+import re
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -43,6 +44,7 @@ from ringkeeper.models import (
     DecisionKind,
     DecisionStatus,
     Env,
+    Instance,
     InstanceType,
     Message,
     MessageRole,
@@ -225,6 +227,8 @@ def _which_of_client(
         return task
     if mentions.find(session, message.body):  # an @-mention decided it
         return task
+    if _names_connection(session, message.body):  # "use demo-crm to...": that decides it
+        return task
     projects, named = follow_up.named_in(session, message.body)
     if projects or len(named) != 1 or owners.get(task.project) != named[0]:
         return task
@@ -242,6 +246,17 @@ def _which_of_client(
             "why": task.why
             or f"{whose} has {len(theirs)} projects, and this is about one of them.",
         }
+    )
+
+
+def _names_connection(session: Session, text: str) -> bool:
+    """The message names one of the connections (by name or title)."""
+    said = " ".join(text.lower().split())
+    return any(
+        re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", said)
+        for instance in session.scalars(select(Instance))
+        for name in (instance.name, instance.title or "")
+        if len(name) > 2
     )
 
 

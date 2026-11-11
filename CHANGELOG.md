@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A task's final message is its answer.** Asked to "tell" or "reply with" something, a
+  task now reports it, instead of taking it as replying to an email (the router writes
+  "report it in your final message").
+- Naming a connection ("use demo-crm to...") decides the project: a request that also names
+  the client isn't asked about. In the self-test, asking in words when it can't tell which
+  project counts as asking, and a question answered by name is counted once.
+
 - **Fixed:** after an update, the app came back hidden in the tray when it had started at
   sign-in, so it looked like it hadn't started. The window opens again now, saying "Updated
   to" the new version, with a link to what's new.

@@ -196,8 +196,6 @@ class Driver:
                     if said is not None and (said.routed_at or said.route_error):
                         seen.name_ignored = True
                     return
-                seen.asked = True
-                seen.times_asked += 1
                 named = threads.post_message(
                     session, titles.of(session, choice), author=AUTHOR, source="web",
                     thread=str(decision.thread_id),
@@ -305,6 +303,13 @@ class Driver:
             ).all()
             said = [m.body for m in messages if m.role is not MessageRole.USER]
             seen.asks_after_start = asks_after_start(said, bool(found))
+            # It couldn't tell where the request goes and asked in its reply, starting
+            # nothing: that's asking, not guessing (a name sent next places it).
+            if not found and any(
+                (m.routing or {}).get("unplaced") for m in messages if m.role is MessageRole.USER
+            ):
+                seen.asked = True
+                seen.notes.append("it asked in its reply, as it couldn't tell which project")
             said += [t.summary for t in found if t.summary]
             seen.projects = sorted({t.project for t in found})
             seen.statuses = [t.status.value for t in found]
