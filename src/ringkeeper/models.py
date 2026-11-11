@@ -659,6 +659,10 @@ class Task(Base):
     offer: Mapped[dict[str, Any] | None] = mapped_column(Doc)
     # What became of its branch: "kept" (merged into the default branch) or "discarded".
     branch_state: Mapped[str | None] = mapped_column(Text)
+    # Work that needs no client's connection or code (a web lookup, writing): no branch.
+    general: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # What happened to files in the project folder, when it's worth saying (services.tasks).
+    folder_note: Mapped[str | None] = mapped_column(Text)
     worker_prompt: Mapped[str | None] = mapped_column(Text)
     # The project agent it runs as (its instructions, connections, model): see agents.
     agent_id: Mapped[uuid.UUID | None] = mapped_column()

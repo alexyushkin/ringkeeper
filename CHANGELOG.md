@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Tasks that don't work on the code don't need a clean folder.** Work with data or
+  connections, and general work like a web lookup, no longer uses git: it starts even when the
+  folder has uncommitted changes, and it doesn't wait for a code task in the same project. If
+  it does change files there, its page says so. In a code task, only the files the task itself
+  edited go on its branch; a file someone else changed meanwhile stays out, and the task says
+  which. See [A task's changes to files](docs/concepts.md#a-tasks-changes-to-files).
+
 - **Web access is a project setting of its own.** It no longer depends on how independently
   a project works: on the project's Settings tab, **Web access** is on for your own client's
   projects and off for a client's unless you change it. A request that needs the web where

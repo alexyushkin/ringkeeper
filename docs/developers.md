@@ -369,8 +369,13 @@ for a client's.
 `ringkeeper/<task-id>` (or the branch of an earlier task in the same conversation
 and project, so a follow-up sees that work) and never moves `main`. If the agent
 moves `main` anyway, it's put back and the moved commits are kept on a side
-branch. Only files the worker touched are committed. Nothing is pushed. Without
-a repo, the task records the list of changed files.
+branch. Only files the agent's own edit tools wrote are committed
+(`worker/ringkeeper_worker/edits.py`): after a Bash command it can't tell, so
+everything that changed is committed and `folder_note` lists the rest. Nothing is
+pushed. Without a repo, the task records the list of changed files. Tasks that
+aren't on the code (kind `data` or `ops`, or `general`: `services.tasks.on_branch`)
+get `git: false`: no branch, no switch, no clean-tree check, and they neither hold
+nor wait for the folder.
 
 When the session ends, whatever was checked out before is checked out again, and
 a task branch with nothing on it is deleted (a read-only task leaves no branch).

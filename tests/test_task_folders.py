@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import Task, TaskStatus, Thread
+from ringkeeper.models import Task, TaskKind, TaskStatus, Thread
 from ringkeeper.services import branches, tasks
 from tests import test_web_api
 from tests.helpers import make_project
@@ -81,6 +81,25 @@ def test_one_task_at_a_time_per_project_folder(folder: Path) -> None:
         assert tasks.waits_for_folder(session, session.get_one(Task, uuid.UUID(second)))
     finish(first)
     assert claim() == second
+
+
+def test_work_that_isn_t_on_the_code_never_waits_for_the_folder(folder: Path) -> None:
+    code = queue("gi-site")
+    assert claim() == code  # a code task holds the folder
+    with session_scope() as session:
+        read = tasks.create_task(
+            session, get_settings(), project="gi-site", prompt="count", kind=TaskKind.DATA
+        )
+        lookup = tasks.create_task(
+            session, get_settings(), project="gi-site", prompt="look up", general=True
+        )
+        later = tasks.create_task(session, get_settings(), project="gi-site", prompt="fix it")
+        assert not tasks.waits_for_folder(session, read)
+        assert tasks.waits_for_folder(session, later)
+        ids = (str(read.id), str(lookup.id))
+    assert claim() == ids[0]
+    assert claim() == ids[1]  # and they don't hold it either
+    assert claim() is None  # the next code task waits
 
 
 def test_a_follow_up_in_the_conversation_continues_on_the_same_branch(folder: Path) -> None:

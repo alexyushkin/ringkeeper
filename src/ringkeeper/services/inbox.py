@@ -580,6 +580,7 @@ def _answer_route(
         outcome=routed.get("outcome"),
         thread_id=decision.thread_id,
         message_id=decision.message_id,
+        general=bool(routed.get("general")),
     )
     if decision.thread_id is not None:  # the thread's last word was the question
         threads.add_reply(session, decision.thread_id, threads.working_on(session, task))

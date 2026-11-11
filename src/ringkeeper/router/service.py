@@ -113,6 +113,7 @@ def candidates(task: RoutedTask) -> list[Candidate]:
 def _task_fields(task: RoutedTask) -> dict[str, Any]:
     return {
         "needs_web": task.needs_web,
+        "general": task.general,
         "prompt": task.prompt,
         "kind": task.kind.value,
         "risk": task.risk.value,
@@ -306,6 +307,7 @@ def _dispatch(session: Session, settings: Settings, message: Message, task: Rout
         thread_id=message.thread_id,
         message_id=message.id,
         agent_id=agent.id if agent is not None else None,
+        general=task.general,
     )
 
 

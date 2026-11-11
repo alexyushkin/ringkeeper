@@ -30,6 +30,7 @@ class WorkerConfig:
     checks: list[str] = field(default_factory=list[str])  # run after a worker turn
     stub: dict[str, Any] | None = None  # integration tests only: no LLM
     workspace: str = WORKSPACE
+    git: bool = True  # work on the code: on a branch. False: git is left alone
 
 
 def load(env: dict[str, str] | None = None) -> WorkerConfig:
@@ -57,6 +58,7 @@ def load(env: dict[str, str] | None = None) -> WorkerConfig:
             checks=[str(c) for c in data.get("checks", [])],
             stub=data.get("stub"),
             workspace=str(data.get("workspace", WORKSPACE)),
+            git=bool(data.get("git", True)),
         )
     except (ValueError, KeyError, TypeError) as error:
         raise ConfigError(f"invalid {TASK_ENV}: {error}") from None

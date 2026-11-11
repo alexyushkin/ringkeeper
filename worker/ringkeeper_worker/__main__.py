@@ -22,6 +22,7 @@ from ringkeeper_worker.config import (
     WorkerConfig,
     load,
 )
+from ringkeeper_worker.edits import EDITS
 from ringkeeper_worker.emit import emit
 from ringkeeper_worker.privileges import as_worker, kill_strays
 from ringkeeper_worker.workspace import Workspace, WorkspaceError
@@ -91,7 +92,7 @@ def _finish(config: WorkerConfig, workspace: Workspace, guard: Guard) -> None:
     outcome = None
     try:
         message = f"ringkeeper: task {config.task_id} session {config.session_ordinal}"
-        outcome = workspace.finish(message)
+        outcome = workspace.finish(message, EDITS)
     except WorkspaceError as error:
         emit("ringkeeper.error", message=str(error))
     if config.checks:
@@ -131,7 +132,7 @@ def main() -> int:
         ok = _run(config)  # the workspace is mounted read-only: nothing to commit
         kill_strays()
     else:
-        workspace = Workspace(config.workspace, config.branch)
+        workspace = Workspace(config.workspace, config.branch, use_git=config.git)
         try:
             workspace.start()
         except WorkspaceError as error:
