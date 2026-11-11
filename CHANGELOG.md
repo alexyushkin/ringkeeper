@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.36 (2026-11-11)
 
 - **A task's final message is its answer.** Asked to "tell" or "reply with" something, a
   task now reports it, instead of taking it as replying to an email (the router writes
