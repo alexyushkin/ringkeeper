@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, object_session
 
 from ringkeeper import voice_local
 from ringkeeper.channels import links, telegram_state
+from ringkeeper.channels import plain as markup
 from ringkeeper.channels.news import (
     LINK_PREFIX,
     finished_text,
@@ -442,7 +443,8 @@ class Bridge:
             return
         chat_id = int(cast(dict[str, Any], chat)["id"])
         replied = cast(dict[str, Any] | None, message.get("reply_to_message"))
-        text = str(message.get("text") or "").strip()
+        entities = cast(list[dict[str, Any]], message.get("entities") or [])
+        text = markup.from_telegram(str(message.get("text") or ""), entities).strip()
         note = VoiceNote.from_message(message)
         user = cast(dict[str, Any], message.get("from") or {})
         if not replied and text.split("@")[0].split(" ")[0] == "/start":

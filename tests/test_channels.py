@@ -477,6 +477,36 @@ def test_a_slack_dm_from_the_approver_is_a_request_and_its_news_comes_back(
     assert rk.send_news() == 0  # once
 
 
+def test_a_slack_dm_is_stored_without_slack_s_markup(slack: FakeSlack) -> None:
+    ident = add_slack()
+    take_requests(ident)
+    rk = runner(ident)
+    api = rk.transport
+    assert isinstance(api, SlackApi)
+    with listening(api, rk.on_press, rk.on_message):
+        slack.dm(
+            "Email <mailto:a@b.com|a@b.com> the <https://x.example|price list> &amp; notes",
+            ME_SLACK,
+        )
+        wait_for(lambda: len(asked("slack")) == 1)
+    assert asked("slack")[0][0] == "Email a@b.com the price list (https://x.example) & notes"
+
+
+def test_a_discord_dm_is_stored_without_its_mention_codes(discord: FakeDiscord) -> None:
+    ident = add_discord()
+    take_requests(ident)
+    rk = runner(ident)
+    api = rk.transport
+    assert isinstance(api, DiscordApi)
+    with listening(api, rk.on_press, rk.on_message):
+        discord.dm(
+            "Ask <@123> about <:party:9>", ME_DISCORD,
+            mentions=[{"id": "123", "username": "ana"}],
+        )  # fmt: skip
+        wait_for(lambda: len(asked("discord")) == 1)
+    assert asked("discord")[0][0] == "Ask @ana about :party:"
+
+
 def test_dm_requests_are_off_until_turned_on(slack: FakeSlack) -> None:
     ident = add_slack()
     rk = runner(ident)
