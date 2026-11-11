@@ -28,13 +28,13 @@ BY_SERVICE: dict[InstanceType, str] = {
     InstanceType.GOOGLE: "Summarize this week's events on {connection}'s calendar",
     InstanceType.GMAIL: "Summarize the unread emails in {connection}",
     InstanceType.TWILIO: "List the last 10 text messages {connection} sent or received",
-    InstanceType.MCP: "List what {connection} can do for {project}",
+    InstanceType.MCP: "In {project}, use {connection} to list the tools it offers",
     InstanceType.SMTP: "Which address does {connection} send from?",
     InstanceType.RESEND: "List the sending domains on {connection}",
     InstanceType.MAILBOX: "Summarize the unread emails in {connection}",
     InstanceType.HTTP: "List what the {connection} API offers",
     InstanceType.S3: "List the files in {connection}",
-    InstanceType.VENDOR: "List what {connection} can do for {project}",
+    InstanceType.VENDOR: "In {project}, use {connection} to list the tools it offers",
     InstanceType.ORACLE: "List the tables in {project}'s database",
 }
 FOLDER = "Explain what's in {project}'s folder, in a few lines"

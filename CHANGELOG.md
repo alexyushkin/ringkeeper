@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A request to use a connection reaches it.** "List what Demo CRM can do for Demo Co" was
+  sometimes answered as a question about Ringkeeper, without a task. A request that names a
+  connection and asks to use or read it now always runs as a task in a project linked to it.
+  The first suggestion for an MCP or vendor connection now reads "In Demo shop, use Demo CRM
+  to list the tools it offers".
 - **A follow-up stays in its conversation's project.** Once a conversation has a task in a
   project, a later message there that names no other project, client or connection runs in
   the same project, without asking. Before, a follow-up that needed no connection could go to

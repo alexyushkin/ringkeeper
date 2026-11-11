@@ -56,6 +56,42 @@ _ASKS = re.compile(
 )
 
 
+# Asks to use or read a connection, in any sentence: "List what Demo CRM can do", "use acme-db
+# to count orders".
+_USE = re.compile(
+    r"(?:^|[.!?;:])\s*(please\s+|can you\s+|could you\s+|would you\s+)?"
+    r"(list|use|read|show|get|fetch|pull|check|find|search|look|query|count|summari[sz]e|"
+    r"export|open|run|describe|browse|ask|tell me what)\b",
+    re.I,
+)
+_THROUGH = r"\b(use|using|with|via|through|from|in|on|ask)\s+(the\s+)?"
+# ...unless it's about the connection's place in the setup: "which projects is demo-crm on?"
+_ABOUT_LINK = re.compile(
+    r"\b(linked|link|connected|token|credentials?|expir\w*|set ?up|default|status|"
+    r"(which|what) projects?)\b",
+    re.I,
+)
+
+
+def uses_connection(message: str, connections: list[tuple[str, str]]) -> str | None:
+    """The connection a message asks to use or read, as people read it (its title, else its
+    name): that's a task for a project with it, never a question about Ringkeeper.
+    `connections`: (name, title) of each. None: it names none, or asks about its setup."""
+    said = " ".join(message.lower().split())
+    if _ABOUT_LINK.search(said):
+        return None
+    for name, title in connections:
+        for called in (name, title):
+            if len(called) <= 2:
+                continue
+            word = re.escape(called.lower())
+            if not re.search(rf"(?<![\w-]){word}(?![\w-])", said):
+                continue
+            if _USE.search(said) or re.search(_THROUGH + rf"{word}(?![\w-])", said):
+                return title or name
+    return None
+
+
 def is_question(message: str) -> bool:
     """Reads as a question ("how many...", "...?"), whatever it's about."""
     return bool(_ASKS.search(message))
