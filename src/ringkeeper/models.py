@@ -793,6 +793,8 @@ class Thread(Base):
         UTCDateTime(), server_default=func.now(), onupdate=func.now()
     )
     archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime())  # hidden, searchable
+    # "setup-check": started by Check my setup (services.setup_check), its work only reads.
+    tag: Mapped[str | None] = mapped_column(Text)
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="thread", order_by="Message.created_at", passive_deletes=True

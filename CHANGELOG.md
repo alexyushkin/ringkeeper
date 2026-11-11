@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Check my setup.** Settings > Advanced > Check my setup (or `ringkeeper scenarios run
+  --mine`) sends one read-only request per project and connection linked to it, through the
+  real router, worker and gateway, then a question about your setup, a web lookup and a
+  follow-up. The report says, per connection, where it went, whether it asked anything, what
+  ran, what came back and what it cost, and lists connections linked to no project. It changes
+  nothing: its tasks can't edit files or run commands, every write is held for you, and its
+  conversations are tagged so **Archive them** clears them in one click.
 - **A GitHub link can be pinned to several repositories.** On the same screen, **Add another
   repository**. Every call is checked against the list, and listing repositories shows only
   those. Your own GitHub connection linked to a project with no repository pinned now warns:

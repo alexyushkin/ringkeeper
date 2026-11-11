@@ -9,6 +9,8 @@ Claude sign-in, for the length of the run.
 
 ## Run it
 
+To check your own projects and connections instead, see [Check my setup](check-my-setup.md).
+
 In the app: **Settings > Advanced > Self-test**, then **Run the self-test**. You can keep using
 Ringkeeper while it runs. The report stays in the same section.
 

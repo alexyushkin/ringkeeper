@@ -22,6 +22,7 @@ import { DockerTasks } from "@/components/docker-tasks";
 import { HelpHint } from "@/components/help-hint";
 import { ScanSettings } from "@/components/scans";
 import { SelfTest } from "@/components/self-test";
+import { SetupCheck } from "@/components/setup-check";
 import { AUTO, VoiceSettings } from "@/components/voice";
 import { SETUP_TOKEN_HINT, WORKSPACE_HINT, download } from "@/lib/client/words";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
@@ -256,6 +257,7 @@ export default function SettingsPage() {
             </Section>
           ) : null}
           {DESKTOP ? <ImportFromClaudeDesktop /> : null}
+          <SetupCheck />
           {DESKTOP ? <SelfTest /> : null}
           {DESKTOP ? null : (
             <>

@@ -19,7 +19,7 @@ PAGES = (
     "client-month", "recipes",
     "notifications",
     "where-claude-runs",
-    "backup", "working-faster", "security", "self-test", "troubleshooting", "faq",
+    "backup", "working-faster", "security", "self-test", "check-my-setup", "troubleshooting", "faq",
     "install-desktop",
     "services/add-on-tools", "services/elevenlabs", "services/airtable", "services/database",
     "services/github",
