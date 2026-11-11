@@ -39,8 +39,10 @@ When Claude itself can't answer, Ringkeeper says which of these it is, and what 
   until then, and tasks and requests wait instead of failing: they go on by themselves after
   the reset.
 - **Claude is overloaded, limiting how fast requests can go, or can't be reached** (check
-  this computer's internet connection). Ringkeeper tries again a few times, waiting longer each
-  time; a request waits and is routed again a couple of minutes later.
+  this computer's internet connection). A task is tried again a few times, waiting longer each
+  time. A request waits and is tried again after 2, 5 and 15 minutes, then every half hour.
+  The conversation says so once, and again when Claude is back. After 12 hours it stops
+  trying and offers **Try again**.
 - **The sign-in to Claude is missing or expired.** Sign in again in Settings › Claude, then
   send the request again or use **Run again** on the task.
 
