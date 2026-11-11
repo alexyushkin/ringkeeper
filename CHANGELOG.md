@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Routing a request can't hang.** Working out where a request goes stops after 90 seconds
+  and starts over at once; if that's slow too, the request waits and is tried again later,
+  and the conversation says so once. Before, one took more than 6 minutes. After 20 seconds,
+  the conversation says "Still working out where this goes…".
 - **Tasks know their project's connections from the start.** Each task is told each
   connection's name, kind, whether it's production and which is the default, so its first
   call names one. Before, in a project with several databases and no default, the first call

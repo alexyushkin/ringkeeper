@@ -3,7 +3,7 @@
 import { HelpExtras, type HelpAnswer } from "@/components/help-answer";
 import Link from "@/components/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
@@ -16,6 +16,7 @@ import { CancelButton } from "@/components/scheduled";
 import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { projectName } from "@/lib/client/scope";
+import { routingLine } from "@/lib/routing-wait";
 
 interface Message {
   id: string;
@@ -36,6 +37,18 @@ interface Thread {
   title: string;
   messages: Message[];
   archived?: boolean;
+}
+
+/** "Finding the right project…", and after 20 seconds "Still working out where this goes…". */
+function RoutingLine({ sentAt }: { sentAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  const line = routingLine(sentAt, now);
+  useEffect(() => {
+    if (line.changesIn === null) return;
+    const timer = setTimeout(() => setNow(Date.now()), line.changesIn);
+    return () => clearTimeout(timer);
+  }, [line.changesIn]);
+  return <p className="mt-1 ml-8 text-xs text-muted">{line.text}</p>;
 }
 
 export function ThreadView({ id }: { id: string }) {
@@ -113,7 +126,7 @@ export function ThreadView({ id }: { id: string }) {
                 <CancelButton id={message.id} onDone={thread.reload} />
               </p>
             ) : message.role === "user" && (!message.routing || message.routing.claimed_at) && !message.route_error ? (
-              <p className="mt-1 ml-8 text-xs text-muted">Finding the right project…</p>
+              <RoutingLine sentAt={message.created_at} />
             ) : null}
           </li>
         ))}

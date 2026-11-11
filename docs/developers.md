@@ -473,6 +473,10 @@ routing example: the same message (ignoring case and spacing) then routes
 without asking, and similar ones get it as a hint. Remove a wrong one with
 `ringkeeper routing examples list` and `delete <id>`.
 
+The router's model call stops after 90 seconds (`RINGKEEPER_ROUTER_TIMEOUT_SECONDS`) and is
+tried again once at once; if that's slow too, the message waits like any other failure on
+Claude's side.
+
 The **inbox** holds every decision waiting for you. Approvals are only for
 actions (a held write, a plan, more money for a task); `route` and `question`
 are questions, asked in the conversation with buttons:

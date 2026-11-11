@@ -1,10 +1,16 @@
 """The one model call the router makes, behind a small protocol so tests can
 use a fake. The real one runs Claude through the Agent SDK with every tool off.
+
+A call stops after `router_timeout_seconds` (about 90): a timeout is a transient failure,
+tried again once at once; after that the message waits and is routed again later, and the
+conversation is told once (router.service).
 """
 
 import tempfile
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -67,6 +73,15 @@ def with_google_key(env: dict[str, str], folder: str) -> dict[str, str]:
     return env | {"GOOGLE_APPLICATION_CREDENTIALS": str(path)}
 
 
+async def within(limit: float, call: Callable[[], Awaitable[Completion]]) -> Completion:
+    """`call`, stopped after `limit` seconds: then it's a SLOW failure on Claude's side."""
+    try:
+        with anyio.fail_after(limit):
+            return await call()
+    except TimeoutError:
+        raise ClaudeUnavailableError(claude_failures.timed_out(limit)) from None
+
+
 class AgentSdkModel:
     def __init__(self, vault: Vault, settings: Settings, sleep: Any = time.sleep) -> None:
         self._vault = vault
@@ -82,18 +97,30 @@ class AgentSdkModel:
         with session_scope(commit=False) as session:
             credential = claude_place.credential(session, self._vault, self._settings)
             model = claude_place.model_for(claude_place.chosen(session), model) or model
+        limit = self._settings.router_timeout_seconds
         return self.with_retries(
-            lambda: anyio.run(self._complete, credential, system, prompt, model)
+            lambda: anyio.run(
+                within, limit, partial(self._complete, credential, system, prompt, model)
+            )
         )
 
     def with_retries(self, call: Any) -> Completion:
         """A transient failure (overloaded, rate limited, no network) is tried again a few
-        times, waiting longer each time; anything else on Claude's side is raised at once."""
+        times, waiting longer each time; anything else on Claude's side is raised at once.
+        A call that ran out of time is tried again once, at once: one more slow one is raised,
+        so the message waits and the conversation hears why."""
+        slow = 0
         for wait in (*claude_failures.RETRY_WAITS, None):
             try:
                 return call()
             except ClaudeUnavailableError as unavailable:
-                if wait is None or not unavailable.failure.transient:
+                failure = unavailable.failure
+                if failure.kind is claude_failures.Kind.SLOW:
+                    slow += 1
+                    if slow > 1:
+                        raise
+                    continue
+                if wait is None or not failure.transient:
                     raise
                 self._sleep(wait)
         raise AssertionError("unreachable")
