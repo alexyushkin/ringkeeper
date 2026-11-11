@@ -150,7 +150,13 @@ for line in sys.stdin:
 """
 
 
-def seen(file: Path, count: int, wait: float = 10.0) -> list[str]:
+# A cold start of Node and Python on a busy Windows runner (antivirus scanning each new
+# process) can take well over 15 seconds. An answer comes back as soon as it's there, so a
+# long wait costs nothing when all is well; it only stops a slow start from failing the test.
+ANSWER_WAIT = 90.0
+
+
+def seen(file: Path, count: int, wait: float = ANSWER_WAIT) -> list[str]:
     """What the fake bridge has written down, once it has `count` lines (or the wait is up)."""
     deadline = time.monotonic() + wait
     while True:
@@ -183,10 +189,16 @@ class Claude:
         return self.next()
 
     def next(self) -> dict[str, Any]:
-        return self.said.get(timeout=15)
+        try:
+            return self.said.get(timeout=ANSWER_WAIT)
+        except queue.Empty:
+            ended = self.relay.poll()
+            why = f"the relay exited with {ended}" if ended is not None else "the relay is running"
+            raise AssertionError(f"no answer within {ANSWER_WAIT:.0f} s ({why})") from None
 
 
 @pytest.mark.skipif(NODE is None, reason="needs Node, as Claude Desktop has")
+@pytest.mark.timeout(300)  # room for a slow cold start (ANSWER_WAIT), not the usual 120 s
 def test_claude_desktop_s_extension_keeps_working_across_an_update(
     tmp_path: Path, gateway: str
 ) -> None:

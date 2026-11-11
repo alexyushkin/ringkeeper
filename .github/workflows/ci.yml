@@ -174,7 +174,9 @@ jobs:
           echo "::add-mask::$password"
           echo "POSTGRES_PASSWORD=$password" >> "$GITHUB_ENV"
       - run: npm ci --no-fund
-      - run: npx playwright install --with-deps chromium
+      # Ubuntu's package servers can be unreachable from the runners: then install the browser
+      # alone (the runner image already has what Chromium needs) instead of failing the job.
+      - run: npx playwright install --with-deps chromium || npx playwright install chromium
       - run: npx playwright test
       - if: failure()
         run: docker compose -p ringkeeper-e2e -f ../docker-compose.yml -f e2e/compose.e2e.yml --profile stt --profile demo logs --no-color > e2e-stack.log 2>&1 || true
