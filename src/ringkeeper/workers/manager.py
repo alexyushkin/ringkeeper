@@ -45,6 +45,7 @@ from ringkeeper.services import (
     architect_loop,
     claude_place,
     cleanup,
+    connection_note,
     holds,
     inbox,
     interrupted,
@@ -504,7 +505,11 @@ class Manager:
                 effort = agent.effort
                 autonomy = Autonomy(agent.autonomy) if agent.autonomy else autonomy
             if job.role is not SessionRole.ARCHITECT:
-                prompt = "\n\n".join([prompt, *memory.hints(session, project, agent)])
+                # Which connections it has, so its first call names one (connection_note).
+                told = connection_note.note(project, agent)
+                prompt = "\n\n".join(
+                    [prompt, *([told] if told else []), *memory.hints(session, project, agent)]
+                )
             # Memory is every worker's: it's pinned to the token's project.
             endpoints = sorted({"memory", *(agent_name(service) for service in served)})
         architect_role = job.role is SessionRole.ARCHITECT

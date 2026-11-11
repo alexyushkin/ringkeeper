@@ -51,7 +51,7 @@
 "doc": "connections",
 "anchor": "link-a-connection-to-a-project",
 "title": "Link a connection to a project",
-"text": "A connection does nothing until a project uses it. A card that no project uses says **Not linked to any project**, with **Link**, and Home's **Get started** counts them until they're linked. On the client's Connections tab, each card says where it's used and has **Link to project…**: tick one or several projects, and narrow each if you like. On a project's Connections tab, **Link a connection** lists the client's connections that aren't linked yet and your own tools. A client with no projects says so, with **Add project** and **From Claude**."
+"text": "A connection does nothing until a project uses it. A card that no project uses says **Not linked to any project**, with **Link**, and Home's **Get started** counts them until they're linked. On the client's Connections tab, each card says where it's used and has **Link to project…**: tick one or several projects, and narrow each if you like. On a project's Connections tab, **Link a connection** lists the client's connections that aren't linked yet and your own tools. A client with no projects says so, with **Add project** and **From Claude**. Each task is told which connections its project has before it starts: each one's name, kind, whether it's production, and which one is the default for its kind. So it names the right one from its first call. When a project has two of a kind in different environments, say a production database and a development one, and the request doesn't say which, the task asks you instead of guessing."
 },
 {
 "doc": "connections",
