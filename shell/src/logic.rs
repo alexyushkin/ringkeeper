@@ -2,10 +2,32 @@
 //! what to notify about, what the tray says, and when to stop restarting.
 
 use std::collections::{HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+
+/// Written just before an update installs: the version it installs. The next start shows the
+/// window (saying "Updated to ..."), even though the installer starts the app with the
+/// arguments it was running with, `--hidden` included when it started at sign-in.
+pub const UPDATED_NOTE: &str = "updated-to.txt";
+
+/// The version an update just installed, from the note it left; the note is used up.
+pub fn take_updated(dir: &Path) -> Option<String> {
+    let path = dir.join(UPDATED_NOTE);
+    let text = std::fs::read_to_string(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    let version = text.trim();
+    let plain = version
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+    (!version.is_empty() && version.len() <= 40 && plain).then(|| version.to_string())
+}
+
+/// Where the window opens after an update: Home, which says what it was updated to.
+pub fn updated_page(version: &str) -> String {
+    format!("/?updated={}", encode(version))
+}
 
 /// `desktop.json`, written by the backend once it listens (see desktop/server.py).
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -299,6 +321,20 @@ impl Crashes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_update_leaves_a_note_the_next_start_uses_once() {
+        let dir = std::env::temp_dir().join(format!("rk-updated-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(take_updated(&dir), None);
+        std::fs::write(dir.join(UPDATED_NOTE), "0.1.0-beta.36\n").unwrap();
+        assert_eq!(take_updated(&dir).as_deref(), Some("0.1.0-beta.36"));
+        assert_eq!(take_updated(&dir), None); // used up: a later start at sign-in stays hidden
+        std::fs::write(dir.join(UPDATED_NOTE), "<script>").unwrap();
+        assert_eq!(take_updated(&dir), None);
+        assert_eq!(updated_page("0.1.0-beta.36"), "/?updated=0.1.0-beta.36");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_backend_from_another_version_is_not_ours() {

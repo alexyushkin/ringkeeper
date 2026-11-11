@@ -8,6 +8,8 @@
 //!
 //! Arguments: `--hidden` starts in the tray only (used when starting at
 //! sign-in); `--quit` asks the running app to quit (the installer uses it).
+//! After an update the window opens anyway, saying what it was updated to: the
+//! installer restarts the app with the arguments it had, `--hidden` included.
 //!
 //! Updates: checked at start and every 6 hours while no work runs (unless
 //! "Check automatically" is off), and whenever the user asks (Settings > About,
@@ -176,8 +178,15 @@ fn main() {
                 app.handle().exit(0);
                 return Ok(());
             }
+            let data_dir = logic::data_dir();
+            // Just updated: the window comes back, whatever the installer passed.
+            let updated = logic::take_updated(&data_dir);
+            let show_now = !hidden || updated.is_some();
+            if let Some(version) = &updated {
+                backend::log(&data_dir, &format!("updated to {version}: showing the window"));
+            }
             let shell = Shell {
-                data_dir: logic::data_dir(),
+                data_dir,
                 agent: backend::agent(),
                 runtime: Mutex::new(None),
                 window_secret: Mutex::new(None),
@@ -194,7 +203,7 @@ fn main() {
             };
             app.manage(shell);
             remove_previous_version(app.handle());
-            build_window(app.handle(), !hidden)?;
+            build_window(app.handle(), show_now)?;
             build_tray(app.handle())?;
             let handle = app.handle().clone();
             app.notification()
@@ -202,7 +211,10 @@ fn main() {
             let handle = app.handle().clone();
             thread::Builder::new()
                 .name("supervisor".into())
-                .spawn(move || supervise(&handle, &receiver, !hidden))?;
+                .spawn(move || {
+                    let first_page = updated.as_deref().map(logic::updated_page);
+                    supervise(&handle, &receiver, show_now, first_page);
+                })?;
             if updates_enabled() {
                 let handle = app.handle().clone();
                 thread::Builder::new()
@@ -671,7 +683,12 @@ fn set_starting(app: &AppHandle, starting: bool) {
 
 // --- The supervisor: keeps one backend running until Quit ---
 
-fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: bool) {
+fn supervise(
+    app: &AppHandle,
+    commands: &Receiver<Command>,
+    show_when_ready: bool,
+    first_page: Option<String>,
+) {
     let shell = app.state::<Shell>();
     let launcher = match Launcher::find(app.path().resource_dir().ok().as_deref(), &shell.data_dir)
     {
@@ -726,7 +743,7 @@ fn supervise(app: &AppHandle, commands: &Receiver<Command>, show_when_ready: boo
             .get_webview_window(WINDOW)
             .is_some_and(|w| w.is_visible().unwrap_or(false));
         if (first && show_when_ready) || visible {
-            open_window(app, None);
+            open_window(app, if first { first_page.clone() } else { None });
         }
         first = false;
 
@@ -1036,7 +1053,13 @@ fn install_update(app: &AppHandle) {
         Ok(downloaded) => match downloaded.as_ref() {
             Some(d) => {
                 backend::log(&shell.data_dir, &format!("installing {}", d.update.version));
-                d.update.install(&d.bytes).map_err(|e| e.to_string())
+                // The next start reads it: show the window, and say what's new.
+                let note = shell.data_dir.join(logic::UPDATED_NOTE);
+                let _ = fs::write(&note, d.update.version.as_bytes());
+                d.update.install(&d.bytes).map_err(|e| {
+                    let _ = fs::remove_file(&note);
+                    e.to_string()
+                })
             }
             None => Err("nothing downloaded".into()),
         },

@@ -3,6 +3,12 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fixed:** after an update, the app came back hidden in the tray when it had started at
+  sign-in, so it looked like it hadn't started. The window opens again now, saying "Updated
+  to" the new version, with a link to what's new.
+
 ## 0.1.0-beta.35 (2026-11-11)
 
 - **Tasks that don't work on the code don't need a clean folder.** Work with data or
