@@ -183,7 +183,17 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         ) : null}
         {claude.data?.waiting_until ? (
-          <div className="bg-warn px-4 py-2 text-sm text-ink">{claude.data.message}</div>
+          <div className="flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm text-ink">
+            <span>{claude.data.message}</span>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg bg-white/40 px-3 py-1 font-medium"
+              title="Stop waiting for the reset. If Claude still says the limit is reached, it waits again."
+              onClick={() => api("claude-status/try-now", { method: "POST" }).then(claude.reload, () => window.alert("Couldn't try now. Try again in a moment."))}
+            >
+              Try now
+            </button>
+          </div>
         ) : null}
         {DESKTOP ? <UpdateBanner /> : null}
         {DESKTOP ? <ScanOffer /> : null}

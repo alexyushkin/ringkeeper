@@ -18,8 +18,9 @@ from ringkeeper.db import session_scope
 from ringkeeper.models import Message, MessageRole, Task
 from ringkeeper.router.model import AgentSdkModel, ClaudeUnavailableError, Completion
 from ringkeeper.router.service import BACK, GAVE_UP, route_next
-from ringkeeper.services import threads
+from ringkeeper.services import claude_place, threads
 from ringkeeper.vault import get_vault
+from ringkeeper.workers.manager import Collected, claude_failure
 from tests import test_web_api
 from tests.fake_router import FakeModel, output, routed
 from tests.helpers import make_project
@@ -38,7 +39,8 @@ NOON = datetime(2026, 11, 10, 17, 0, tzinfo=UTC)
         ("OAuth token has expired", 401, "authentication_failed", Kind.LOGIN),
         ("API Error: 429 rate_limit_error", 429, "rate_limit", Kind.RATE_LIMIT),
         ('API Error: 529 {"type":"overloaded_error"}', 529, "server_error", Kind.OVERLOADED),
-        ("Connection error: getaddrinfo ENOTFOUND api.anthropic.com", None, None, Kind.NETWORK),
+        ("API Error: Connection error.", None, None, Kind.NETWORK),
+        ("API Error (Connection error.) · Retrying in 1 seconds", None, None, Kind.NETWORK),
     ],
 )
 def test_each_failure_is_recognized(
@@ -52,6 +54,43 @@ def test_each_failure_is_recognized(
 
 def test_other_failures_are_left_alone() -> None:
     assert classify("the task ended with an error", now=NOON) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I couldn't finish: the Airtable rate limit reached its cap for this base.",
+        "n8n returned Internal Server Error when I activated the workflow.",
+        "Airtable rate limit reached",
+        "The API says: usage limit reached for this key; too many requests.",
+        "Connection error from the client's database. Check its address.",
+    ],
+)
+def test_a_task_s_own_words_are_never_claude_s_failure(text: str) -> None:
+    """What a task says about another service, in the model's text or the worker's errors,
+    isn't Claude's own limit or outage."""
+    failed = Collected(
+        errors=["n8n returned Internal Server Error", "Airtable rate limit reached"],
+        result={"subtype": "error_during_execution", "is_error": True, "result": text},
+        exit_code=1,
+    )
+    assert claude_failure(failed) is None
+
+
+def test_claude_s_own_signals_still_count() -> None:
+    by_type = Collected(
+        errors=[], result={"is_error": True, "result": ""}, claude_error="rate_limit"
+    )
+    assert (found := claude_failure(by_type)) is not None
+    assert found.kind is Kind.RATE_LIMIT
+    by_status = Collected(errors=[], result={"is_error": True, "api_error_status": 529})
+    assert (found := claude_failure(by_status)) is not None
+    assert found.kind is Kind.OVERLOADED
+    by_words = Collected(
+        errors=[], result={"is_error": True, "errors": ["Claude AI usage limit reached|1731272400"]}
+    )
+    assert (found := claude_failure(by_words)) is not None
+    assert found.kind is Kind.USAGE_LIMIT
 
 
 def test_a_usage_limit_says_when_it_resets() -> None:
@@ -205,6 +244,32 @@ def test_a_usage_limit_pauses_routing_until_it_resets(project: None, owner: Test
     assert status["message"].startswith("Your Claude plan's limit is reached; it resets at")
     ask("Another request")
     assert route_next(get_settings(), FakeModel([])) is None  # nothing is taken meanwhile
+
+
+def a_pause() -> None:
+    failure = classify("Claude AI usage limit reached|4102444800")  # 2100
+    assert failure is not None
+    with session_scope() as session:
+        claude_failures.pause_until(session, failure)
+
+
+def test_try_now_stops_waiting_for_the_reset(project: None, owner: TestClient) -> None:
+    a_pause()
+    assert owner.get("/claude-status").json()["waiting_until"] is not None
+    done = owner.post("/claude-status/try-now")
+    assert done.status_code == 200, done.text
+    assert done.json() == {"waiting_until": None, "message": None}
+    ask("Fix the footer")
+    route_next(get_settings(), FakeModel([output(routed("gi-site"))]))  # routed again now
+    with session_scope() as session:
+        assert [t.project for t in session.scalars(select(Task))] == ["gi-site"]
+
+
+def test_a_new_place_for_claude_stops_waiting(project: None) -> None:
+    a_pause()
+    with session_scope() as session:
+        claude_place.set_project(session, "gi-site", None)
+        assert claude_failures.paused(session) is None
 
 
 def test_another_routing_failure_offers_try_again(project: None, owner: TestClient) -> None:

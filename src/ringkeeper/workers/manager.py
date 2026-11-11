@@ -194,14 +194,13 @@ def _cap(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def claude_failure(collected: Collected) -> claude_failures.Failure | None:
-    """The session failed on Claude's side: a limit, the login, overload, the network."""
+    """The session failed on Claude's side: a limit, the login, overload, the network. From
+    the SDK's own signals and Claude Code's own words only: not the worker's errors, which
+    can quote a service's ("Airtable rate limit reached")."""
     result = collected.result or {}
     if result and not result.get("is_error") and collected.exit_code == 0:
         return None
-    text = " ".join(
-        [str(result.get("result") or ""), *map(str, result.get("errors") or []),
-         *(collected.errors or [])]
-    )  # fmt: skip
+    text = "\n".join([str(result.get("result") or ""), *map(str, result.get("errors") or [])])
     status = result.get("api_error_status")
     return claude_failures.classify(
         text, status=status if isinstance(status, int) else None, error=collected.claude_error

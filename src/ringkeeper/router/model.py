@@ -143,8 +143,9 @@ class AgentSdkModel:
                     raise ClaudeUnavailableError(failure) from None
                 raise
         if result is None or result.is_error:
+            # Claude Code's own words: its result and errors, not the model's text.
             told = [*(result.errors or []), result.result or ""] if result is not None else []
-            text = " ".join([*told, *texts])
+            text = "\n".join(told)
             status = result.api_error_status if result is not None else None
             if failure := claude_failures.classify(text, status=status, error=said_error):
                 raise ClaudeUnavailableError(failure)

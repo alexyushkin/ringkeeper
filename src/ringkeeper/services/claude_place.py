@@ -25,6 +25,7 @@ from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
+from ringkeeper import claude_failures
 from ringkeeper.claude_auth import ClaudeAuthError, ClaudeCredential, resolve
 from ringkeeper.config import Settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
@@ -145,6 +146,7 @@ def save(
     kept[place.kind] = {k: v for k, v in data.items() if k != "key"}
     default = place.kind if make_default else saved.get("default", ANTHROPIC)
     _keep(session, DEFAULT_KEY, {"default": default, "places": kept})
+    claude_failures.clear(session)  # another place may not have the limit
 
 
 def set_project(session: Session, project: str, kind: str | None) -> None:
@@ -152,6 +154,7 @@ def set_project(session: Session, project: str, kind: str | None) -> None:
     if kind is not None and kind not in PLACES:
         raise RuleViolationError("Choose where Claude runs.")
     key = PROJECT_KEY.format(name=project)
+    claude_failures.clear(session)  # another place may not have the limit
     if kind is None:
         row = session.get(Setting, key)
         if row is not None:

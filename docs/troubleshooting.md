@@ -37,7 +37,11 @@ When Claude itself can't answer, Ringkeeper says which of these it is, and what 
 
 - **Your Claude plan's limit is reached.** Home says when it resets. Nothing new starts
   until then, and tasks and requests wait instead of failing: they go on by themselves after
-  the reset.
+  the reset. **Try now** next to the notice stops waiting (if Claude still says the limit is
+  reached, it waits again), and so does changing the Claude sign-in, key or place in Settings.
+
+Only Claude's own signals count: a task that fails while talking about another service's
+"rate limit reached" or "Internal Server Error" is an ordinary failure, not Claude's.
 - **Claude is overloaded, limiting how fast requests can go, or can't be reached** (check
   this computer's internet connection). A task is tried again a few times, waiting longer each
   time. A request waits and is tried again after 2, 5 and 15 minutes, then every half hour.
