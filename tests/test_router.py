@@ -2,6 +2,7 @@
 retries, routing examples and model choice."""
 
 import uuid
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -619,10 +620,10 @@ def test_a_request_to_use_a_connection_is_a_task_not_a_question() -> None:
 
 def test_a_model_that_keeps_calling_it_a_question_still_gets_a_task() -> None:
     ask("Use globex-supabase-dev to list the tables")
-    about = {"tasks": [], "about_ringkeeper": True}
+    about: dict[str, Any] = {"tasks": [], "about_ringkeeper": True}
     route(FakeModel([about, about]))
     [task] = all_tasks()
-    assert (task.project, task.risk.value) == ("globex-portal", "read")
+    assert (task.project, task.risk) == ("globex-portal", "read")
     assert task.prompt.startswith("Use globex-supabase-dev to list the tables")
 
 
