@@ -183,7 +183,10 @@ fn main() {
             let updated = logic::take_updated(&data_dir);
             let show_now = !hidden || updated.is_some();
             if let Some(version) = &updated {
-                backend::log(&data_dir, &format!("updated to {version}: showing the window"));
+                backend::log(
+                    &data_dir,
+                    &format!("updated to {version}: showing the window"),
+                );
             }
             let shell = Shell {
                 data_dir,
