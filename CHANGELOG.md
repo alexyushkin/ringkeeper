@@ -3,6 +3,12 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fixed:** a request from Slack reached the router and the task with Slack's markup in it
+  ("<mailto:a@b.com|a@b.com>", "&amp;"). It's plain text now, as you wrote it: a link keeps its
+  address, and Discord mentions and Telegram links read as words too.
+
 ## 0.1.0-beta.36 (2026-11-11)
 
 - **A task's final message is its answer.** Asked to "tell" or "reply with" something, a
