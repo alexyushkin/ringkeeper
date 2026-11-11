@@ -9,11 +9,11 @@ from sqlalchemy import select
 from ringkeeper.adapters import supabase
 from ringkeeper.adapters.base import Target, ToolError
 from ringkeeper.calls import Caller, ToolCall
-from ringkeeper.config import Settings
+from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Client, Env, Instance, InstanceType, Project, Task, Thread
-from ringkeeper.services import demo, onboarding
+from ringkeeper.services import demo, onboarding, tasks
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import Secret, VaultError, get_vault
 from tests import test_web_api
@@ -147,11 +147,33 @@ def test_the_checklist_and_suggestions_follow_what_is_there(data_dir: Path, tmp_
             True,
             False,
         )
+        assert steps.unlinked == ()
         suggested = onboarding.suggestions(session, settings)
         assert suggested[0] == "List the tables in Acme web's database"
         assert all("delete" not in s.lower() and "update" not in s.lower() for s in suggested)
         onboarding.dismiss(session)
         assert onboarding.checklist(session, claude_ready=True).dismissed
+
+
+def test_a_connection_linked_to_no_project_is_counted(data_dir: Path, tmp_path: Path) -> None:
+    desktop(data_dir, tmp_path)
+    with session_scope() as session:
+        make_project(session, "acme-web")
+        make_instance(session, "acme-db", secret_ref="file://acme/db")
+        make_instance(session, "acme-github", type=InstanceType.GITHUB, secret_ref="file://a/gh")
+        make_instance(session, "acme-google", type=InstanceType.GOOGLE, secret_ref="file://a/g")
+    bind("acme-web", "acme-db")
+    with session_scope() as session:
+        tasks.create_task(session, get_settings(), project="acme-web", prompt="x")
+        steps = onboarding.checklist(session, claude_ready=True)
+    assert steps.unlinked == ("acme-github", "acme-google")
+    assert not steps.done  # Get started stays until they're linked
+    bind("acme-web", "acme-github")
+    bind("acme-web", "acme-google")
+    with session_scope() as session:
+        steps = onboarding.checklist(session, claude_ready=True)
+    assert steps.unlinked == ()
+    assert steps.done
 
 
 def test_the_start_endpoint(owner: TestClient) -> None:
@@ -164,6 +186,7 @@ def test_the_start_endpoint(owner: TestClient) -> None:
         "task",
         "done",
         "dismissed",
+        "unlinked",
     }
     assert answer["demo"] is None
     assert client.post("/start/dismiss").status_code == 204
