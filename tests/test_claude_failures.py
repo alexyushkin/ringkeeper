@@ -17,7 +17,7 @@ from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import Message, MessageRole, Task
 from ringkeeper.router.model import AgentSdkModel, ClaudeUnavailableError, Completion
-from ringkeeper.router.service import route_next
+from ringkeeper.router.service import BACK, GAVE_UP, route_next
 from ringkeeper.services import threads
 from ringkeeper.vault import get_vault
 from tests import test_web_api
@@ -140,6 +140,61 @@ def test_a_routing_message_waits_for_claude_and_is_routed_later(project: None) -
     route_next(get_settings(), FakeModel([output(routed("gi-site"))]))
     with session_scope() as session:
         assert [t.project for t in session.scalars(select(Task))] == ["gi-site"]
+
+
+def due(ident: str, **routing: Any) -> dict[str, Any]:
+    """Its next try is due now; returns what it knew about waiting before."""
+    with session_scope() as session:
+        message = session.get_one(Message, uuid.UUID(ident))
+        before = dict(message.routing or {})
+        message.routing = {
+            **before, **routing,
+            "retry_after": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        }  # fmt: skip
+        return before
+
+
+OVERLOADED = "Claude is overloaded right now. Ringkeeper tries again in a moment."
+
+
+def test_three_failed_tries_tell_the_conversation_once(project: None) -> None:
+    ident = ask("Fix the footer")
+    waits: list[float] = []
+    for _ in range(3):
+        start = datetime.now(UTC)
+        route_next(get_settings(), Unavailable("API Error: 529 overloaded"))
+        before = due(ident)
+        waits.append((datetime.fromisoformat(before["retry_after"]) - start).total_seconds() / 60)
+    assert [round(w) for w in waits] == [2, 5, 15]  # backed off, not every 2 minutes
+    assert bodies().count((MessageRole.SYSTEM, OVERLOADED)) == 1
+    route_next(get_settings(), FakeModel([output(routed("gi-site"))]))
+    assert bodies().count((MessageRole.SYSTEM, BACK)) == 1  # and once more when it's back
+    with session_scope() as session:
+        assert [t.project for t in session.scalars(select(Task))] == ["gi-site"]
+
+
+def test_later_tries_wait_half_an_hour(project: None) -> None:
+    ident = ask("Fix the footer")
+    route_next(get_settings(), Unavailable("API Error: 529 overloaded"))
+    due(ident, tries=7)
+    start = datetime.now(UTC)
+    route_next(get_settings(), Unavailable("API Error: 529 overloaded"))
+    with session_scope() as session:
+        later = (session.get_one(Message, uuid.UUID(ident)).routing or {})["retry_after"]
+    assert round((datetime.fromisoformat(later) - start).total_seconds() / 60) == 30
+
+
+def test_after_twelve_hours_it_gives_up_with_try_again(project: None) -> None:
+    ident = ask("Fix the footer")
+    route_next(get_settings(), Unavailable("API Error: 529 overloaded"))
+    due(ident, since=(datetime.now(UTC) - timedelta(hours=13)).isoformat())
+    route_next(get_settings(), Unavailable("API Error: 529 overloaded"))
+    with session_scope() as session:
+        message = session.get_one(Message, uuid.UUID(ident))
+        assert message.route_error == OVERLOADED  # given up: no more tries by itself
+        last = threads.thread_messages(session, message.thread_id)[-1]
+        assert (last.body, (last.routing or {}).get("retry")) == (GAVE_UP, ident)
+    assert bodies().count((MessageRole.SYSTEM, OVERLOADED)) == 1
 
 
 def test_a_usage_limit_pauses_routing_until_it_resets(project: None, owner: TestClient) -> None:

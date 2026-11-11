@@ -536,7 +536,21 @@ def answer_follow_up(session: Session, settings: Settings, message: Message) -> 
     return Routed(tasks=[answered.task] if answered.task else [], reply=answered.reply)
 
 
-RETRY_ROUTING = timedelta(minutes=2)  # after Claude's side failed (not a usage limit)
+# After Claude's side failed (not a usage limit): tried again after 2, 5 and 15 minutes,
+# then every 30, for up to 12 hours; then it's left with Try again.
+RETRY_STEPS = (timedelta(minutes=2), timedelta(minutes=5), timedelta(minutes=15))
+RETRY_EVERY = timedelta(minutes=30)
+GIVE_UP_AFTER = timedelta(hours=12)
+BACK = "Claude is reachable again, so your request went through."
+GAVE_UP = (
+    "Claude was still unavailable after 12 hours, so this request wasn't sent on. Press Try "
+    "again once it's back."
+)
+
+
+def retry_wait(tries: int) -> timedelta:
+    """How long before the next try, after `tries` failed ones."""
+    return RETRY_STEPS[tries - 1] if 0 < tries <= len(RETRY_STEPS) else RETRY_EVERY
 
 
 def _failed(message_id: uuid.UUID, error: Exception) -> None:
@@ -560,17 +574,31 @@ def _failed(message_id: uuid.UUID, error: Exception) -> None:
 
 def _wait_for_claude(message_id: uuid.UUID, failure: claude_failures.Failure) -> None:
     """The message goes back to be routed later: after a usage limit resets (nothing new
-    starts until then), or in a couple of minutes. The conversation is told once."""
+    starts until then), or after a wait that grows with each try. The conversation is told
+    once, and once more when Claude is back (route_next) or it gives up."""
+    now = datetime.now(UTC)
     with session_scope() as session:
         message = session.get(Message, message_id)
         if message is None or message.routed_at is not None:
             return
-        if failure.kind is claude_failures.Kind.USAGE_LIMIT:
-            later = claude_failures.pause_until(session, failure).until
-        else:
-            later = datetime.now(UTC) + RETRY_ROUTING
-        told = bool((message.routing or {}).get("told"))
-        threads.wait_to_route(session, message, later, failure.message)
+        routing = message.routing or {}
+        tries = int(routing.get("tries") or 0) + 1
+        since = str(routing.get("since") or now.isoformat())
+        usage = failure.kind is claude_failures.Kind.USAGE_LIMIT
+        if not usage and now - datetime.fromisoformat(since) >= GIVE_UP_AFTER:
+            threads.mark_routed(session, message, None, error=failure.message)
+            threads.add_reply(
+                session, message.thread_id, GAVE_UP, role=MessageRole.SYSTEM,
+                routing={"retry": str(message_id)},
+            )  # fmt: skip
+            return
+        later = (
+            claude_failures.pause_until(session, failure).until
+            if usage
+            else now + retry_wait(tries)
+        )
+        told = threads.waited_for_claude(message)
+        threads.wait_to_route(session, message, later, failure.message, tries=tries, since=since)
         if not told:
             threads.add_reply(session, message.thread_id, failure.message, role=MessageRole.SYSTEM)
 
@@ -621,6 +649,8 @@ def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
             message = session.get_one(Message, ident)
             if message.routed_at is None and message.canceled_at is None:
                 message.target_project = target or message.target_project
+                if thought.error == "" and threads.waited_for_claude(message):
+                    threads.add_reply(session, message.thread_id, BACK, role=MessageRole.SYSTEM)
                 with session.begin_nested():  # all of the message's tasks, or none
                     apply(session, settings, message, thought)
     except Exception as error:

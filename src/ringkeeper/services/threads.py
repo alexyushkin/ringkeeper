@@ -351,10 +351,25 @@ def _claimed(message: Message, now: datetime) -> bool:
     return bool(stamp) and datetime.fromisoformat(str(stamp)) > now - CLAIM_FOR
 
 
-def wait_to_route(session: Session, message: Message, later: datetime, why: str) -> None:
+# Kept while a message waits for Claude, across the claims of its tries: that the
+# conversation was told, how many tries failed, and since when.
+WAITING = ("told", "tries", "since")
+
+
+def wait_to_route(
+    session: Session, message: Message, later: datetime, why: str, *, tries: int, since: str
+) -> None:
     """Back in the queue, to be routed again from `later` (Claude's side failed)."""
-    message.routing = {RETRY_AFTER: later.isoformat(), "waiting": why, "told": True}
+    message.routing = {
+        RETRY_AFTER: later.isoformat(), "waiting": why, "told": True, "tries": tries,
+        "since": since,
+    }  # fmt: skip
     session.flush()
+
+
+def waited_for_claude(message: Message) -> bool:
+    """It waited for Claude, and the conversation was told so."""
+    return bool((message.routing or {}).get("told"))
 
 
 def retry_routing(session: Session, ident: str) -> Message:
@@ -372,8 +387,10 @@ def retry_routing(session: Session, ident: str) -> Message:
 
 
 def claim(session: Session, message: Message) -> None:
-    """Taken by a router, which asks the model outside this transaction."""
-    message.routing = {CLAIMED: datetime.now(UTC).isoformat()}
+    """Taken by a router, which asks the model outside this transaction. What it knows
+    about waiting for Claude stays, so a retry doesn't tell the conversation again."""
+    kept = {k: v for k, v in (message.routing or {}).items() if k in WAITING}
+    message.routing = {CLAIMED: datetime.now(UTC).isoformat(), **kept}
     session.flush()
 
 

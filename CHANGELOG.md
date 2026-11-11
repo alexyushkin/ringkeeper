@@ -16,6 +16,11 @@ publishes it as the release notes and the app shows it with the update.
   (a 105-row list of workflows stopped at row 60). The task's page now shows the whole result.
   Task cards and chat messages still show the start, with a link to the rest.
 
+- **Fixed:** while Claude was unavailable, a waiting request added the same notice to its
+  conversation on every retry, every 2 minutes. It's said once, and once more when Claude is
+  back. Retries wait 2, 5 and 15 minutes, then every half hour, and stop after 12 hours with
+  **Try again**.
+
 - **Web access is a project setting of its own.** It no longer depends on how independently
   a project works: on the project's Settings tab, **Web access** is on for your own client's
   projects and off for a client's unless you change it. A request that needs the web where
