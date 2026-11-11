@@ -67,7 +67,9 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
     @tool(
         "not_done",
         "Say you couldn't do what was asked: a tool refused it, you lack the access or "
-        "connection it needs, or it can't be done. The task then ends as not done, with "
+        "connection it needs, a file couldn't be read, or it can't be done. Call it whenever "
+        "the main thing asked for isn't in your answer, even if you did part of it or offer "
+        "ways forward. The task then ends as not done, with "
         "your reason, instead of done. `needs`: the kind of connection that was missing, if "
         "that's why: one of email, google, slack, database, airtable, n8n, github, vercel, "
         "or empty. Still end your turn with a short note for the operator.",
