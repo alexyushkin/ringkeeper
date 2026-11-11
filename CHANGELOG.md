@@ -3,6 +3,12 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Connections no project uses stand out.** Their card says **Not linked to any project**,
+  with **Link**, and Home's **Get started** counts them ("2 connections aren't linked to any
+  project") until they're linked.
+
 ## 0.1.0-beta.36 (2026-11-11)
 
 - **A task's final message is its answer.** Asked to "tell" or "reply with" something, a

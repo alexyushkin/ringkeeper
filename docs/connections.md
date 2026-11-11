@@ -38,7 +38,9 @@ here once per client.
 
 ## Link a connection to a project
 
-A connection does nothing until a project uses it. On the client's Connections tab,
+A connection does nothing until a project uses it. A card that no project uses says **Not
+linked to any project**, with **Link**, and Home's **Get started** counts them until
+they're linked. On the client's Connections tab,
 each card says where it's used and has **Link to project…**: tick one or several
 projects, and narrow each if you like. On a project's Connections tab, **Link a
 connection** lists the client's connections that aren't linked yet and your own tools.

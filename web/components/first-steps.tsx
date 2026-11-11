@@ -17,7 +17,7 @@ export interface DemoInfo {
 }
 
 interface Start {
-  checklist: { claude: boolean; project: boolean; connection: boolean; task: boolean; done: boolean; dismissed: boolean };
+  checklist: { claude: boolean; project: boolean; connection: boolean; task: boolean; done: boolean; dismissed: boolean; unlinked: string[] };
   suggestions: string[];
   demo: DemoInfo | null;
   demo_offered: boolean;
@@ -39,6 +39,7 @@ export function FirstSteps() {
     <div className="mb-6 space-y-3">
       {whats_new ? <WhatsNew {...whats_new} onSeen={start.reload} /> : null}
       {showList ? <Checklist steps={checklist} demoOffered={demo_offered && !demo} onChange={start.reload} /> : null}
+      {!showList && checklist.unlinked.length ? <Unlinked names={checklist.unlinked} /> : null}
       {demo ? <DemoCard demo={demo} onRemoved={start.reload} /> : null}
       {tries.length ? <Suggestions items={tries} /> : null}
     </div>
@@ -103,7 +104,8 @@ function StepLink({ href, children }: { href: string; children: string }) {
 }
 
 function Checklist({ steps, demoOffered, onChange }: { steps: Start["checklist"]; demoOffered: boolean; onChange: () => void }) {
-  const left = [steps.claude, steps.project, steps.connection, steps.task].filter((s) => !s).length;
+  const linked = steps.unlinked.length === 0;
+  const left = [steps.claude, steps.project, steps.connection, steps.task, linked].filter((s) => !s).length;
   return (
     <Card className="space-y-3">
       <div className="flex items-start gap-2">
@@ -125,6 +127,11 @@ function Checklist({ steps, demoOffered, onChange }: { steps: Start["checklist"]
         <Step done={steps.connection} action={<StepLink href="/connections/new">Add a connection</StepLink>}>
           Connect a service it works with (a database, Airtable, GitHub…)
         </Step>
+        {steps.connection ? (
+          <Step done={linked} action={linked ? null : <StepLink href={linkHref(steps.unlinked)}>Link</StepLink>}>
+            {linked ? "Link every connection to a project" : unlinkedText(steps.unlinked)}
+          </Step>
+        ) : null}
         <Step
           done={steps.task}
           action={
@@ -137,6 +144,26 @@ function Checklist({ steps, demoOffered, onChange }: { steps: Start["checklist"]
         </Step>
       </ol>
       {demoOffered ? <TryDemo onAdded={onChange} /> : null}
+    </Card>
+  );
+}
+
+/** Where Link goes: the first unlinked connection's Link to project…, on Connectors. */
+function linkHref(names: string[]): string {
+  return `/connections#connections/${encodeURIComponent(names[0] ?? "")}/link`;
+}
+
+function unlinkedText(names: string[]): string {
+  const n = names.length;
+  return `${n === 1 ? "1 connection isn't" : `${n} connections aren't`} linked to any project, so no task can use ${n === 1 ? "it" : "them"}`;
+}
+
+/** Home, when Get started is done or hidden: connections no task can use yet. */
+function Unlinked({ names }: { names: string[] }) {
+  return (
+    <Card className="flex flex-wrap items-center gap-3">
+      <span className="flex-1 text-sm">{unlinkedText(names)}.</span>
+      <StepLink href={linkHref(names)}>Link</StepLink>
     </Card>
   );
 }
