@@ -123,6 +123,8 @@ class Settings(BaseSettings):
 
     # Router (runs inside the api service, alongside the session manager).
     router_confidence_threshold: float = 0.8
+    # The router's model call stops after this long, and is tried again (router.model).
+    router_timeout_seconds: float = 90.0
     router_recent_messages: int = 10
     router_examples: int = 20
     router: bool = False

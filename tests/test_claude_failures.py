@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import anyio
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -16,7 +17,7 @@ from ringkeeper.claude_failures import Kind, classify
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import Message, MessageRole, Task
-from ringkeeper.router.model import AgentSdkModel, ClaudeUnavailableError, Completion
+from ringkeeper.router.model import AgentSdkModel, ClaudeUnavailableError, Completion, within
 from ringkeeper.router.service import BACK, GAVE_UP, route_next
 from ringkeeper.services import claude_place, threads
 from ringkeeper.vault import get_vault
@@ -285,6 +286,79 @@ def test_another_routing_failure_offers_try_again(project: None, owner: TestClie
         assert (reply.routing or {})["retry"] == ident
     again = owner.post(f"/messages/{ident}/retry")
     assert again.status_code == 200, again.text
+    route_next(get_settings(), FakeModel([output(routed("gi-site"))]))
+    with session_scope() as session:
+        assert [t.project for t in session.scalars(select(Task))] == ["gi-site"]
+
+
+# --- A routing call that takes too long ---
+
+
+class Slow:
+    """A router model call that runs out of time `times` times, then answers."""
+
+    def __init__(self, times: int) -> None:
+        self.times, self.calls = times, 0
+
+    def __call__(self) -> Completion:
+        self.calls += 1
+        if self.calls <= self.times:
+            raise ClaudeUnavailableError(claude_failures.timed_out(90))
+        return Completion("{}")
+
+
+def test_a_routing_call_stops_at_its_time_limit(database_url: str) -> None:
+    """From Check my setup: one routing call took more than 6 minutes."""
+
+    async def hangs() -> Completion:
+        await anyio.sleep(30)
+        return Completion("{}")
+
+    started = datetime.now(UTC)
+    with pytest.raises(ClaudeUnavailableError) as raised:
+        anyio.run(within, 0.2, hangs)
+    assert datetime.now(UTC) - started < timedelta(seconds=5)
+    assert raised.value.failure.kind is Kind.SLOW
+    assert raised.value.failure.transient
+    assert get_settings().router_timeout_seconds == 90
+
+
+def test_a_slow_call_is_tried_again_once_at_once(database_url: str) -> None:
+    waits: list[float] = []
+    model = AgentSdkModel(get_vault(), get_settings(), sleep=waits.append)
+    once = Slow(times=1)
+    assert model.with_retries(once).text == "{}"
+    assert (once.calls, waits) == (2, [])
+    twice = Slow(times=5)
+    with pytest.raises(ClaudeUnavailableError, match="more than 90 seconds"):
+        model.with_retries(twice)
+    assert (twice.calls, waits) == (2, [])  # then the message waits, and is told why
+
+
+class TimesOut(FakeModel):
+    def __init__(self) -> None:
+        super().__init__([])
+
+    def complete(self, system: str, prompt: str, model: str) -> Any:
+        raise ClaudeUnavailableError(claude_failures.timed_out(90))
+
+
+def test_a_message_whose_routing_timed_out_waits_and_says_so_once(project: None) -> None:
+    ident = ask("Fix the footer")
+    route_next(get_settings(), TimesOut())
+    with session_scope() as session:
+        message = session.get_one(Message, uuid.UUID(ident))
+        assert message.routed_at is None
+        assert "retry_after" in (message.routing or {})
+    said = (
+        "Claude took more than 90 seconds to work out where this goes. Ringkeeper tries again "
+        "in a moment."
+    )
+    assert bodies()[-1] == (MessageRole.SYSTEM, said)
+    due(ident)
+    route_next(get_settings(), TimesOut())
+    assert [body for _, body in bodies()].count(said) == 1  # said once
+    due(ident)
     route_next(get_settings(), FakeModel([output(routed("gi-site"))]))
     with session_scope() as session:
         assert [t.project for t in session.scalars(select(Task))] == ["gi-site"]

@@ -13,6 +13,8 @@ reached" isn't Claude's limit). It turns them into one of five kinds:
   resets (`pause_until`), and Home says so; tasks wait instead of failing.
 - login: missing or expired. Not retried: it says where to sign in again.
 - rate limit, overloaded, network: transient. Tried again a few times, with a wait between.
+- slow: the router's model call ran past its time limit (`timed_out`). Transient too: tried
+  again once at once, then later, like the others.
 """
 
 import enum
@@ -35,9 +37,10 @@ class Kind(enum.StrEnum):
     RATE_LIMIT = "rate_limit"
     OVERLOADED = "overloaded"
     NETWORK = "network"
+    SLOW = "slow"
 
 
-TRANSIENT = frozenset({Kind.RATE_LIMIT, Kind.OVERLOADED, Kind.NETWORK})
+TRANSIENT = frozenset({Kind.RATE_LIMIT, Kind.OVERLOADED, Kind.NETWORK, Kind.SLOW})
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,15 @@ def classify(
             "tries again in a moment.",
         )
     return None
+
+
+def timed_out(seconds: float) -> Failure:
+    """The router's model call ran past its time limit."""
+    return Failure(
+        Kind.SLOW,
+        f"Claude took more than {seconds:.0f} seconds to work out where this goes. Ringkeeper "
+        "tries again in a moment.",
+    )
 
 
 # --- A usage limit: nothing new starts until it resets ---
