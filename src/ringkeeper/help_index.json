@@ -397,6 +397,12 @@
 },
 {
 "doc": "working-faster",
+"anchor": "sending-with-the-keyboard",
+"title": "Sending with the keyboard",
+"text": "Every box you type in works the same way: the request box on Home, the quick request, a conversation, **Continue this task**, answers to questions and plans, and Help. Under each box a line says which key sends. Choose in Settings › General › Send with: - **Ctrl+Enter** (the default): Enter starts a new line. On a Mac it's **Cmd+Enter**. - **Enter**: Shift+Enter starts a new line. The choice is kept by Ringkeeper, not the browser, so it's the same in every browser you open Ringkeeper in. **Esc** leaves the box. While the @ list is open, Enter picks from it and nothing is sent. In a plan's note, the key sends it as **Ask for changes**; it never approves a plan or a change."
+},
+{
+"doc": "working-faster",
 "anchor": "send-later",
 "title": "Send later",
 "text": "Under the request box on Home, **Send later…** picks a day and time (this computer's time). The request waits until then, in its conversation and in **Sent for later** on Home, each with **Cancel**. At its time it's routed like any request. If Ringkeeper isn't running then (the computer was asleep, say), it runs when Ringkeeper starts, unless that's more than 6 hours late: then it doesn't run, and its conversation says so. A time can be up to 90 days ahead."

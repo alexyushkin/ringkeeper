@@ -14,8 +14,8 @@
 - [Agents and routines](agents-and-routines.md)
 - [Approvals and safety](approvals.md)
 - [Undo](undo.md)
-- [Working faster](working-faster.md): the quick request key, @-mentions, files,
-  shortcuts, trust for an hour, the digest
+- [Working faster](working-faster.md): the quick request key, sending with Enter or
+  Ctrl+Enter, @-mentions, files, shortcuts, trust for an hour, the digest
 - [Notifications](notifications.md): Telegram, Slack, Discord
 - [Backup and moving computers](backup.md)
 

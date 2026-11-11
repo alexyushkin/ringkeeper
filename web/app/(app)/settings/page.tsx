@@ -12,6 +12,8 @@ import { MyMemory, PersonalMemory, SharedNotes } from "@/components/memory";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { applyTheme, readTheme } from "@/lib/client/theme";
+import { setSendMode, useSendMode } from "@/lib/client/use-send-keys";
+import { sendChoices, sendHint, sendMode } from "@/lib/send-keys";
 import type { Theme } from "@/lib/theme";
 import { AboutCard } from "@/components/about";
 import { BackupSettings } from "@/components/backup";
@@ -59,6 +61,7 @@ interface Settings {
     paused: boolean;
     start_at_login: boolean;
     stt_language: string | null;
+    send_key: string;
   };
   overridden: string[];
   services: Record<string, { running: boolean; error: string | null }>;
@@ -73,15 +76,17 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  async function change(values: Record<string, unknown>, done = "Saved.") {
+  async function change(values: Record<string, unknown>, done = "Saved."): Promise<boolean> {
     setError(null);
     setNotice(null);
     try {
       await api("settings", { method: "PATCH", json: values });
       setNotice(done);
       settings.reload();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     }
   }
 
@@ -282,6 +287,16 @@ export default function SettingsPage() {
       ),
     },
     ...(DESKTOP ? [{ key: "backup", label: "Backup", content: () => <BackupSettings /> }] : []),
+    {
+      key: "general",
+      label: "General",
+      content: () => (
+        <SendWith
+          value={v.send_key}
+          onChange={(next) => void change({ send_key: next }).then((saved) => saved && setSendMode(sendMode(next)))}
+        />
+      ),
+    },
     { key: "appearance", label: "Appearance", content: () => <Appearance /> },
     { key: "about", label: "About", content: () => <AboutCard /> },
   ];
@@ -455,6 +470,23 @@ const THEMES: [Theme, string][] = [
   ["light", "Light"],
   ["dark", "Dark"],
 ];
+
+/** Settings > General > Send with: the same in every text box, on every device. */
+function SendWith({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { mac } = useSendMode();
+  const mode = sendMode(value);
+  return (
+    <Section id="send-with" title="Send with" summary={sendHint(mode, mac)}>
+      <Select
+        label="Send with"
+        value={mode}
+        options={sendChoices(mac)}
+        onChange={onChange}
+        hint="In every box you type in: requests, the quick request, conversations, Continue this task, answers to questions and plans, and Help. Esc leaves the box. While the @ list is open, Enter picks from it."
+      />
+    </Section>
+  );
+}
 
 function Appearance() {
   const [theme, setTheme] = useState<Theme>("system");
