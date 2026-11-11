@@ -20,7 +20,7 @@ from ringkeeper import claude_failures
 from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import TERMINAL_STATUSES, InstanceType, SessionEvent, TaskStatus
+from ringkeeper.models import TERMINAL_STATUSES, InstanceType, SessionEvent, TaskKind, TaskStatus
 from ringkeeper.services import revocations, tasks
 from ringkeeper.vault import get_vault
 from ringkeeper.workers.env import TASK_ENV, TOKEN_ENV
@@ -98,13 +98,17 @@ def run_stub(
     managers: list[Manager] = []
 
     def run(
-        stub: dict[str, Any], *, max_runtime_s: int = 120, until: tuple[TaskStatus, ...] = ()
+        stub: dict[str, Any],
+        *,
+        max_runtime_s: int = 120,
+        until: tuple[TaskStatus, ...] = (),
+        kind: TaskKind | None = None,
     ) -> Run:
         monkeypatch.setenv("RINGKEEPER_WORKER_STUB", json.dumps(stub))
         with session_scope() as session:
             task = tasks.create_task(
                 session, get_settings(), project="acme-web", prompt="stub run",
-                max_runtime_s=max_runtime_s,
+                max_runtime_s=max_runtime_s, kind=kind,
             )  # fmt: skip
             task_id = str(task.id)
         manager = Manager(runtime, get_vault())
@@ -193,6 +197,75 @@ def test_git_work_lands_on_the_task_branch(run_stub: Callable[..., Run], workspa
     assert "+++ b/NOTES.md" in diff["text"]
     log = git("-C", str(workspace), "log", "--oneline", "main")
     assert len(log.splitlines()) == 1  # main didn't move
+
+
+def a_repo(workspace: Path) -> None:
+    git("init", "-q", str(workspace))
+    (workspace / "README.md").write_text("acme\n", encoding="utf-8")
+    git("-C", str(workspace), "add", ".")
+    git("-C", str(workspace), "commit", "-qm", "start")
+
+
+def test_a_data_task_runs_in_a_folder_with_uncommitted_changes(
+    run_stub: Callable[..., Run], workspace: Path
+) -> None:
+    a_repo(workspace)
+    (workspace / "README.md").write_text("acme, edited by hand\n", encoding="utf-8")
+    run = run_stub({"write": {"orders.csv": "id\n1\n"}}, kind=TaskKind.DATA)
+    assert status_of(run.task_id) is TaskStatus.SUCCEEDED, events_of(run.task_id)
+    with session_scope() as session:
+        task = tasks.get_task(session, run.task_id)
+        assert task.git_branch is None
+        assert task.changed_files == ["orders.csv"]
+        assert task.folder_note == "Changed 1 file (orders.csv) in the folder, not on a branch."
+    assert git("-C", str(workspace), "rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
+    assert git("-C", str(workspace), "branch", "--list", "ringkeeper/*").strip() == ""
+    assert "README.md" in git("-C", str(workspace), "status", "--porcelain")  # left alone
+
+
+def test_a_code_task_is_still_refused_in_a_folder_with_uncommitted_changes(
+    run_stub: Callable[..., Run], workspace: Path
+) -> None:
+    a_repo(workspace)
+    (workspace / "README.md").write_text("acme, edited by hand\n", encoding="utf-8")
+    run = run_stub({"write": {"NOTES.md": "notes\n"}}, kind=TaskKind.FIX)
+    assert status_of(run.task_id) is TaskStatus.FAILED
+    [error] = events_of(run.task_id)["ringkeeper.error"]
+    assert error["message"].startswith("The project folder has changes that aren't committed")
+
+
+def test_someone_else_s_change_during_the_run_isn_t_committed(
+    run_stub: Callable[..., Run], workspace: Path
+) -> None:
+    a_repo(workspace)
+    stub = {"write": {"NOTES.md": "notes\n"}, "others_write": {"README.md": "edited\n"}}
+    run = run_stub(stub, kind=TaskKind.FIX)
+    assert status_of(run.task_id) is TaskStatus.SUCCEEDED, events_of(run.task_id)
+    with session_scope() as session:
+        task = tasks.get_task(session, run.task_id)
+        branch, note = task.git_branch, task.folder_note
+        assert task.changed_files == ["NOTES.md"]
+    assert branch is not None
+    committed = git("-C", str(workspace), "show", "--name-only", "--format=", branch).split()
+    assert committed == ["NOTES.md"]
+    assert note == (
+        "Not committed: 1 file (README.md) that changed during the run but not by the task. "
+        "They're left as they are in the folder."
+    )
+    assert (workspace / "README.md").read_text(encoding="utf-8") == "edited\n"
+
+
+def test_after_a_shell_command_it_says_what_else_went_on_the_branch(
+    run_stub: Callable[..., Run], workspace: Path
+) -> None:
+    a_repo(workspace)
+    stub = {"write": {"NOTES.md": "notes\n"}, "shell_write": {"README.md": "built\n"}}
+    run = run_stub(stub, kind=TaskKind.FIX)
+    assert status_of(run.task_id) is TaskStatus.SUCCEEDED, events_of(run.task_id)
+    with session_scope() as session:
+        task = tasks.get_task(session, run.task_id)
+        assert sorted(task.changed_files) == ["NOTES.md", "README.md"]
+        assert (task.folder_note or "").startswith("Also on the branch: 1 file (README.md)")
 
 
 def test_planted_git_hooks_are_undone_and_leftovers_killed(

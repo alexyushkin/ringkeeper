@@ -46,6 +46,7 @@ interface Task {
   thread_id: string | null;
   branch: string | null;
   branch_state?: string | null;
+  folder_note?: string | null; // what happened to files in the folder, when it's worth saying
   waiting_for_folder?: boolean;
   changed_files: string[];
   diff: string | null;
@@ -297,6 +298,7 @@ export function TaskView({ id }: { id: string }) {
         {error ? <Alert>{error}</Alert> : null}
       </Card>
 
+      {t.folder_note ? <p className="mt-3 text-sm text-warn">{t.folder_note}</p> : null}
       <div className="mt-4 flex gap-2" role="tablist">
         <Button kind={tab === "transcript" ? "primary" : "secondary"} onClick={() => setTab("transcript")}>
           Transcript

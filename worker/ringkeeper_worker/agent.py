@@ -7,6 +7,7 @@ from claude_agent_sdk.types import McpHttpServerConfig, McpServerConfig
 
 from ringkeeper_worker import inbox
 from ringkeeper_worker.config import WorkerConfig
+from ringkeeper_worker.edits import EDITS
 from ringkeeper_worker.emit import emit, message_type
 from ringkeeper_worker.privileges import is_root
 
@@ -80,6 +81,7 @@ async def run(config: WorkerConfig, cli: Path | None = None) -> bool:
         async for message in client.receive_response():
             kind = message_type(message)
             emit(kind, message=message)
+            EDITS.message(message)  # the files it edits itself, for the commit
             if kind == "sdk.result":
                 ok = not getattr(message, "is_error", True)
     return ok

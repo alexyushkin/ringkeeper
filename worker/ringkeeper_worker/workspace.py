@@ -25,6 +25,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ringkeeper_worker.edits import Edits
 from ringkeeper_worker.privileges import WORKER_HOME, as_worker_kwargs, is_root
 
 GIT_IDENTITY = {
@@ -61,9 +62,11 @@ class Outcome:
     commit: str | None = None
     protected_branch: str | None = None
     restored: str | None = None  # set if the protected branch had to be put back
+    note: str | None = None  # what happened to files, when it's worth saying
 
     def as_event(self) -> dict[str, object]:
         return {
+            "note": self.note,
             "git": self.git,
             "changed_files": self.changed_files,
             "branch": self.branch,
@@ -111,11 +114,18 @@ def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
     return files
 
 
+def _files(paths: list[str]) -> str:
+    return f"{len(paths)} file{'' if len(paths) == 1 else 's'} ({_listed(paths)})"
+
+
 class Workspace:
-    def __init__(self, root: str | Path, branch: str) -> None:
+    def __init__(self, root: str | Path, branch: str, *, use_git: bool = True) -> None:
         self.root = Path(root)
         self.branch = branch
-        self.git = (self.root / ".git").exists()
+        self.repo = (self.root / ".git").exists()
+        # Work that isn't on the code leaves git alone: no branch, no switch, no clean-tree
+        # check. Changed files come from the before/after snapshot, as in a plain folder.
+        self.git = self.repo and use_git
         self._before: dict[str, tuple[int, int]] = {}
         self._protected: tuple[str, str] | None = None  # (branch, sha) at start
         self._base: str | None = None
@@ -216,9 +226,41 @@ class Workspace:
             | {p for p in self._before if p not in after}
         )
 
-    def finish(self, message: str) -> Outcome:
+    def _relative(self, path: str) -> str | None:
+        """A tool's path as a path in the folder (None: outside it)."""
+        full = Path(path) if Path(path).is_absolute() else self.root / path
+        try:
+            return full.resolve().relative_to(self.root.resolve()).as_posix()
+        except (ValueError, OSError):
+            return None
+
+    def _own(self, touched: list[str], own: Edits) -> tuple[list[str], str | None]:
+        """What to commit of what changed, and a note on the rest. Without a shell command,
+        only what the agent's edit tools wrote is its own; the rest was someone else's and
+        stays out. A shell command can change anything: all of it goes in, and it says so."""
+        wrote = {p for p in map(self._relative, own.paths) if p}
+        others = [p for p in touched if p not in wrote]
+        if not others:
+            return touched, None
+        if own.shell:
+            return touched, (
+                f"Also on the branch: {_files(others)} that changed during the run but not "
+                "through the task's file edits (by a command it ran, or by someone else)."
+            )
+        return [p for p in touched if p in wrote], (
+            f"Not committed: {_files(others)} that changed during the run but not by the "
+            "task. They're left as they are in the folder."
+        )
+
+    def finish(self, message: str, own: Edits | None = None) -> Outcome:
         if not self.git:
-            return Outcome(git=False, changed_files=self._touched())
+            touched = self._touched()
+            note = (
+                f"Changed {_files(touched)} in the folder, not on a branch."
+                if touched and self.repo
+                else None
+            )
+            return Outcome(git=False, changed_files=touched, note=note)
 
         outcome = Outcome(git=True, branch=self.branch)
         restored = self._restore_protected()
@@ -226,6 +268,8 @@ class Workspace:
         if current != self.branch:
             _git(self.root, "switch", self.branch)
         touched = self._touched()
+        if own is not None:
+            touched, outcome.note = self._own(touched, own)
         for start in range(0, len(touched), 200):
             # -A also stages deletions. Gitignored paths make `add` exit non-zero
             # while still staging the rest, so that is not an error here.

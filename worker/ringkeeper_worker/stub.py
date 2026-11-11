@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ringkeeper_worker.config import WORKSPACE, WorkerConfig
+from ringkeeper_worker.edits import EDITS
 from ringkeeper_worker.emit import emit
 
 FORBIDDEN_PATHS = (
@@ -162,6 +163,12 @@ async def run(config: WorkerConfig) -> bool:
         target = Path(config.workspace) / relpath
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+        EDITS.tool("Write", {"file_path": str(target)})  # as the Write tool would
+    for relpath, content in stub.get("others_write", {}).items():  # someone else, meanwhile
+        (Path(config.workspace) / relpath).write_text(content, encoding="utf-8")
+    for relpath, content in stub.get("shell_write", {}).items():  # as a Bash command would
+        EDITS.tool("Bash", {"command": f"echo > {relpath}"})
+        (Path(config.workspace) / relpath).write_text(content, encoding="utf-8")
     if seconds := float(stub.get("sleep", 0)):
         await asyncio.sleep(seconds)
     if (question := stub.get("ask_user")) and not config.resume:

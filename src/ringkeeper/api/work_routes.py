@@ -263,6 +263,7 @@ def get_task(task_id: str, session: SessionDep) -> dict[str, Any]:
         "prompt": task.prompt, "risk": task.risk.value if task.risk else None,
         "complexity": task.complexity.value if task.complexity else None,
         "branch": task.git_branch, "commit": task.git_commit, "branch_state": task.branch_state,
+        "folder_note": task.folder_note,
         "changed_files": task.changed_files, "auth_mode": task.auth_mode.value,
         "review_round": task.review_round, "stop_requested": task.stop_requested,
         "diff": (diff.payload.get("text") if diff else None),

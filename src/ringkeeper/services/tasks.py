@@ -143,6 +143,7 @@ def create_task(
     thread_id: uuid.UUID | None = None,
     message_id: uuid.UUID | None = None,
     agent_id: uuid.UUID | None = None,
+    general: bool = False,
 ) -> Task:
     """Queue a task. A feature starts with the architect (plan first), unless it's
     small and clear (see `planned`); anything else starts with a worker."""
@@ -189,6 +190,7 @@ def create_task(
         message_id=message_id,
         phase=ArchitectPhase.PLANNING if planned(kind, complexity) else None,
         agent_id=agent_id,
+        general=general,
     )
     session.add(task)
     session.flush()
@@ -444,6 +446,16 @@ def count_running(session: Session) -> int:
 CLAIM_LOOKAHEAD = 50  # queued sessions looked at for one whose folder is free
 
 
+# Work on the code gets a branch of its own and the folder to itself (one at a time).
+# Data and ops work, and general work, use connections: no branch, and no waiting.
+NO_BRANCH_KINDS = frozenset({TaskKind.DATA, TaskKind.OPS})
+
+
+def on_branch(task: Task) -> bool:
+    """The task works on the project's code: on its own branch, one at a time per folder."""
+    return not task.general and task.kind not in NO_BRANCH_KINDS
+
+
 def _folder(project: Project | None, name: str) -> str:
     """What two tasks share when they work in the same place: the project's folder."""
     path = (project.workspace_path or "").strip() if project is not None else ""
@@ -451,14 +463,14 @@ def _folder(project: Project | None, name: str) -> str:
 
 
 def busy_folders(session: Session) -> set[str]:
-    """The folders a running session is working in."""
+    """The folders a running session is working on the code in (on its branch)."""
     rows = session.execute(
-        select(Task.project, Project)
+        select(Task, Project)
         .join(WorkerSession, WorkerSession.task_id == Task.id)
         .outerjoin(Project, Project.name == Task.project)
         .where(WorkerSession.status == TaskStatus.RUNNING)
     ).all()
-    return {_folder(project, name) for name, project in rows}
+    return {_folder(project, task.project) for task, project in rows if on_branch(task)}
 
 
 def folder_busy(session: Session, project_name: str) -> bool:
@@ -469,16 +481,17 @@ def folder_busy(session: Session, project_name: str) -> bool:
 
 def waits_for_folder(session: Session, task: Task) -> bool:
     """A queued task waiting because another task is working in its project's folder."""
-    if task.status is not TaskStatus.QUEUED:
+    if task.status is not TaskStatus.QUEUED or not on_branch(task):
         return False
     project = session.scalar(select(Project).where(Project.name == task.project))
     return _folder(project, task.project) in busy_folders(session)
 
 
 def claim_next(session: Session) -> WorkerSession | None:
-    """The oldest queued session whose project folder no other session is working in,
-    locked and marked running (container not started yet). One task at a time per folder:
-    two would switch branches under each other."""
+    """The oldest queued session that can start, locked and marked running (container not
+    started yet). Work on the code waits while another code task is in its project's folder
+    (two would switch branches under each other); work that doesn't touch the code never
+    waits."""
     busy = busy_folders(session)
     queued = session.scalars(
         select(WorkerSession)
@@ -490,7 +503,12 @@ def claim_next(session: Session) -> WorkerSession | None:
     ).all()
     places = {p.name: p for p in session.scalars(select(Project))}
     worker_session = next(
-        (s for s in queued if _folder(places.get(s.task.project), s.task.project) not in busy),
+        (
+            s
+            for s in queued
+            if not on_branch(s.task)
+            or _folder(places.get(s.task.project), s.task.project) not in busy
+        ),
         None,
     )
     if worker_session is None:

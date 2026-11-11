@@ -55,15 +55,24 @@ Informatics' Google to Website and retry", in the app and as a button in the cha
 
 ### A task's changes to files
 
-A task that changes files in a project's folder works on a branch of its own, and leaves
-the folder checked out as it found it. To use the changes, open the task's **Changes** tab:
-**Keep these changes** merges them into the project's main branch, and **Discard** throws
-them away. A follow-up in the same conversation keeps working on the same branch, so it
-sees the earlier work. A task that only read changes nothing and leaves no branch.
+A task that works on a project's code (a feature, a fix, content) works on a branch of its
+own, and leaves the folder checked out as it found it. To use the changes, open the task's
+**Changes** tab: **Keep these changes** merges them into the project's main branch, and
+**Discard** throws them away. A follow-up in the same conversation keeps working on the
+same branch, so it sees the earlier work. A task that only read changes nothing and leaves
+no branch.
 
-One task works in a project's folder at a time; another waits until it's done. If the
-folder has changes you haven't committed, the task doesn't start and says so: commit or
-stash them first.
+One code task works in a project's folder at a time; another waits until it's done. If the
+folder has changes you haven't committed, a code task doesn't start and says so: commit or
+stash them first. Only the files the task itself edited go on its branch. A file someone
+else changed during the run stays out, and the task says which. After a command the task
+ran, it can't tell whose a change was, so everything goes on the branch and the task lists
+the files it didn't edit itself.
+
+Work with data or connections, and general work like a web lookup, doesn't touch git at
+all: no branch, no waiting for the folder, and uncommitted changes don't stop it. If such
+a task does change files in the folder, its page says so ("Changed 2 files in the folder,
+not on a branch").
 
 ### Where a request goes
 

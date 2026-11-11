@@ -235,6 +235,20 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
     )
 
 
+def _save_workspace(task: Task, workspace: dict[str, Any]) -> None:
+    """Its branch and the files it changed, and what happened to files, when it says."""
+    if workspace.get("branch"):
+        task.git_branch = workspace["branch"]
+        task.git_commit = workspace.get("commit")
+    changed = cast(list[str], workspace.get("changed_files") or [])
+    if workspace.get("git"):
+        task.changed_files = changed  # the branch's diff is cumulative
+    else:
+        task.changed_files = sorted(set(task.changed_files) | set(changed))
+    if note := workspace.get("note"):
+        task.folder_note = str(note)
+
+
 def _save_result(row: WorkerSession, result: dict[str, Any]) -> None:
     """What the SDK's result says about a session: turns, cost, tokens, its conversation."""
     row.result_subtype = result.get("subtype")
@@ -449,6 +463,8 @@ class Manager:
             checks = list(project.checks)
             task_row = session.get(Task, job.task_id)
             agent = agents.of_task(session, task_row) if task_row is not None else None
+            # Work on the code: on a branch. Anything else leaves git alone.
+            uses_git = tasks.on_branch(task_row) if task_row is not None else True
             # Its own branch, or its conversation's earlier one in this project.
             branch = (
                 tasks.task_branch(session, task_row)
@@ -503,6 +519,7 @@ class Manager:
             "prompt": prompt,
             "max_turns": job.max_turns,
             "branch": branch,
+            "git": uses_git,
             "mcp_servers": (
                 {"ringkeeper-architect": f"{base}/mcp/architect"}
                 if architect_role
@@ -671,14 +688,7 @@ class Manager:
                 task.status = status
                 task.finished_at = now
                 task.error = error
-                if workspace.get("branch"):
-                    task.git_branch = workspace["branch"]
-                    task.git_commit = workspace.get("commit")
-                changed = cast(list[str], workspace.get("changed_files") or [])
-                if workspace.get("git"):
-                    task.changed_files = changed  # the branch's diff is cumulative
-                else:
-                    task.changed_files = sorted(set(task.changed_files) | set(changed))
+                _save_workspace(task, workspace)
                 if job.feature:
                     row.checks = collected.checks
                 # Held calls first: the session is resumed once the user decides them.

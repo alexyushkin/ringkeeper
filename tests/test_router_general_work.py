@@ -71,6 +71,8 @@ def test_general_work_runs_in_your_own_client_s_default_project() -> None:
     route(output(routed("gi-site", 0.3, general=True, needs_web=True)))
     assert started() == ["my-project"]
     assert asked() == 0
+    with session_scope() as session:  # general work: no branch, never waits for the folder
+        assert session.scalars(select(Task)).one().general
 
 
 def test_general_work_runs_in_the_chosen_project() -> None:
