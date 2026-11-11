@@ -13,7 +13,7 @@ from ringkeeper.claude_auth import credential_ref
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.schemas import Input
-from ringkeeper.services import admin_audit, claude_place, demo, onboarding, report
+from ringkeeper.services import admin_audit, claude_place, demo, onboarding, report, setup_check
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -129,3 +129,34 @@ def report_zip(data: ZipIn) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
+
+
+# --- Check my setup (Settings > Advanced) ---
+
+
+@router.get("/setup-check")
+def setup_check_status(session: SessionDep) -> dict[str, Any]:
+    """Whether it's running and how far it's got, what it would send, and the last report."""
+    return setup_check.in_app.status(session, current_settings())
+
+
+@router.post("/setup-check", status_code=202)
+def setup_check_start(session: SessionDep) -> dict[str, Any]:
+    """Send the read-only requests through this install. The app polls GET /setup-check."""
+    if not _claude_ready():
+        raise HTTPException(422, detail="Connect Claude first, in Settings > Claude.")
+    setup_check.in_app.start(current_settings())
+    return setup_check.in_app.status(session, current_settings())
+
+
+@router.post("/setup-check/stop", status_code=202)
+def setup_check_stop(session: SessionDep) -> dict[str, Any]:
+    """Finish the request under way and send no more."""
+    setup_check.in_app.stop()
+    return setup_check.in_app.status(session, current_settings())
+
+
+@router.post("/setup-check/archive")
+def setup_check_archive(session: WriteSessionDep) -> dict[str, int]:
+    """Archive every conversation Check my setup started, and their tasks."""
+    return {"archived": setup_check.archive(session, by=OWNER)}

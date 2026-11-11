@@ -23,6 +23,7 @@
 
 - [Security: what's stored where, and what leaves your computer](security.md)
 - [Self-test: real requests, checked](self-test.md)
+- [Check my setup: read-only requests on your own projects](check-my-setup.md)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
 

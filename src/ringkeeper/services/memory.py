@@ -49,6 +49,7 @@ from ringkeeper.services import (
     personal_memory,
     projects,
     report,
+    setup_check,
 )
 from ringkeeper.services.bindings import same_client
 from ringkeeper.services.notion_api import NotionError, Place, Row
@@ -564,6 +565,9 @@ def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False
         raise RuleViolationError("Say what to remember.")
     if len(text) > MOST_CHARS:
         raise RuleViolationError(f"A note is at most {MOST_CHARS} characters. Keep the point.")
+    with session_scope(commit=False) as session:
+        if setup_check.session_from_check(session, caller.session_id):
+            raise RuleViolationError(setup_check.NOTHING_KEPT)
     across = shared or mine
     removed: list[str] = []
     if across:

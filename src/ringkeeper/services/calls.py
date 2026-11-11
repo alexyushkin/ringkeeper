@@ -71,6 +71,7 @@ from ringkeeper.services import (
     passes,
     plan_notes,
     revocations,
+    setup_check,
     trusts,
     undo,
 )
@@ -512,6 +513,9 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
 
     if not is_write:
         return await _run_unheld(call, spec, target, auth)
+
+    if await _db(partial(setup_check.session_from_check, session_id=call.caller.session_id)):
+        return await _hold(call, spec, target)  # Check my setup changes nothing: the user decides
 
     held = spec.hold is Hold.ALWAYS or (
         spec.hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved

@@ -52,6 +52,7 @@ from ringkeeper.services import (
     memory,
     projects,
     revocations,
+    setup_check,
     subscription,
     tasks,
     web_access,
@@ -478,9 +479,11 @@ class Manager:
             web = web_access.allowed(session, project)
             checks = list(project.checks)
             task_row = session.get(Task, job.task_id)
+            read_only = setup_check.from_check(session, task_row)
             agent = agents.of_task(session, task_row) if task_row is not None else None
             # Work on the code: on a branch. Anything else leaves git alone.
-            uses_git = tasks.on_branch(task_row) if task_row is not None else True
+            # Check my setup only reads: no branch in the project's repository either.
+            uses_git = tasks.on_branch(task_row) and not read_only if task_row is not None else True
             # Its own branch, or its conversation's earlier one in this project.
             branch = (
                 tasks.task_branch(session, task_row)
@@ -544,7 +547,11 @@ class Manager:
             "disallowed_tools": (
                 architect.DISALLOWED_TOOLS
                 if architect_role
-                else [*DISALLOWED_TOOLS[autonomy], *([] if web else web_access.TOOLS)]
+                else [
+                    *DISALLOWED_TOOLS[autonomy],
+                    *([] if web else web_access.TOOLS),
+                    *(setup_check.READ_ONLY_TOOLS if read_only else ()),
+                ]
             ),
             "role": job.role.value,
             "checks": checks if job.feature and not architect_role else [],

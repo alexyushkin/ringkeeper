@@ -9,15 +9,56 @@ import typer
 
 from ringkeeper.cli.common import handle_errors
 from ringkeeper.config import get_settings
+from ringkeeper.db import session_scope
 from ringkeeper.scenarios import launcher
 from ringkeeper.scenarios.catalog import SCENARIOS
 from ringkeeper.scenarios.report import TARGET
+from ringkeeper.services import setup_check
+from ringkeeper.services.decisions import current_user
 from ringkeeper.vault import get_vault
 
 app = typer.Typer(
     help="Real requests through the real router, workers and gateway.", no_args_is_help=True
 )
 POLL_SECONDS = 2.0
+
+
+def _check_mine(out: Path | None, ceiling: float | None) -> None:
+    settings = get_settings()
+
+    def said(done: int, total: int, now: str | None) -> None:
+        typer.echo(f"{done}/{total}  {now}" if now else f"{done}/{total}  done")
+
+    runner = setup_check.Runner(
+        settings,
+        ceiling=setup_check.DEFAULT_CEILING if ceiling is None else ceiling,
+        progress=said,
+    )
+    with handle_errors():
+        text, outcomes = setup_check.check(settings, runner)
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+    where = out or settings.data_dir / setup_check.FOLDER
+    worked = sum(1 for o in outcomes if o.ok)
+    typer.echo(f"{worked} of {len(outcomes)} worked: {where}")
+    if worked < len(outcomes):
+        raise typer.Exit(1)
+
+
+@app.command("archive")
+def archive(
+    mine: Annotated[
+        bool, typer.Option("--mine", help="The conversations Check my setup started.")
+    ] = False,
+) -> None:
+    """Archive the conversations Check my setup started, and their tasks."""
+    if not mine:
+        typer.echo("Say which: --mine archives the conversations Check my setup started.")
+        raise typer.Exit(2)
+    with handle_errors(), session_scope() as session:
+        count = setup_check.archive(session, by=current_user())
+    typer.echo(f"Archived {count} conversation{'s' if count != 1 else ''}.")
 
 
 @app.command("list")
@@ -44,8 +85,22 @@ def run(
     keep: Annotated[
         bool, typer.Option(help="Keep the run's folder, to look into a failure.")
     ] = False,
+    mine: Annotated[
+        bool,
+        typer.Option(
+            "--mine",
+            help="Check my setup: read-only requests on this install's own projects and "
+            "connections, sent to the running app. Nothing is changed.",
+        ),
+    ] = False,
 ) -> None:
-    """Run the scenarios in a scratch folder of their own, and write the report."""
+    """Run the scenarios in a scratch folder of their own, and write the report.
+
+    With --mine, check this install instead: one read-only request per project and linked
+    connection, a question about the setup, a web lookup and a follow-up."""
+    if mine:
+        _check_mine(out, ceiling if ceiling != launcher.DEFAULT_CEILING else None)
+        return
     settings = get_settings()
     day = datetime.now().astimezone().date().isoformat()
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
