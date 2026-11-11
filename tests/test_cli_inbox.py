@@ -69,7 +69,7 @@ def test_a_reply_stamped_before_its_message_still_counts() -> None:
 def test_ask_waits_for_the_router_and_prints_its_reply(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(inbox_cli, "POLL_SECONDS", 0.05)
     worker = route_soon(FakeModel([output(routed("acme-web"), reply="On it.")]))
-    stdout = invoke("ask", "count acme customers")
+    stdout = invoke("ask", "count the customers in acme web")
     worker.join()
     assert stdout.startswith("thread ")
     assert "On it." in stdout
