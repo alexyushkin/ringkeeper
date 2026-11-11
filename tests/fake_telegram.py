@@ -24,6 +24,7 @@ class FakeTelegram:
     files: dict[str, bytes] = field(default_factory=dict[str, bytes])  # file_id -> bytes
     downloads: list[str] = field(default_factory=list[str])  # file ids downloaded
     hide_file_size: bool = False  # getFile without file_size, as Telegram may answer
+    documents: list[tuple[str, bytes]] = field(default_factory=list[tuple[str, bytes]])
     next_id: int = 500
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
@@ -40,6 +41,11 @@ class FakeTelegram:
         if not request.url.path.startswith(prefix):
             return httpx2.Response(401, json={"ok": False, "description": "Unauthorized"})
         method = request.url.path.removeprefix(prefix)
+        if method == "sendDocument":
+            raw = request.content
+            name = raw.split(b'filename="', 1)[1].split(b'"', 1)[0].decode()
+            self.documents.append((name, raw))
+            return self.ok({"message_id": 1})
         body: dict[str, Any] = json.loads(request.content or b"{}")
         match method:
             case "getMe":

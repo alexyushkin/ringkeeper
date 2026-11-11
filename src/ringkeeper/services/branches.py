@@ -49,6 +49,26 @@ def _git(settings: Settings, root: Path, *args: str, check: bool = True) -> str:
     return done.stdout.strip()
 
 
+def git_text(settings: Settings, root: Path, *args: str) -> str:
+    """A read-only git command's output ("" if it fails)."""
+    return _git(settings, root, *args, check=False)
+
+
+def git_bytes(settings: Settings, root: Path, *args: str) -> bytes | None:
+    """A read-only git command's output as bytes (a file's content), or None if it fails."""
+    search = os.pathsep.join([*settings.worker_tools_path, os.environ.get("PATH", "")])
+    env = {**os.environ, "PATH": search, "GIT_TERMINAL_PROMPT": "0"}
+    done = subprocess.run(  # noqa: S603 (fixed argv, no shell)
+        ["git", *SAFE_GIT, "-C", str(root), *args],  # noqa: S607 (the bundled git is first)
+        capture_output=True, env=env, timeout=60, check=False, creationflags=_NO_WINDOW,
+    )  # fmt: skip
+    return done.stdout if done.returncode == 0 else None
+
+
+def has_branch(settings: Settings, root: Path, branch: str) -> bool:
+    return _has(settings, root, branch)
+
+
 def _has(settings: Settings, root: Path, branch: str) -> bool:
     return bool(
         _git(

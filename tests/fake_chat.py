@@ -4,11 +4,13 @@ websocket for button presses (Slack's Socket Mode, Discord's gateway)."""
 import itertools
 import json
 import queue
+import re
 import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import parse_qsl
 
 import httpx2
 from websockets.exceptions import ConnectionClosed
@@ -60,6 +62,11 @@ class Socket:
         self.server.shutdown()
 
 
+def uploaded_names(request: httpx2.Request) -> list[str]:
+    """The file names in a multipart upload."""
+    return re.findall(r'filename="([^"]+)"', request.content.decode("utf-8", "replace"))
+
+
 def wait_for(check: Any, timeout: float = 10.0) -> None:
     end = time.monotonic() + timeout
     while time.monotonic() < end:
@@ -77,15 +84,34 @@ class FakeSlack:
         self.tokens: list[str] = []
         self._ts = itertools.count(1)
         self._envelope = itertools.count(1)
+        self.uploads: dict[str, bytes] = {}  # file id -> bytes
+        self._files = itertools.count(1)
 
     def posted(self) -> list[dict[str, Any]]:
         return [body for method, body in self.calls if method == "chat.postMessage"]
+
+    def shared(self) -> list[dict[str, Any]]:
+        """Files shared (files.completeUploadExternal): their channel and titles."""
+        return [
+            {
+                "channel": body["channel_id"],
+                "titles": [f["title"] for f in json.loads(body["files"])],
+            }
+            for method, body in self.calls
+            if method == "files.completeUploadExternal"
+        ]
 
     def updated(self) -> list[dict[str, Any]]:
         return [body for method, body in self.calls if method == "chat.update"]
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
-        body = json.loads(request.content or b"{}")
+        if request.url.path.startswith("/upload/"):
+            self.uploads[request.url.path.rsplit("/", 1)[-1]] = request.content
+            return httpx2.Response(200, text="OK")
+        if request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded"):
+            body: dict[str, Any] = dict(parse_qsl(request.content.decode()))
+        else:
+            body = json.loads(request.content or b"{}")
         if request.url.path.startswith("/respond/"):
             self.replies.append(body)
             return httpx2.Response(200, text="ok")
@@ -110,6 +136,9 @@ class FakeSlack:
                 result = {"channel": body["channel"], "ts": f"1700000000.{next(self._ts):06d}"}
             case "chat.update":
                 result = {"channel": body["channel"], "ts": body["ts"]}
+            case "files.getUploadURLExternal":
+                ident = f"F{next(self._files)}"
+                result = {"upload_url": f"https://slack.test/upload/{ident}", "file_id": ident}
             case _:
                 result = {}
         return httpx2.Response(200, json={"ok": True, **result})
@@ -151,6 +180,7 @@ class FakeDiscord:
         self.callbacks: list[dict[str, Any]] = []
         self._ids = itertools.count(100)
         self._seq = itertools.count(1)
+        self.attached: list[tuple[str, list[str], bytes]] = []  # path, file names, raw body
 
     def posted(self) -> list[dict[str, Any]]:
         return [b or {} for m, p, b in self.calls if m == "POST" and p.endswith("/messages")]
@@ -160,6 +190,9 @@ class FakeDiscord:
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
         path = request.url.path.removeprefix("/api/v10/")
+        if request.headers.get("content-type", "").startswith("multipart/"):
+            self.attached.append((path, uploaded_names(request), request.content))
+            return httpx2.Response(200, json={"id": str(next(self._ids))})
         body = json.loads(request.content) if request.content else None
         self.calls.append((request.method, path, body))
         if request.headers.get("authorization") != f"Bot {DISCORD_BOT}":

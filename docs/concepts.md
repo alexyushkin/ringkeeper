@@ -74,6 +74,15 @@ no branch, no waiting for the folder, and uncommitted edits don't stop it. If su
 does write files in the folder, its page says so ("Changed 2 files in the folder, not on a
 branch").
 
+### Files a task makes
+
+The files a task made or changed are listed on its page (the **Changes** tab) and under its
+result in the conversation. In the desktop app each has **Open** and **Show in folder**. A
+code task's files are on its branch until you keep them: they open from a copy, and your
+folder isn't touched. A program or script is only shown in its folder, never opened, so
+nothing a task wrote runs by a click. A table in a result has **Copy** (to paste into a
+spreadsheet) and **Download CSV**.
+
 ### Where a request goes
 
 The client and project chosen at the top of the app are a firm choice for new requests,

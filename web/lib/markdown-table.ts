@@ -84,3 +84,27 @@ export function firstSentences(text: string, count = 2, limit = 240): string {
   const cut = ends.length >= count ? flat.slice(0, ends[count - 1]) : flat;
   return cut.length <= limit ? cut : `${cut.slice(0, limit - 1).trimEnd()}…`;
 }
+
+/** A cell as plain text: no bold, italics, code marks or link syntax (a link keeps its text). */
+export function plainCell(cell: string): string {
+  return cell
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|~~|`)/g, "")
+    .replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|$)/g, "$1$2")
+    .replace(/\\\|/g, "|")
+    .trim();
+}
+
+/** The table as CSV (RFC 4180: quoted where needed, CRLF), for a spreadsheet. */
+export function toCsv(head: string[], rows: string[][]): string {
+  const field = (cell: string) => {
+    const text = plainCell(cell);
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [head, ...rows].map((row) => head.map((_, c) => field(row[c] ?? "")).join(",")).join("\r\n") + "\r\n";
+}
+
+/** The table as tab-separated lines: what pasting into a spreadsheet expects. */
+export function toTsv(head: string[], rows: string[][]): string {
+  return [head, ...rows].map((row) => head.map((_, c) => plainCell(row[c] ?? "").replace(/[\t\n]/g, " ")).join("\t")).join("\n");
+}

@@ -7,6 +7,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx2
@@ -37,6 +38,7 @@ from ringkeeper.models import (
     Message,
     MessageRole,
     Notification,
+    Project,
     TaskStatus,
 )
 from ringkeeper.router.service import route_next
@@ -735,6 +737,47 @@ def test_a_dm_s_task_ends_with_its_result(slack: FakeSlack) -> None:
     assert "1007 · Ana · $40" in said  # a table reads as lines
     assert "|" not in said
     assert "---" not in said
+
+
+def a_finished_task_with_files(source: str, folder: Path) -> None:
+    """The DM's request ends with a task that wrote orders.csv (and a .env, never sent)."""
+    (folder / "orders.csv").write_bytes(b"id,total\n1,40\n")
+    (folder / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    with session_scope() as session:
+        session.scalars(
+            select(Project).where(Project.name == "acme-web")
+        ).one().workspace_path = str(folder)
+        message = session.scalars(select(Message).where(Message.source == source)).one()
+        task = tasks.create_task(
+            session, get_settings(), project="acme-web", prompt="export",
+            thread_id=message.thread_id, message_id=message.id,
+        )  # fmt: skip
+        task.status, task.finished_at, task.summary = (
+            TaskStatus.SUCCEEDED, datetime.now(UTC), "Exported 1 order.",
+        )  # fmt: skip
+        task.changed_files = ["orders.csv", ".env"]
+
+
+@pytest.mark.parametrize("kind", ["slack", "discord"])
+def test_a_dm_s_task_result_comes_with_its_files(
+    kind: str, slack: FakeSlack, discord: FakeDiscord, tmp_path: Path
+) -> None:
+    ident = add_slack() if kind == "slack" else add_discord()
+    take_requests(ident)
+    rk = runner(ident)
+    me = ME_SLACK if kind == "slack" else ME_DISCORD
+    rk.on_message(me, "Export the orders", f"{kind}:{me}")
+    answer_it(kind)
+    a_finished_task_with_files(kind, tmp_path)
+    rk.send_news()
+    if kind == "slack":
+        assert slack.shared() == [{"channel": "D1", "titles": ["orders.csv"]}]
+        assert list(slack.uploads.values()) == [b"id,total\n1,40\n"]
+    else:
+        [(path, names, raw)] = discord.attached
+        assert (path, names) == ("channels/701/messages", ["orders.csv"])
+        assert b"id,total" in raw
+        assert b"SECRET" not in raw
 
 
 def test_a_long_result_ends_with_a_link() -> None:

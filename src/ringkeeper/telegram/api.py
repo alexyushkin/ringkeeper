@@ -81,6 +81,18 @@ class BotApi:
         )  # fmt: skip
         return int(cast(dict[str, Any], result)["message_id"])
 
+    def send_document(self, chat_id: int, name: str, data: bytes) -> None:
+        """A file in the chat (a task's, under its result)."""
+        try:
+            response = self._http.post(
+                "sendDocument", data={"chat_id": str(chat_id)}, files={"document": (name, data)}
+            )
+            ok = bool(cast(dict[str, Any], response.json()).get("ok"))
+        except (httpx2.HTTPError, ValueError):
+            raise TelegramError("Telegram sendDocument failed") from None
+        if not ok:
+            raise TelegramError(f"Telegram sendDocument: HTTP {response.status_code}")
+
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
         self.call(
             "editMessageText", chat_id=chat_id, message_id=message_id, text=defang(text),

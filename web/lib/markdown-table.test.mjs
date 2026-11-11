@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { firstSentences, readTable, startsTable, withoutTables } from "./markdown-table.ts";
+import { firstSentences, plainCell, readTable, startsTable, toCsv, toTsv, withoutTables } from "./markdown-table.ts";
 
 const row = (n) => `| ${n} | Customer ${n} | $${n * 10} |`;
 
@@ -42,4 +42,23 @@ test("a card's preview: the first sentences, without tables or code", () => {
   assert.equal(firstSentences(withoutTables(text)), "Here are all 62 orders. That's every order.");
   assert.equal(firstSentences("One. Two. Three."), "One. Two.");
   assert.equal(withoutTables("Before\n```sql\nSELECT 1\n```\nAfter"), "Before\nAfter");
+});
+
+test("a table copies as tab-separated lines and downloads as CSV, without Markdown marks", () => {
+  const head = ["#", "Workflow", "Notes"];
+  const rows = [
+    ["1", "**Orders sync**", "runs at 9, then at 5"],
+    ["2", "[Invoices](https://example.test/w/2)", 'says "paid"'],
+  ];
+  assert.equal(plainCell("**bold** and `code` and ~~gone~~"), "bold and code and gone");
+  assert.equal(toTsv(head, rows), "#\tWorkflow\tNotes\n1\tOrders sync\truns at 9, then at 5\n2\tInvoices\tsays \"paid\"");
+  assert.equal(toCsv(head, rows), '#,Workflow,Notes\r\n1,Orders sync,"runs at 9, then at 5"\r\n2,Invoices,"says ""paid"""\r\n');
+});
+
+test("a 105-row table downloads every row", () => {
+  const lines = ["| # | Name |", "|---|---|", ...Array.from({ length: 105 }, (_, i) => `| ${i + 1} | Row ${i + 1} |`)];
+  const { head, rows } = readTable(lines, 0);
+  const csv = toCsv(head, rows).trimEnd().split("\r\n");
+  assert.equal(csv.length, 106);
+  assert.equal(csv.at(-1), "105,Row 105");
 });

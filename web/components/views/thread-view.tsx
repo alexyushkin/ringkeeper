@@ -11,6 +11,7 @@ import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Markdown, plainText } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
+import { TaskFiles } from "@/components/task-files";
 import { CancelButton } from "@/components/scheduled";
 import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
@@ -131,7 +132,14 @@ export function ThreadView({ id }: { id: string }) {
           <h2 className="mt-6 mb-2 text-sm font-semibold text-muted">Work</h2>
           <div className="space-y-2">
             {tasks.data.map((task) => (
-              <TaskCardView key={task.id} task={task} />
+              <div key={task.id}>
+                <TaskCardView task={task} />
+                {task.files && !["queued", "running"].includes(task.status) ? (
+                  <div className="px-4">
+                    <TaskFiles id={task.id} compact />
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         </>

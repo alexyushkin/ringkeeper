@@ -62,11 +62,14 @@ start one with a request: **new: check Acme's orders**.
 
 - **Results come back to the chat.** When a task you asked for from a chat ends, it posts
   what it found or did, not just "done". Tables read as one line per row, and code or SQL
-  stays in the app. A long result shows its first part and a link to the rest.
+  stays in the app. A long result shows its first part and a link to the rest. Files the
+  task made come with it, when they're small (up to 8 MB each, five at most); a file that
+  looks like a secret, like a `.env` or a key, never does.
 - **Approvals come back too.** When a task from a chat waits for your OK, its approval card
   is posted in that chat, with its buttons, even if the channel isn't set to send approvals.
 
-- **Slack:** the app needs the manifest from this version (it adds direct messages).
+- **Slack:** the app needs the manifest from this version (it adds direct messages, and
+  sending a task's files).
   For an app set up before, copy the manifest from **Add another Slack channel**,
   paste it on the app's **App Manifest** page at api.slack.com, and reinstall the app.
 - **Discord:** the bot has to share a server with you for you to message it.

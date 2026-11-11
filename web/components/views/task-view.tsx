@@ -12,6 +12,7 @@ import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
+import { TaskFiles } from "@/components/task-files";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref, threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
@@ -319,13 +320,7 @@ export function TaskView({ id }: { id: string }) {
         </ol>
       ) : (
         <div className="mt-3 space-y-3">
-          <ul className="text-sm">
-            {t.changed_files.map((file) => (
-              <li key={file}>
-                <code>{file}</code>
-              </li>
-            ))}
-          </ul>
+          <TaskFiles id={id} />
           {t.branch && !t.branch_state && !ACTIVE.has(t.status) ? <KeepOrDiscard id={id} branch={t.branch} onDone={task.reload} /> : null}
           {t.branch_state === "kept" ? <p className="text-sm text-good">Kept: these changes were merged into the project&apos;s main branch.</p> : null}
           {t.branch_state === "discarded" ? <p className="text-sm text-muted">Discarded: these changes were thrown away.</p> : null}

@@ -27,6 +27,13 @@ publishes it as the release notes and the app shows it with the update.
   limit reached", or got "Internal Server Error" from n8n, is an ordinary failure and no longer
   pauses everything.
 
+- **Files a task makes.** Its page and its result in the conversation list the files it made
+  or changed, with **Open** and **Show in folder** in the desktop app (a program or script is
+  only shown, never opened). Results in Slack, Discord and Telegram come with the files when
+  they're small; a secret-looking file, like a `.env`, never goes. Tables in a result have
+  **Copy** and **Download CSV**. Slack apps set up before need the manifest pasted again for
+  files. See [Files a task makes](docs/concepts.md#files-a-task-makes).
+
 - **Web access is a project setting of its own.** It no longer depends on how independently
   a project works: on the project's Settings tab, **Web access** is on for your own client's
   projects and off for a client's unless you change it. A request that needs the web where

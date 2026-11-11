@@ -3,6 +3,7 @@ notices that follow them: what the router did, and each task's end."""
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx2
 import pytest
@@ -11,7 +12,7 @@ from sqlalchemy import select, update
 from ringkeeper import voice
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import Message, Task, TaskStatus, Thread, VoiceConfirmation
+from ringkeeper.models import Message, Project, Task, TaskStatus, Thread, VoiceConfirmation
 from ringkeeper.router.service import route_next
 from ringkeeper.services import threads
 from ringkeeper.telegram import api as telegram_api
@@ -283,6 +284,32 @@ def test_telegram_requests_continue_one_conversation(
     telegram.text("count acme customers")
     bridge.poll_once(0)
     assert len({m.thread_id for m in messages()}) == 2
+
+
+def test_a_telegram_task_s_files_come_with_its_result(
+    bridge: Bridge, telegram: FakeTelegram, tmp_path: Path
+) -> None:
+    (tmp_path / "orders.csv").write_bytes(b"id,total\n1,40\n")
+    telegram.text("export the open orders")
+    bridge.poll_once(0)
+    route_next(get_settings(), FakeModel([output(routed("acme-web"))]))
+    bridge.send_notices()
+    with session_scope() as session:
+        session.scalars(
+            select(Project).where(Project.name == "acme-web")
+        ).one().workspace_path = str(tmp_path)
+        session.execute(
+            update(Task).values(
+                status=TaskStatus.SUCCEEDED, finished_at=datetime.now(UTC),
+                summary="Exported 1 order.", changed_files=["orders.csv"],
+            )
+        )  # fmt: skip
+    bridge.send_notices()
+    assert telegram.sent[-1]["text"].startswith("✔ Acme web: done\nExported 1 order.")
+    [(name, raw)] = telegram.documents
+    assert name == "orders.csv"
+    assert b"id,total" in raw
+    assert f'name="chat_id"\r\n\r\n{ME}'.encode() in raw
 
 
 def test_a_telegram_task_ends_with_its_result(bridge: Bridge, telegram: FakeTelegram) -> None:

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { TableTools } from "@/components/table-tools";
 import { readTable, startsTable } from "@/lib/markdown-table";
 
 /**
@@ -77,6 +78,7 @@ function blocks(lines: string[]): ReactNode[] {
       i = next;
       out.push(
         <div key={key} className="overflow-x-auto">
+          <TableTools head={head} rows={rows} />
           <table className="text-left">
             <thead>
               <tr>
