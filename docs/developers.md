@@ -208,12 +208,22 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/airtable` | `list_bases`, `list_tables`, `list_records`, `get_record` | `create_records`, `update_records`, `delete_records` |
 | `/mcp/vercel` | `list_teams`, `list_projects`, `list_deployments`, `get_deployment`, `get_build_logs`, `list_env_names` | `redeploy`, `promote`, `rollback` |
 | `/mcp/twilio` | `list_phone_numbers`, `list_messages`, `get_message`, `list_calls` | `send_sms` (always held) |
-| `/mcp/gmail` | `search_messages`, `get_message`, `read_attachment`, `get_thread` | `create_draft` (runs unless the connection holds drafts), `send_email` (always held) |
-| `/mcp/google` | `search_mail`, `read_mail`, `read_attachment`, `get_thread`, `search_files`, `read_file`, `list_events`, `read_sheet` | `send_mail`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account); `create_draft` runs unless the account holds drafts |
+| `/mcp/gmail` | `search_messages`, `get_message`, `read_attachment`, `view_attachment`, `save_attachment`, `get_thread` | `create_draft` (runs unless the connection holds drafts), `send_email` (always held) |
+| `/mcp/google` | `search_mail`, `read_mail`, `read_attachment`, `view_attachment`, `save_attachment`, `get_thread`, `search_files`, `read_file`, `view_file`, `save_file`, `list_events`, `read_sheet` | `send_mail`, `trash_mail`, `upload_file`, `share_file`, `create_event`, `update_sheet`, `append_rows` (all held, unless you let a tool run on that account); `create_draft` runs unless the account holds drafts |
 | `/mcp/github` | `list_repos`, `get_repo`, `list_issues`, `get_issue`, `list_pulls`, `get_pull`, `get_file`, `list_branches`, `list_commits`, `list_check_runs` | `create_issue`, `comment`, `update_issue`, `create_pull`, `merge_pull` (name typed), `push_branch` (all always held) |
 | `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
-A worker only gets the endpoints of the services its project is connected to.
+A worker only gets the endpoints of the services its project is connected to, and each
+endpoint lists only the tools its connections can use: a tool their links don't allow, or one a
+Google account wasn't given access for, isn't listed (`gateway.listing`).
+
+Files are read in one place, `adapters.extract`, for every service that has them (Gmail,
+Google, a mailbox, Microsoft, storage); `adapters.files` shapes the answers. A `view_*` tool
+answers with MCP image content (`ToolSpec.shows`): the gateway sends the picture as an image,
+and it's never scrubbed as text, split by `read_more` or kept in the audit log, which records
+the file's name, the page and the picture's size and type instead. A `save_*` tool writes a
+copy in the project's `attachments/` folder; it's a read for holds (nothing outside this
+computer changes) but audited, and the worker counts the file as the task's own.
 
 - **supabase:** the secret is a Postgres connection string. Each call runs
   exactly one statement over the extended protocol, so `COMMIT; …` tricks
@@ -697,7 +707,9 @@ service. From source, install the engine with `uv sync --extra voice`.
 Reading scans works the same way: the installer carries `ocr-packages.json`, and the app
 downloads the wheels and the English language file when you say yes (`ocr_local`). A task's
 picture is read in a process of its own, with a time limit. From source, a `tesseract` program
-on the PATH reads pictures, and `uv sync --extra ocr` adds Pillow for scanned PDFs.
+on the PATH reads pictures. PDFium (`pypdfium2`) takes the pictures out of a PDF and draws its
+pages for the view tools, so neither needs Pillow; with the scan reader's Pillow, a large photo
+is made smaller to show.
 
 With the optional `stt` service running, you can reply to a question with a
 voice note, and, if requests are on, send a request as one. The bot
