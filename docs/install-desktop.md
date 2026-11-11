@@ -29,8 +29,10 @@ turned back on without reinstalling Windows.
   shows when it last checked, "You're up to date", the new version with its
   release notes and **Install and restart**, or what went wrong (offline, a
   signature that didn't verify). It never restarts by itself: while tasks run,
-  the button is **Restart when tasks finish**. It never touches your data, and
-  if an update fails, the old version keeps working.
+  the button is **Restart when tasks finish**. Once it's installed, the window
+  opens again and says "Updated to" the new version, with a link to what's new,
+  even if Ringkeeper had started at sign-in in the tray. It never touches your
+  data, and if an update fails, the old version keeps working.
 - **Uninstall:** Settings → Apps → Ringkeeper → Uninstall. Your data stays
   unless you tick **Also delete my data**; your project folders always stay.
 

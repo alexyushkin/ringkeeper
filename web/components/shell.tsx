@@ -196,6 +196,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         ) : null}
         {DESKTOP ? <UpdateBanner /> : null}
+        {DESKTOP ? <JustUpdated /> : null}
         {DESKTOP ? <ScanOffer /> : null}
         <ScopeSwitcher />
         {/* As wide as the window allows, up to where lines get too long to read. */}
@@ -246,5 +247,37 @@ export function Shell({ children }: { children: ReactNode }) {
       {start.data ? <Tour auto={!start.data.tour_seen && path === "/"} onSeen={start.reload} /> : null}
     </div>
     </ScopeProvider>
+  );
+}
+
+
+const RELEASES = "https://github.com/alexyushkin/ringkeeper-releases/releases/tag/v";
+
+/** Desktop app, right after an update: which version it is now, and what's new in it.
+ * The shell opens the window at /?updated=<version> once, after installing. */
+function JustUpdated() {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const found = url.searchParams.get("updated");
+    if (found && /^[0-9A-Za-z.+-]{1,40}$/.test(found)) setVersion(found);
+    if (found !== null) {
+      url.searchParams.delete("updated");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }, []);
+  if (!version) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 bg-accent px-4 py-2 text-sm text-white" role="status">
+      <span>
+        Updated to {version}.{" "}
+        <a href={`${RELEASES}${version}`} target="_blank" rel="noreferrer" className="font-medium underline">
+          What&apos;s new
+        </a>
+      </span>
+      <button type="button" className="rounded-lg bg-white/20 px-3 py-1 font-medium" onClick={() => setVersion(null)}>
+        OK
+      </button>
+    </div>
   );
 }
