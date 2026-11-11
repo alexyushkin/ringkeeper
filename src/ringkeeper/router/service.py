@@ -13,6 +13,10 @@ option; not again in a conversation where it was answered; and not for work any 
 client's projects would do (its email, Google, Slack), which goes to the client's
 default project. Asking says why in one line, and offers to set that default.
 
+A follow-up in a conversation that already has work in a project stays there
+(`kept_in_conversation`), unless it names another project, client or connection, even when
+the model calls it general work.
+
 A question about Ringkeeper itself (its connections, projects, tasks, approvals,
 settings, costs) is answered from Ringkeeper's own records (router.self_answer):
 no project, no worker. A reply that starts nothing is recorded on the message
@@ -28,7 +32,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper import claude_failures, sensitive
 from ringkeeper.channels import links
@@ -167,6 +171,45 @@ def _general(session: Session, message: Message, task: RoutedTask) -> RoutedTask
     return _firm(task, where) if where is not None else task
 
 
+def conversation_projects(session: Session, message: Message) -> list[str]:
+    """The projects this conversation's earlier work is in, the latest first."""
+    found = session.scalars(
+        select(Task.project)
+        .where(Task.thread_id == message.thread_id, Task.message_id != message.id)
+        .order_by(Task.created_at.desc())
+    ).all()
+    return list(dict.fromkeys(found))
+
+
+def _names_elsewhere(session: Session, text: str, project: str, owners: dict[str, str]) -> bool:
+    """The message names a project, a client or a connection that isn't the project's own."""
+    projects, named = follow_up.named_in(session, text)
+    if any(p != project for p in projects) or any(c != owners.get(project) for c in named):
+        return True
+    own = session.scalar(
+        select(Project).options(selectinload(Project.bindings)).where(Project.name == project)
+    )
+    linked = {b.instance.name for b in own.bindings} if own is not None else set[str]()
+    return any(i.name not in linked for i in named_connections(session, text))
+
+
+def kept_in_conversation(
+    session: Session, message: Message, task: RoutedTask, owners: dict[str, str]
+) -> RoutedTask | None:
+    """A follow-up runs where its conversation's work is when it names no other project,
+    client or connection: whatever the model guessed, general work included. None: it isn't
+    such a follow-up (or the project chosen at the top, or an @-mention, decides)."""
+    if message.target_project or mentions.find(session, message.body):
+        return None
+    earlier = [p for p in conversation_projects(session, message) if p in owners]
+    if not earlier:
+        return None
+    where = task.project if task.project in earlier else earlier[0]
+    if task.touches or _names_elsewhere(session, message.body, where, owners):
+        return None
+    return _firm(task, where)
+
+
 def no_web(session: Session, task: RoutedTask) -> bool:
     """A task that needs the web, in a project whose tasks can't use it."""
     if not task.needs_web:
@@ -249,15 +292,23 @@ def _which_of_client(
     )
 
 
+def named_connections(session: Session, text: str) -> list[Instance]:
+    """The connections a message names (by name or title)."""
+    said = " ".join(text.lower().split())
+    return [
+        instance
+        for instance in session.scalars(select(Instance).order_by(Instance.name))
+        if any(
+            re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", said)
+            for name in (instance.name, instance.title or "")
+            if len(name) > 2
+        )
+    ]
+
+
 def _names_connection(session: Session, text: str) -> bool:
     """The message names one of the connections (by name or title)."""
-    said = " ".join(text.lower().split())
-    return any(
-        re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", said)
-        for instance in session.scalars(select(Instance))
-        for name in (instance.name, instance.title or "")
-        if len(name) > 2
-    )
+    return bool(named_connections(session, text))
 
 
 ACTIVE = (TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.WAITING, TaskStatus.NEEDS_INPUT)
@@ -428,8 +479,12 @@ def _route_tasks(
     routed = Routed()
     threshold = settings.router_confidence_threshold
     for found in output.tasks:
-        task = settle_project(session, settings, message, _general(session, message, found), owners)
-        task = _which_of_client(session, message, task, owners)
+        task = kept_in_conversation(session, message, found, owners)
+        if task is None:
+            task = settle_project(
+                session, settings, message, _general(session, message, found), owners
+            )
+            task = _which_of_client(session, message, task, owners)
         if task.touches or task.confidence < threshold:
             routed.decisions.append(_ask(session, settings, message, task, owners=owners))
         elif (same := _same_work(session, message, task)) is not None:

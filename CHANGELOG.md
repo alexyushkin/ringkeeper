@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A follow-up stays in its conversation's project.** Once a conversation has a task in a
+  project, a later message there that names no other project, client or connection runs in
+  the same project, without asking. Before, a follow-up that needed no connection could go to
+  your own client's project instead and find nothing to work on. The self-test has a scenario
+  for it.
 - **Check my setup.** Settings > Advanced > Check my setup (or `ringkeeper scenarios run
   --mine`) sends one read-only request per project and connection linked to it, through the
   real router, worker and gateway, then a question about your setup, a web lookup and a

@@ -152,3 +152,55 @@ def test_an_unsure_model_doesn_t_override_the_choice() -> None:
     ask("Fix the contact form", target_project="my-project")
     route(output(routed("gi-site", 0.4)))
     assert started() == ["my-project"]
+
+
+# --- A follow-up stays in its conversation's project ---
+
+
+def follow(thread: str, body: str) -> None:
+    with session_scope() as session:
+        threads.post_message(session, body, author="owner", source="web", thread=thread)
+
+
+def test_a_follow_up_called_general_work_stays_in_the_conversation_s_project() -> None:
+    with session_scope() as session:
+        clients.set_own(session, "alexey", True)  # general work would run in My Project
+    thread = ask("List the tables in the Website's database")
+    route(output(routed("gi-site", 0.95)))
+    follow(thread, "Thanks. Now say that again in one or two sentences.")
+    route(output(routed("my-project", 0.3, general=True)))
+    assert started() == ["gi-site", "gi-site"]
+    assert asked() == 0
+
+
+def test_an_unsure_follow_up_stays_without_asking() -> None:
+    thread = ask("List the tables in the Website's database")
+    route(output(routed("gi-site", 0.95)))
+    follow(thread, "Which of them has the most rows?")
+    route(output(routed("gi-blog", 0.4, alternatives=[{"project": "gi-site", "confidence": 0.3}])))
+    assert started() == ["gi-site", "gi-site"]
+    assert asked() == 0
+
+
+def test_a_follow_up_naming_another_project_goes_there() -> None:
+    thread = ask("List the tables in the Website's database")
+    route(output(routed("gi-site", 0.95)))
+    follow(thread, "Now do the same for My Project")
+    route(output(routed("my-project", 0.95)))
+    assert started() == ["gi-site", "my-project"]
+
+
+def test_a_follow_up_naming_another_client_goes_where_the_model_says() -> None:
+    thread = ask("List the tables in My Project's database")
+    route(output(routed("my-project", 0.95)))
+    follow(thread, "Now the same for General Informatics' website")
+    route(output(routed("gi-site", 0.95)))
+    assert started() == ["my-project", "gi-site"]
+
+
+def test_the_first_request_in_a_conversation_is_routed_as_usual() -> None:
+    with session_scope() as session:
+        clients.set_own(session, "alexey", True)
+    ask("Summarize this pasted text: ...")
+    route(output(routed("gi-site", 0.3, general=True)))
+    assert started() == ["my-project"]
