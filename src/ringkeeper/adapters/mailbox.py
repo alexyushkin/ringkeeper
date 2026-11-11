@@ -17,13 +17,14 @@ found by their role (\\Drafts, \\Sent, \\Trash), so any language works.
 import email
 import email.message
 import email.policy
+import email.utils
 import imaplib
 import json
 import re
 import socket
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Annotated, Any, Literal, cast
 
 import anyio.to_thread
@@ -36,10 +37,12 @@ from ringkeeper.adapters.base import (
     Adapter,
     Target,
     ToolError,
+    Undoer,
     draft,
     final,
     held,
     read,
+    saves_draft,
 )
 from ringkeeper.adapters.gmail import (
     ADDRESS_PATTERN,
@@ -376,7 +379,7 @@ ReplyTo = Annotated[
 ]
 
 
-@held
+@saves_draft
 async def create_draft(
     target: Target,
     to: mail.Recipients,
@@ -385,21 +388,24 @@ async def create_draft(
     cc: mail.MoreRecipients = None,
     in_reply_to: ReplyTo = None,
 ) -> JSON:
-    """Save an email as a draft for the user to check and send. Waits for approval; nothing
-    is sent."""
+    """Save an email as a draft for the user to check and send. Nothing is sent."""
 
     def work(conn: imaplib.IMAP4, fields: JSON) -> JSON:
         drafts = _by_role(conn, "drafts")
         if drafts is None:
             raise ToolError("this mailbox has no drafts folder over IMAP")
         message = mail.message(fields["address"], to, subject, body, cc=cc, in_reply_to=in_reply_to)
+        message["Message-ID"] = email.utils.make_msgid()
         status, _ = conn.append(
             _quoted(drafts), "(\\Draft)", imaplib.Time2Internaldate(time.time()),
             message.as_bytes(),
         )  # fmt: skip
         if status != "OK":
             raise ToolError("the server didn't save the draft")
-        return {"saved": "draft", "to": to, "subject": subject}
+        return {
+            "saved": "draft", "to": to, "subject": subject, "folder": drafts,
+            "message_id": message["Message-ID"],
+        }  # fmt: skip
 
     return await _session(target, work)
 
@@ -479,6 +485,37 @@ async def delete_message(target: Target, uid: Uid, folder: Folder = "INBOX") -> 
         return {"deleted": uid, "in": trash.strip('"')}
 
     return await _session(target, work)
+
+
+class DraftUndo(Undoer):
+    """Taking back a saved draft deletes it."""
+
+    async def before(self, target: Target, args: JSON) -> JSON:
+        return {"message_id": None, "folder": None, "subject": args.get("subject")}
+
+    async def after(self, target: Target, args: JSON, before: JSON, result: JSON) -> JSON:
+        before["message_id"] = result.get("message_id")
+        before["folder"] = result.get("folder")
+        return {"message_id": before["message_id"]}
+
+    async def current(self, target: Target, kept: JSON) -> JSON:
+        return {"message_id": kept.get("message_id")}
+
+    async def restore(self, target: Target, kept: JSON) -> JSON:
+        def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
+            folder = kept.get("folder") or _by_role(conn, "drafts")
+            if not folder:
+                raise ToolError("this mailbox has no drafts folder over IMAP")
+            gone = mail.delete_draft(conn, _quoted(str(folder)), str(kept["message_id"]))
+            return {"deleted": gone}
+
+        return await _session(target, work)
+
+    def describe(self, kept: JSON) -> str:
+        return f"Deletes the draft it saved ({kept.get('subject') or 'no subject'})."
+
+
+create_draft = replace(create_draft, undo=DraftUndo())
 
 
 ADAPTER = Adapter(

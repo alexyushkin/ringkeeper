@@ -141,13 +141,16 @@ NEW = (InstanceType.SMTP, InstanceType.RESEND, InstanceType.MAILBOX, InstanceTyp
        InstanceType.S3)  # fmt: skip
 
 
-def test_every_new_write_waits_or_is_a_test_send() -> None:
+def test_every_new_write_waits_or_is_a_test_send_or_a_draft() -> None:
     for service in NEW:
         for spec in ADAPTERS[service].tools:
             if spec.kind is not ToolKind.WRITE:
                 continue
             if spec.name == "send_test_email":
                 assert spec.hold is Hold.NEVER
+                continue
+            if spec.name == "create_draft":  # reaches nobody: held only if the connection says
+                assert spec.hold is Hold.DRAFT
                 continue
             assert spec.hold is Hold.ALWAYS, spec.name
             assert spec.typed is not None, spec.name

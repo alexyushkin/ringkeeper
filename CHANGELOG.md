@@ -5,6 +5,18 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Approvals where you're reading.** On a task or conversation page, what's waiting for you
+  is under the latest result, in order, not above earlier work. One that arrives while the
+  page is open scrolls into view, and if one is off-screen, a bar at the bottom ("1 approval
+  waiting") jumps to it. The same goes for questions and plans.
+- **An approval card shows what it approves.** For an email or a draft: To, Subject and the
+  body, a long one cut after 12 lines with **Show all**. **Show details** is only for the raw
+  arguments.
+- **Saving an email draft doesn't wait for approval.** On Gmail, a Google account, Outlook
+  or any mailbox, a draft reaches nobody, so it's saved and logged, and the task's result
+  links it. Sending still waits. **Hold drafts for my OK too**, in a connection's Details,
+  brings the old way back. A saved draft can now be undone (it's deleted), where the card
+  used to say it couldn't be.
 - **Choose which key sends: Enter or Ctrl+Enter.** Settings > General > Send with sets it for
   every box you type in: the request box on Home, the quick request, conversations, **Continue
   this task**, answers to questions and plans, and Help. Ctrl+Enter is the default, as before,

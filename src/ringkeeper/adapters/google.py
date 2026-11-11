@@ -42,13 +42,16 @@ from ringkeeper.adapters import extract, mail_text, rest
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
+    Hold,
     Target,
     ToolError,
     ToolKind,
     ToolSpec,
+    Undoer,
     always_held,
     final,
     read,
+    saves_draft,
 )
 from ringkeeper.adapters.mail import bulk_reason
 from ringkeeper.adapters.mail_text import (
@@ -399,7 +402,7 @@ async def send_mail(
     return {"sent": True, "from": target.config.get("email"), "to": to, "id": sent.get("id")}
 
 
-@always_held
+@saves_draft
 async def create_draft(
     target: Target,
     to: Addresses,
@@ -408,11 +411,44 @@ async def create_draft(
     cc: list[Address] | None = None,
     reply_to: ReplyTo = None,
 ) -> JSON:
-    """Save an email as a Gmail draft for the user to check and send. Nothing is sent."""
+    """Save an email as a Gmail draft for the user to check and send. Nothing is sent. Put
+    the draft's link in your final message."""
     _need(target, "mail_drafts")
     message = await _compose(target, to, subject, body, cc, reply_to)
     saved = await _call(target, GMAIL, "POST", "/drafts", json={"message": message})
-    return {"saved": "draft", "id": saved.get("id"), "to": to, "subject": subject}
+    made = cast(JSON, saved.get("message") or {}).get("id")
+    link = draft_link(str(target.config.get("email") or ""), str(made)) if made else None
+    return {"saved": "draft", "id": saved.get("id"), "to": to, "subject": subject, "link": link}
+
+
+def draft_link(address: str, message_id: str) -> str:
+    """Where the draft opens in Gmail on the web."""
+    return f"https://mail.google.com/mail/?authuser={quote(address)}#drafts?compose={message_id}"
+
+
+class DraftUndo(Undoer):
+    """Taking back a saved draft deletes it."""
+
+    async def before(self, target: Target, args: JSON) -> JSON:
+        return {"draft": None, "subject": args.get("subject")}
+
+    async def after(self, target: Target, args: JSON, before: JSON, result: JSON) -> JSON:
+        before["draft"] = result.get("id")
+        return {"draft": before["draft"]}
+
+    async def current(self, target: Target, kept: JSON) -> JSON:
+        return {"draft": kept.get("draft")}
+
+    async def restore(self, target: Target, kept: JSON) -> JSON:
+        _need(target, "mail_drafts")
+        await _call(target, GMAIL, "DELETE", f"/drafts/{quote(str(kept['draft']), safe='')}")
+        return {"deleted": kept["draft"]}
+
+    def describe(self, kept: JSON) -> str:
+        return f"Deletes the draft it saved ({kept.get('subject') or 'no subject'})."
+
+
+create_draft = replace(create_draft, undo=DraftUndo())
 
 
 @always_held
@@ -1239,8 +1275,12 @@ ADAPTER = Adapter(
     secret_fragments=secret_fragments,
 )  # fmt: skip
 WRITES = tuple(t.name for t in ADAPTER.tools if t.kind is ToolKind.WRITE)
+# Saving a draft: runs without asking unless the account holds drafts too (its own setting).
+DRAFTS = tuple(t.name for t in ADAPTER.tools if t.hold is Hold.DRAFT)
 # Writes that always ask: no per-account setting lets them run by themselves.
-ALWAYS_ASKS = tuple(t.name for t in ADAPTER.tools if t.typed is not None)
+ALWAYS_ASKS = tuple(
+    t.name for t in ADAPTER.tools if t.typed is not None and t.hold is not Hold.DRAFT
+)
 # Writes the owner can't set to run without asking either: a document may be someone else's.
 KEEPS_ASKING = (*ALWAYS_ASKS, "edit_doc")
 # Why, where there's more to say than "always asks you first" (the account's page shows it).

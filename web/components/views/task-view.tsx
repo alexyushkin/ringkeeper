@@ -8,7 +8,8 @@ import { useRouter } from "next/navigation";
 
 import { Changes } from "@/components/changes";
 import { TaskAgain } from "@/components/conveniences";
-import { DecisionCard, type Decision } from "@/components/decision-card";
+import { type Decision } from "@/components/decision-card";
+import { Waiting } from "@/components/waiting";
 import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
@@ -229,11 +230,6 @@ export function TaskView({ id }: { id: string }) {
       <Link href={t.thread_id ? threadHref(t.thread_id) : "/tasks"} className="text-sm text-accent">
         ‹ Back
       </Link>
-      {waiting.map((d) => (
-        <div key={d.id} className="mt-2">
-          <DecisionCard decision={d} onDone={pending.reload} inline />
-        </div>
-      ))}
       <Changes task={id} />
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -332,6 +328,9 @@ export function TaskView({ id }: { id: string }) {
           {t.diff ? <Code>{t.diff}</Code> : t.changed_files.length ? null : <p className="text-sm text-muted">No file changes recorded for this task.</p>}
         </div>
       )}
+
+      {/* Under the latest result, where the reader is. */}
+      <Waiting decisions={waiting} onDone={pending.reload} />
     </>
   );
 }

@@ -40,6 +40,7 @@ from ringkeeper.adapters.base import (
     read,
 )
 from ringkeeper.adapters.vendor_spec import (
+    DRAFT,
     FINAL,
     PLACEHOLDER,
     READ,
@@ -68,6 +69,7 @@ WHOLE_CURRENCIES = frozenset({
 EXCHANGE_MARGIN_SECONDS = 120
 RUNS = {
     READ: "without asking",
+    DRAFT: "without asking (a draft reaches nobody), unless the connection holds drafts",
     "held": "after the user approves",
     FINAL: "after the user approves and types the connection's name",
 }
@@ -657,19 +659,25 @@ def _snapshot(op: Op) -> Snapshot:
 
 
 class OperationUndo(Undoer):
-    """Takes back an edit whose operation says how (Op.undo)."""
+    """Takes back an edit whose operation says how (Op.undo), or deletes a saved draft
+    (Op.remove)."""
 
     def _op(self, args: JSON) -> tuple[Vendor, Op] | None:
         return operation(str(args.get("operation") or ""))
 
     def why_not(self, args: JSON) -> str | None:
         found = self._op(args)
-        if found is None or found[1].undo is None:
+        if found is None or (found[1].undo is None and not found[1].remove):
             return "Ringkeeper can't undo this here."
         return None
 
     async def before(self, target: Target, args: JSON) -> JSON:
         vendor, op, fields = _own(target, args)
+        if op.remove:  # nothing to keep yet: the saved thing's id comes back from the call
+            return {
+                "operation": f"{vendor.key}.{op.name}", "remove": f"{vendor.key}.{op.remove}",
+                "path": {}, "account": args.get("account"), "made": None,
+            }  # fmt: skip
         snapshot = _snapshot(op)
         path = cast(JSON, args.get("path") or {})
         # Only what the edit sets goes back: anything else was never changed.
@@ -684,11 +692,26 @@ class OperationUndo(Undoer):
         }
         return kept | {"fields": await _record(vendor, snapshot, fields, kept)}
 
+    async def after(self, target: Target, args: JSON, before: JSON, result: JSON) -> JSON:
+        if before.get("remove"):
+            _, op, _ = _own(target, before)
+            before["made"] = result.get("id")
+            before["path"] = {op.remove_key: result.get("id")}
+            return {"made": before["made"]}
+        return await self.current(target, before)
+
     async def current(self, target: Target, kept: JSON) -> JSON:
+        if kept.get("remove"):
+            return {"made": kept.get("made")}
         vendor, op, fields = _own(target, kept)
         return {"fields": await _record(vendor, _snapshot(op), fields, kept)}
 
     async def restore(self, target: Target, kept: JSON) -> JSON:
+        if kept.get("remove"):
+            vendor, remove, fields = _own(target, {"operation": kept["remove"]})
+            return await run(
+                vendor, remove, fields, cast(JSON, kept["path"]), account=kept.get("account")
+            )
         vendor, op, fields = _own(target, kept)
         snapshot = _snapshot(op)
         _, restore, _ = _own(target, {"operation": kept["restore"]})
@@ -702,9 +725,17 @@ class OperationUndo(Undoer):
         )  # fmt: skip
 
     def describe(self, kept: JSON) -> str:
+        if kept.get("remove"):
+            return "Deletes the draft it saved."
         found = operation(str(kept.get("operation") or ""))
         says = found[1].undo.says if found and found[1].undo else "the fields it changed"
         return f"Puts back {says}."
+
+
+def _holds(args: JSON) -> Hold:
+    """A draft reaches nobody: it runs unless the connection holds drafts too."""
+    found = operation(str(args.get("operation") or ""))
+    return Hold.DRAFT if found is not None and found[1].level == DRAFT else Hold.ALWAYS
 
 
 call_operation = ToolSpec(
@@ -713,6 +744,7 @@ call_operation = ToolSpec(
     description=(_call_operation.__doc__ or "").strip(),
     handler=_call_operation,
     hold=Hold.ALWAYS,
+    holds=_holds,
     classify=_classify,
     undo=OperationUndo(),
     typed=typed_reason,

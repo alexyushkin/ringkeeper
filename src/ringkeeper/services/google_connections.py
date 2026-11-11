@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ringkeeper.adapters import google
+from ringkeeper.adapters.base import HOLD_DRAFTS, holds_drafts
 from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType
@@ -202,8 +203,11 @@ def accounts(session: Session, settings: Settings) -> list[dict[str, Any]]:
     ]
 
 
-def _rule(rules: dict[str, str], tool: str) -> str:
-    """A rule stored before sending always asked no longer counts."""
+def _rule(instance: Instance, rules: dict[str, str], tool: str) -> str:
+    """A rule stored before sending always asked no longer counts. Saving a draft runs unless
+    the account holds drafts too."""
+    if tool in google.DRAFTS:
+        return "ask" if holds_drafts(instance.config) else "run"
     return "ask" if tool in google.KEEPS_ASKING else rules.get(tool, "ask")
 
 
@@ -218,7 +222,7 @@ def tools(instance: Instance) -> list[dict[str, Any]]:
             "kind": spec.kind.value,
             "description": " ".join(spec.description.split()),
             "allowed": bool(set(google.NEEDS[spec.name]) & access),
-            "rule": _rule(rules, spec.name) if spec.kind.value == "write" else None,
+            "rule": _rule(instance, rules, spec.name) if spec.kind.value == "write" else None,
             "fixed": spec.name in google.KEEPS_ASKING,
             "why": google.ASKS_WHY.get(spec.name, ""),
         }
@@ -243,10 +247,16 @@ def set_write_rules(session: Session, name: str, rules: dict[str, str]) -> dict[
             else "sending can't run by itself"
         )
         raise RuleViolationError(f"'{fixed[0]}' always asks: {why}.")
-    kept = {t: r for t, r in rules.items() if r == "run"}
+    # A draft's rule is the account's "hold drafts too" setting, not a write rule.
+    drafts_held = any(rules.get(t) != "run" for t in google.DRAFTS)
+    held_before = holds_drafts(instance.config)
+    kept = {t: r for t, r in rules.items() if r == "run" and t not in google.DRAFTS}
     before = dict(instance.config.get("write_rules") or {})
-    instance.config = {**instance.config, "write_rules": kept}
+    instance.config = {**instance.config, "write_rules": kept, HOLD_DRAFTS: drafts_held}
     changed = sorted(set(before) ^ set(kept))
+    if drafts_held != held_before:
+        changed.append("create_draft")
+        kept = kept if drafts_held else {**kept, **dict.fromkeys(google.DRAFTS, "run")}
     if changed:
         said = [f"{t} {'runs without asking' if t in kept else 'asks first'}" for t in changed]
         admin_audit.record(

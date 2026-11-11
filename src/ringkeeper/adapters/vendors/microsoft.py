@@ -25,7 +25,7 @@ from ringkeeper.adapters import extract, mail_text
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.adapters.mail import BULK
 from ringkeeper.adapters.paging import PAGE_CHARS, page
-from ringkeeper.adapters.vendor_spec import JSON, Snapshot, Vendor, final, held, reads
+from ringkeeper.adapters.vendor_spec import JSON, Snapshot, Vendor, drafts, final, held, reads
 
 CATEGORY = "Email"
 # What each kind of access asks for at sign-in, by the access keys of services.google_oauth.
@@ -146,6 +146,14 @@ def _shown(message: JSON, offset: int, limit: int, include_quoted: bool = False)
     }  # fmt: skip
 
 
+def _saved(answer: JSON, _local: JSON) -> JSON:
+    """A saved draft, in short: its id (its undo deletes it), subject and where it opens."""
+    return {
+        "saved": "draft", "id": answer.get("id"), "subject": answer.get("subject"),
+        "link": answer.get("webLink"),
+    }  # fmt: skip
+
+
 def _readable(answer: JSON, local: JSON) -> JSON:
     return _shown(
         answer,
@@ -250,8 +258,9 @@ MICROSOFT = Vendor(
         final("forward", "POST", "/me/messages/{message_id}/forward", "Forward a message",
               _recipients_why, "comment", "toRecipients", "message",
               only=("comment", "toRecipients", "message")),
-        held("create_draft", "POST", "/me/messages", "Save an email as a draft", *NEW_DRAFT,
-             only=NEW_DRAFT),
+        drafts("create_draft", "POST", "/me/messages", "Save an email as a draft", *NEW_DRAFT,
+               only=NEW_DRAFT, remove="delete_message", remove_key="message_id",
+               hint="Put the draft's link in your final message.", after=_saved),
         held("update_draft", "PATCH", "/me/messages/{message_id}", "Change a draft", *DRAFT,
              only=DRAFT, undo=DRAFT_BACK),
         held("mark_message", "PATCH", "/me/messages/{message_id}",

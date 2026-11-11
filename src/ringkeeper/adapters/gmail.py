@@ -8,7 +8,8 @@ Advanced Protection or security-key-only sign-in, and a Workspace admin can
 turn them off. Login errors say which case it looks like.
 
 Reading never marks mail as read (BODY.PEEK). Saving a draft only the user
-sees runs without asking; sending always waits for approval, and more than
+sees runs without asking (unless the connection holds drafts too), and can be undone:
+the draft is deleted. Sending always waits for approval, and more than
 adapters.mail.BULK people at once needs the name typed. Mailboxes are found by
 their role (\\Drafts, \\Sent, \\All), so a Gmail in another language
 works too.
@@ -24,15 +25,26 @@ import re
 import smtplib
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from email.message import EmailMessage
 from typing import Annotated, Any, Literal, cast
+from urllib.parse import quote
 
 import anyio.to_thread
 from pydantic import Field
 
 from ringkeeper.adapters import extract, mail_text
-from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, draft, final, read
-from ringkeeper.adapters.mail import ADDRESS_PATTERN, bulk_reason
+from ringkeeper.adapters.base import (
+    JSON,
+    Adapter,
+    Target,
+    ToolError,
+    Undoer,
+    final,
+    read,
+    saves_draft,
+)
+from ringkeeper.adapters.mail import ADDRESS_PATTERN, bulk_reason, delete_draft
 from ringkeeper.adapters.mail_text import (
     AttachmentId,
     IncludeQuoted,
@@ -424,7 +436,7 @@ ReplyTo = Annotated[
 ]
 
 
-@draft
+@saves_draft
 async def create_draft(
     target: Target,
     to: Addresses,
@@ -440,13 +452,18 @@ async def create_draft(
         try:
             sender = credentials(target.secret.reveal())[0]
             message = compose(sender, to, subject, body, cc, in_reply_to)
+            message["Message-ID"] = email.utils.make_msgid()
             status, _ = conn.append(
                 _mailbox(conn, "drafts"), "(\\Draft)", imaplib.Time2Internaldate(time.time()),
                 message.as_bytes(),
             )  # fmt: skip
             if status != "OK":
                 raise ToolError("Gmail didn't save the draft")
-            return {"saved": "draft", "to": to, "subject": subject}
+            made = str(message["Message-ID"])
+            return {
+                "saved": "draft", "to": to, "subject": subject, "message_id": made,
+                "link": draft_link(sender, made),
+            }  # fmt: skip
         finally:
             conn.logout()
 
@@ -478,6 +495,45 @@ async def send_email(
         return {"sent": True, "to": to, "subject": subject}
 
     return await _blocking(run)
+
+
+def draft_link(address: str, message_id: str) -> str:
+    """Where the draft opens in Gmail on the web."""
+    return (
+        f"https://mail.google.com/mail/?authuser={quote(address)}"
+        f"#search/rfc822msgid:{quote(message_id.strip('<>'))}"
+    )
+
+
+class DraftUndo(Undoer):
+    """Taking back a saved draft deletes it."""
+
+    async def before(self, target: Target, args: JSON) -> JSON:
+        return {"message_id": None, "subject": args.get("subject")}
+
+    async def after(self, target: Target, args: JSON, before: JSON, result: JSON) -> JSON:
+        before["message_id"] = result.get("message_id")
+        return {"message_id": before["message_id"]}
+
+    async def current(self, target: Target, kept: JSON) -> JSON:
+        return {"message_id": kept.get("message_id")}
+
+    async def restore(self, target: Target, kept: JSON) -> JSON:
+        def run() -> JSON:
+            conn = _imap(target)
+            try:
+                gone = delete_draft(conn, _mailbox(conn, "drafts"), str(kept["message_id"]))
+                return {"deleted": gone}
+            finally:
+                conn.logout()
+
+        return await _blocking(run)
+
+    def describe(self, kept: JSON) -> str:
+        return f"Deletes the draft it saved ({kept.get('subject') or 'no subject'})."
+
+
+create_draft = replace(create_draft, undo=DraftUndo())
 
 
 ADAPTER = Adapter(

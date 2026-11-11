@@ -14,6 +14,13 @@ Reads never wait. Changes on staging and development connections run straight
 away and are logged. A Google account can let a single tool run without asking
 (per account, in its settings), except sending email.
 
+**Saving an email draft doesn't wait**, on Gmail, a Google account, Outlook or any mailbox:
+a draft reaches nobody. It's logged, and the task's result links each draft it saved (or
+says which connection's drafts folder it's in), so you can check it and send it yourself.
+Sending always waits. To have drafts wait for your OK too, turn on **Hold drafts for my OK
+too** in the connection's Details (on a Google account, it's the **create_draft** tool under
+Tools and approvals). A saved draft can be undone from the task page: the draft is deleted.
+
 An email to more than 10 people at once needs the connection's name typed, on every email
 connection, and can't be approved from Telegram, Slack or Discord.
 
@@ -23,6 +30,16 @@ Held actions are in **Approvals** (with a count in the sidebar), in their
 conversation, and in your notification channels. Each shows exactly what would
 run, on which connection, for which client and project. **Approve** runs it;
 **Deny** (with an optional note) tells the AI not to, and why.
+
+The card shows what's being approved without a click. For an email or a draft, that's To,
+Subject and the body (a long body shows its first 12 lines, with **Show all** for the rest);
+for other changes, the values that matter, like the SQL or the amount. **Show details** is
+only for the raw arguments.
+
+On a task or conversation page, what's waiting for you (approvals, questions, plans) is
+under the latest result, in the order it came, where you're reading. One that arrives while
+the page is open scrolls into view. If one is off-screen, a bar at the bottom says so
+("1 approval waiting"); click it to jump there.
 
 Before it runs, an approved action is checked again against today's setup: if
 the connection was unlinked or narrowed since, it's refused. Where it can,
@@ -39,8 +56,8 @@ people at once, deleting a file or an email, a DELETE through an API. These alwa
 even on test data; they can't be trusted for an hour, and no per-tool setting lets them
 run by themselves.
 
-**Business systems follow the action, not the vendor.** Reports and lookups run. Drafts and
-edits wait for approval, even on test data. Anything that sends to real people, publishes,
+**Business systems follow the action, not the vendor.** Reports and lookups run. Edits wait
+for approval, even on test data; saving an email draft runs, as above. Anything that sends to real people, publishes,
 posts to the books, moves money, deletes, changes who has access or adds ongoing cost needs
 the name typed, in the app itself. On these services a per-tool setting can make a tool
 stricter, never looser. Nothing on an accounting connection ever runs by itself, even after

@@ -5,6 +5,7 @@ connection's name typed. A test to the connection's own test address runs by its
 the agent can't choose where it goes.
 """
 
+import imaplib
 from email.message import EmailMessage
 from typing import Annotated, Any, cast
 
@@ -21,6 +22,22 @@ MoreRecipients = Annotated[list[Address] | None, Field(max_length=MOST)]
 Subject = Annotated[str, Field(max_length=500)]
 Body = Annotated[str, Field(max_length=100_000)]
 Html = Annotated[str | None, Field(description="An HTML version, if any.", max_length=500_000)]
+
+
+def delete_draft(conn: imaplib.IMAP4, folder: str, message_id: str) -> int:
+    """Delete the draft with this Message-ID from `folder` (quoted). How many went."""
+    status, _ = conn.select(folder)
+    if status != "OK":
+        raise ToolError("couldn't open the drafts folder")
+    wanted = message_id.replace("\\", "").replace('"', "")
+    status, found = conn.uid("SEARCH", "HEADER", "Message-ID", f'"{wanted}"')
+    raw = found[0] if status == "OK" and found else b""
+    uids = [u.decode() for u in raw.split()] if isinstance(raw, bytes) else []
+    for uid in uids:
+        conn.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
+    if uids:
+        conn.expunge()
+    return len(uids)
 
 
 def _count(value: Any) -> int:

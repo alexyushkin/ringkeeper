@@ -63,6 +63,11 @@ export function markOf(connection: { type: string; config?: Record<string, unkno
 }
 
 /** What the service's plan doesn't allow, if it said so. */
+/** A connection that can save email drafts on its own (a Google account has this per tool). */
+export function savesDrafts(connection: { type: string; config?: Record<string, unknown> | null }): boolean {
+  return connection.type === "gmail" || connection.type === "mailbox" || (connection.type === "vendor" && connection.config?.vendor === "microsoft");
+}
+
 export function planLimit(connection: { config?: Record<string, unknown> | null }): string | null {
   const kept = connection.config?.plan_limit as { message?: string } | undefined;
   return kept?.message ?? null;
@@ -503,6 +508,14 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
           <TestButton name={connection.name} onDone={() => onChange()} />
           {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
           {connection.type === "google" ? <GoogleAccount name={connection.name} onChange={onChange} /> : null}
+          {savesDrafts(connection) ? (
+            <Toggle
+              label="Hold drafts for my OK too"
+              checked={connection.config.hold_drafts === true}
+              onChange={(on) => void patch({ hold_drafts: on }, on ? "Drafts wait for your OK." : "Drafts are saved without asking.")}
+              hint="Off: saving a draft runs and is logged, since it reaches nobody, and the task's result links it. Sending always waits for your OK."
+            />
+          ) : null}
           <Details label="Change">
             <div className="space-y-3">
               <Field label="Name" value={title} onChange={setTitle} hint={`As it shows in Ringkeeper. The AI knows it as ${connection.name}.`} />

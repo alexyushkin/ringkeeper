@@ -15,7 +15,7 @@ import pytest
 from ringkeeper.adapters import vendor
 from ringkeeper.adapters.base import ToolError
 from ringkeeper.adapters.mail import BULK
-from ringkeeper.adapters.vendor_spec import FINAL, HELD, READ, Op, Vendor
+from ringkeeper.adapters.vendor_spec import DRAFT, FINAL, HELD, READ, Op, Vendor
 from ringkeeper.adapters.vendors import accounting, microsoft
 from ringkeeper.adapters.vendors.accounting import BUSINESS_CENTRAL, QUICKBOOKS, WAVE, XERO
 from ringkeeper.adapters.vendors.microsoft import MICROSOFT
@@ -448,7 +448,7 @@ async def test_business_central_reaches_a_company_in_an_environment(seen: Seen) 
         ("reply", FINAL, False),
         ("forward", FINAL, False),
         ("create_event", FINAL, False),
-        ("create_draft", HELD, False),
+        ("create_draft", DRAFT, False),
         ("create_folder", HELD, False),
         ("send_draft", FINAL, True),  # its recipients can't be counted from the call
         ("reply_all", FINAL, True),
