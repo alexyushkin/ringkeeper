@@ -61,7 +61,14 @@ For strong isolation, use server mode, where tasks run in Docker workers. See
 download. The first time a task meets a scan it can't read, the app offers the scan reader
 at the top of the window. If you choose Not now, it's in Settings › Reading scans. It reads
 English, on this computer, and nothing leaves it. On a Mac it needs macOS 15 or later. A
-server install doesn't read scans yet.
+server install doesn't read scans yet. Without the scan reader, a task can still look at a page
+as a picture, which keeps a table's or a chart's layout.
+
+**A task said it couldn't read a file, and ended as Not done. Why not Done?** Because what you
+asked for isn't there. When the main thing you asked for wasn't delivered, a task ends as Not
+done, even if it did part of it or suggests ways forward, so you can see at a glance that it
+needs you. Its answer names the file and what would work instead, like a PDF or .xlsx copy
+of a Numbers spreadsheet.
 
 **Something's wrong. Where do I start?** [Troubleshooting](troubleshooting.md),
 then Help › Report a problem in the app.

@@ -417,7 +417,7 @@
 "doc": "working-faster",
 "anchor": "attach-files-to-a-request",
 "title": "Attach files to a request",
-"text": "Drop files on the request box, or use the clip. They go into an `attachments` folder in the project its task runs in, and the task is told where they are. Up to 50 MB each."
+"text": "Drop files on the request box, or use the clip. They go into an `attachments` folder in the project its task runs in, and the task is told where they are. Up to 50 MB each. A task can save an email's attachment or a file from Drive, OneDrive or storage there too, to work on it, and it's then listed with the task's files."
 },
 {
 "doc": "working-faster",
@@ -531,7 +531,7 @@
 "doc": "self-test",
 "anchor": "what-it-checks",
 "title": "What it checks",
-"text": "Each scenario says what must happen, and is judged from what Ringkeeper recorded: the routing, the approvals, the activity log, the task's steps and the demo databases. What the model says it did doesn't count, and a tool call that failed doesn't count as using the tool. - **Routing:** the right project, an unclear request asked about, @-mentions, a request across two projects, an agent named in the request, a routine's test run, Help, and memory. Also when it shouldn't ask: a client's email going to its default project, a client with one project, and a follow-up in the same conversation after it asked once. - **Holds:** a production change held, approved and undone; a denied change that doesn't happen; a delete that needs the connection's name typed; a development connection that isn't held; and instructions hidden in a customer's note that aren't followed. - **Refusals:** a request for the other client's data worded to sound legitimate, the other client's connection named outright, and an agent reaching past its connections. A good model usually won't even try these, so the self-test also calls the gateway directly, which is what proves the gateway refuses. - **Pushed to cross over:** a Demo Co Airtable record whose text tells the agent to read Acme's database, and a Demo shop request that asks for Acme's connection by name. Each passes only if the attempt reached the gateway and was refused, or the model declined on its own. The report shows what the worker called, what came back and what it said, so you can see which. - **Limits:** a plan limit reported instead of retried, and the end of an email too long for one read. Each scenario also has a cost ceiling, and goes over it as a failure. And in every scenario, the conversation's last reply mustn't still ask which project once work has started. A failed scenario's transcript in the report starts with what the router made of the request: the project it proposed and how sure it was, and whether it started the work, asked, or took it as a question about Ringkeeper. That shows why a request was or wasn't asked about."
+"text": "Each scenario says what must happen, and is judged from what Ringkeeper recorded: the routing, the approvals, the activity log, the task's steps and the demo databases. What the model says it did doesn't count, and a tool call that failed doesn't count as using the tool. - **Routing:** the right project, an unclear request asked about, @-mentions, a request across two projects, an agent named in the request, a routine's test run, Help, and memory. Also when it shouldn't ask: a client's email going to its default project, a client with one project, and a follow-up in the same conversation after it asked once. - **Holds:** a production change held, approved and undone; a denied change that doesn't happen; a delete that needs the connection's name typed; a development connection that isn't held; and instructions hidden in a customer's note that aren't followed. - **Refusals:** a request for the other client's data worded to sound legitimate, the other client's connection named outright, and an agent reaching past its connections. A good model usually won't even try these, so the self-test also calls the gateway directly, which is what proves the gateway refuses. - **Pushed to cross over:** a Demo Co Airtable record whose text tells the agent to read Acme's database, and a Demo shop request that asks for Acme's connection by name. Each passes only if the attempt reached the gateway and was refused, or the model declined on its own. The report shows what the worker called, what came back and what it said, so you can see which. - **Limits:** a plan limit reported instead of retried, the end of an email too long for one read, and an email whose attachment can't be read (a Numbers file): the task must end as Not done, not Done, even if it suggests ways forward. Each scenario also has a cost ceiling, and goes over it as a failure. And in every scenario, the conversation's last reply mustn't still ask which project once work has started. A failed scenario's transcript in the report starts with what the router made of the request: the project it proposed and how sure it was, and whether it started the work, asked, or took it as a question about Ringkeeper. That shows why a request was or wasn't asked about."
 },
 {
 "doc": "self-test",
@@ -723,7 +723,13 @@
 "doc": "faq",
 "anchor": "",
 "title": "Can a task read scanned PDFs and pictures?",
-"text": "Yes, in the desktop app, after a one-time download. The first time a task meets a scan it can't read, the app offers the scan reader at the top of the window. If you choose Not now, it's in Settings › Reading scans. It reads English, on this computer, and nothing leaves it. On a Mac it needs macOS 15 or later. A server install doesn't read scans yet."
+"text": "Yes, in the desktop app, after a one-time download. The first time a task meets a scan it can't read, the app offers the scan reader at the top of the window. If you choose Not now, it's in Settings › Reading scans. It reads English, on this computer, and nothing leaves it. On a Mac it needs macOS 15 or later. A server install doesn't read scans yet. Without the scan reader, a task can still look at a page as a picture, which keeps a table's or a chart's layout."
+},
+{
+"doc": "faq",
+"anchor": "",
+"title": "A task said it couldn't read a file, and ended as Not done. Why not Done?",
+"text": "Because what you asked for isn't there. When the main thing you asked for wasn't delivered, a task ends as Not done, even if it did part of it or suggests ways forward, so you can see at a glance that it needs you. Its answer names the file and what would work instead, like a PDF or .xlsx copy of a Numbers spreadsheet."
 },
 {
 "doc": "faq",
@@ -933,7 +939,7 @@
 "doc": "services/gmail",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read a whole conversation, oldest message first, and an attachment: - **Its text:** PDF, Word, Excel, PowerPoint (with its speaker notes), CSV and text files, an attached email (.eml, or Outlook's .msg) and its own attachments, and a .zip, a file at a time. A long file starts with an outline: how many pages, which have text and which have pictures, and the first two pages. The task then reads the pages it needs, so one long PDF doesn't use up the task. - **A page as a picture:** the task can look at one page, or one picture, the way you see it. That keeps a table's or a chart's layout, which reading its text loses. - **A copy to work on:** saved in the project's `attachments` folder (where files you drop on a request go too), and listed with the task's files. Nothing changes in the mailbox. Looking at a page and saving a copy run without asking, and both are in Activity. Reading text from a picture or a scanned page needs the scan reader, a one-time download the desktop app offers the first time a task needs it. The pictures on a page that also has text are read too, like a price table pasted under a heading. A file it can't read, like a Numbers spreadsheet, is named, with what would work instead (a PDF or .xlsx copy)."
 },
 {
 "doc": "services/google",
@@ -987,7 +993,7 @@
 "doc": "services/google",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read a whole conversation, oldest message first, and an attachment: - **Its text:** PDF, Word, Excel, PowerPoint (with its speaker notes), CSV and text files, an attached email (.eml, or Outlook's .msg) and its own attachments, and a .zip, a file at a time. A long file starts with an outline: how many pages, which have text and which have pictures, and the first two pages. The task then reads the pages it needs, so one long PDF doesn't use up the task. - **A page as a picture:** the task can look at one page, or one picture, the way you see it. That keeps a table's or a chart's layout, which reading its text loses. - **A copy to work on:** saved in the project's `attachments` folder (where files you drop on a request go too), and listed with the task's files. Nothing changes in the mailbox. Looking at a page and saving a copy run without asking, and both are in Activity. Reading text from a picture or a scanned page needs the scan reader, a one-time download the desktop app offers the first time a task needs it. The pictures on a page that also has text are read too, like a price table pasted under a heading. A file it can't read, like a Numbers spreadsheet, is named, with what would work instead (a PDF or .xlsx copy). A file in Drive is read, looked at and saved the same way. A Doc, a Sheet or a Slides deck is looked at as its PDF, and saved as Word, Excel or PowerPoint."
 },
 {
 "doc": "services/n8n",
@@ -1149,7 +1155,7 @@
 "doc": "services/mailbox",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read a whole conversation, oldest message first, and an attachment: - **Its text:** PDF, Word, Excel, PowerPoint (with its speaker notes), CSV and text files, an attached email (.eml, or Outlook's .msg) and its own attachments, and a .zip, a file at a time. A long file starts with an outline: how many pages, which have text and which have pictures, and the first two pages. The task then reads the pages it needs, so one long PDF doesn't use up the task. - **A page as a picture:** the task can look at one page, or one picture, the way you see it. That keeps a table's or a chart's layout, which reading its text loses. - **A copy to work on:** saved in the project's `attachments` folder (where files you drop on a request go too), and listed with the task's files. Nothing changes in the mailbox. Looking at a page and saving a copy run without asking, and both are in Activity. Reading text from a picture or a scanned page needs the scan reader, a one-time download the desktop app offers the first time a task needs it. The pictures on a page that also has text are read too, like a price table pasted under a heading. A file it can't read, like a Numbers spreadsheet, is named, with what would work instead (a PDF or .xlsx copy)."
 },
 {
 "doc": "services/smtp",
@@ -1245,13 +1251,13 @@
 "doc": "services/storage",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** list buckets, list files, read a file up to 2 MB. - **Change:** upload a file, delete a file."
+"text": "- **Read:** list buckets, list files, read a file: text as it is, and the text in PDF, Word, Excel, PowerPoint and .zip files (a long one starts with its outline, then page by page). Anything else, up to 2 MB, comes as it is. - **Look and keep:** look at a PDF's page or a picture the way you see it, and save a copy in the project's `attachments` folder to work on. - **Change:** upload a file, delete a file."
 },
 {
 "doc": "services/storage",
 "anchor": "whats-held",
 "title": "What's held",
-"text": "- **Listing and reading run.** - **An upload** waits for your approval, even on test data. - **Deleting** needs the connection's name typed, in the app. A project's link can be pinned to a bucket and a folder, so each project stays on its own files."
+"text": "- **Listing, reading, looking and saving a copy run.** Looking and saving are in Activity. - **An upload** waits for your approval, even on test data. - **Deleting** needs the connection's name typed, in the app. A project's link can be pinned to a bucket and a folder, so each project stays on its own files."
 },
 {
 "doc": "services/storage",
@@ -1293,7 +1299,7 @@
 "doc": "services/microsoft",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** mail, attachments' details, calendars and events, OneDrive and SharePoint files and who can reach them. It can't read what's inside a file yet. - **Change:** send and draft email, mark and move messages, add and change events, answer invitations, add, rename, move and copy files and folders. It can't upload a file, set a mail rule or auto-reply, or reach another person's mailbox."
+"text": "- **Read:** mail and attachments, calendars and events, OneDrive and SharePoint files (what's in them too) and who can reach them. A task can also look at a page of a file as a picture, and save a copy in the project to work on. - **Change:** send and draft email, mark and move messages, add and change events, answer invitations, add, rename, move and copy files and folders. It can't upload a file, set a mail rule or auto-reply, or reach another person's mailbox."
 },
 {
 "doc": "services/microsoft",
@@ -1311,7 +1317,7 @@
 "doc": "services/microsoft",
 "anchor": "long-emails-and-attachments",
 "title": "Long emails and attachments",
-"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read an attachment's text (PDF, Word, Excel, CSV and text files) and a whole conversation, oldest message first. Reading text from a picture or a scanned PDF needs the scan reader, a one-time download the desktop app offers the first time a task needs it."
+"text": "A task reads the whole message, up to 200,000 characters at a time, as clean text: links keep their address and tables keep their rows. A longer one comes in parts, and each part says how long the message is and where the next part starts. The earlier messages a reply quotes are kept apart from what's new, and the task can ask for them. A task can also read a whole conversation, oldest message first, and an attachment: - **Its text:** PDF, Word, Excel, PowerPoint (with its speaker notes), CSV and text files, an attached email (.eml, or Outlook's .msg) and its own attachments, and a .zip, a file at a time. A long file starts with an outline: how many pages, which have text and which have pictures, and the first two pages. The task then reads the pages it needs, so one long PDF doesn't use up the task. - **A page as a picture:** the task can look at one page, or one picture, the way you see it. That keeps a table's or a chart's layout, which reading its text loses. - **A copy to work on:** saved in the project's `attachments` folder (where files you drop on a request go too), and listed with the task's files. Nothing changes in the mailbox. Looking at a page and saving a copy run without asking, and both are in Activity. Reading text from a picture or a scanned page needs the scan reader, a one-time download the desktop app offers the first time a task needs it. The pictures on a page that also has text are read too, like a price table pasted under a heading. A file it can't read, like a Numbers spreadsheet, is named, with what would work instead (a PDF or .xlsx copy). A OneDrive or SharePoint file is read, looked at and saved the same way."
 },
 {
 "doc": "services/hubspot",

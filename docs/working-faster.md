@@ -46,7 +46,8 @@ client with several projects and Ringkeeper asks which.
 
 Drop files on the request box, or use the clip. They go into an `attachments` folder
 in the project its task runs in, and the task is told where they are. Up to 50 MB
-each.
+each. A task can save an email's attachment or a file from Drive, OneDrive or storage
+there too, to work on it, and it's then listed with the task's files.
 
 ## Run again and saved requests
 

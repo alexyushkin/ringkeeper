@@ -5,6 +5,31 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Tasks read files better, wherever they come from.** Gmail, Google, any mailbox, Microsoft
+  (attachments, and now OneDrive and SharePoint files too) and file storage all read files the
+  same way:
+  - The pictures on a page with text are read now, not only scanned pages: a price table pasted
+    under a heading was skipped before. When a picture can't be read (no scan reader, or no
+    time left), the answer says which pages.
+  - A task can look at a page, or a picture, the way you see it. A table or a chart keeps its
+    layout, which reading its text loses. This works without the scan reader.
+  - A task can save a copy of an attachment or a file in the project's `attachments` folder to
+    work on it. It's listed with the task's files, and nothing changes in the mailbox or the
+    drive. Looking and saving run without asking, and both are in Activity.
+  - PowerPoint decks (with speaker notes), attached emails (.eml and Outlook's .msg, and their
+    own attachments) and .zip files are read, a file at a time. A file that can't be read says
+    what it is and what would work instead, like "a Numbers spreadsheet: export it as .xlsx or
+    PDF".
+  - A long file starts with an outline (its pages, which have text and which have pictures, and
+    the first two pages), then the task reads the pages it needs. One long PDF no longer fills
+    a task.
+- **Tasks use fewer tokens on every step.** Each connection lists only the tools it can use (a
+  Google account with only mail access no longer lists YouTube, Drive or Calendar), and every
+  tool's help is shorter.
+- **A task that couldn't deliver what you asked for ends as Not done.** Even when it did part of
+  it, or suggests ways forward ("I couldn't read the pricing, here's what you could try"), it no
+  longer ends as Done. The self-test has a scenario for it.
+
 - **Approvals where you're reading.** On a task or conversation page, what's waiting for you
   is under the latest result, in order, not above earlier work. One that arrives while the
   page is open scrolls into view, and if one is off-screen, a bar at the bottom ("1 approval

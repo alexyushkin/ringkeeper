@@ -15,12 +15,16 @@ Make a key limited to this client's bucket.
 
 ## What it can do
 
-- **Read:** list buckets, list files, read a file up to 2 MB.
+- **Read:** list buckets, list files, read a file: text as it is, and the text in PDF,
+  Word, Excel, PowerPoint and .zip files (a long one starts with its outline, then page by
+  page). Anything else, up to 2 MB, comes as it is.
+- **Look and keep:** look at a PDF's page or a picture the way you see it, and save a copy in
+  the project's `attachments` folder to work on.
 - **Change:** upload a file, delete a file.
 
 ## What's held
 
-- **Listing and reading run.**
+- **Listing, reading, looking and saving a copy run.** Looking and saving are in Activity.
 - **An upload** waits for your approval, even on test data.
 - **Deleting** needs the connection's name typed, in the app.
 
