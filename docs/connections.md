@@ -46,6 +46,12 @@ projects, and narrow each if you like. On a project's Connections tab, **Link a
 connection** lists the client's connections that aren't linked yet and your own tools.
 A client with no projects says so, with **Add project** and **From Claude**.
 
+Each task is told which connections its project has before it starts: each one's name,
+kind, whether it's production, and which one is the default for its kind. So it names the
+right one from its first call. When a project has two of a kind in different environments,
+say a production database and a development one, and the request doesn't say which, the
+task asks you instead of guessing.
+
 ## Found on this computer
 
 Ringkeeper prefers logins you already have to keys you'd paste. Connectors lists what

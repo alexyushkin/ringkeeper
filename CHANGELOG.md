@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Tasks know their project's connections from the start.** Each task is told each
+  connection's name, kind, whether it's production and which is the default, so its first
+  call names one. Before, in a project with several databases and no default, the first call
+  was refused and tried again. When two of a kind are in different environments and the
+  request doesn't say which, the task asks you instead of guessing.
 - **A request to use a connection reaches it.** "List what Demo CRM can do for Demo Co" was
   sometimes answered as a question about Ringkeeper, without a task. A request that names a
   connection and asks to use or read it now always runs as a task in a project linked to it.

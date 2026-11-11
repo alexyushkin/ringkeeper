@@ -19,6 +19,7 @@ from ringkeeper.models import (
     Complexity,
     Decision,
     DecisionKind,
+    Env,
     InstanceType,
     SessionEvent,
     SessionRole,
@@ -606,3 +607,44 @@ def test_finished_tasks_state_volumes_are_swept_after_retention() -> None:
     assert m.sweep_state_volumes() == 1
     assert tasks.state_volume_name(uuid.UUID(old), SessionRole.WORKER) not in runtime.volumes
     assert len(runtime.volumes) == 3  # recent, still running, and another install's
+
+
+# --- The worker knows its project's connections ---
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_a_worker_is_told_its_connections_and_asks_between_environments() -> None:
+    """From Check my setup: with two databases and no default, a worker's first call didn't
+    name one and was refused ("read without instance and no default")."""
+    with session_scope() as session:
+        make_instance(session, "acme-db", env=Env.PROD, title="Acme database")
+        make_instance(session, "acme-dev", secret_ref="file://acme/dev")
+    bind("acme-web", "acme-db")
+    bind("acme-web", "acme-dev")
+    m, runtime = manager()
+    run_task(prompt="List the tables")
+    m.tick()
+    m.wait_idle()
+    prompt = str(task_env(runtime.started[0])["prompt"])
+    assert prompt.startswith("List the tables\n\nYOUR PROJECT'S CONNECTIONS.")
+    assert "pass its name as instance=..., starting with your first call" in prompt
+    assert "- acme-db (Acme database): database, production\n" in prompt
+    assert "- acme-dev: database, not production (dev)\n" in prompt
+    assert "use ask_user to ask which before you use either" in prompt
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_one_environment_needs_no_question() -> None:
+    with session_scope() as session:
+        make_instance(session, "acme-db")
+        make_instance(session, "acme-n8n", InstanceType.N8N, env=Env.PROD, base_url="https://n8n.x")
+    bind("acme-web", "acme-db", is_default=True)
+    bind("acme-web", "acme-n8n")
+    m, runtime = manager()
+    run_task()
+    m.tick()
+    m.wait_idle()
+    prompt = str(task_env(runtime.started[0])["prompt"])
+    assert "- acme-db: database, not production (dev), the default for its kind" in prompt
+    assert "- acme-n8n: n8n, production" in prompt
+    assert "ask_user" not in prompt  # different kinds: nothing to choose between
