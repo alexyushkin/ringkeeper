@@ -5,14 +5,16 @@ import asyncio
 import json
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import httpx2
 import pytest
+from fastmcp import Client
 from sqlalchemy import select
 
-from ringkeeper.adapters import airtable
+from ringkeeper.adapters import airtable, extract
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
@@ -20,7 +22,15 @@ from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import AuthMode, Instance, InstanceType, SessionEvent
 from ringkeeper.router.prompt import SYSTEM_PROMPT
 from ringkeeper.router.service import named_agent
-from ringkeeper.scenarios import checks, demo_airtable, driver, launcher, report, world
+from ringkeeper.scenarios import (
+    checks,
+    demo_airtable,
+    demo_service,
+    driver,
+    launcher,
+    report,
+    world,
+)
 from ringkeeper.scenarios.catalog import (
     ACME_DB,
     AIRTABLE,
@@ -30,6 +40,8 @@ from ringkeeper.scenarios.catalog import (
     SHOP,
     SHOP_DB,
     TYPED,
+    UNREADABLE_FILE,
+    UNREADABLE_SUBJECT,
     Row,
     Scenario,
     Undo,
@@ -40,6 +52,7 @@ from ringkeeper.scenarios.host import PROGRESS, REPORT, STOP
 from ringkeeper.scenarios.self_test import RUN, SelfTest
 from ringkeeper.services import bindings, calls
 from ringkeeper.vault import get_vault
+from ringkeeper_worker.agent import HEADLESS_NOTE
 from tests.conftest import CLAUDE_API_KEY, free_port
 from tests.fake_scenario_model import ScriptedModel, Step
 
@@ -88,6 +101,12 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
         (scenario(tools=("q",)), Evidence(tools=["q"], statuses=["failed"]), "ended as failed"),
         (scenario(), Evidence(timed_out=True), "not finished"),
         (
+            scenario(not_done=True, tools=("read_attachment",)),
+            Evidence(tools=["read_attachment"], statuses=["succeeded"]),
+            "a task ended as succeeded, though it couldn't be done",
+        ),
+        (scenario(not_done=True), Evidence(), "no task ran to say it couldn't be done"),
+        (
             scenario(project=SHOP, pick=SHOP),
             Evidence(projects=[SHOP], asked=True, asks_after_start=True),
             f"asks which project, though work ran in {SHOP}",
@@ -96,6 +115,45 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
 )
 def test_what_goes_wrong_is_said(expected: Scenario, seen: Evidence, says: str) -> None:
     assert says in "; ".join(judge(expected, seen))
+
+
+def test_an_attachment_it_can_t_read_must_end_as_not_done() -> None:
+    expected = next(s for s in SCENARIOS if s.key == "unreadable-attachment")
+    assert expected.not_done
+    assert UNREADABLE_SUBJECT in expected.request
+    seen = Evidence(
+        projects=[SHOP],
+        tools=["mcp__ringkeeper-mcp__call_tool demo-mail read_attachment"],
+        statuses=["not_done"],
+    )
+    assert judge(expected, seen) == []
+    assert "ended as succeeded" in "; ".join(judge(expected, replace(seen, statuses=["succeeded"])))
+
+
+@pytest.mark.anyio
+async def test_the_demo_mailbox_s_attachment_can_t_be_read_and_says_so_as_ringkeeper_does() -> None:
+    async with Client(demo_service.mail("END")) as mail:
+        listed = await mail.call_tool("list_emails", {})
+        assert UNREADABLE_FILE in json.dumps(listed.structured_content)
+        said = await mail.call_tool("read_email", {"subject": UNREADABLE_SUBJECT})
+        assert UNREADABLE_FILE in str(said.data)
+        refused = await mail.call_tool(
+            "read_attachment", {"subject": UNREADABLE_SUBJECT, "name": UNREADABLE_FILE},
+            raise_on_error=False,
+        )  # fmt: skip
+    assert refused.is_error
+    ours = str(extract.cant_read(UNREADABLE_FILE, "application/octet-stream"))
+    assert ours == demo_service.CANT_READ
+    assert ours in " ".join(getattr(b, "text", "") for b in refused.content)
+    assert (UNREADABLE_SUBJECT, UNREADABLE_FILE) == (
+        demo_service.UNREADABLE_SUBJECT, demo_service.UNREADABLE_FILE,
+    )  # fmt: skip
+
+
+def test_the_worker_is_told_a_main_thing_not_delivered_is_not_done() -> None:
+    note = " ".join(HEADLESS_NOTE.split())
+    assert "The main thing asked for decides" in note
+    assert "call not_done, even when you did part of it or offer ways forward" in note
 
 
 def test_a_client_s_data_in_its_own_project_isn_t_a_leak() -> None:

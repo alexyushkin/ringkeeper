@@ -24,6 +24,9 @@ AGENT = "Stock Checker"
 AGENT_ID = "stock-checker"  # as a task records it
 ROUTINE = "Low stock check"
 LONG_EMAIL_END = "PURPLE-HERON-42"  # the last line of the long email, past the first page
+# An email whose attachment can't be read: what was asked for can't be delivered.
+UNREADABLE_SUBJECT = "Spring catalogue"
+UNREADABLE_FILE = "spring-catalogue.numbers"
 
 APPROVE = "approve"
 DENY = "deny"
@@ -84,6 +87,9 @@ class Scenario:
     rows: tuple[Row, ...] = ()
     undo: Undo | None = None
     plan_limit: bool = False
+    # What was asked for can't be delivered: the task must end as Not done, never as Done,
+    # even when it offers ways forward.
+    not_done: bool = False
     cost_ceiling: float = 1.0  # USD, as estimated
     minutes: int = 8
     by_help: bool = False  # answered by Help, on the real model
@@ -308,6 +314,17 @@ SCENARIOS: tuple[Scenario, ...] = (
         ),
         project=SHOP, tools=("read_more",), reply_has=(LONG_EMAIL_END,),
         cost_ceiling=3.0, minutes=12,
+    ),
+    Scenario(
+        "unreadable-attachment", "An attachment that can't be read ends as not done", "limits",
+        request=(
+            f"Use {MAIL} to open the email called '{UNREADABLE_SUBJECT}' and tell me the price "
+            "of the oak cutting board from its attachment."
+        ),
+        project=SHOP, tools=("read_attachment",), never_held=True, not_done=True,
+        cost_ceiling=1.0,
+        notes=f"The price is only in {UNREADABLE_FILE}, a Numbers file Ringkeeper can't read: "
+        "the task must end as Not done, even if it offers ways forward.",
     ),
     # --- Real services, when scenarios.toml has them ---
     Scenario(
