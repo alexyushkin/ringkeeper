@@ -63,16 +63,16 @@ same branch, so it sees the earlier work. A task that only read changes nothing 
 no branch.
 
 One code task works in a project's folder at a time; another waits until it's done. If the
-folder has changes you haven't committed, a code task doesn't start and says so: commit or
+folder has edits you haven't committed, a code task doesn't start and says so: commit or
 stash them first. Only the files the task itself edited go on its branch. A file someone
-else changed during the run stays out, and the task says which. After a command the task
-ran, it can't tell whose a change was, so everything goes on the branch and the task lists
-the files it didn't edit itself.
+else edited during the run stays out, and the task names it. After a command the task ran,
+it can't tell who edited what, so every edited file goes on the branch and the task names
+the ones it didn't edit itself.
 
-Work with data or connections, and general work like a web lookup, doesn't touch git at
-all: no branch, no waiting for the folder, and uncommitted changes don't stop it. If such
-a task does change files in the folder, its page says so ("Changed 2 files in the folder,
-not on a branch").
+Work with data or connections, and general work like a web lookup, doesn't use git at all:
+no branch, no waiting for the folder, and uncommitted edits don't stop it. If such a task
+does write files in the folder, its page says so ("Changed 2 files in the folder, not on a
+branch").
 
 ### Where a request goes
 
