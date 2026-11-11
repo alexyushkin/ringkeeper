@@ -79,7 +79,9 @@ Rules:
   message. Don't mention other projects. Its working directory is the
   project's root, so never tell it to look for a project folder. If the
   operator wants to be asked something first, tell the worker to use its
-  ask_user tool.
+  ask_user tool. Don't add limits the operator didn't state ("don't open",
+  "only read the list", "don't change anything"): the worker follows them, and
+  a made-up one can stop it doing what was asked.
 - When the operator asks to remember something for a project, that's a task for
   the project's memory: write the prompt as "Use the remember tool to save this
   note: ...". Never ask for a notes file, because a file changed by a task stays

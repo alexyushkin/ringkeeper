@@ -112,7 +112,7 @@ def test_the_answer_is_remembered_in_the_same_conversation() -> None:
             via=Via.API,
         )  # fmt: skip
     ask("Now make its button blue", thread=thread)
-    route(unsure("gi-site", "gi-blog"))
+    route(unsure("gi-site", "gi-blog", prompt="Make the contact form's button blue."))
     assert started() == ["gi-blog", "gi-blog"]
     assert questions() == []
     ask("Make the button blue on General Informatics' site too")  # a new conversation

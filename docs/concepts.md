@@ -106,7 +106,10 @@ with **Allow web for this project and retry** (in the app and in your chats).
 ### When it asks which project
 
 Ringkeeper asks only when the work clearly belongs to one project and more than one fits,
-and says why in one line, like "Both Website and Blog have a contact form." It doesn't ask:
+and says why in one line, like "Both Website and Blog have a contact form." A request that
+names a client but none of its projects, for work on one project's own things ("add a file
+to Acme's project folder"), is always asked about when the client has more than one. It
+doesn't ask:
 
 - **With one option.** If only one project could be meant, the work goes there.
 - **Again in the same conversation.** Once you've picked, later requests there go to the
@@ -118,7 +121,10 @@ and says why in one line, like "Both Website and Blog have a contact form." It d
 
 You can answer by replying, too, in the app or a chat: send just the project's name ("Blog",
 "the Acme one", "Alexey, My Project") right after the question, and the request you sent
-runs there, with no second question. "None" or "neither" starts nothing. When it asks to go
+runs there, with no second question. A project's own name wins over another project's
+nickname that's part of it: "Demo site" means Demo site, even if Demo shop is also called
+"demo". The same request sent again while it's still running doesn't start it twice: the
+reply says it's already working on that, with a link. "None" or "neither" starts nothing. When it asks to go
 ahead on production, "yes" or "do it" is the go-ahead. If it said it couldn't tell where a
 request goes, a reply that's just the project's name sends that request there.
 
