@@ -31,8 +31,16 @@ from ringkeeper_worker.workspace import Workspace, WorkspaceError
 def _run(config: WorkerConfig) -> bool:
     try:
         if config.stub is not None:
-            # The stand-in agent runs as the worker user, like the real one.
-            return bool(as_worker(lambda: asyncio.run(stub.run(config))))
+            # The stand-in agent runs as the worker user, like the real one: in a forked
+            # child when this is root, so what it edited comes back with its result.
+            def stand_in() -> dict[str, Any]:
+                ok = asyncio.run(stub.run(config))
+                return {"ok": ok, "paths": sorted(EDITS.paths), "shell": EDITS.shell}
+
+            done = as_worker(stand_in)
+            EDITS.paths.update(done["paths"])
+            EDITS.shell = EDITS.shell or bool(done["shell"])
+            return bool(done["ok"])
         cli = claude_code.ensure(say=lambda text: emit("ringkeeper.note", message=text))
         return asyncio.run(agent.run(config, cli))
     except Exception as error:
