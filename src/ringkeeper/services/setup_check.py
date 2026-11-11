@@ -156,10 +156,13 @@ def plan(session: Session) -> tuple[list[Probe], list[Gap]]:
             if asks is None or (instance.all_projects and instance.id in done):
                 continue
             done.add(instance.id)
+            said = asks.format(project=project.title, connection=_of(instance))
+            if "{connection}" not in asks and sum(i.type is instance.type for i in linked) > 1:
+                said += f", using {_of(instance)}"  # which of its databases (say) is meant
             probes.append(
                 Probe(
                     "connection",
-                    asks.format(project=project.title, connection=_of(instance)),
+                    said,
                     project=project.name, project_title=project.title,
                     connection=instance.name, connection_title=_of(instance),
                     service=instance.type.value,

@@ -20,7 +20,9 @@ folder; this checks what you've actually set up.
 
 - For each project, one read-only request per connection linked to it, like the ones Home
   suggests: "List the tables in Acme web's database", "List the open pull requests in Acme web's
-  GitHub repository". A connection linked to every project is checked once, from the first.
+  GitHub repository". When a project has two connections of a kind (two databases, say), each
+  request names its connection. A connection linked to every project is checked once, from the
+  first.
 - A question about your setup: "Which projects do I have, and which connections does each one
   use?"
 - A web lookup.

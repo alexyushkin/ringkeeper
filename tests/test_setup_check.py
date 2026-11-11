@@ -95,6 +95,22 @@ def test_one_read_only_request_per_project_and_linked_connection(database_url: s
     assert [(g.connection, g.client) for g in gaps] == [("acme-sheets", "Acme Inc")]
 
 
+def test_two_databases_in_one_project_are_each_named(database_url: str) -> None:
+    del database_url
+    with session_scope() as session:
+        make_project(session, "acme-web", title="Acme web")
+        make_instance(session, "acme-db", title="Acme DB", secret_ref="file://a/db")
+        make_instance(session, "acme-db-dev", title="Acme DB (dev)", secret_ref="file://a/dev")
+    bind("acme-web", "acme-db")
+    bind("acme-web", "acme-db-dev")
+    with session_scope() as session:
+        probes, _ = setup_check.plan(session)
+    assert [p.request for p in probes if p.kind == "connection"] == [
+        "List the tables in Acme web's database, using Acme DB",
+        "List the tables in Acme web's database, using Acme DB (dev)",
+    ]
+
+
 # --- Nothing it starts changes anything ---
 
 
