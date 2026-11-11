@@ -374,6 +374,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         {connection.type === "google" || connection.shared ? null : <EnvBadge env={connection.env} />}
         {kind !== connectionTitle(connection) ? <span className="text-xs text-muted">{kind}</span> : null}
         {connection.shared ? <Badge tone="accent">your tool</Badge> : null}
+        {!connection.all_projects && !links.length ? <Badge tone="warn">Not linked to any project</Badge> : null}
         {planLimit(connection) ? <Badge tone="warn">Plan limit</Badge> : connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
         {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
         {left !== null && left <= 14 ? <Badge tone={left <= 7 ? "bad" : "warn"}>{left < 0 ? "key expired" : `key expires in ${left} day${left === 1 ? "" : "s"}`}</Badge> : null}
@@ -405,13 +406,13 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
             ))}
           </>
         ) : (
-          <span className="text-muted">Not linked to a project yet, so no task can use it.</span>
+          <span className="text-muted">Not linked to any project, so no task can use it. Link it to the projects that should.</span>
         )}
       </p>
       <div className="flex flex-wrap gap-2">
         {connection.all_projects ? null : (
           <Button kind={links.length ? "secondary" : "primary"} onClick={() => setLinking(!linking)}>
-            {linking ? "Cancel" : "Link to project…"}
+            {linking ? "Cancel" : links.length ? "Link to project…" : "Link"}
           </Button>
         )}
         <Button kind="ghost" onClick={() => setOpen(!open)}>

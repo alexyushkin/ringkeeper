@@ -45,6 +45,7 @@ def start(session: SessionDep) -> dict[str, Any]:
             "task": steps.task,
             "done": steps.done,
             "dismissed": steps.dismissed,
+            "unlinked": list(steps.unlinked),  # connections linked to no project
         },
         "suggestions": onboarding.suggestions(session, settings),
         "demo": demo.summary(demo.current(session)),

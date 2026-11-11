@@ -5,6 +5,9 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Connections no project uses stand out.** Their card says **Not linked to any project**,
+  with **Link**, and Home's **Get started** counts them ("2 connections aren't linked to any
+  project") until they're linked.
 - **Fixed:** a request from Slack reached the router and the task with Slack's markup in it
   ("<mailto:a@b.com|a@b.com>", "&amp;"). It's plain text now, as you wrote it: a link keeps its
   address, and Discord mentions and Telegram links read as words too.

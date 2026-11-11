@@ -48,10 +48,24 @@ class Checklist:
     connection: bool
     task: bool
     dismissed: bool
+    # Connections no task can use: linked to no project (and not given to all of them).
+    unlinked: tuple[str, ...] = ()
 
     @property
     def done(self) -> bool:
-        return self.claude and self.project and self.connection and self.task
+        return self.claude and self.project and self.connection and self.task and not self.unlinked
+
+
+def unlinked(session: Session) -> list[Instance]:
+    """Connections linked to no project, so no task can use them (the demo's are linked)."""
+    linked = select(ProjectInstance.instance_id)
+    return list(
+        session.scalars(
+            select(Instance)
+            .where(Instance.all_projects.is_(False), Instance.id.not_in(linked))
+            .order_by(Instance.name)
+        )
+    )
 
 
 def checklist(session: Session, claude_ready: bool) -> Checklist:
@@ -68,6 +82,7 @@ def checklist(session: Session, claude_ready: bool) -> Checklist:
         > 0,
         task=count(select(func.count()).select_from(Task)) > 0,
         dismissed=session.get(Setting, DISMISSED_KEY) is not None,
+        unlinked=tuple(i.name for i in unlinked(session)),
     )
 
 
