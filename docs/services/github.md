@@ -27,8 +27,14 @@ typed.
 
 ## Narrowing it
 
-Pin each project to **one repository** (`owner/name`): its tasks can't reach
-the token's other repositories.
+Pin each project to the repositories it needs (`owner/name`; **Add another repository**
+for more than one): its tasks can't reach the token's other repositories. The gateway
+checks every call, a call that leaves the repository out gets it filled in when there's only
+one, and `list_repos` lists only the pinned ones.
+
+Your own GitHub connection (one token for several clients) linked to a client's project
+with no repository pinned says so: "This project could reach every repository this token
+can."
 
 ## Undo
 

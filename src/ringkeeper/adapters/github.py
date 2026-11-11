@@ -5,9 +5,9 @@ the GitHub host: empty for github.com, or a GitHub Enterprise Server address
 (https://github.acme.example), whose API is at /api/v3.
 
 Every repository tool takes `repo` ("owner/name"). A project's link can pin one
-repository (ringkeeper.remote NATIVE): a call naming another is refused, one
-leaving it out gets it filled in, and the tools that work across the whole
-account (list_repos) aren't available on a pinned link.
+repository or several (ringkeeper.remote NATIVE): a call naming another is refused,
+one leaving it out gets it filled in when there's just one, and list_repos lists only
+the pinned ones.
 
 Reading runs. Creating issues and pull requests, comments, changes to issues,
 merges and pushes always wait for approval; nothing here touches a repository's
@@ -163,9 +163,21 @@ def _issue(item: JSON) -> JSON:
 
 @read
 async def list_repos(target: Target, limit: Limit = 30) -> JSON:
-    """The repositories this token can reach (not available on a link pinned to one)."""
-    found = await _call(target, "GET", "/user/repos", params={"per_page": limit, "sort": "updated"})
-    repos = cast(list[JSON], found.get("data") or [])
+    """The repositories this token can reach; on a link pinned to some, only those."""
+    pinned = [r.strip() for r in str(target.scope.get("repo") or "").split(",") if r.strip()]
+    if pinned:
+        found: list[JSON] = []
+        for repo in pinned[:limit]:
+            try:
+                one = await _call(target, "GET", _repo(repo))
+                found.append({"repo": one.get("full_name") or repo, "private": one.get("private")})
+            except ToolError as error:
+                found.append({"repo": repo, "error": str(error)})
+        return {"repos": found}
+    found_all = await _call(
+        target, "GET", "/user/repos", params={"per_page": limit, "sort": "updated"}
+    )
+    repos = cast(list[JSON], found_all.get("data") or [])
     return {"repos": [{"repo": r.get("full_name"), "private": r.get("private")} for r in repos]}
 
 

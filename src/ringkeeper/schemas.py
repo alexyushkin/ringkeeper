@@ -110,12 +110,12 @@ class InstanceIn(_Input):
 
 
 # An ID a link is narrowed to (a Neon project, an Airtable base, a GitHub owner/name):
-# it is sent to the service in calls, so only plain ID characters (and one slash).
+# it is sent to the service in calls, so only plain ID characters (and one slash). A field
+# that takes several (GitHub's repositories) has them comma-separated (remote.check_scope).
+_ID = r"[A-Za-z0-9_.:\-]{1,100}(/[A-Za-z0-9_.:\-]{1,100})?"
 ScopeValue = Annotated[
     str,
-    StringConstraints(
-        strip_whitespace=True, pattern=r"^[A-Za-z0-9_.:\-]{1,100}(/[A-Za-z0-9_.:\-]{1,100})?$"
-    ),
+    StringConstraints(strip_whitespace=True, pattern=rf"^{_ID}(\s*,\s*{_ID}){{0,49}}$"),
 ]
 
 
