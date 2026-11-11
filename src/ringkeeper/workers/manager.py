@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ringkeeper import claude_failures, scrub
 from ringkeeper.adapters import ADAPTERS, agent_name
+from ringkeeper.channels import links
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -82,7 +83,22 @@ REVOKED_BY = "session-manager"
 VOLUME_SWEEP_SECONDS = 3600
 
 
-SUMMARY_CHARS = 4000  # a task's last message, kept as its result
+# A task's last message is its result, kept whole. Past this (a runaway result), it's cut
+# at a line break and says where the rest is: the transcript keeps a result event up to
+# RESULT_EVENT_BYTES whole.
+SUMMARY_CHARS = 200_000
+RESULT_EVENT_BYTES = 2 * 1024 * 1024
+CUT_HERE = "Cut here. The full result is in the transcript"
+
+
+def kept_result(said: str, link: str) -> str:
+    """The whole result; a runaway one cut at a line break, saying where the rest is."""
+    said = said.strip()
+    if len(said) <= SUMMARY_CHARS:
+        return said
+    end = said.rfind("\n", 0, SUMMARY_CHARS)
+    head = said[: end if end > 0 else SUMMARY_CHARS].rstrip()
+    return f"{head}\n\n{CUT_HERE}: [open the task]({link})."
 
 
 @dataclass(frozen=True)
@@ -171,7 +187,8 @@ def resolve_workspace(path: str | None, root: str | None) -> str:
 
 def _cap(payload: dict[str, Any]) -> dict[str, Any]:
     text = json.dumps(payload, default=str)
-    if len(text) <= MAX_EVENT_BYTES:
+    most = RESULT_EVENT_BYTES if payload.get("type") == "sdk.result" else MAX_EVENT_BYTES
+    if len(text) <= most:
         return payload
     return {"type": payload.get("type"), "truncated": True, "preview": text[:4000]}
 
@@ -697,7 +714,7 @@ class Manager:
                 # the architect), shown on its card, its routine run and in channels.
                 said = result.get("result")
                 if not job.feature and not waiting and isinstance(said, str) and said.strip():
-                    task.summary = said.strip()[:SUMMARY_CHARS]
+                    task.summary = kept_result(said, links.task_page(self.settings, task.id))
                 if status is TaskStatus.NOT_DONE:
                     task.offer = link_offer.find(session, task, collected.needs)
                 if job.feature and not waiting:

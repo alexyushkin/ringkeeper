@@ -188,6 +188,16 @@ def _place(owners: dict[str, str], project: str, shown: dict[str, str]) -> str:
     return f"{client} \u203a {title}" if client else title
 
 
+CARD_CHARS = 2000  # a card shows the start of a result; the task's page shows all of it
+
+
+def _preview(text: str | None) -> str | None:
+    if text is None or len(text) <= CARD_CHARS:
+        return text
+    end = text.rfind("\n", 0, CARD_CHARS)
+    return text[: end if end > 0 else CARD_CHARS].rstrip() + "\n…"
+
+
 def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, Any]:
     rows = list(task.sessions)
     session = object_session(task)
@@ -198,7 +208,7 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
         "client": owners.get(task.project),
         "kind": task.kind.value if task.kind else None,
         "phase": task.phase.value if task.phase else None, "outcome": task.outcome,
-        "summary": task.summary, "error": task.error, "plan_limit": task.plan_limit,
+        "summary": _preview(task.summary), "error": task.error, "plan_limit": task.plan_limit,
         "offer": task.offer,
         # Queued behind another task working in the same project folder.
         "waiting_for_folder": bool(session and tasks.waits_for_folder(session, task)),
@@ -260,6 +270,7 @@ def get_task(task_id: str, session: SessionDep) -> dict[str, Any]:
     ).one_or_none()
     return {
         **_task_card(task),
+        "summary": task.summary,  # all of it, not the card's preview
         "prompt": task.prompt, "risk": task.risk.value if task.risk else None,
         "complexity": task.complexity.value if task.complexity else None,
         "branch": task.git_branch, "commit": task.git_commit, "branch_state": task.branch_state,

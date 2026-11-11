@@ -12,6 +12,10 @@ publishes it as the release notes and the app shows it with the update.
   edited go on its branch; a file someone else changed meanwhile stays out, and the task says
   which. See [A task's changes to files](docs/concepts.md#a-tasks-changes-to-files).
 
+- **Fixed:** a task's result was cut at 4,000 characters, so a long table ended mid-row
+  (a 105-row list of workflows stopped at row 60). The task's page now shows the whole result.
+  Task cards and chat messages still show the start, with a link to the rest.
+
 - **Web access is a project setting of its own.** It no longer depends on how independently
   a project works: on the project's Settings tab, **Web access** is on for your own client's
   projects and off for a client's unless you change it. A request that needs the web where
