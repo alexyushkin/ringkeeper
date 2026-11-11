@@ -324,7 +324,7 @@ export function TaskView({ id }: { id: string }) {
           {t.branch && !t.branch_state && !ACTIVE.has(t.status) ? <KeepOrDiscard id={id} branch={t.branch} onDone={task.reload} /> : null}
           {t.branch_state === "kept" ? <p className="text-sm text-good">Kept: these changes were merged into the project&apos;s main branch.</p> : null}
           {t.branch_state === "discarded" ? <p className="text-sm text-muted">Discarded: these changes were thrown away.</p> : null}
-          {t.diff ? <Code>{t.diff}</Code> : <p className="text-sm text-muted">No file changes recorded for this task.</p>}
+          {t.diff ? <Code>{t.diff}</Code> : t.changed_files.length ? null : <p className="text-sm text-muted">No file changes recorded for this task.</p>}
         </div>
       )}
     </>
