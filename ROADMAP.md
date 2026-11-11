@@ -7,6 +7,14 @@ What's being worked on, in order. Dates are targets, not promises.
 
 No new features before launch: only fixes for what turns up in daily use.
 
+## After launch
+
+- **Code tasks in a worktree of their own.** Each code task gets its own git worktree, so
+  several run in the same project at once and none ever touches your checkout.
+- **A recipe for many projects at once.** Apply one recipe to several projects in one go.
+- **A guided new-client flow.** One walk-through to add a client: its projects, its
+  connections, and who approves what.
+
 ## Done in November
 
 - **Provable.** A [self-test](docs/self-test.md) that sends real requests through the real router,
