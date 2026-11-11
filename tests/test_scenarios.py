@@ -114,6 +114,17 @@ def test_a_failed_tool_call_doesn_t_count_as_using_the_tool() -> None:
     assert tool_names([*events, event("sdk.user", refused)]) == ["query"]
 
 
+def test_a_generic_call_is_named_by_the_connection_and_tool_it_reached() -> None:
+    call: dict[str, Any] = {
+        "_kind": "ToolUseBlock", "id": "1", "name": "mcp__ringkeeper-mcp__call_tool",
+        "input": {"instance": "demo-mail", "tool": "list_emails", "arguments": {}},
+    }  # fmt: skip
+    event = SessionEvent(type="sdk.assistant", payload={"message": {"content": [call]}})
+    [name] = tool_names([event])
+    assert "mail" in name
+    assert name == "mcp__ringkeeper-mcp__call_tool demo-mail list_emails"
+
+
 @pytest.mark.usefixtures("database_url")
 @pytest.mark.parametrize("written", ["stock-checker", "Stock Checker", "STOCK CHECKER"])
 def test_a_named_agent_is_found_however_the_model_wrote_it(
