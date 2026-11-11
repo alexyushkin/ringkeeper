@@ -3,6 +3,23 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fixed (found by the self-test):** replying with just a project's name ("Demo site")
+  didn't answer "which project?" when another project's nickname ("demo") was part of it.
+  The most specific name wins now.
+- **The same request isn't started twice.** Sent again while its task is still running or
+  waiting, in the same conversation and project, it replies "Already working on that" with
+  a link, instead of starting the same work again.
+- **Work on one of a client's projects is asked about.** "Add a file to Acme's project
+  folder", with Acme having two projects, now asks which, however sure the router was.
+  Work any of a client's projects would do still goes to its default project.
+- **The router doesn't add limits you didn't state** to a task's instructions (like "don't
+  open any email"), which could stop it doing what you asked.
+- Self-test: declining to touch the other client's data passes in the "pushed to cross"
+  scenarios even when the task then ends "not done"; the demo inbox lists dates; a reply
+  with just a name is sent once per question, and fails plainly if it didn't answer.
+
 ## 0.1.0-beta.35 (2026-11-11)
 
 - **Tasks that don't work on the code don't need a clean folder.** Work with data or

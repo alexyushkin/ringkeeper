@@ -81,20 +81,67 @@ def just_names(session: Session, text: str) -> bool:
     return all(w in FILLER for w in words)
 
 
-def named_project(session: Session, text: str, among: list[str] | None = None) -> str | None:
-    """The one project a short message names, by its title, name or alias, or by its
-    client's name (that client's default or only project). None: none, or more than one."""
+def _core(said: str) -> str:
+    """What's left of a message without filler: "the Demo site one" is "demo site"."""
+    return " ".join(w for w in re.split(r"[\s,.;:!?()\"]+", said) if w and w not in FILLER)
+
+
+def _whole_names(project: Project) -> set[str]:
+    return {n.lower() for n in (project.title, project.name, project.name.replace("-", " ")) if n}
+
+
+def named_in(
+    session: Session, text: str, among: list[str] | None = None
+) -> tuple[list[str], list[str]]:
+    """The projects and clients a message names, the most specific first: a name that sits
+    inside a longer name it also matches doesn't count ("Demo site" names Demo site, not the
+    project with the alias "demo"; "Demo Co's folder" names the client, not that project)."""
     said = _said(text)
     projects = session.scalars(select(Project).order_by(Project.name)).all()
     if among:
         projects = [p for p in projects if p.name in among]
+    hit_projects = {p.name: [n.lower() for n in _names(p) if _mentions(said, n)] for p in projects}
+    hit_projects = {k: v for k, v in hit_projects.items() if v}
+    hit_clients = {
+        c.slug: [n for n in client_names(c) if _mentions(said, n)]
+        for c in session.scalars(select(Client).order_by(Client.slug))
+    }
+    hit_clients = {k: v for k, v in hit_clients.items() if v}
+    every = [(("p", k), n) for k, v in hit_projects.items() for n in v]
+    every += [(("c", k), n) for k, v in hit_clients.items() for n in v]
+
+    def specific(who: tuple[str, str], names: list[str]) -> bool:
+        """Some name of it isn't just part of a longer name something else matches."""
+        return any(
+            not any(other != who and len(m) > len(n) and _mentions(m, n) for other, m in every)
+            for n in names
+        )
+
+    return (
+        [k for k, v in hit_projects.items() if specific(("p", k), v)],
+        [k for k, v in hit_clients.items() if specific(("c", k), v)],
+    )
+
+
+def named_project(session: Session, text: str, among: list[str] | None = None) -> str | None:
+    """The one project a short message names, by its title, name or alias, or by its
+    client's name (that client's default or only project). None: none, or more than one.
+    A project whose whole title or name is the message (besides filler) wins outright."""
+    said = _said(text)
+    projects = session.scalars(select(Project).order_by(Project.name)).all()
+    if among:
+        projects = [p for p in projects if p.name in among]
+    core = _core(said)
+    exact = [p.name for p in projects if core and core in _whole_names(p)]
+    if len(exact) == 1:
+        return exact[0]
     owners = {c.slug: c for c in session.scalars(select(Client))}
-    hits = {p.name for p in projects if any(_mentions(said, n) for n in _names(p))}
+    hits, named_clients = named_in(session, text, among)
     if len(hits) == 1:  # "Alexey, My Project": the project decides
-        return next(iter(hits))
+        return hits[0]
     if hits:
         return None
-    named = [c for c in owners.values() if any(_mentions(said, n) for n in client_names(c))]
+    named = [owners[slug] for slug in named_clients if slug in owners]
     if len(named) != 1:
         return None
     theirs = [p.name for p in projects if clients.key(p.owner) == named[0].slug]
