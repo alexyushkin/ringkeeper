@@ -24,9 +24,14 @@ def mail(end: str) -> FastMCP:
     server: FastMCP = FastMCP("Demo mail")
 
     @server.tool(annotations=READ_ONLY)
-    def list_emails() -> list[str]:  # pyright: ignore[reportUnusedFunction]
-        """The subjects in the inbox."""
-        return ["Supplier price list", "Lunch on Friday?"]
+    def list_emails() -> list[dict[str, str]]:  # pyright: ignore[reportUnusedFunction]
+        """The inbox, newest first: each email's subject, sender and when it arrived."""
+        return [
+            {"subject": "Supplier price list", "from": "orders@supplier.example",
+             "received": "2026-11-06T09:12:00Z"},
+            {"subject": "Lunch on Friday?", "from": "ana@democo.example",
+             "received": "2026-11-05T16:40:00Z"},
+        ]  # fmt: skip
 
     @server.tool(annotations=READ_ONLY)
     def read_email(subject: str) -> str:  # pyright: ignore[reportUnusedFunction]

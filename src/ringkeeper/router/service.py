@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper import claude_failures, sensitive
+from ringkeeper.channels import links
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
@@ -48,6 +49,7 @@ from ringkeeper.models import (
     Project,
     Task,
     TaskRisk,
+    TaskStatus,
 )
 from ringkeeper.names import slug
 from ringkeeper.router import follow_up, self_answer
@@ -213,6 +215,61 @@ def settle_project(
     return task
 
 
+def _which_of_client(
+    session: Session, message: Message, task: RoutedTask, owners: dict[str, str]
+) -> RoutedTask:
+    """A request that names a client but none of its projects, for work on one project's
+    own things, when the client has more than one: asked which, however sure the model was.
+    Work any of its projects would do keeps going to the client's default project."""
+    if task.general or not task.project_specific or task.touches or message.target_project:
+        return task
+    if mentions.find(session, message.body):  # an @-mention decided it
+        return task
+    projects, named = follow_up.named_in(session, message.body)
+    if projects or len(named) != 1 or owners.get(task.project) != named[0]:
+        return task
+    theirs = sorted(p for p, owner in owners.items() if owner == named[0])
+    before = remembered(session, message)
+    if len(theirs) < 2 or before in theirs:  # one project, or asked once in this conversation
+        return task
+    whose = clients.display(session, named[0])
+    return task.model_copy(
+        update={
+            "confidence": 0.0,
+            "alternatives": [
+                Candidate(project=p, confidence=0.0) for p in theirs if p != task.project
+            ],
+            "why": task.why
+            or f"{whose} has {len(theirs)} projects, and this is about one of them.",
+        }
+    )
+
+
+ACTIVE = (TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.WAITING, TaskStatus.NEEDS_INPUT)
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _same_work(session: Session, message: Message, task: RoutedTask) -> Task | None:
+    """This conversation's task already running or waiting for the same request (the same
+    words sent again, or the same work routed), in the same project: not started twice."""
+    for running in session.scalars(
+        select(Task).where(
+            Task.thread_id == message.thread_id,
+            Task.project == task.project,
+            Task.status.in_(ACTIVE),
+        )
+    ):
+        sent = session.get(Message, running.message_id) if running.message_id else None
+        if running.prompt.startswith(task.prompt.strip()) or (
+            sent is not None and sent.id != message.id and _flat(sent.body) == _flat(message.body)
+        ):
+            return running
+    return None
+
+
 def _offer_default(session: Session, task: RoutedTask, owners: dict[str, str]) -> str | None:
     """The client to offer a default project for: asked about work any of its projects
     would do, and none chosen yet."""
@@ -357,8 +414,14 @@ def _route_tasks(
     threshold = settings.router_confidence_threshold
     for found in output.tasks:
         task = settle_project(session, settings, message, _general(session, message, found), owners)
+        task = _which_of_client(session, message, task, owners)
         if task.touches or task.confidence < threshold:
             routed.decisions.append(_ask(session, settings, message, task, owners=owners))
+        elif (same := _same_work(session, message, task)) is not None:
+            link = links.task_page(settings, same.id)
+            routed.notes.append(
+                f"Already working on that: [{titles.of(session, same.project)}]({link})"
+            )
         elif (live := production_connection(session, task)) is not None:
             routed.decisions.append(_ask(session, settings, message, task, live))
         elif no_web(session, task):

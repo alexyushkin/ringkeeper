@@ -182,16 +182,27 @@ class Driver:
                     seen.asked = True
                     seen.times_asked += 1
                 return
-            seen.asked = True
-            seen.times_asked += 1
+            if str(decision.id) not in seen.named:
+                seen.asked = True
+                seen.times_asked += 1
             wanted = scenario.project if isinstance(scenario.project, str) else None
             choice = scenario.pick or wanted or (candidates[0] if candidates else inbox.NO_PROJECT)
             if scenario.answer_by_message and choice != inbox.NO_PROJECT and decision.thread_id:
-                # As a person would in a chat: a new message with just the project's name.
-                threads.post_message(
+                # As a person would in a chat: a new message with just the project's name,
+                # once. Still open once that was routed: it didn't answer, and that's a failure.
+                sent = seen.named.get(str(decision.id))
+                if sent is not None:
+                    said = session.get(Message, uuid.UUID(sent))
+                    if said is not None and (said.routed_at or said.route_error):
+                        seen.name_ignored = True
+                    return
+                seen.asked = True
+                seen.times_asked += 1
+                named = threads.post_message(
                     session, titles.of(session, choice), author=AUTHOR, source="web",
                     thread=str(decision.thread_id),
                 )  # fmt: skip
+                seen.named[str(decision.id)] = str(named.id)
                 return
         self._say(session, str(decision.id), inbox.Answer(choice=choice))
 
@@ -246,7 +257,11 @@ class Driver:
                     if ident not in noted:
                         noted.add(ident)
                         seen.holds.append(f"{decision.tool} on {decision.instance}")
-            open_ones = [d for d in waiting if str(d.id) not in seen.left_open]
+            open_ones = [
+                d for d in waiting
+                if str(d.id) not in seen.left_open
+                and not (seen.name_ignored and str(d.id) in seen.named)
+            ]  # fmt: skip
             calm = not open_ones and all(t.status in RESTING for t in found)
         for ident, instance in holds:
             self._approve(ident, instance, scenario.answer, seen)
