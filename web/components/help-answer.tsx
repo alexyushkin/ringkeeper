@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Markdown } from "@/components/markdown";
-import { Alert, Button, Card, Field, LinkButton } from "@/components/ui";
+import { Alert, Button, Card, LinkButton, TextArea } from "@/components/ui";
 import { api } from "@/lib/client/api";
+import { useSendKeys } from "@/lib/client/use-send-keys";
 
 export interface HelpAnswer {
   text: string;
@@ -81,8 +82,11 @@ export function AskHelp() {
     if (asked) setQuestion(asked);
   }, []);
 
-  async function ask(event: React.FormEvent) {
-    event.preventDefault();
+  const keys = useSendKeys(() => void ask());
+
+  async function ask(event?: React.FormEvent) {
+    event?.preventDefault();
+    if (question.trim().length < 2 || busy) return;
     setBusy(true);
     setError(null);
     const asked = question.trim();
@@ -105,7 +109,7 @@ export function AskHelp() {
     remember([]);
     setQuestion("");
     setError(null);
-    form.current?.querySelector("input")?.focus();
+    form.current?.querySelector("textarea")?.focus();
   }
 
   return (
@@ -121,11 +125,13 @@ export function AskHelp() {
       ))}
       {error ? <Alert>{error}</Alert> : null}
       <form ref={form} onSubmit={ask} className="space-y-3">
-        <Field
+        <TextArea
           label={turns.length ? "Ask a follow-up" : "Ask how something works"}
           value={question}
           onChange={setQuestion}
+          rows={2}
           placeholder={turns.length ? "What should I do next?" : "How do I link a connection to a project?"}
+          keys={keys}
         />
         <div className="flex flex-wrap gap-2">
           <Button type="submit" kind="primary" busy={busy} disabled={question.trim().length < 2}>

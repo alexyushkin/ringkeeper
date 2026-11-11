@@ -6,6 +6,7 @@ import { Alert, Button, Spinner } from "@/components/ui";
 import { VoiceSetup, useLocalVoice } from "@/components/voice";
 import { api, useApi } from "@/lib/client/api";
 import { place, useScope } from "@/lib/client/scope";
+import { useSendKeys } from "@/lib/client/use-send-keys";
 
 type Phase = "idle" | "recording" | "transcribing" | "heard";
 
@@ -112,6 +113,14 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
         .filter((m) => `${m.token} ${m.label}`.toLowerCase().includes(mention.query))
         .slice(0, 8)
     : [];
+
+  // Send with (Settings > General): the same keys as every other box.
+  const keys = useSendKeys(
+    () => {
+      if (text.trim() && later !== "" && !busy) void send(text.trim(), "text");
+    },
+    { mentionOpen: offers.length > 0 },
+  );
 
   function typed(value: string, caret: number) {
     setText(value);
@@ -328,7 +337,7 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
                 return;
               }
             }
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && text.trim()) void send(text.trim(), "text");
+            keys.onKeyDown(event);
           }}
         />
         <input
@@ -414,7 +423,7 @@ export function Composer({ threadId, onSent, autoFocus = false, prefix = "" }: {
         </p>
       ) : null}
       <p className="px-1 text-xs text-muted">
-        {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : "Hold the mic to speak, or drop files here. You'll see what I heard before anything is sent."}
+        {phase === "recording" ? "Listening… release to stop." : phase === "transcribing" ? "Writing down what you said…" : `${keys.hint} · Hold the mic to speak, or drop files here. You'll see what I heard before anything is sent.`}
       </p>
       {error ? <Alert>{error}</Alert> : null}
     </form>

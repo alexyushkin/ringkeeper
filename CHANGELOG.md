@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Choose which key sends: Enter or Ctrl+Enter.** Settings > General > Send with sets it for
+  every box you type in: the request box on Home, the quick request, conversations, **Continue
+  this task**, answers to questions and plans, and Help. Ctrl+Enter is the default, as before,
+  and Cmd+Enter on a Mac. A line under each box says which key sends, Esc leaves the box, and
+  while the @ list is open Enter picks from it. **Continue this task** and answers can now be
+  sent from the keyboard too. Help's box takes more than one line now, so it follows the same
+  choice (before, Enter sent it).
 - **Routing a request can't hang.** Working out where a request goes stops after 90 seconds
   and starts over at once; if that's slow too, the request waits and is tried again later,
   and the conversation says so once. Before, one took more than 6 minutes. After 20 seconds,

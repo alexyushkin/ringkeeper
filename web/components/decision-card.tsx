@@ -9,6 +9,7 @@ import { Alert, Badge, Button, Card, Code, Details, Field, Select, TextArea, Tog
 import { api, useApi } from "@/lib/client/api";
 import { clientName, place, projectName } from "@/lib/client/scope";
 import { taskHref } from "@/lib/client/routes";
+import { useSendKeys } from "@/lib/client/use-send-keys";
 import { KIND } from "@/lib/client/words";
 
 export interface Decision {
@@ -114,6 +115,17 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
   const [busy, setBusy] = useState<string | null>(null);
   const payload = decision.payload ?? {};
   const destructive = typeof payload.destructive === "string" ? payload.destructive : null;
+  // The send key answers a question. On a plan it asks for changes with the note: it
+  // never approves, and nothing here approves a held change.
+  const answerKeys = useSendKeys(() => {
+    if (text.trim() && !busy) void answer(null, text);
+  });
+  const planKeys = useSendKeys(
+    () => {
+      if (text.trim() && !busy) void answer("deny", text);
+    },
+    { verb: "ask for changes" },
+  );
 
   async function trustAndApprove() {
     setBusy("trust");
@@ -262,7 +274,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
           <Details label="Show the agent's instructions">
             <Code>{String(payload.worker_prompt ?? "")}</Code>
           </Details>
-          <TextArea label="Note (optional)" value={text} onChange={setText} rows={2} hint="Sent with your answer, e.g. what to change." />
+          <TextArea label="Note (optional)" value={text} onChange={setText} rows={2} hint="Sent with your answer, e.g. what to change." keys={planKeys} />
           <div className="flex flex-wrap gap-2">
             <span data-approve>
               <Button kind="primary" busy={busy === "approve"} onClick={() => answer("approve", text)}>
@@ -294,7 +306,7 @@ export function DecisionCard({ decision, onDone, inline = false }: { decision: D
             </div>
           ) : (
             <>
-              <TextArea label="Your answer" value={text} onChange={setText} />
+              <TextArea label="Your answer" value={text} onChange={setText} keys={answerKeys} />
               <Button kind="primary" busy={busy === "answer"} disabled={!text.trim()} onClick={() => answer(null, text)}>
                 Answer
               </Button>

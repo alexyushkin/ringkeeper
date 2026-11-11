@@ -10,6 +10,22 @@ Type or hold the mic, choose a client or project if you like, and send. It says
 in Settings › Advanced › Quick request. If another app already uses it, Ringkeeper
 says so and you can pick another.
 
+## Sending with the keyboard
+
+Every box you type in works the same way: the request box on Home, the quick request,
+a conversation, **Continue this task**, answers to questions and plans, and Help.
+Under each box a line says which key sends.
+
+Choose in Settings › General › Send with:
+
+- **Ctrl+Enter** (the default): Enter starts a new line. On a Mac it's **Cmd+Enter**.
+- **Enter**: Shift+Enter starts a new line.
+
+The choice is kept by Ringkeeper, not the browser, so it's the same in every browser you
+open Ringkeeper in. **Esc** leaves the box. While the @ list is open, Enter picks
+from it and nothing is sent. In a plan's note, the key sends it as **Ask for changes**; it
+never approves a plan or a change.
+
 ## Send later
 
 Under the request box on Home, **Send later…** picks a day and time (this computer's

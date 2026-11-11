@@ -16,6 +16,7 @@ import { TaskFiles } from "@/components/task-files";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref, threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
+import { useSendKeys } from "@/lib/client/use-send-keys";
 
 interface Session {
   id: string;
@@ -163,6 +164,10 @@ export function TaskView({ id }: { id: string }) {
   const [resume, setResume] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Continue this task: the send key resumes it.
+  const resumeKeys = useSendKeys(() => {
+    if (resume.trim() && !busy) void act("resume", { prompt: resume });
+  });
 
   const inFlight = useRef(false);
   const again = useRef(false);
@@ -290,7 +295,7 @@ export function TaskView({ id }: { id: string }) {
         </div>
         {RESUMABLE.has(t.status) ? (
           <div className="space-y-2">
-            <TextArea label="Continue this task" value={resume} onChange={setResume} rows={2} hint="Tell it what to do next; it picks up where it left off." />
+            <TextArea label="Continue this task" value={resume} onChange={setResume} rows={2} hint="Tell it what to do next; it picks up where it left off." keys={resumeKeys} />
             <Button busy={busy} disabled={!resume.trim()} onClick={() => act("resume", { prompt: resume })}>
               Resume
             </Button>

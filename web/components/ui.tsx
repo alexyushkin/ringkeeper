@@ -3,6 +3,8 @@
 import Link from "@/components/link";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
+import type { SendKeys } from "@/lib/client/use-send-keys";
+
 /* Small building blocks. Plain language on the surface; technical detail behind "Show details". */
 
 type Tone = "neutral" | "good" | "warn" | "bad" | "accent";
@@ -228,7 +230,8 @@ export function Field({ label, value, onChange, type = "text", placeholder, hint
   );
 }
 
-export function TextArea({ label, value, onChange, rows = 3, hint }: { label: string; value: string; onChange: (v: string) => void; rows?: number; hint?: ReactNode }) {
+/** A box of text. With `keys` (useSendKeys), a key sends it, and the line under it says which. */
+export function TextArea({ label, value, onChange, rows = 3, hint, placeholder, keys }: { label: string; value: string; onChange: (v: string) => void; rows?: number; hint?: ReactNode; placeholder?: string; keys?: SendKeys }) {
   const id = useId();
   return (
     <div className="space-y-1">
@@ -239,10 +242,13 @@ export function TextArea({ label, value, onChange, rows = 3, hint }: { label: st
         id={id}
         rows={rows}
         value={value}
+        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={keys?.onKeyDown}
         className="w-full rounded-xl border border-control bg-surface px-3 py-2 text-base outline-none focus:border-accent"
       />
       {hint ? <p className="text-xs text-muted">{hint}</p> : null}
+      {keys ? <p className="text-xs text-muted">{keys.hint}</p> : null}
     </div>
   );
 }

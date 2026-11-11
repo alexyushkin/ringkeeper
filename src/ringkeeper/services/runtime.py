@@ -15,7 +15,7 @@ from pydantic import AfterValidator, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ringkeeper.config import Effort, Settings, get_settings
+from ringkeeper.config import Effort, SendKey, Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import AuthMode, Setting
 from ringkeeper.schemas import Input, ModelId, WorkspaceId
@@ -81,6 +81,7 @@ class RuntimeIn(Input):
     health_checks: bool | None = None
     hotkey: Annotated[str, Field(min_length=1, max_length=60)] | None = None
     hotkey_enabled: bool | None = None
+    send_key: SendKey | None = None  # the web app's text boxes
     docker_tasks: bool | None = None  # desktop mode only: see PUT /desktop/docker
     start_at_login: bool | None = None  # desktop mode only
     check_updates: bool | None = None  # desktop mode only

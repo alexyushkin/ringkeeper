@@ -482,6 +482,18 @@ def test_settings_change_live_and_reset_to_env(owner: TestClient) -> None:
     assert "changed settings: max_concurrent_workers, telegram_requests" in audit_text()
 
 
+def test_send_key_is_kept_on_the_server(owner: TestClient) -> None:
+    assert owner.get("/settings").json()["values"]["send_key"] == "ctrl-enter"
+    saved = owner.patch("/settings", json={"send_key": "enter"}).json()
+    assert saved["values"]["send_key"] == "enter"
+    assert "send_key" in saved["overridden"]
+    assert owner.get("/settings").json()["values"]["send_key"] == "enter"
+    for bad in ("shift-enter", "", 1):
+        assert owner.patch("/settings", json={"send_key": bad}).status_code == 422
+    reset = owner.patch("/settings", json={"send_key": None}).json()
+    assert reset["values"]["send_key"] == "ctrl-enter"
+
+
 def test_stop_everything_pauses_and_stops_tasks(owner: TestClient, task_registry: None) -> None:
     with session_scope() as session:
         task = tasks.create_task(session, get_settings(), project="acme-web", prompt="go")

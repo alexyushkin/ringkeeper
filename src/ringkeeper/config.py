@@ -21,6 +21,7 @@ def _env_file() -> str | None:
 
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
+SendKey = Literal["enter", "ctrl-enter"]  # what sends from a text box in the web app
 
 
 class Settings(BaseSettings):
@@ -171,6 +172,8 @@ class Settings(BaseSettings):
     health_checks: bool = True  # test every connection once a day (services.health)
     hotkey: str = "Ctrl+Alt+R"  # the quick request box (the desktop shell)
     hotkey_enabled: bool = True
+    # Settings > General > Send with: Ctrl+Enter (Cmd+Enter on a Mac), or Enter alone.
+    send_key: SendKey = "ctrl-enter"
     docker_tasks: bool = False  # desktop: run tasks in Docker (workers.desktop_docker)
     routines_paused: bool = False  # the tray's "Pause all routines" (services.routines)
     # Desktop: a fixed address on this computer for routines' webhooks (the app's own

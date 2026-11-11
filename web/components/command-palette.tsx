@@ -50,6 +50,7 @@ const SETTINGS: [string, string][] = [
   ["notifications", "Notifications (Telegram, Slack, Discord)"],
   ...(DESKTOP ? ([["backup", "Backup and restore"]] as [string, string][]) : []),
   ["advanced", "Advanced"],
+  ["general", "General (send with Enter or Ctrl+Enter)"],
   ["appearance", "Appearance"],
   ["about", "About and updates"],
 ];
