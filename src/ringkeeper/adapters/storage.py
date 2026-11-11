@@ -10,8 +10,9 @@ Vercel Blob isn't S3-compatible: one read-write token, one store, no buckets.
 
     {"provider": "vercel_blob", "token": "vercel_blob_rw_..."}
 
-Listing and reading run. An upload waits for approval; a delete needs the name typed.
-Neither can be undone here. A project's link can be pinned to a bucket and a folder.
+Listing, reading, viewing and saving a copy in the project run. An upload waits for approval; a
+delete needs the name typed. Neither can be undone here. A project's link can be pinned to a
+bucket and a folder.
 """
 
 import base64
@@ -20,6 +21,7 @@ import hashlib
 import hmac
 import json
 import re
+from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal, cast
 from urllib.parse import parse_qsl, quote, urlsplit
 from xml.etree import ElementTree
@@ -28,8 +30,19 @@ import httpx2
 from pydantic import Field
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import rest
-from ringkeeper.adapters.base import JSON, Adapter, Target, ToolError, final, held, read
+from ringkeeper.adapters import extract, files, rest
+from ringkeeper.adapters.base import (
+    JSON,
+    Adapter,
+    Target,
+    ToolError,
+    final,
+    held,
+    read,
+    saves,
+    shows,
+)
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit, page
 from ringkeeper.models import InstanceType
 
 # Tests swap in httpx2.MockTransport; production uses the real network.
@@ -308,25 +321,73 @@ async def list_files(
     return {"files": files, "next_after": root.findtext("NextContinuationToken")}
 
 
-def _content(response: httpx2.Response, key: str) -> JSON:
+async def _download(target: Target, key: str, bucket: str | None) -> tuple[JSON, bytes]:
+    fields = settings(target.secret.reveal())
+    if _is_blob(fields):
+        response = await _blob_read(fields, key)
+    else:
+        response = await _s3(fields, "GET", f"/{_bucket(fields, bucket)}/{key}")
     data = response.content
     kind = response.headers.get("content-type", "")
-    if len(data) > MAX_READ_BYTES:
-        return {"key": key, "size": len(data), "content_type": kind, "too_big_to_show": True}
-    try:
-        return {"key": key, "size": len(data), "content_type": kind, "text": data.decode()}
-    except UnicodeDecodeError:
-        encoded = base64.b64encode(data).decode()
-        return {"key": key, "size": len(data), "content_type": kind, "base64": encoded}
+    return {
+        "key": key,
+        "name": PurePosixPath(key).name,
+        "size": len(data),
+        "content_type": kind,
+    }, data
 
 
 @read
-async def read_file(target: Target, key: Key, bucket: Bucket = None) -> JSON:
-    """Read a file: its text, or base64 if it isn't text. Up to 2 MB."""
-    fields = settings(target.secret.reveal())
-    if _is_blob(fields):
-        return _content(await _blob_read(fields, key), key)
-    return _content(await _s3(fields, "GET", f"/{_bucket(fields, bucket)}/{key}"), key)
+async def read_file(
+    target: Target,
+    key: Key,
+    bucket: Bucket = None,
+    pages: files.Pages = None,
+    inside: files.Inside = None,
+    offset: Offset = 0,
+    limit: PageLimit = PAGE_CHARS,
+) -> JSON:
+    """Read a file: text as it is, the text inside PDF, Word, Excel, PowerPoint and .zip
+    files (a long one starts with its outline: read on with pages=), anything else up to 2 MB
+    as base64. view_file shows a page or a picture as an image."""
+    meta, data = await _download(target, key, bucket)
+    try:
+        found = extract.extract(str(meta["name"]), str(meta["content_type"]), data, inside)
+    except ToolError as error:
+        if inside or len(data) > MAX_READ_BYTES:
+            raise
+        try:  # a kind with no name, that's text all the same
+            return meta | page(data.decode(), offset, limit)
+        except UnicodeDecodeError:
+            return meta | {"base64": base64.b64encode(data).decode(), "read_note": str(error)}
+    return files.text_answer(meta, found, offset, limit, pages, "view_file")
+
+
+@shows
+async def view_file(
+    target: Target,
+    key: Key,
+    bucket: Bucket = None,
+    page: files.PageNumber = 1,
+    picture: files.PictureNumber = None,
+    inside: files.Inside = None,
+) -> JSON:
+    """Look at one page of a PDF, or a picture (a picture file, or one on a slide or in a Word
+    document), as an image: better than its text for a table, a chart or a scan."""
+    meta, data = await _download(target, key, bucket)
+    shown = extract.view(str(meta["name"]), str(meta["content_type"]), data, page, picture, inside)
+    return files.picture_answer(meta, shown)
+
+
+@saves
+async def save_file(
+    target: Target, key: Key, bucket: Bucket = None, inside: files.Inside = None
+) -> JSON:
+    """Save a copy of a file in the project's folder (attachments/), to work on it there.
+    Answers its path. Nothing changes in storage."""
+    meta, data = await _download(target, key, bucket)
+    name, _kind, data = extract.opened(str(meta["name"]), str(meta["content_type"]), data, inside)
+    return await files.save(target.project, name, data)
 
 
 @held
@@ -374,6 +435,14 @@ async def delete_file(target: Target, key: Key, bucket: Bucket = None) -> JSON:
 
 ADAPTER = Adapter(
     service=InstanceType.S3,
-    tools=(list_buckets, list_files, read_file, upload_file, delete_file),
+    tools=(
+        list_buckets,
+        list_files,
+        read_file,
+        view_file,
+        save_file,
+        upload_file,
+        delete_file,
+    ),
     secret_fragments=secret_fragments,
 )

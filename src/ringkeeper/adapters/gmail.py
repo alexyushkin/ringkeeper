@@ -33,7 +33,7 @@ from urllib.parse import quote
 import anyio.to_thread
 from pydantic import Field
 
-from ringkeeper.adapters import extract, mail_text
+from ringkeeper.adapters import extract, files, mail_text
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -42,7 +42,9 @@ from ringkeeper.adapters.base import (
     Undoer,
     final,
     read,
+    saves,
     saves_draft,
+    shows,
 )
 from ringkeeper.adapters.mail import ADDRESS_PATTERN, bulk_reason, delete_draft
 from ringkeeper.adapters.mail_text import (
@@ -52,7 +54,7 @@ from ringkeeper.adapters.mail_text import (
     ThreadLimit,
     ThreadOffset,
 )
-from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit, page
+from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit
 from ringkeeper.models import InstanceType
 
 IMAP_HOST = "imap.gmail.com"
@@ -179,20 +181,51 @@ def attachments_of(message: email.message.EmailMessage) -> list[JSON]:
     return found
 
 
-def attachment_text(
-    message: email.message.EmailMessage, attachment_id: str, offset: int, limit: int
-) -> JSON:
-    """The text of one attachment, in parts."""
+def attachment(message: email.message.EmailMessage, attachment_id: str) -> tuple[JSON, bytes]:
+    """One attachment: its name, type and size, and its bytes."""
     parts = list(message.iter_attachments())
     if not attachment_id.isdigit() or not 1 <= int(attachment_id) <= len(parts):
         raise ToolError(f"this message has no attachment {attachment_id}")
     part = parts[int(attachment_id) - 1]
     name = part.get_filename() or f"attachment {attachment_id}"
     data = cast(bytes | None, part.get_payload(decode=True)) or b""
-    found = extract.extract(name, part.get_content_type(), data)
-    answer = {"name": name, "type": part.get_content_type(), "size": len(data)}
-    answer |= page(found.text, offset, limit)
-    return answer | ({"read_note": found.note} if found.note else {})
+    return {"name": name, "type": part.get_content_type(), "size": len(data)}, data
+
+
+def attachment_text(
+    message: email.message.EmailMessage,
+    attachment_id: str,
+    offset: int,
+    limit: int,
+    pages: str | None = None,
+    inside: str | None = None,
+) -> JSON:
+    """The text of one attachment, in parts."""
+    meta, data = attachment(message, attachment_id)
+    found = extract.extract(str(meta["name"]), str(meta["type"]), data, inside)
+    return files.text_answer(meta, found, offset, limit, pages, "view_attachment")
+
+
+def attachment_view(
+    message: email.message.EmailMessage,
+    attachment_id: str,
+    page: int,
+    picture: int | None,
+    inside: str | None,
+) -> JSON:
+    """One page or picture of an attachment, as an image."""
+    meta, data = attachment(message, attachment_id)
+    shown = extract.view(str(meta["name"]), str(meta["type"]), data, page, picture, inside)
+    return files.picture_answer(meta, shown)
+
+
+def attachment_file(
+    message: email.message.EmailMessage, attachment_id: str, inside: str | None
+) -> tuple[str, bytes]:
+    """An attachment's name and bytes, or a file's inside it, to save."""
+    meta, data = attachment(message, attachment_id)
+    name, _kind, data = extract.opened(str(meta["name"]), str(meta["type"]), data, inside)
+    return name, data
 
 
 def thread_key(message: email.message.EmailMessage) -> list[str]:
@@ -366,21 +399,73 @@ async def read_attachment(
     uid: Uid,
     attachment_id: AttachmentId,
     mailbox: Mailbox = "inbox",
+    pages: files.Pages = None,
+    inside: files.Inside = None,
     offset: Offset = 0,
     limit: PageLimit = PAGE_CHARS,
 ) -> JSON:
-    """Read the text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR is
-    installed. Long ones come in parts, like get_message."""
+    """Read one attachment's text: PDF, Word, Excel, PowerPoint, CSV, text, an attached email or
+    a .zip (`inside` reads a file in it), and pictures where OCR is installed. A long file
+    starts with its outline: read on with pages=. view_attachment shows a page as an image."""
 
     def run() -> JSON:
         conn = _imap(target)
         try:
             _select(conn, mailbox)
-            return attachment_text(_open(conn, uid, mailbox), attachment_id, offset, limit)
+            message = _open(conn, uid, mailbox)
+            return attachment_text(message, attachment_id, offset, limit, pages, inside)
         finally:
             conn.logout()
 
     return await _blocking(run)
+
+
+@shows
+async def view_attachment(
+    target: Target,
+    uid: Uid,
+    attachment_id: AttachmentId,
+    mailbox: Mailbox = "inbox",
+    page: files.PageNumber = 1,
+    picture: files.PictureNumber = None,
+    inside: files.Inside = None,
+) -> JSON:
+    """Look at one page of an attached PDF, or a picture (attached, or on a slide or in a Word
+    document), as an image: better than its text for a table, a chart or a scan."""
+
+    def run() -> JSON:
+        conn = _imap(target)
+        try:
+            _select(conn, mailbox)
+            message = _open(conn, uid, mailbox)
+            return attachment_view(message, attachment_id, page, picture, inside)
+        finally:
+            conn.logout()
+
+    return await _blocking(run)
+
+
+@saves
+async def save_attachment(
+    target: Target,
+    uid: Uid,
+    attachment_id: AttachmentId,
+    mailbox: Mailbox = "inbox",
+    inside: files.Inside = None,
+) -> JSON:
+    """Save a copy of an attachment in the project's folder (attachments/), to work on it there.
+    Answers its path. Nothing changes in the mailbox."""
+
+    def run() -> tuple[str, bytes]:
+        conn = _imap(target)
+        try:
+            _select(conn, mailbox)
+            return attachment_file(_open(conn, uid, mailbox), attachment_id, inside)
+        finally:
+            conn.logout()
+
+    name, data = await anyio.to_thread.run_sync(run)
+    return await files.save(target.project, name, data)
 
 
 @read
@@ -538,6 +623,9 @@ create_draft = replace(create_draft, undo=DraftUndo())
 
 ADAPTER = Adapter(
     service=InstanceType.GMAIL,
-    tools=(search_messages, get_message, read_attachment, get_thread, create_draft, send_email),
+    tools=(
+        search_messages, get_message, read_attachment, view_attachment, save_attachment,
+        get_thread, create_draft, send_email,
+    ),
     secret_fragments=secret_fragments,
-)
+)  # fmt: skip

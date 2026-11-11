@@ -9,7 +9,9 @@ stops working mid-session. Everything about the caller comes from the token;
 the tool call then goes through `services.calls.run_call`.
 """
 
+import base64
 import inspect
+import json
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -21,7 +23,9 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError as McpToolError
 from fastmcp.server.dependencies import get_http_request
 from fastmcp.server.http import StarletteWithLifespan
-from mcp_types import ToolAnnotations
+from fastmcp.tools.base import ToolResult
+from fastmcp.tools.function_tool import FunctionTool
+from mcp_types import ImageContent, TextContent, ToolAnnotations
 from pydantic import Field
 from starlette.applications import Starlette
 from starlette.datastructures import Headers
@@ -32,7 +36,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ringkeeper import __version__
 from ringkeeper.adapters import ADAPTERS, agent_name
-from ringkeeper.adapters.base import Adapter, ToolError, ToolKind, ToolSpec
+from ringkeeper.adapters.base import IMAGE, Adapter, Image, ToolError, ToolKind, ToolSpec
 from ringkeeper.adapters.paging import PAGE_CHARS, Offset, PageLimit
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
@@ -42,6 +46,7 @@ from ringkeeper.gateway import model_proxy
 from ringkeeper.gateway.approvals import approval_loop
 from ringkeeper.gateway.architect import build_architect_server
 from ringkeeper.gateway.arguments import CheckedArguments
+from ringkeeper.gateway.listing import ListedTools, lean
 from ringkeeper.gateway.memory import build_memory_server
 from ringkeeper.gateway.pass_server import build_pass_server
 from ringkeeper.keys import load_master_key
@@ -60,14 +65,11 @@ from ringkeeper.vault import Vault, get_vault
 CALLER_KEY = "ringkeeper_caller"
 
 InstanceArg = Annotated[
-    str | None,
-    Field(
-        description=(
-            "Instance to act on. Optional for reads (the project's default is used); "
-            "required for writes."
-        )
-    ),
+    str | None, Field(description="The connection to use; reads may leave it out for the default.")
 ]
+# After every write's own help. The result says more when a call is held, and so do the
+# worker's instructions: this only needs to say it may happen.
+WRITE_NOTE = "[write] Name the instance. It may wait for the user's approval."
 
 
 def _pass_caller(token: str) -> Caller:
@@ -155,13 +157,21 @@ def current_caller() -> Caller:
 
 
 def _agent_description(spec: ToolSpec) -> str:
-    if spec.kind is ToolKind.READ:
-        return f"{spec.description}\n\n[read]"
-    return (
-        f"{spec.description}\n\n[write] Name the instance explicitly. It may be held for the "
-        "user's approval; the result then says so. Don't ask about it: end your turn, and "
-        "you're resumed with the outcome."
+    """A tool's help as one paragraph: a docstring's line breaks and indents only cost tokens."""
+    said = " ".join(spec.description.split())
+    return said if spec.kind is ToolKind.READ else f"{said} {WRITE_NOTE}"
+
+
+def _answer(result: dict[str, Any]) -> dict[str, Any] | ToolResult:
+    """A picture in the result goes as MCP image content, beside the rest as text."""
+    image = result.pop(IMAGE, None)
+    if not isinstance(image, Image):
+        return result
+    shown = ImageContent(
+        type="image", data=base64.b64encode(image.data).decode("ascii"), mime_type=image.mime
     )
+    text = TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))
+    return ToolResult(content=[text, shown])
 
 
 def make_tool(service: InstanceType, spec: ToolSpec, vault: Vault) -> Callable[..., Awaitable[Any]]:
@@ -178,11 +188,11 @@ def make_tool(service: InstanceType, spec: ToolSpec, vault: Vault) -> Callable[.
         )
     )
 
-    async def tool(**kwargs: Any) -> dict[str, Any]:
+    async def tool(**kwargs: Any) -> dict[str, Any] | ToolResult:
         instance = kwargs.pop("instance", None)
         call = ToolCall(current_caller(), service, spec.name, instance, kwargs)
         try:
-            return await run_call(call, vault)
+            return _answer(await run_call(call, vault))
         except RingkeeperError as error:
             # Shown to the agent verbatim, so it can relay the refusal.
             raise McpToolError(scrub(str(error))) from None
@@ -207,6 +217,7 @@ def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
         mask_error_details=True,  # unexpected exceptions never reach the agent
     )
     server.add_middleware(CheckedArguments(adapter.tools))
+    server.add_middleware(ListedTools(adapter, current_caller))
 
     async def list_instances() -> dict[str, Any]:
         """List the instances your project can use, on every service: name, type, env,
@@ -240,14 +251,17 @@ def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
         )
     for spec in adapter.tools:
         is_read = spec.kind is ToolKind.READ
-        server.tool(
+        made = FunctionTool.from_function(
             make_tool(adapter.service, spec, vault),
             name=spec.name,
             description=_agent_description(spec),
             annotations=ToolAnnotations(
                 read_only_hint=is_read, destructive_hint=not is_read, open_world_hint=True
             ),
+            # One that can answer with a picture has no output schema: its answer is content.
+            **({"output_schema": None} if spec.shows else {}),
         )
+        server.add_tool(made.model_copy(update={"parameters": lean(made.parameters)}))
     return server
 
 

@@ -31,7 +31,7 @@ import anyio.to_thread
 from pydantic import Field
 
 from ringkeeper import netpolicy
-from ringkeeper.adapters import mail, mail_text, smtp
+from ringkeeper.adapters import files, mail, mail_text, smtp
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -42,11 +42,15 @@ from ringkeeper.adapters.base import (
     final,
     held,
     read,
+    saves,
     saves_draft,
+    shows,
 )
 from ringkeeper.adapters.gmail import (
     ADDRESS_PATTERN,
+    attachment_file,
     attachment_text,
+    attachment_view,
     attachments_of,
     fetched,
     header_of,
@@ -340,17 +344,62 @@ async def read_attachment(
     uid: Uid,
     attachment_id: AttachmentId,
     folder: Folder = "INBOX",
+    pages: files.Pages = None,
+    inside: files.Inside = None,
     offset: Offset = 0,
     limit: PageLimit = PAGE_CHARS,
 ) -> JSON:
-    """Read the text of one attachment: PDF, Word, Excel, CSV, text, and pictures where OCR is
-    installed. Long ones come in parts, like get_message."""
+    """Read one attachment's text: PDF, Word, Excel, PowerPoint, CSV, text, an attached email or
+    a .zip (`inside` reads a file in it), and pictures where OCR is installed. A long file
+    starts with its outline: read on with pages=. view_attachment shows a page as an image."""
 
     def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
         _select(conn, folder)
-        return attachment_text(_open(conn, uid, folder), attachment_id, offset, limit)
+        message = _open(conn, uid, folder)
+        return attachment_text(message, attachment_id, offset, limit, pages, inside)
 
     return await _session(target, work)
+
+
+@shows
+async def view_attachment(
+    target: Target,
+    uid: Uid,
+    attachment_id: AttachmentId,
+    folder: Folder = "INBOX",
+    page: files.PageNumber = 1,
+    picture: files.PictureNumber = None,
+    inside: files.Inside = None,
+) -> JSON:
+    """Look at one page of an attached PDF, or a picture (attached, or on a slide or in a Word
+    document), as an image: better than its text for a table, a chart or a scan."""
+
+    def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
+        _select(conn, folder)
+        message = _open(conn, uid, folder)
+        return attachment_view(message, attachment_id, page, picture, inside)
+
+    return await _session(target, work)
+
+
+@saves
+async def save_attachment(
+    target: Target,
+    uid: Uid,
+    attachment_id: AttachmentId,
+    folder: Folder = "INBOX",
+    inside: files.Inside = None,
+) -> JSON:
+    """Save a copy of an attachment in the project's folder (attachments/), to work on it there.
+    Answers its path. Nothing changes in the mailbox."""
+
+    def work(conn: imaplib.IMAP4, _fields: JSON) -> JSON:
+        _select(conn, folder)
+        name, data = attachment_file(_open(conn, uid, folder), attachment_id, inside)
+        return {"name": name, "data": data}
+
+    found = await _session(target, work)
+    return await files.save(target.project, str(found["name"]), cast(bytes, found["data"]))
 
 
 @read
@@ -521,7 +570,8 @@ create_draft = replace(create_draft, undo=DraftUndo())
 ADAPTER = Adapter(
     service=InstanceType.MAILBOX,
     tools=(
-        list_folders, search_messages, get_message, read_attachment, get_thread, create_draft,
+        list_folders, search_messages, get_message, read_attachment, view_attachment,
+        save_attachment, get_thread, create_draft,
         send_email, send_test_email,
         move_message, delete_message,
     ),

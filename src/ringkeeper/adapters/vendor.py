@@ -15,6 +15,7 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import inspect
 import json
 import logging
 import re
@@ -40,9 +41,11 @@ from ringkeeper.adapters.base import (
     read,
 )
 from ringkeeper.adapters.vendor_spec import (
+    CONTENT,
     DRAFT,
     FINAL,
     PLACEHOLDER,
+    PROJECT,
     READ,
     Auth,
     Money,
@@ -79,6 +82,8 @@ SEGMENT_CHARS = frozenset(
 )
 # Tests swap in httpx2.MockTransport; production talks to the vendor.
 transport: httpx2.AsyncBaseTransport | None = None
+MOST_DOWNLOADED = 50_000_000  # of a file fetched to read, show or save
+MOVED = frozenset({301, 302, 303, 307, 308})
 _exchanged: dict[str, tuple[str, float]] = {}  # the keys' hash: (token, when it ends)
 
 for _vendor in ALL:
@@ -368,10 +373,41 @@ async def run(
     used = vendor.meter(op, values, sent) if vendor.meter else 0
     try:
         token = _token_for(vendor, fields, account)
-        return await _send(vendor, op, client, address, values, sent, token)
+        answer = await _send(vendor, op, client, address, values, sent, token)
+        if op.download:
+            content = _client(vendor, fields, account)
+            data = await _download(vendor, content, address + op.download, answer)
+            return answer | {CONTENT: data}
+        return answer
     finally:
         if used:
             await _metered(fields, used)
+
+
+async def _download(vendor: Vendor, client: httpx2.AsyncClient, address: str, meta: JSON) -> bytes:
+    """A file's content. A service that answers with a link to it (Microsoft's signed links)
+    is followed there once, without the connection's key: the link is all it takes."""
+    name = meta.get("name")
+    if "folder" in meta:
+        raise ToolError(f"'{name}' is a folder: list what's in it instead")
+    if int(meta.get("size") or 0) > MOST_DOWNLOADED:
+        raise ToolError(f"'{name}' is too large to fetch here ({int(meta['size']):,} bytes)")
+    try:
+        async with client:
+            response = await client.get(address)
+        moved = response.headers.get("location", "")
+        if response.status_code in MOVED and moved.startswith("https://"):
+            async with httpx2.AsyncClient(timeout=rest.TIMEOUT, transport=transport) as plain:
+                response = await plain.get(moved)
+    except httpx2.TimeoutException:
+        raise ToolError(f"{vendor.name} timed out") from None
+    except httpx2.HTTPError as error:
+        raise ToolError(f"cannot reach {vendor.name}: {type(error).__name__}") from None
+    if response.status_code >= 300:
+        raise ToolError(f"{vendor.name} returned {response.status_code} for the file's content")
+    if len(response.content) > MOST_DOWNLOADED:
+        raise ToolError(f"'{meta.get('name')}' is too large to fetch here")
+    return response.content
 
 
 def _token_for(vendor: Vendor, fields: JSON, account: str | None) -> JSON:
@@ -489,8 +525,10 @@ async def _call_operation(
     if op.confirm is not None:
         await op.confirm(_reader(vendor, fields, account), path or {}, body or {}, account)
     answer = await run(vendor, op, fields, path, values, body, account)
-    # A long answer is read in parts: services.continuations.
-    return op.after(answer, local) if op.after is not None else answer
+    if op.after is None:
+        return answer  # a long one is read in parts: services.continuations
+    made = op.after(answer, local | {PROJECT: target.project})
+    return await made if inspect.isawaitable(made) else made
 
 
 def _object(value: Any) -> Any:
@@ -738,6 +776,12 @@ def _holds(args: JSON) -> Hold:
     return Hold.DRAFT if found is not None and found[1].level == DRAFT else Hold.ALWAYS
 
 
+def _audited(target: Target, args: JSON) -> bool:
+    """A read that shows a picture or saves a file is in the audit log too."""
+    found = operation(str(args.get("operation") or ""))
+    return found is not None and found[1].audited
+
+
 call_operation = ToolSpec(
     name="call_operation",
     kind=ToolKind.WRITE,  # the careful answer; _classify decides per call
@@ -750,6 +794,8 @@ call_operation = ToolSpec(
     typed=typed_reason,
     names=_names,
     tidy=tidied,
+    logged=_audited,
+    shows=True,  # an operation can answer with a picture
 )
 
 
@@ -762,7 +808,9 @@ async def probe(target: Target) -> str:
     op = next(o for o in vendor.ops if o.name == vendor.probe)
     asked = op.prepare({}, {}) if op.prepare is not None else None
     found = await run(vendor, op, fields, query=asked)
-    found = op.after(found, {}) if op.after is not None else found
+    if op.after is not None:
+        made = op.after(found, {})
+        found = await made if inspect.isawaitable(made) else made
     return f"Connected to {vendor.name}" + (f": {vendor.who(found)}." if vendor.who else ".")
 
 
