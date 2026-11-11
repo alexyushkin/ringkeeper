@@ -21,6 +21,23 @@ export interface ScopeField {
   key: string;
   label: string;
   hint: string;
+  many?: boolean; // several values, comma-separated (GitHub's repositories)
+}
+
+/** What a connection is, for the warning below: its kind, and whether it's your own tool. */
+export interface Reach {
+  type: string;
+  shared?: boolean;
+  owner?: string;
+}
+
+export const EVERY_REPO = "This project could reach every repository this token can.";
+
+/** A shared GitHub connection linked without a repository pinned reaches everything its
+ * token can, in every client's project it's linked to. */
+export function reachesEverything(connection: Reach | undefined, scope: Record<string, string>): boolean {
+  const shared = Boolean(connection?.shared) || connection?.owner === "you";
+  return connection?.type === "github" && shared && !(scope.repo ?? "").trim();
 }
 
 export interface RemoteService {
@@ -66,18 +83,60 @@ export function serviceName(connection: LibraryConnection, services: RemoteServi
 }
 
 export function scopeText(scope: Record<string, string>, fields: ScopeField[] = []): string {
-  const parts = Object.entries(scope).map(([key, value]) => `${fields.find((f) => f.key === key)?.label ?? key} ${value}`);
+  const parts = Object.entries(scope).map(([key, value]) => {
+    const field = fields.find((f) => f.key === key);
+    const several = value.split(",").map((v) => v.trim()).filter(Boolean);
+    if (field?.many && several.length > 1) return `${several.length} ${field.label.toLowerCase() === "repository" ? "repositories" : `${field.label.toLowerCase()}s`} (${several.join(", ")})`;
+    return `${field?.label ?? key} ${several.join(", ") || value}`;
+  });
   return parts.length ? `limited to ${parts.join(", ")}` : "the whole connection";
 }
 
-export function ScopeInputs({ fields, value, onChange }: { fields: ScopeField[]; value: Record<string, string>; onChange: (next: Record<string, string>) => void }) {
+export function ScopeInputs({ fields, value, onChange, connection }: { fields: ScopeField[]; value: Record<string, string>; onChange: (next: Record<string, string>) => void; connection?: Reach }) {
   if (!fields.length) return null;
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">Narrow what this project can reach. Leave empty for all of it.</p>
-      {fields.map((field) => (
-        <Field key={field.key} label={field.label} value={value[field.key] ?? ""} onChange={(v) => onChange({ ...value, [field.key]: v.trim() })} hint={field.hint} />
+      {fields.map((field) =>
+        field.many ? (
+          <Several key={field.key} field={field} value={value[field.key] ?? ""} onChange={(v) => onChange({ ...value, [field.key]: v })} />
+        ) : (
+          <Field key={field.key} label={field.label} value={value[field.key] ?? ""} onChange={(v) => onChange({ ...value, [field.key]: v.trim() })} hint={field.hint} />
+        ),
+      )}
+      {reachesEverything(connection, value) ? <p className="text-xs text-warn">{EVERY_REPO}</p> : null}
+    </div>
+  );
+}
+
+/** A field that takes several values (comma-separated when saved): one box each, and
+ * "Add another repository". */
+function Several({ field, value, onChange }: { field: ScopeField; value: string; onChange: (next: string) => void }) {
+  const [rows, setRows] = useState<string[]>(() => {
+    const found = value.split(",").map((v) => v.trim()).filter(Boolean);
+    return found.length ? found : [""];
+  });
+  const set = (next: string[]) => {
+    setRows(next);
+    onChange(next.map((v) => v.trim()).filter(Boolean).join(","));
+  };
+  return (
+    <div className="space-y-2">
+      {rows.map((row, i) => (
+        <div key={i} className="flex items-end gap-2">
+          <div className="flex-1">
+            <Field label={i ? `${field.label} ${i + 1}` : field.label} value={row} onChange={(v) => set(rows.map((r, j) => (j === i ? v : r)))} hint={i ? undefined : field.hint} />
+          </div>
+          {rows.length > 1 ? (
+            <Button kind="ghost" onClick={() => set(rows.filter((_, j) => j !== i))} label={`Remove ${row || "this one"}`}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
       ))}
+      <Button kind="ghost" onClick={() => setRows([...rows, ""])}>
+        Add another {field.label.toLowerCase()}
+      </Button>
     </div>
   );
 }
@@ -125,12 +184,13 @@ function LinkRow({ connection, link, onChange }: { connection: LibraryConnection
       </div>
       {editing ? (
         <div className="space-y-2">
-          <ScopeInputs fields={fields} value={scope} onChange={setScope} />
+          <ScopeInputs fields={fields} value={scope} onChange={setScope} connection={connection} />
           <Button kind="primary" onClick={() => save(scope)}>
             Save
           </Button>
         </div>
       ) : null}
+      {!editing && reachesEverything(connection, link.scope) ? <p className="text-xs text-warn">{EVERY_REPO} Narrow it to the repositories it needs.</p> : null}
       {error ? <Alert>{error}</Alert> : null}
     </li>
   );
@@ -200,7 +260,7 @@ export function LinkToProjects({ connection, projects, onDone }: { connection: L
           </label>
           {project in picked && fields.length ? (
             <div className="ml-6">
-              <ScopeInputs fields={fields} value={picked[project] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [project]: scope }))} />
+              <ScopeInputs fields={fields} value={picked[project] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [project]: scope }))} connection={connection} />
             </div>
           ) : null}
         </div>

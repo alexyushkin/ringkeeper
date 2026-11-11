@@ -11,12 +11,13 @@ from typing import Any
 
 import httpx2
 import pytest
+from sqlalchemy import select
 
 from ringkeeper.adapters import github
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import InstanceType
+from ringkeeper.models import InstanceType, ProjectInstance
 from ringkeeper.services import bindings, instances, secrets_in
 from ringkeeper.services.calls import RefusalError, approve, run_call
 from ringkeeper.vault import get_vault
@@ -145,6 +146,47 @@ def test_the_checks_on_the_default_branch_s_latest_commit(
         call("acme-web", "list_check_runs", "acme-gh", repo="globex/app")
 
 
+def test_a_link_pinned_to_several_repositories(
+    world: tuple[FakeGitHub, FakeGit, dict[str, Path]],
+) -> None:
+    fake, _, _ = world
+    bind("acme-web", "acme-gh", scope={"repo": "acme-inc/website, acme-inc/api"}, is_default=True)
+    with session_scope() as session:
+        stored = (
+            session.scalars(
+                select(ProjectInstance).where(
+                    ProjectInstance.instance_id == instances.get_instance(session, "acme-gh").id
+                )
+            )
+            .one()
+            .scope
+        )
+    assert stored == {"repo": "acme-inc/website,acme-inc/api"}
+    assert (
+        call("acme-web", "list_issues", repo="acme-inc/api")["issues"][0]["title"]
+        == "in acme-inc/api"
+    )
+    assert call("acme-web", "list_issues", repo="ACME-INC/Website")["issues"]  # as GitHub: any case
+    with pytest.raises(
+        RefusalError, match="limited to the repositories 'acme-inc/website', 'acme-inc/api'"
+    ):
+        call("acme-web", "list_issues", repo="globex/app")
+    with pytest.raises(RefusalError, match="name one as repo"):
+        call("acme-web", "list_issues")  # which one isn't guessed
+    listed = call("acme-web", "list_repos")["repos"]
+    assert [r["repo"] for r in listed] == ["acme-inc/website", "acme-inc/api"]
+    del fake
+
+
+def test_only_github_takes_several_values() -> None:
+    from ringkeeper import remote  # noqa: PLC0415
+
+    github_spec = remote.NATIVE["github"]
+    assert remote.check_scope(github_spec, {"repo": " a/b , c/d , a/b "}) == {"repo": "a/b,c/d"}
+    with pytest.raises(remote.ScopeError, match="Only one airtable base"):
+        remote.check_scope(remote.NATIVE["airtable"], {"base": "app1,app2"})
+
+
 def test_two_projects_two_tokens_never_cross(
     world: tuple[FakeGitHub, FakeGit, dict[str, Path]],
 ) -> None:
@@ -161,8 +203,11 @@ def test_two_projects_two_tokens_never_cross(
         call("acme-web", "list_issues", "globex-gh", repo="globex/app")
     with pytest.raises(RefusalError, match="not available to project 'globex-app'"):
         call("globex-app", "list_issues", "acme-gh")
-    with pytest.raises(RefusalError, match="whole GitHub account"):
-        call("acme-web", "list_repos", "acme-gh")
+    # list_repos lists only the pinned repository, not every one the token reaches.
+    assert call("acme-web", "list_repos", "acme-gh")["repos"] == [
+        {"repo": "acme-inc/website", "private": None}
+    ]
+    assert not any(url.endswith("/user/repos?per_page=30&sort=updated") for *_, url in fake.seen)
     with (
         session_scope() as session,
         pytest.raises(RuleViolationError, match="only be used by that client's projects"),

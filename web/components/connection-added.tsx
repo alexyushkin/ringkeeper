@@ -137,7 +137,7 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
               </label>
               {p.name in picked && fields.length ? (
                 <div className="ml-6">
-                  <ScopeInputs fields={fields} value={picked[p.name] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [p.name]: scope }))} />
+                  <ScopeInputs fields={fields} value={picked[p.name] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [p.name]: scope }))} connection={connection} />
                 </div>
               ) : null}
             </div>

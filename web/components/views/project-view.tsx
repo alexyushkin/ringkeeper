@@ -4,7 +4,7 @@ import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
+import { EVERY_REPO, reachesEverything, ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
 import { Catalog, ServiceMark } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { connectionTitle } from "@/components/connection-form";
@@ -67,12 +67,13 @@ function BoundRow({ project, instance, shared, fields, onChange }: { project: st
       </div>
       {editing ? (
         <div className="space-y-2">
-          <ScopeInputs fields={fields} value={scope} onChange={setScope} />
+          <ScopeInputs fields={fields} value={scope} onChange={setScope} connection={instance} />
           <Button kind="primary" onClick={() => put({ is_default: instance.is_default, scope: Object.fromEntries(Object.entries(scope).filter(([, v]) => v)) })}>
             Save
           </Button>
         </div>
       ) : null}
+      {!editing && reachesEverything(instance, instance.scope ?? {}) ? <p className="text-xs text-warn">{EVERY_REPO} Narrow it to the repositories it needs.</p> : null}
       {error ? <Alert>{error}</Alert> : null}
     </div>
   );
@@ -176,7 +177,7 @@ export function ProjectView({ name }: { name: string }) {
                   </label>
                   {c.name in picked && (c.scope_fields ?? []).length ? (
                     <div className="ml-6">
-                      <ScopeInputs fields={c.scope_fields ?? []} value={picked[c.name] ?? {}} onChange={(next) => setPicked((all) => ({ ...all, [c.name]: next }))} />
+                      <ScopeInputs fields={c.scope_fields ?? []} value={picked[c.name] ?? {}} onChange={(next) => setPicked((all) => ({ ...all, [c.name]: next }))} connection={c} />
                     </div>
                   ) : null}
                 </div>

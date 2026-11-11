@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A GitHub link can be pinned to several repositories.** On the same screen, **Add another
+  repository**. Every call is checked against the list, and listing repositories shows only
+  those. Your own GitHub connection linked to a project with no repository pinned now warns:
+  "This project could reach every repository this token can."
 - **Connections no project uses stand out.** Their card says **Not linked to any project**,
   with **Link**, and Home's **Get started** counts them ("2 connections aren't linked to any
   project") until they're linked.
