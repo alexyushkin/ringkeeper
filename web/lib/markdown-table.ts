@@ -56,6 +56,21 @@ export function readTable(lines: string[], at: number): { head: string[]; rows: 
 }
 
 /** The text without its tables and code blocks: for a one-line preview. */
+/** A report's main table: the one with the most rows (the first of those), or null when
+ * there's none. A self-test report's summary comes before its table of scenarios. */
+export function mainTable(text: string): { head: string[]; rows: string[][] } | null {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  let found: { head: string[]; rows: string[][] } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (startsTable(lines, i)) {
+      const { head, rows, next } = readTable(lines, i);
+      if (!found || rows.length > found.rows.length) found = { head, rows };
+      i = next - 1;
+    }
+  }
+  return found;
+}
+
 export function withoutTables(text: string): string {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];

@@ -13,7 +13,16 @@ from ringkeeper.claude_auth import credential_ref
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.schemas import Input
-from ringkeeper.services import admin_audit, claude_place, demo, onboarding, report, setup_check
+from ringkeeper.services import (
+    admin_audit,
+    claude_place,
+    demo,
+    onboarding,
+    report,
+    run_reports,
+    setup_check,
+    task_files,
+)
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
@@ -167,3 +176,30 @@ def setup_check_stop(session: SessionDep) -> dict[str, Any]:
 def setup_check_archive(session: WriteSessionDep) -> dict[str, int]:
     """Archive every conversation Check my setup started, and their tasks."""
     return {"archived": setup_check.archive(session, by=OWNER)}
+
+
+# --- Their reports, and the Self-test's (services.run_reports) ---
+
+
+@router.get("/run-reports/{kind}")
+def run_reports_listed(kind: run_reports.Kind) -> list[dict[str, Any]]:
+    """Every report Check my setup (or the Self-test) kept, newest first."""
+    return list(run_reports.listed(current_settings(), kind))
+
+
+@router.get("/run-reports/{kind}/{day}")
+def run_report(kind: run_reports.Kind, day: str) -> dict[str, str]:
+    """One day's report, to read again."""
+    return {"day": day, "report": run_reports.read(current_settings(), kind, day)}
+
+
+@router.post("/run-reports/{kind}/{day}/show")
+def show_run_report(kind: run_reports.Kind, day: str) -> dict[str, bool]:
+    """Desktop: show the report's file in its folder (with the earlier ones)."""
+    settings = current_settings()
+    if settings.mode != "desktop":
+        raise HTTPException(
+            422, detail="Files open on the computer Ringkeeper runs on: only in the desktop app."
+        )
+    task_files.show(run_reports.path(settings, kind, day), reveal=True)
+    return {"ok": True}

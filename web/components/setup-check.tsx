@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { Markdown } from "@/components/markdown";
-import { Alert, Button, ConfirmButton, Details, Section, Spinner } from "@/components/ui";
+import { RunReports } from "@/components/run-reports";
+import { Alert, Button, ConfirmButton, Section, Spinner } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
 type Progress = { done: number; total: number; current: string | null };
@@ -88,9 +89,7 @@ export function SetupCheck() {
         ) : null}
         {archived !== null ? <p className="text-muted">Archived {archived} conversation{archived === 1 ? "" : "s"}. They stay searchable.</p> : null}
         {status.data?.report ? (
-          <Details label={`Report from ${day}`}>
-            <Markdown text={status.data.report} className="text-sm" />
-          </Details>
+          <RunReports kind="setup-check" title="Check my setup" latest={status.data.report} day={day ?? ""} />
         ) : null}
       </div>
     </Section>

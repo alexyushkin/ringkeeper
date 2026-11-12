@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { firstSentences, plainCell, readTable, startsTable, toCsv, toTsv, withoutTables } from "./markdown-table.ts";
+import { firstSentences, mainTable, plainCell, readTable, startsTable, toCsv, toTsv, withoutTables } from "./markdown-table.ts";
 
 const row = (n) => `| ${n} | Customer ${n} | $${n * 10} |`;
 
@@ -61,4 +61,15 @@ test("a 105-row table downloads every row", () => {
   const csv = toCsv(head, rows).trimEnd().split("\r\n");
   assert.equal(csv.length, 106);
   assert.equal(csv.at(-1), "105,Row 105");
+});
+
+test("a report's table, for Save table as CSV", () => {
+  const report = "# Check my setup, 2026-11-11\r\n\r\n2 of 2 worked.\r\n\r\n| Request | Cost |\r\n| --- | --- |\r\n| **Orders** in Acme | $0.04 |\r\n| A web lookup | $0.02 |\r\n\r\n## Gaps\r\n\r\nNone.";
+  const table = mainTable(report);
+  assert.deepEqual(table?.head, ["Request", "Cost"]);
+  assert.equal(table?.rows.length, 2);
+  assert.equal(toCsv(table.head, table.rows), "Request,Cost\r\nOrders in Acme,$0.04\r\nA web lookup,$0.02\r\n");
+  assert.equal(mainTable("# No table here\n\nJust words."), null);
+  const selfTest = "| | |\n|---|---|\n| Holds fired | 4 |\n\n| Scenario | Result |\n|---|---|\n| read-tables | pass |\n| ambiguous | pass |\n| split | fail |";
+  assert.deepEqual(mainTable(selfTest)?.head, ["Scenario", "Result"]); // not the summary above it
 });

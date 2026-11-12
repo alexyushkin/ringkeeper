@@ -12,7 +12,9 @@ Claude sign-in, for the length of the run.
 To check your own projects and connections instead, see [Check my setup](check-my-setup.md).
 
 In the app: **Settings > Advanced > Self-test**, then **Run the self-test**. You can keep using
-Ringkeeper while it runs. The report stays in the same section.
+Ringkeeper while it runs. The report stays in the same section, with **Save report** (into
+your Downloads folder), **Copy report**, **Save table as CSV** and **Show in folder**.
+**Earlier reports** lists the other days kept: pick one to read it again.
 
 In a terminal:
 
