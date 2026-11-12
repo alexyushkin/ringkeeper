@@ -10,7 +10,7 @@ interface TaskFile {
   path: string;
   size: number | null; // null: the task deleted it
   on_branch: boolean; // only on the task's branch until its changes are kept
-  runs: boolean; // a program or script: shown in its folder, never opened
+  runs: boolean; // not a document (PDF, Office, text, CSV, JSON, a picture): shown in its folder, never opened
   can_open: boolean;
 }
 

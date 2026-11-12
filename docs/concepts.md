@@ -82,8 +82,9 @@ branch").
 The files a task made or changed are listed on its page (the **Changes** tab) and under its
 result in the conversation. In the desktop app each has **Open** and **Show in folder**. A
 code task's files are on its branch until you keep them: they open from a copy, and your
-folder isn't touched. A program or script is only shown in its folder, never opened, so
-nothing a task wrote runs by a click. A table in a result has **Copy** (to paste into a
+folder isn't touched. Only documents open: PDFs, Office files, text, Markdown, CSV, JSON
+and pictures. Anything else (a program, a script, a web page) is only shown in its folder,
+so nothing a task wrote runs by a click. A table in a result has **Copy** (to paste into a
 spreadsheet) and **Download CSV**.
 
 ### Where a request goes
