@@ -16,8 +16,10 @@ annotations, as last listed), and the user's choices per tool.
 A local (command) server runs on the gateway's machine, so in practice the
 desktop app: started for each call with a small environment (no Claude
 credential, nothing of Ringkeeper's), in its own folder, and stopped after.
-The agent sees two tools: list_tools and call_tool. What a call to one of
-the server's tools needs (see `rule`):
+The agent sees two tools: list_tools and call_tool. list_tools answers with
+each tool's name, a line on what it does and how a call runs; one tool's
+argument schema is asked for by name (a server can describe hundreds of
+tools at length). What a call to one of the server's tools needs (see `rule`):
 
 - the user's choice for that tool, if they made one; otherwise
 - its annotations: readOnlyHint runs it without asking, destructiveHint
@@ -66,6 +68,13 @@ PASSED_ENV = (
     "TZ", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
 )  # fmt: skip
 ToolName = Annotated[str, Field(min_length=1, max_length=128, description="From list_tools.")]
+Words = Annotated[
+    str | None, Field(max_length=200, description="Only tools whose name or help has all these.")
+]
+OneTool = Annotated[
+    str | None,
+    Field(max_length=128, description="One tool's name: its full help and argument schema."),
+]
 
 
 def server_spec(value: str) -> JSON:
@@ -344,9 +353,16 @@ def _hints(tool: Any) -> JSON:
 
 
 @read
-async def list_tools(target: Target) -> JSON:
-    """List this server's tools: name, what it does, its arguments, and how a call runs
-    (without asking, after the user approves, or after approval with the name typed)."""
+async def list_tools(target: Target, words: Words = None, tool: OneTool = None) -> JSON:
+    """List this server's tools: name, what it does in a line, and how a call runs (without
+    asking, after the user approves, or after approval with the name typed). Give `words` to
+    list only the tools that match, and `tool` for one tool's arguments before calling it."""
+    # The full listing, which the gateway remembers; what the agent sees is `shown`.
+    return await tools_of(target)
+
+
+async def tools_of(target: Target) -> JSON:
+    """Every tool of the server, with its full help, argument schema and rules."""
     try:
         async with _client(target) as client:
             tools = await client.list_tools()
@@ -378,6 +394,37 @@ async def list_tools(target: Target) -> JSON:
             }
         )
     return {"tools": listed}
+
+
+SHORT_HELP_CHARS = 160
+
+
+def _line(text: str) -> str:
+    """A tool's help, in a line."""
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    return first if len(first) <= SHORT_HELP_CHARS else first[: SHORT_HELP_CHARS - 1] + "…"
+
+
+def shown(listed: JSON, words: str | None = None, tool: str | None = None) -> JSON:
+    """What the agent reads of a listing: each tool's name, help in a line and how it runs, or
+    one tool in full with its argument schema."""
+    tools = cast(list[JSON], listed.get("tools") or [])
+    rest = {k: v for k, v in listed.items() if k != "tools"}
+    if tool:
+        found = [t for t in tools if t.get("name") == tool]
+        if not found:
+            raise ToolError(f"this server has no tool named '{tool}': list_tools lists them")
+        one = found[0]
+        keys = ("name", "description", "runs", "input_schema")
+        return {**rest, "tools": [{k: one.get(k) for k in keys}]}
+    asked = (words or "").lower().split()
+    kept = [
+        {"name": t.get("name"), "description": _line(str(t.get("description") or "")),
+         "runs": t.get("runs")}
+        for t in tools
+        if all(w in f"{t.get('name')} {t.get('description') or ''}".lower() for w in asked)
+    ]  # fmt: skip
+    return {**rest, "tools": kept, "total": len(tools)}
 
 
 def annotations_of(listed: JSON) -> JSON:
@@ -475,12 +522,37 @@ def _saves(target: Target, args: JSON) -> bool:
     return memory_call(target.config, str(args.get("tool", "")), given) == "save"
 
 
+# A server's answer to arguments that don't fit the tool (FastMCP's, the MCP SDK's, JSON-RPC's).
+BAD_ARGUMENTS = re.compile(
+    r"validation error|invalid (argument|param|input)|-32602|required (argument|param|property)"
+    r"|missing (required )?(argument|param|property)|unexpected (keyword )?argument"
+    r"|additional properties",
+    re.IGNORECASE,
+)
+
+
+def _text_of(result: Any) -> str:
+    return "\n".join(getattr(block, "text", "") for block in result.content).strip()
+
+
+async def _takes(client: Client[Any], tool: str) -> str:
+    """What `tool` takes, to go with the server's refusal of a call's arguments."""
+    try:
+        found = next((t for t in await client.list_tools() if t.name == tool), None)
+    except Exception:  # the refusal is still worth reading without it
+        return ""
+    if found is None:
+        return ""
+    return f"\n\n'{tool}' takes: {json.dumps(found.input_schema, separators=(',', ':'))}"
+
+
 async def _call_tool(
     target: Target, tool: ToolName, arguments: dict[str, Any] | None = None
 ) -> JSON:
     """Call one of the server's tools (see list_tools). Waits for the user's approval unless
     list_tools says that tool runs without asking."""
     service = remote.BY_KEY.get(str(target.config.get("remote") or ""))
+    takes = ""
     try:
         async with _client(target) as client:
             result = await client.call_tool(tool, arguments or {}, raise_on_error=False)
@@ -490,13 +562,15 @@ async def _call_tool(
                 # This call is what the user approved: the same call, with the server's token.
                 confirmed = {**(arguments or {}), service.confirm_arg: token}
                 result = await client.call_tool(tool, confirmed, raise_on_error=False)
+            if result.is_error and BAD_ARGUMENTS.search(_text_of(result)):
+                takes = await _takes(client, tool)
     except ToolError:
         raise
     except Exception as error:
         raise ToolError(f"the MCP server didn't answer: {type(error).__name__}: {error}") from None
-    text = "\n".join(getattr(block, "text", "") for block in result.content).strip()
+    text = _text_of(result)
     if result.is_error or _refused_by_plan(text):
-        raise ToolError(text or f"'{tool}' failed")
+        raise ToolError((text or f"'{tool}' failed") + takes)
     answer: JSON = {"text": text}  # a long one is read in parts: services.continuations
     if result.structured_content is not None:
         answer["structured"] = result.structured_content

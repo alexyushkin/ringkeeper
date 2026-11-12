@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Add-on tools with many tools no longer fill a task.** Listing an MCP server's tools gives each
+  tool's name, what it does in a line and whether it runs straight away or waits for you, not
+  every tool's full arguments: ElevenLabs' list was about 927,000 characters. A task can look
+  for tools by words, and asks for one tool's arguments before calling it. A call with arguments
+  the tool doesn't take comes back with what it does take, so the next try is right.
 - **Check my setup checks each connection once, three at a time.** A connection linked to
   several projects gets one request, in the first of them, where it used to get one per project.
   A project whose connections were all checked elsewhere still gets a request of its own, so
