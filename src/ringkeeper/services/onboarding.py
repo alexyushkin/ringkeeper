@@ -3,20 +3,33 @@
 The checklist is four things: Claude connected, a project, a connection, a task.
 Suggestions are built from the user's own projects and connections, and only
 ever read: listing, summarizing, explaining. Nothing in them changes anything.
+
+In the desktop app, once there's real work (not Check my setup's, not the demo's) and
+automatic backups are off, Home asks once to turn them on: until it's dismissed, or they're
+turned on.
 """
 
 from dataclasses import dataclass
 from typing import Any, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
-from ringkeeper.models import Instance, InstanceType, Project, ProjectInstance, Setting, Task
-from ringkeeper.services import instances
+from ringkeeper.models import (
+    Instance,
+    InstanceType,
+    Project,
+    ProjectInstance,
+    Setting,
+    Task,
+    Thread,
+)
+from ringkeeper.services import backup, demo, instances
 
 DISMISSED_KEY = "onboarding.checklist_dismissed"
 TOUR_KEY = "onboarding.tour_seen"
+BACKUP_NUDGE_KEY = "onboarding.backup_nudge_done"
 MAX_SUGGESTIONS = 3
 
 # One read-only request per kind of connection: {project} and {connection}.
@@ -119,6 +132,33 @@ def _mark(session: Session, key: str) -> None:
 
 def dismiss(session: Session) -> None:
     _mark(session, DISMISSED_KEY)
+
+
+def backup_nudge(session: Session, settings: Settings) -> bool:
+    """Whether Home asks to turn automatic backups on: in the desktop app, with them off,
+    once a real task has run (not Check my setup's, not the demo's), until it's dismissed
+    or they've been turned on."""
+    from ringkeeper.services import setup_check  # noqa: PLC0415 (it imports this)
+
+    if settings.mode != "desktop" or session.get(Setting, BACKUP_NUDGE_KEY) is not None:
+        return False
+    if backup.auto(session).enabled:
+        return False
+    checks = select(Thread.id).where(Thread.tag == setup_check.TAG)
+    real = (
+        select(Task.id)
+        .where(
+            or_(Task.thread_id.is_(None), Task.thread_id.not_in(checks)),
+            Task.project != demo.PROJECT,
+        )
+        .limit(1)
+    )
+    return session.scalar(real) is not None
+
+
+def backup_nudge_done(session: Session) -> None:
+    """Dismissed, or automatic backups were turned on: Home doesn't ask again."""
+    _mark(session, BACKUP_NUDGE_KEY)
 
 
 WHATS_NEW_KEY = "onboarding.whats_new"

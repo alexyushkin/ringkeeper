@@ -8,12 +8,13 @@ from sqlalchemy import select
 
 from ringkeeper.adapters import supabase
 from ringkeeper.adapters.base import Target, ToolError
+from ringkeeper.api import desktop_routes, start_routes
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Client, Env, Instance, InstanceType, Project, Task, Thread
-from ringkeeper.services import demo, instances, onboarding, tasks
+from ringkeeper.services import demo, instances, onboarding, setup_check, tasks, threads
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import Secret, VaultError, get_vault
 from tests import test_web_api
@@ -230,3 +231,53 @@ def test_whats_new_shows_once_on_the_version_it_came_with() -> None:
         assert shown == {"version": "0.1.0-beta.11", "notes": "- **Undo.** Revert a change."}
         onboarding.whats_new_seen(session)
         assert onboarding.whats_new(session, "0.1.0-beta.11") is None
+
+
+def a_task_in(project: str, tag: str | None = None) -> None:
+    with session_scope() as session:
+        sent = threads.post_message(session, "list the orders", author="owner", source="web")
+        session.get_one(Thread, sent.thread_id).tag = tag
+        tasks.create_task(
+            session, get_settings(), project=project, prompt="list", thread_id=sent.thread_id
+        )
+
+
+def test_home_asks_once_to_turn_automatic_backups_on(
+    data_dir: Path, tmp_path: Path, owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = desktop(data_dir, tmp_path)
+    with session_scope() as session:
+        demo.create(session, settings, get_vault())
+        make_project(session, "acme-web")
+
+    def asks() -> bool:
+        with session_scope(commit=False) as session:
+            return onboarding.backup_nudge(session, settings)
+
+    assert not asks()  # no tasks yet
+    a_task_in("acme-web", tag=setup_check.TAG)
+    a_task_in(demo.PROJECT)
+    assert not asks()  # Check my setup's and the demo's aren't real work
+    a_task_in("acme-web")
+    assert asks()
+    with session_scope(commit=False) as session:
+        assert not onboarding.backup_nudge(session, get_settings())  # a server backs up its own
+    monkeypatch.setattr(start_routes, "current_settings", lambda: settings)
+    assert owner.get("/start").json()["backup_nudge"] is True
+    assert owner.post("/start/backup-nudge").status_code == 204
+    assert owner.get("/start").json()["backup_nudge"] is False
+    assert not asks()
+
+
+def test_turning_automatic_backups_on_ends_the_question(data_dir: Path, tmp_path: Path) -> None:
+    settings = desktop(data_dir, tmp_path)
+    with session_scope() as session:
+        make_project(session, "acme-web")
+    a_task_in("acme-web")
+    on = desktop_routes.AutoIn(enabled=True, folder=str(tmp_path / "backups"), password="x" * 12)
+    with session_scope() as session:
+        assert onboarding.backup_nudge(session, settings)
+        desktop_routes.backup_auto(on, session)
+        assert not onboarding.backup_nudge(session, settings)
+        desktop_routes.backup_auto(desktop_routes.AutoIn(enabled=False), session)
+        assert not onboarding.backup_nudge(session, settings)  # turned off later: not asked again

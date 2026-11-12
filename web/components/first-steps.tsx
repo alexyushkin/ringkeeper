@@ -23,6 +23,7 @@ interface Start {
   demo: DemoInfo | null;
   demo_offered: boolean;
   whats_new: { version: string; notes: string } | null;
+  backup_nudge?: boolean; // desktop: real tasks ran, automatic backups are off, not dismissed
 }
 
 /** Home's first steps: the checklist (until done or dismissed), the demo, and
@@ -33,7 +34,7 @@ export function FirstSteps() {
     if (["task", "message_routed"].includes(event.type)) start.reload();
   });
   if (!start.data) return null;
-  const { checklist, suggestions, demo, demo_offered, whats_new } = start.data;
+  const { checklist, suggestions, demo, demo_offered, whats_new, backup_nudge } = start.data;
   const showList = !checklist.done && !checklist.dismissed;
   const tries = demo ? suggestions.filter((s) => !demo.try.includes(s)) : suggestions;
   return (
@@ -41,6 +42,7 @@ export function FirstSteps() {
       {whats_new ? <WhatsNew {...whats_new} onSeen={start.reload} /> : null}
       {showList ? <Checklist steps={checklist} demoOffered={demo_offered && !demo} onChange={start.reload} /> : null}
       {!showList && checklist.unlinked.length ? <UnlinkedNote names={checklist.unlinked} /> : null}
+      {backup_nudge ? <BackupNudge onDismissed={start.reload} /> : null}
       {demo ? <DemoCard demo={demo} onRemoved={start.reload} /> : null}
       {tries.length ? <Suggestions items={tries} /> : null}
     </div>
@@ -77,6 +79,27 @@ function WhatsNew({ version, notes, onSeen }: { version: string; notes: string; 
           );
         })}
       </ul>
+    </Card>
+  );
+}
+
+/** Once there's real work and automatic backups are off: asked once, until Not now or
+ * they're turned on. */
+function BackupNudge({ onDismissed }: { onDismissed: () => void }) {
+  return (
+    <Card className="space-y-2">
+      <h2 className="font-semibold">Turn on automatic backups</h2>
+      <p className="text-sm text-muted">
+        Your projects, connections and history are only on this computer. A weekly backup into a folder you choose (another drive, or a synced folder) brings them back if this computer is lost or replaced.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Link href="/settings#backup" className="text-sm font-medium text-accent">
+          Turn them on
+        </Link>
+        <Button kind="ghost" onClick={() => void api("start/backup-nudge", { method: "POST" }).then(onDismissed)}>
+          Not now
+        </Button>
+      </div>
     </Card>
   );
 }
