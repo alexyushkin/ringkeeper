@@ -23,7 +23,8 @@ test("plain words land: test, memory, backup, spending cap, send", () => {
   assert.ok(best("test").slice(0, 3).includes("Self-test"));
   assert.ok(best("test").includes("Check my setup"));
   assert.ok(best("memory").includes("Notion for every project"));
-  assert.ok(best("backup").slice(0, 3).includes("Automatic backups"));
+  assert.ok(best("backup").slice(0, 4).includes("Automatic backups"));
+  assert.ok(best("drive").includes("Back up to Google Drive"));
   assert.equal(best("spending cap")[0], "Spending cap per task");
   assert.equal(best("budget")[0], "Spending cap per task");
   assert.equal(best("send with")[0], "Send with");

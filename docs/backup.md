@@ -51,6 +51,22 @@ The file ends in `.rkbackup`.
    Ringkeeper restarts with the backup's data. What was here before is kept
    beside it, as `ringkeeper.db.before-restore` in the data folder.
 
+## Back up to Google Drive
+
+**Settings › Backup › Back up to Google Drive** uploads each backup, the ones you make and
+the weekly ones, into a "Ringkeeper backups" folder Ringkeeper creates in your Drive. It's
+the same file, locked with the same password, and the last few are kept there (as many as
+you keep here). The copy on this computer is still saved.
+
+- **Which account:** one of your own Google accounts (a shared one, or your own client's),
+  never a client's. It needs "Drive: files Ringkeeper creates", which lets Ringkeeper see
+  only the files it makes. If none of yours has it, **Add Drive access** signs that account
+  in again with it.
+- **What you see:** when the last upload finished, with a link to the file. If an upload
+  doesn't work, Home and Settings say so, and the copy on this computer is kept.
+- **Restoring:** on the new computer, download the file from Drive in your browser, then
+  pick it under **Restore a backup** with its password.
+
 ## Automatic backups
 
 Turn on **Make a backup every week**, choose a folder (a synced folder is a good

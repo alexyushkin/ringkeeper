@@ -300,4 +300,8 @@ def run_auto(
         record["last_error"] = f"The weekly backup didn't work: {error}"
         written = None
     _save_auto(session, record)
+    if written is not None:  # and to Google Drive, when an account is chosen
+        from ringkeeper.services import backup_drive  # noqa: PLC0415 (it's optional)
+
+        backup_drive.upload(session, vault, written, current.keep)
     return written

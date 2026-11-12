@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { Alert, Button, Card, Field, Toggle, useNamedHere } from "@/components/ui";
+import Link from "@/components/link";
+import { GoogleConnect } from "@/components/google";
 import { api, useApi } from "@/lib/client/api";
 import { canPickFolder, pickFolder } from "@/lib/client/shell";
 
@@ -15,10 +17,30 @@ interface Place {
   folder: string;
 }
 
+/** Google Drive (services.backup_drive): the account chosen, and the last upload. */
+interface Drive {
+  connection: string | null;
+  last: string | null;
+  link: string | null;
+  error: string | null;
+}
+
+/** One of the owner's own Google accounts (shared, or their own client's): never a client's. */
+interface GoogleAccount {
+  name: string;
+  title: string;
+  shared: boolean;
+  owner: string;
+  ready: boolean; // has "Drive: files Ringkeeper creates"
+  access: string[];
+}
+
 interface Info {
   default_folder: string;
   auto: { enabled: boolean; folder: string; keep: number; last: string | null; last_error: string | null };
   synced: Place[];
+  drive: Drive;
+  google: GoogleAccount[];
 }
 
 /** What a backup folder means for a lost computer (GET desktop/backup/folder). */
@@ -64,9 +86,10 @@ export function BackupSettings() {
       <p className="text-sm text-muted">
         To restore on a new computer after this one is lost, the backup has to be somewhere else too. Choose a synced folder (OneDrive, Google Drive, Dropbox, iCloud Drive) or another drive. The default folder, <span className="font-mono text-xs break-all">{info.data.default_folder}</span>, is in Documents, so most backup tools already include it.
       </p>
-      <Export defaultFolder={info.data.default_folder} synced={info.data.synced} />
+      <Export defaultFolder={info.data.default_folder} synced={info.data.synced} drive={info.data.drive} onSaved={info.reload} />
       <Restore />
       <Automatic info={info.data} onSaved={info.reload} />
+      <ToDrive info={info.data} onSaved={info.reload} />
     </div>
   );
 }
@@ -158,8 +181,11 @@ function FolderCheck({ folder }: { folder: string }) {
   );
 }
 
-function Export({ defaultFolder, synced }: { defaultFolder: string; synced: Place[] }) {
+function Export({ defaultFolder, synced, drive, onSaved }: { defaultFolder: string; synced: Place[]; drive: Drive; onSaved: () => void }) {
   const [password, setPassword] = useState("");
+  // On while an account is chosen, unless switched off here.
+  const [toDriveChoice, setToDrive] = useState<boolean | null>(null);
+  const toDrive = toDriveChoice ?? Boolean(drive.connection);
   const [again, setAgain] = useState("");
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
@@ -175,8 +201,10 @@ function Export({ defaultFolder, synced }: { defaultFolder: string; synced: Plac
     }
     setBusy(true);
     try {
-      const done = await api<{ path: string }>("desktop/backup/export", { json: { password, folder: folder || null } });
+      const done = await api<{ path: string; drive: Drive | null }>("desktop/backup/export", { json: { password, folder: folder || null, drive: toDrive && Boolean(drive.connection) } });
       setSaved(done.path);
+      if (done.drive?.error) setError(`${done.drive.error} The copy on this computer is saved.`);
+      onSaved();
       setPassword("");
       setAgain("");
     } catch (err) {
@@ -194,6 +222,7 @@ function Export({ defaultFolder, synced }: { defaultFolder: string; synced: Plac
         <Field label="Password again" type="password" value={again} onChange={setAgain} autoComplete="new-password" />
       </div>
       <FolderField value={folder} onChange={setFolder} placeholder={defaultFolder} synced={synced} />
+      {drive.connection ? <Toggle label="Upload it to Google Drive too" checked={toDrive} onChange={setToDrive} /> : null}
       <Button kind="primary" busy={busy} disabled={password.length < 8 || !again} onClick={save}>
         Save the backup
       </Button>
@@ -233,7 +262,7 @@ function Restore() {
   return (
     <Card anchor="backup-restore" className="space-y-3">
       <h2 className="font-semibold">Restore a backup</h2>
-      <p className="text-sm text-muted">On a new computer, or to go back: pick the backup file (from your synced folder, or wherever you kept it) and type its password. You&apos;ll see what comes in before anything changes.</p>
+      <p className="text-sm text-muted">On a new computer, or to go back: pick the backup file (from your synced folder, or wherever you kept it) and type its password. You&apos;ll see what comes in before anything changes. A backup in Google Drive: download it from Drive in your browser first, then pick it here.</p>
       <label className="block text-sm font-medium">
         Backup file
         <input
@@ -349,6 +378,100 @@ function Automatic({ info, onSaved }: { info: Info; onSaved: () => void }) {
       {auto.last ? <p className="text-xs text-muted">Last one: {new Date(auto.last).toLocaleString()}.</p> : null}
       {auto.last_error ? <Alert>{auto.last_error} Check the folder, then save again.</Alert> : null}
       {notice ? <Alert tone="good">{notice}</Alert> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </Card>
+  );
+}
+
+/** Settings › Backup › Google Drive: each backup also uploaded, locked with its password,
+ * into a "Ringkeeper backups" folder in one of the owner's own Google accounts. */
+function ToDrive({ info, onSaved }: { info: Info; onSaved: () => void }) {
+  const drive = info.drive;
+  const ready = info.google.filter((a) => a.ready);
+  const missing = info.google.filter((a) => !a.ready);
+  const [adding, setAdding] = useState<GoogleAccount | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function choose(connection: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("desktop/backup/drive", { method: "PUT", json: { connection } });
+      onSaved();
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card anchor="backup-drive" className="space-y-3">
+      <h2 className="font-semibold">Back up to Google Drive</h2>
+      <p className="text-sm text-muted">
+        Each backup (the one you make and the weekly ones) is also uploaded, locked with its password, into a &quot;Ringkeeper backups&quot; folder Ringkeeper creates in your Drive. The last {info.auto.keep} are kept there, as here, and the copy on this computer is still saved. Only your own Google account (yours, not a client&apos;s) with &quot;Drive: files Ringkeeper creates&quot; can hold them.
+      </p>
+      {drive.connection ? (
+        <div className="space-y-2 text-sm">
+          <p>
+            Uploading to <b>{info.google.find((a) => a.name === drive.connection)?.title ?? drive.connection}</b>.
+            {drive.last ? (
+              <>
+                {" "}Last upload {new Date(drive.last).toLocaleString()}
+                {drive.link ? (
+                  <>
+                    {" "}·{" "}
+                    <a href={drive.link} target="_blank" rel="noreferrer" className="text-accent">
+                      the file in Drive
+                    </a>
+                  </>
+                ) : null}
+                .
+              </>
+            ) : " Nothing uploaded yet."}
+          </p>
+          {drive.error ? <Alert>{drive.error} The copy on this computer is saved.</Alert> : null}
+          <Button kind="ghost" busy={busy} onClick={() => void choose(null)}>
+            Stop uploading
+          </Button>
+        </div>
+      ) : ready.length ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {ready.map((account) => (
+            <Button key={account.name} busy={busy} onClick={() => void choose(account.name)}>
+              Upload to {account.title}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      {!drive.connection && !ready.length && missing.length ? (
+        <div className="space-y-2 text-sm">
+          <p className="text-muted">None of your Google accounts was given &quot;Drive: files Ringkeeper creates&quot;. Add it to one: you sign in on Google&apos;s page again.</p>
+          {missing.map((account) => (
+            <Button key={account.name} onClick={() => setAdding(account)}>
+              Add Drive access to {account.title}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      {!info.google.length ? (
+        <p className="text-sm text-muted">
+          There&apos;s no Google account of your own here yet. <Link href="/connections/new?kind=shared" className="text-accent">Add your Google account</Link> with &quot;Drive: files Ringkeeper creates&quot;, then come back.
+        </p>
+      ) : null}
+      {adding ? (
+        <GoogleConnect
+          owner={adding.shared ? undefined : adding.owner}
+          shared={adding.shared}
+          replace={adding.name}
+          initial={[...adding.access, "drive_files"]}
+          onAdded={() => {
+            setAdding(null);
+            onSaved();
+          }}
+        />
+      ) : null}
       {error ? <Alert>{error}</Alert> : null}
     </Card>
   );

@@ -30,6 +30,7 @@ from ringkeeper.scenarios.self_test import self_test
 from ringkeeper.schemas import Input, ProjectIn, Slug
 from ringkeeper.services import (
     backup,
+    backup_drive,
     backup_places,
     claude_desktop,
     claude_work,
@@ -446,10 +447,11 @@ def _backup_folder() -> Path:
 class ExportIn(Input):
     password: Annotated[str, Field(max_length=1000)]
     folder: Annotated[str, Field(max_length=1000)] | None = None
+    drive: bool = False  # upload it to the chosen Google account too
 
 
 @router.post("/backup/export", dependencies=[RecentAuth])
-def backup_export(data: ExportIn) -> dict[str, Any]:
+def backup_export(data: ExportIn, session: WriteSessionDep) -> dict[str, Any]:
     """Write a backup file into a folder (Documents\\Ringkeeper backups unless chosen)."""
     folder = Path(data.folder.strip()) if data.folder and data.folder.strip() else _backup_folder()
     if not folder.is_absolute():
@@ -464,7 +466,14 @@ def backup_export(data: ExportIn) -> dict[str, Any]:
             422,
             detail=f"Couldn't write the backup there ({error.strerror}). Choose another folder.",
         ) from None
-    return {"path": str(path), "bytes": len(blob), "default_folder": str(_backup_folder())}
+    uploaded = (
+        backup_drive.upload(session, get_vault(), path, backup.auto(session).keep)
+        if data.drive else None
+    )  # fmt: skip
+    return {
+        "path": str(path), "bytes": len(blob), "default_folder": str(_backup_folder()),
+        "drive": uploaded.__dict__ if uploaded is not None else None,
+    }  # fmt: skip
 
 
 @router.get("/backup")
@@ -475,7 +484,20 @@ def backup_info(session: SessionDep) -> dict[str, Any]:
         "auto": auto.__dict__,
         # One-click choices next to Browse: Ringkeeper only writes the file there.
         "synced": [place.__dict__ for place in backup_places.synced_folders()],
+        # Google Drive: the account chosen, the last upload, and the accounts that could be.
+        "drive": backup_drive.state(session).__dict__,
+        "google": backup_drive.accounts(session),
     }
+
+
+class DriveIn(Input):
+    connection: Annotated[str, Field(max_length=200)] | None = None
+
+
+@router.put("/backup/drive", dependencies=[RecentAuth])
+def backup_drive_choice(data: DriveIn, session: WriteSessionDep) -> dict[str, Any]:
+    """Upload backups to this Google account from now on (None: stop)."""
+    return backup_drive.choose(session, data.connection).__dict__
 
 
 @router.get("/backup/folder")

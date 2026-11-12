@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Back up to Google Drive.** Settings › Backup can upload each backup, the ones you make and
+  the weekly ones, into a "Ringkeeper backups" folder in your own Google Drive, keeping as many
+  as you keep here. It's the same file, locked with your password, which never leaves this
+  computer. Only your own Google account can hold them, never a client's, with "Drive: files
+  Ringkeeper creates" (you can add it from there). The last upload and a link to it are shown;
+  a failed upload is said on Home and in Settings, and the copy on this computer is kept.
+  Restoring is as before: download the file from Drive, then pick it.
 - **Airtable's own server can be connected.** It was in Ringkeeper's list, but search showed only
   the built-in Airtable, and typing its address said "connect it from Recommended above" with
   nothing there. Both now show, each saying what it's for: built in for bases and records with

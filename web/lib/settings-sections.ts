@@ -53,6 +53,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { tab: "backup", id: "backup-make", title: "Make a backup", words: "backup save copy export", where: "desktop" },
   { tab: "backup", id: "backup-restore", title: "Restore a backup", words: "backup restore import recover", where: "desktop" },
   { tab: "backup", id: "backup-auto", title: "Automatic backups", words: "backup automatic schedule daily", where: "desktop" },
+  { tab: "backup", id: "backup-drive", title: "Back up to Google Drive", words: "backup drive google cloud upload offsite", where: "desktop" },
   // General, Appearance, About
   { tab: "general", id: "send-with", title: "Send with", words: "enter ctrl+enter keyboard send message" },
   { tab: "appearance", id: "appearance", title: "Appearance", words: "theme dark light mode colors" },
