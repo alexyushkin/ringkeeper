@@ -5,6 +5,9 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Nothing starts while Claude's limit is reached.** When the limit was reached at the moment
+  Ringkeeper picked the next task, that task could still start, hit the limit, and queue
+  another. It now stays queued until the limit resets.
 - **Backups that outlive this computer.** Settings › Backup offered only a local folder, and a
   backup on the same disk is lost with the computer. Now:
   - The synced folders it finds (OneDrive, Google Drive, Dropbox, iCloud Drive) are one click
@@ -27,9 +30,6 @@ publishes it as the release notes and the app shows it with the update.
   many of each status (succeeded, failed, running...), not only the 20 on the page, so "how
   many of its runs failed?" gets the real number. It counts the newest 1,000 at most, and says
   when there are more.
-
-## Unreleased
-
 - **A Google mail search shows the start of each message.** Each message found now comes with
   a preview of its own text (not the thread it quotes) and whether it's unread, instead of
   Gmail's one-line snippet, so a summary of the inbox says what each email is about. It
