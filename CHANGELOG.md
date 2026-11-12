@@ -5,7 +5,7 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
-- **Counts of a part are right.** Asked how many of Seaside's workflows were whose, a task
+- **Counts of a part are right.** Asked to count a client's n8n workflows by whose they were, a task
   said 46 and 13 for 49 and 10: it counted a list by hand. Tasks now count with a filter and
   quote the total the tool gives, and a count next to a list must match it. n8n's workflow list
   can be filtered by words in the name, its start and tags, and a long list says how many there
@@ -19,7 +19,7 @@ publishes it as the release notes and the app shows it with the update.
 - **Notes say exactly where they went.** A project's note saved to its Notion database was
   reported as "Notion", and a task took that for your personal memory and asked you to delete it
   by hand. Answers, the activity log and **Saved to memory** now say "this project's notes
-  (Seaside, in Notion)", "My memory" or "shared notes".
+  (Bayside, in Notion)", "My memory" or "shared notes".
 - **Better notes.** One fact per note, about what identifies this client's things (names and
   naming patterns, IDs, filters, which base or workflow does what), never counts, dates or how a
   tool works in general. A note that repeats one already there is refused as "already noted".
