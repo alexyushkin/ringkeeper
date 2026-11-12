@@ -5,6 +5,9 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Show in folder finds the file when its name has a space.** On Windows it opened your
+  Documents folder instead, for "Check my setup 2026-11-12.md" and any task file, download or
+  report with a space in its path. It now asks Windows to select the file directly.
 - **n8n runs are counted too.** A list of a workflow's runs says how many there are and how
   many of each status (succeeded, failed, running...), not only the 20 on the page, so "how
   many of its runs failed?" gets the real number. It counts the newest 1,000 at most, and says

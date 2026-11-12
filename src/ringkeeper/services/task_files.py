@@ -215,10 +215,56 @@ def show(path: Path, *, reveal: bool) -> None:
     reveal = reveal or shown_only(path)
     if sys.platform == "win32":
         if reveal:
-            subprocess.Popen(["explorer", f"/select,{path}"], creationflags=_NO_WINDOW)  # noqa: S603, S607
+            select_in_explorer(path)
         else:
             os.startfile(path)  # noqa: S606 (a document the task made: see OPENS)  # type: ignore[attr-defined]
     elif sys.platform == "darwin":
         subprocess.Popen(["open", "-R", str(path)] if reveal else ["open", str(path)])  # noqa: S603
     else:
         subprocess.Popen(["xdg-open", str(path.parent if reveal else path)])  # noqa: S603, S607
+
+
+def select_in_explorer(path: Path) -> None:
+    """A File Explorer window on the file's folder, with the file selected. Through the
+    shell, so no command line is read: `explorer /select,<path>` as a list had Python quote
+    the whole argument when the path had a space, and Explorer opened Documents instead."""
+    if not shell_select(path):
+        subprocess.Popen(explorer_command(path), creationflags=_NO_WINDOW)  # noqa: S603
+
+
+def explorer_command(path: Path) -> str:
+    """The fallback's command line, written out: only the path is quoted, so Explorer reads
+    /select, and then the whole path, spaces and commas included."""
+    return f'explorer /select,"{path}"'
+
+
+def shell_select(path: Path) -> bool:
+    """SHOpenFolderAndSelectItems on the file. False if Windows couldn't do it (the path
+    can't be read as a file, or the shell refused): the caller falls back."""
+    if sys.platform != "win32":
+        return False
+    import ctypes  # noqa: PLC0415 (Windows only)
+
+    shell32, ole32 = ctypes.windll.shell32, ctypes.windll.ole32
+    shell32.SHParseDisplayName.argtypes = [
+        ctypes.c_wchar_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_ulong,
+        ctypes.c_void_p,
+    ]  # fmt: skip
+    shell32.SHParseDisplayName.restype = ctypes.c_long
+    shell32.SHOpenFolderAndSelectItems.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_ulong,
+    ]  # fmt: skip
+    shell32.SHOpenFolderAndSelectItems.restype = ctypes.c_long
+    ole32.CoInitializeEx.restype = ctypes.c_long
+    started = ole32.CoInitializeEx(None, 2) >= 0  # apartment-threaded; S_FALSE: already
+    pidl = ctypes.c_void_p()
+    try:
+        if shell32.SHParseDisplayName(str(path), None, ctypes.byref(pidl), 0, None) != 0:
+            return False
+        # The item itself and no children: its folder opens with it selected.
+        return shell32.SHOpenFolderAndSelectItems(pidl, 0, None, 0) == 0
+    finally:
+        if pidl.value:
+            ole32.CoTaskMemFree(pidl)
+        if started:
+            ole32.CoUninitialize()
