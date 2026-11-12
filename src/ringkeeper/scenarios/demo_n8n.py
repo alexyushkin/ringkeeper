@@ -1,7 +1,7 @@
 """Demo Co's made-up n8n, answered in place of its API for its own key only.
 
 Two name groups of uneven size, each with a few duplicate names, over more than one page: the
-shape that had a real count come out as 46 and 13 for 49 and 10. The real n8n adapter and the
+shape that had a real count come out wrong. The real n8n adapter and the
 real gateway handle it; only the network answer is made up.
 """
 
@@ -18,10 +18,10 @@ BIG, SMALL = "Bayside", "Mr. Gutter"
 
 
 def _workflows() -> list[dict[str, Any]]:
-    names = [f"{BIG} #{n}" for n in range(1, 47)] + [f"{BIG} #{n}" for n in (5, 12, 30)]
-    names += [f"{SMALL} #{n}" for n in range(1, 10)] + [f"{SMALL} #4"]
+    names = [f"{BIG} #{n}" for n in range(1, 35)] + [f"{BIG} #{n}" for n in (5, 12, 30)]
+    names += [f"{SMALL} #{n}" for n in range(1, 8)] + [f"{SMALL} #4"]
     names += ["Nightly report", "Lead sync - website", "Invoice reminder", "Backup check",
-              "Weekly digest"]  # fmt: skip
+              "Weekly digest", "Monthly invoices"]  # fmt: skip
     return [
         {
             "id": f"wf{n:03d}", "name": name, "active": n % 3 != 0,
@@ -35,8 +35,8 @@ def _workflows() -> list[dict[str, Any]]:
 
 WORKFLOWS = _workflows()
 COUNTS = {
-    BIG: sum(w["name"].startswith(BIG) for w in WORKFLOWS),  # 49
-    SMALL: sum(w["name"].startswith(SMALL) for w in WORKFLOWS),  # 10
+    BIG: sum(w["name"].startswith(BIG) for w in WORKFLOWS),  # 37
+    SMALL: sum(w["name"].startswith(SMALL) for w in WORKFLOWS),  # 8
 }
 
 
