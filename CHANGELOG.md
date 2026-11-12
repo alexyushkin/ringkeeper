@@ -10,6 +10,9 @@ publishes it as the release notes and the app shows it with the update.
   A project whose connections were all checked elsewhere still gets a request of its own, so
   you know requests reach it. Three requests run at the same time, and each one's row shows on
   the page as soon as it's back.
+- **Check my setup tests MCP servers, add-on tools and HTTP APIs without a model.** It connects
+  to each one itself, as its Test button does, and says how many tools it offers. Before, it
+  asked a task to "list the tools it offers", which could be reworded on the way and fail.
 - **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
   like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
   Memory said Notion.
