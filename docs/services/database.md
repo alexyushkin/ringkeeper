@@ -16,8 +16,8 @@ you only want reports from.
 
 ## What it can do
 
-- **Read:** list tables, describe a table, run a query. Every query runs inside a
-  read-only transaction, one statement at a time.
+- **Read:** list tables (with how many there are), describe a table, run a query. Every
+  query runs inside a read-only transaction, one statement at a time.
 - **Change:** run one statement that writes (`INSERT`, `UPDATE`, `DELETE`, schema
   changes). A statement that only reads runs at once, even through this tool.
 

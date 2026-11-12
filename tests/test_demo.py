@@ -67,6 +67,7 @@ async def test_the_demo_database_reads_and_its_changes_are_held(
         "orders",
         "products",
     ]
+    assert tables["total"] == 4
     rows = await run_call(
         call("query", sql="SELECT status FROM orders WHERE id = %s", params=[1007]), get_vault()
     )

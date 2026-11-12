@@ -62,7 +62,10 @@ class FakeN8n:
                 items = [w for w in items if wanted_tags & {g["name"] for g in w["tags"]}]
             if project := request.url.params.get("projectId"):
                 items = [w for w in items if w["shared"][0]["projectId"] == project]
-            return httpx2.Response(200, json={"data": items, "nextCursor": None})
+            start = int(request.url.params.get("cursor") or 0)
+            end = start + int(request.url.params.get("limit") or 100)
+            more = str(end) if end < len(items) else None
+            return httpx2.Response(200, json={"data": items[start:end], "nextCursor": more})
         if parts[0] == "workflows" and len(parts) >= 2:
             workflow = self.workflows.get(parts[1])
             if workflow is None:

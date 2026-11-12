@@ -41,6 +41,15 @@ async def test_list_tables(target: Target) -> None:
         {"schema": "public", "name": "big_orders", "type": "view"},
         {"schema": "public", "name": "orders", "type": "table"},
     ]
+    assert result["total"] == 2
+
+
+async def test_list_tables_counts_past_the_ones_listed(
+    target: Target, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(supabase, "MAX_ROWS", 1)
+    result = await supabase.list_tables.handler(target)
+    assert (len(result["tables"]), result["total"], result["truncated"]) == (1, 2, True)
 
 
 async def test_describe_table(target: Target) -> None:

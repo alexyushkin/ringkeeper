@@ -14,6 +14,11 @@ publishes it as the release notes and the app shows it with the update.
   every tool's full arguments: ElevenLabs' list was about 927,000 characters. A task can look
   for tools by words, and asks for one tool's arguments before calling it. A call with arguments
   the tool doesn't take comes back with what it does take, so the next try is right.
+- **Counts you can trust.** Lists from n8n, Airtable, GitHub and databases say how many there
+  are in all, not only on the page shown, so a task no longer counts by hand: the same n8n
+  was once reported with 197 workflows, then 184. n8n also says how many workflows are on, and
+  GitHub how many issues and pull requests are open. Airtable counts records up to 2,000 and
+  says when there are more.
 - **Check my setup checks each connection once, three at a time.** A connection linked to
   several projects gets one request, in the first of them, where it used to get one per project.
   A project whose connections were all checked elsewhere still gets a request of its own, so

@@ -210,6 +210,32 @@ def _workflow_summary(workflow: JSON) -> JSON:
     }
 
 
+def _counts(workflows: list[JSON], *, more: bool) -> JSON:
+    """How many workflows there are and how many are on. `more`: there were more pages than
+    were counted."""
+    counted: JSON = {
+        "total": len(workflows),
+        "active": sum(1 for w in workflows if w.get("active")),
+    }
+    if more:
+        counted["counted"] = f"only the first {len(workflows)}: there are more"
+    return counted
+
+
+async def _every_workflow(target: Target, params: JSON) -> tuple[list[JSON], bool]:
+    """Every workflow that matches, across all pages; True if there were more pages still."""
+    found: list[JSON] = []
+    cursor: str | None = None
+    for _ in range(MAX_SCOPE_PAGES):
+        data = await _call(target, "GET", "/workflows", params={**params, "limit": 250,
+                                                                 "cursor": cursor})  # fmt: skip
+        found += [w for w in cast(list[JSON], data.get("data", [])) if _in_scope(target, w)]
+        cursor = cast(str | None, data.get("nextCursor"))
+        if not cursor:
+            return found, False
+    return found, True
+
+
 @read
 async def list_workflows(
     target: Target,
@@ -218,21 +244,24 @@ async def list_workflows(
     limit: Limit = 50,
     cursor: Cursor = None,
 ) -> JSON:
-    """List workflows (id, name, active, updatedAt, tags), one page at a time."""
+    """List workflows (id, name, active, updatedAt, tags), one page at a time. total and active
+    count every workflow that matches, on every page, not only this one."""
     params = {
         "active": None if active is None else str(active).lower(),
         "name": name,
-        "limit": limit,
-        "cursor": cursor,
         **(_scope_params(target) if target.scope else {}),
     }
-    data = await _call(target, "GET", "/workflows", params=params)
-    if not target.scope:
-        return _page(data, "workflows", _workflow_summary)
+    data = await _call(target, "GET", "/workflows", params={**params, "limit": limit,
+                                                             "cursor": cursor})  # fmt: skip
     # n8n filtered it; nothing outside goes back, whatever it sent.
     kept = [w for w in cast(list[JSON], data.get("data", [])) if _in_scope(target, w)]
-    page = _page({**data, "data": kept}, "workflows", _workflow_summary)
-    return {**page, "limited_to": _scope_words(target)}
+    if cursor is None and not data.get("nextCursor"):
+        counts = _counts(kept, more=False)  # this page is all of them
+    else:
+        found, more = await _every_workflow(target, params)
+        counts = _counts(found, more=more)
+    page = _page({**data, "data": kept}, "workflows", _workflow_summary) | counts
+    return {**page, "limited_to": _scope_words(target)} if target.scope else page
 
 
 @read
