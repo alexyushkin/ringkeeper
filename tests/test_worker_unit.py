@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -82,6 +83,18 @@ def test_options_isolate_the_session() -> None:
     assert options.permission_mode == "bypassPermissions"
     assert options.disallowed_tools == ["WebFetch", "WebSearch"]
     assert options.resume is None
+
+
+def test_work_off_the_code_gets_a_short_prompt() -> None:
+    """Data, ops and general tasks (no branch) get a short prompt with the same note."""
+    prompt = build_options(config(git=False)).system_prompt
+    assert isinstance(prompt, str)
+    assert prompt.startswith("You are an agent doing one task for the operator")
+    # The date, which Claude Code's own prompt gives.
+    assert re.search(r"Today is\n\w+day, \d{4}-\d\d-\d\d\.", prompt)
+    assert "call the ask_user tool" in prompt
+    assert "never leave part of it to a\nbackground task or agent" in prompt
+    assert len(prompt) < 4000  # Claude Code's own is several times this
 
 
 @pytest.mark.anyio

@@ -330,7 +330,11 @@ result. The database itself rejects any `UPDATE` or `DELETE` on it.
 
 A task is a prompt for one project. The session manager runs it in a worker
 container: the Claude Agent SDK, working in the project's workspace, with the
-gateway as its only MCP servers.
+gateway as its only MCP servers. Work on the project's code (on its branch) gets Claude
+Code's own system prompt; data, ops and general tasks get a short one
+(`worker/ringkeeper_worker/agent.py`, `SHORT_PROMPT`). Both end with the same note on
+working unattended. In the 2026-11-12 self-test the short one held every result and cut
+the estimated cost per task by about a quarter; it didn't make tasks faster.
 
 ```bash
 uv run ringkeeper auth login             # store an Anthropic API key (hidden prompt)

@@ -1,5 +1,6 @@
 """Run one Claude Agent SDK session and stream every message as a JSON line."""
 
+from datetime import datetime
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
@@ -47,6 +48,23 @@ result. A long file starts with its outline: read the pages you need with pages=
 (next_pages), and look at a page with a table, a chart or a scan with the view
 tool (view_attachment, view_file)."""
 
+# A task that doesn't work on the project's code (data, ops, a general question) gets this
+# instead of Claude Code's own system prompt, which is mostly about editing code.
+SHORT_PROMPT = """\
+You are an agent doing one task for the operator through Ringkeeper. Your tools are
+mostly the project's connections, through Ringkeeper's gateway: use a connection's own
+tools for its data, and files or the shell only when the task needs them. Today is
+{today}. Answer plainly and briefly: the answer, what you changed, or what's left."""
+
+
+def system_prompt(config: WorkerConfig) -> str | dict[str, str]:
+    """Claude Code's own prompt for work on the code; a short one for everything else."""
+    note = HEADLESS_NOTE.format(workspace=config.workspace)
+    if config.git:
+        return {"type": "preset", "preset": "claude_code", "append": note}
+    today = datetime.now().astimezone().strftime("%A, %Y-%m-%d")
+    return SHORT_PROMPT.format(today=today) + "\n\n" + note
+
 
 def build_options(
     config: WorkerConfig, ask: inbox.AskState | None = None, cli: Path | None = None
@@ -61,11 +79,7 @@ def build_options(
     servers[inbox.SERVER_NAME] = ask_server
     return ClaudeAgentOptions(
         cwd=config.workspace,
-        system_prompt={
-            "type": "preset",
-            "preset": "claude_code",
-            "append": HEADLESS_NOTE.format(workspace=config.workspace),
-        },
+        system_prompt=system_prompt(config),  # pyright: ignore[reportArgumentType] (TypedDict)
         # The gateway endpoints are the only MCP servers, and no settings files
         # from anywhere (user, project or local) are loaded.
         mcp_servers=servers,  # pyright: ignore[reportArgumentType] (dict invariance)
