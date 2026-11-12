@@ -580,6 +580,17 @@ def _record(caller: Caller, tool: str, outcome: AuditOutcome, reason: str) -> No
                                reason=reason))  # fmt: skip
 
 
+def place_words(project_title: str | None, backend: str) -> str:
+    """Where a note went, in the words the worker, the audit and the task's page all use. A
+    project's notes in Notion are the project's own, never the owner's personal memory: a
+    worker told only "Notion" took it for that, and asked for the note to be deleted."""
+    if backend == MINE:
+        return MY_MEMORY
+    if project_title is None:
+        return "shared notes"
+    return f"this project's notes ({project_title}{', in Notion' if backend == NOTION else ''})"
+
+
 def _shown(note: MemoryNote, where: str) -> dict[str, Any]:
     return {
         "note": note.body, "by": note.agent or "a person", "task": note.source_task,
@@ -698,12 +709,13 @@ def keep(name: str, text: str, task: str | None = None) -> dict[str, Any]:
         if notion and not saved:
             raise RuleViolationError("This project's Notion page isn't set up.")
         token = _token(session, str(saved["connection"])) if saved else None
-        ident = project.id
+        ident, title = project.id, project.title or project.name
     day = datetime.now(UTC).date().isoformat()
     external = notion_api.add(token, _place(saved), text, None, day, task) if token else None
+    backend = NOTION if external else LOCAL
     with session_scope() as session:
-        session.add(_note_row(ident, NOTION if external else LOCAL, None, text, task, external))
-    return {"kept": True, "where": "Notion" if external else "Ringkeeper", "note": text}
+        session.add(_note_row(ident, backend, None, text, task, external))
+    return {"kept": True, "where": place_words(title, backend), "note": text}
 
 
 def saved_by(session: Session, task: uuid.UUID) -> list[dict[str, str]]:
@@ -714,11 +726,9 @@ def saved_by(session: Session, task: uuid.UUID) -> list[dict[str, str]]:
     )  # fmt: skip
 
     def where(note: MemoryNote) -> str:
-        if note.backend == MINE:
-            return MY_MEMORY
-        if note.project_id is None:
-            return "shared notes"
-        return "Notion" if note.backend == NOTION else "Ringkeeper"
+        project = session.get(Project, note.project_id) if note.project_id else None
+        title = (project.title or project.name) if project else None
+        return place_words(title, note.backend)
 
     return [{"note": n.body, "where": where(n)} for n in found]
 
@@ -775,6 +785,8 @@ def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False
         who = _who(session, caller)
         saved = _where_to(who, shared, mine)
         token = _token(session, str(saved["connection"])) if saved else None
+        here = projects.get_project(session, who.name)
+        title = here.title or here.name
     day = datetime.now(UTC).date().isoformat()
     task = str(who.task) if who.task else None
     external: tuple[str, str] | None = None
@@ -785,9 +797,7 @@ def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False
         session.add(
             _note_row(None if across else who.project, backend, who.agent, text, task, external)
         )
-    where = (
-        MY_MEMORY if mine else "shared notes" if shared else "Notion" if external else "Ringkeeper"
-    )
+    where = place_words(None if across else title, backend)
     _record(caller, "remember", AuditOutcome.EXECUTED, f"kept a note in {where}")
     return {"kept": True, "where": where, **({"removed": removed} if removed else {})}
 

@@ -16,6 +16,7 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import (
     Agent,
+    AuditEvent,
     AuthMode,
     Env,
     InstanceType,
@@ -242,7 +243,10 @@ def fresh() -> None:
 
 def test_local_is_the_default_and_keeps_who_when_and_which_task(notion: FakeNotion) -> None:
     caller = worker("acme-web", "bookkeeper")
-    assert memory.remember(caller, "Invoices go out on Fridays.")["where"] == "Ringkeeper"
+    assert (
+        memory.remember(caller, "Invoices go out on Fridays.")["where"]
+        == "this project's notes (Acme web)"
+    )
     found = memory.recall(worker("acme-web"))["notes"]
     assert found[0]["note"] == "Invoices go out on Fridays."
     assert found[0]["by"] == "bookkeeper"
@@ -342,10 +346,34 @@ def test_attaching_makes_one_database_named_for_the_project(notion: FakeNotion) 
     assert len(notion.databases) == 1
 
 
+def test_a_project_note_in_notion_is_never_called_personal(notion: FakeNotion) -> None:
+    """From a real run: remember said {"where": "Notion"} for Seaside's own note, the worker
+    took it for the owner's personal memory, and asked for it to be deleted by hand. The
+    answer, the audit line and the task's page say whose notes it went to."""
+    to_notion("acme-web", "acme-notion")
+    caller = worker("acme-web", "bookkeeper")
+    where = memory.remember(caller, "Invoices live in the Billing base")["where"]
+    assert where == "this project's notes (Acme web, in Notion)"
+    with session_scope() as session:
+        audit = (
+            session.scalars(select(AuditEvent).where(AuditEvent.tool == "remember"))
+            .all()[-1]
+            .reason
+        )
+        task = memory._worker(session, caller.session_id).task_id  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
+        shown = memory.saved_by(session, task)
+    assert audit == f"kept a note in {where}"
+    assert audit is not None
+    assert shown == [{"note": "Invoices live in the Billing base", "where": where}]
+    for said_where in (where, audit, shown[0]["where"]):
+        assert "personal" not in said_where.lower()
+        assert memory.MY_MEMORY not in said_where
+
+
 def test_a_note_goes_to_the_projects_database_with_agent_and_task(notion: FakeNotion) -> None:
     source = to_notion("acme-web", "acme-notion")
     answer = memory.remember(worker("acme-web", "bookkeeper"), "Pays by check")
-    assert answer["where"] == "Notion"
+    assert answer["where"] == "this project's notes (Acme web, in Notion)"
     (row,) = notion.databases[source].values()
     assert (row["text"], row["agent"]) == ("Pays by check", "bookkeeper")
     assert row["task"]
@@ -481,17 +509,26 @@ def test_an_agent_can_keep_its_notes_here_while_the_project_uses_notion(
     notion: FakeNotion,
 ) -> None:
     source = to_notion("acme-web", "acme-notion")
-    assert memory.remember(worker("acme-web", "private", "local"), "Mine")["where"] == "Ringkeeper"
+    assert (
+        memory.remember(worker("acme-web", "private", "local"), "Mine")["where"]
+        == "this project's notes (Acme web)"
+    )
     assert notion.databases[source] == {}
-    assert memory.remember(worker("acme-web"), "Everyone's")["where"] == "Notion"
+    assert (
+        memory.remember(worker("acme-web"), "Everyone's")["where"]
+        == "this project's notes (Acme web, in Notion)"
+    )
     assert said(memory.recall(worker("acme-web"))) == ["Everyone's"]
 
 
 def test_an_agent_can_use_notion_while_the_project_stays_here(notion: FakeNotion) -> None:
     with session_scope() as session:
         memory.attach(session, "acme-web", "acme-notion", parent=PARENT)
-    assert memory.remember(worker("acme-web", "writer", "notion"), "Out")["where"] == "Notion"
-    assert memory.remember(worker("acme-web"), "Here")["where"] == "Ringkeeper"
+    assert (
+        memory.remember(worker("acme-web", "writer", "notion"), "Out")["where"]
+        == "this project's notes (Acme web, in Notion)"
+    )
+    assert memory.remember(worker("acme-web"), "Here")["where"] == "this project's notes (Acme web)"
 
 
 # --- Shared notes ---
@@ -926,13 +963,17 @@ def test_no_notes_yet_means_only_what_to_save(notion: FakeNotion) -> None:
 def test_the_owner_adds_a_note_to_the_projects_own_place(notion: FakeNotion) -> None:
     to_notion("acme-web", "acme-notion")
     kept = memory.keep("acme-web", "Acme's books close on the 5th")
-    assert kept == {"kept": True, "where": "Notion", "note": "Acme's books close on the 5th"}
+    assert kept == {
+        "kept": True,
+        "where": "this project's notes (Acme web, in Notion)",
+        "note": "Acme's books close on the 5th",
+    }
     fresh()
     assert said(memory.recall(worker("acme-web"))) == ["Acme's books close on the 5th"]
     assert memory.recall(worker("acme-web"))["notes"][0]["by"] == "a person"
     with pytest.raises(RuleViolationError, match="wasn't kept"):
         memory.keep("acme-web", "Card 4242 4242 4242 4242 is on file")
-    assert memory.keep("acme-blog", "Kept here")["where"] == "Ringkeeper"
+    assert memory.keep("acme-blog", "Kept here")["where"] == "this project's notes (Acme blog)"
 
 
 def test_a_task_page_shows_what_it_saved(owner: TestClient, notion: FakeNotion) -> None:
@@ -941,7 +982,7 @@ def test_a_task_page_shows_what_it_saved(owner: TestClient, notion: FakeNotion) 
     with session_scope() as session:
         task = str(memory._worker(session, caller.session_id).task_id)  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
     assert owner.get(f"/tasks/{task}/memory").json() == [
-        {"note": "The Billing base is appXYZ", "where": "Ringkeeper"}
+        {"note": "The Billing base is appXYZ", "where": "this project's notes (Acme web)"}
     ]
     added = owner.post("/projects/acme-web/memory/notes",
                        json={"note": "Remember the Friday cutoff", "task": task})  # fmt: skip

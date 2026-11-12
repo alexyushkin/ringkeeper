@@ -27,7 +27,7 @@ def build_memory_server(current_caller: Callable[[], Caller]) -> FastMCP:
             "recall to search for more, and remember for what the next run should know: where "
             "things are, decisions, preferences, how things are set up. "
             "Never note secrets, card or bank numbers, or anyone's full personal details. "
-            "Everything about a client or project goes here, never in Notion's personal memory."
+            "Everything about a client or project goes here, never in My memory (mine=true)."
         ),
         mask_error_details=True,
     )

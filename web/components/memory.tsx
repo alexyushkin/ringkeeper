@@ -522,7 +522,7 @@ export function SavedToMemory({ task }: { task: string }) {
       <ul className="space-y-1">
         {saved.data.map((n, i) => (
           <li key={i} className="whitespace-pre-wrap break-words">
-            {n.note} <span className="text-xs text-muted">({n.where === "Ringkeeper" ? "here" : `in ${n.where}`})</span>
+            {n.note} <span className="text-xs text-muted">· {n.where}</span>
           </li>
         ))}
       </ul>
