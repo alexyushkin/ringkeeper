@@ -5,6 +5,7 @@ stand-in for the router and workers."""
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.services import decisions, inbox, instances, memory, setup_check, tasks, threads
+from ringkeeper.services import probes as probes_service
 from tests import test_github, test_web_api
 from tests.helpers import bind, make_instance, make_project
 from tests.test_github import FakeGit, FakeGitHub, call
@@ -89,6 +91,11 @@ def test_one_read_only_request_per_connection(database_url: str) -> None:
     first = probes[0]
     assert first.request == "List the tables in Acme shop's database"
     assert first.label == "Acme DB in Acme shop"
+    # An MCP server is tested without a model: no request goes through the router for it.
+    browser = probes[1]
+    assert browser.direct
+    assert browser.label == "browser"
+    assert browser.request == setup_check.DIRECT_REQUEST
     assert [p.kind for p in probes[-2:]] == ["setup", "web"]
     # Linked to nothing: a gap, reported and not run.
     assert [(g.connection, g.client) for g in gaps] == [("acme-sheets", "Acme Inc")]
@@ -113,6 +120,50 @@ def test_a_project_whose_connections_were_checked_elsewhere_gets_a_request_of_it
         ("project", "acme-web", "Explain what's in Acme web's folder, in a few lines"),
     ]
     assert probes[1].label == "A request for Acme web"
+
+
+def test_mcp_vendor_and_http_connections_are_tested_without_a_model(database_url: str) -> None:
+    del database_url
+    with session_scope() as session:
+        make_project(session, "acme-web", title="Acme web")
+        make_instance(session, "acme-tools", type=InstanceType.MCP, secret_ref="file://a/t")
+        make_instance(session, "acme-api", type=InstanceType.HTTP, secret_ref="file://a/api")
+        make_instance(session, "acme-crm", type=InstanceType.VENDOR, secret_ref="file://a/crm")
+    for name in ("acme-tools", "acme-api", "acme-crm"):
+        bind("acme-web", name)
+    with session_scope() as session:
+        probes, _ = setup_check.plan(session)
+    sent = [(p.kind, p.connection, p.direct) for p in probes if p.project]
+    assert sent == [
+        ("connection", "acme-api", True),
+        ("connection", "acme-crm", True),
+        ("connection", "acme-tools", True),
+        ("project", None, False),  # so that routing to Acme web is still checked
+    ]
+    tested: list[str] = []
+
+    def tested_one(name: str, *, by: str, counted: bool = False) -> probes_service.ProbeResult:
+        assert by == setup_check.AUTHOR
+        assert counted
+        tested.append(name)
+        if name == "acme-api":
+            return probes_service.ProbeResult(False, "No answer within 20 seconds.")
+        return probes_service.ProbeResult(True, "Connected: 12 tools (a, b, c, ...).")
+
+    runner = setup_check.Runner(get_settings())
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(probes_service, "test_connection", tested_one)
+        tools = runner.one(probes[2])
+        api = runner.one(probes[0])
+    assert tested == ["acme-tools", "acme-api"]
+    assert tools.ok
+    assert tools.routed == "tested directly, without a model"
+    assert tools.ran == ["Test on acme-tools"]
+    assert tools.result == "Connected: 12 tools (a, b, c, ...)."
+    assert tools.cost == 0
+    assert tools.thread is None  # no conversation
+    assert not api.ok
+    assert api.error == "No answer within 20 seconds."
 
 
 def test_two_databases_in_one_project_are_each_named(database_url: str) -> None:
@@ -200,6 +251,16 @@ def test_a_check_s_worker_keeps_no_notes() -> None:
 
 
 # --- One whole check, with a stand-in for the router and the workers ---
+
+
+def button_says(message: str) -> Callable[..., probes_service.ProbeResult]:
+    """The Test button, saying it worked."""
+
+    def tested(name: str, *, by: str, counted: bool = False) -> probes_service.ProbeResult:
+        del name, by, counted
+        return probes_service.ProbeResult(True, message)
+
+    return tested
 
 
 class StandIn:
@@ -326,6 +387,8 @@ class StandIn:
 def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
     del database_url
     monkeypatch.setattr(setup_check, "POLL_SECONDS", 0.05)
+    tools = "Connected: 2 tools (navigate, read_page)."
+    monkeypatch.setattr(probes_service, "test_connection", button_says(tools))
     seeded()
     with session_scope() as session:  # the user's own example for another phrasing stays
         session.add(RoutingExample(normalized="ship it", text="Ship it", project="acme-web"))
@@ -354,10 +417,14 @@ def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> No
     assert "left for you in Approvals" in github.left[0]
     web = by["A web lookup"]
     assert web.left == ["asked to let Acme web use the web: left for you"]
-    # The stand-in never calls the browser: its request worked only if it used it.
-    browser = by["browser in Acme shop"]
-    assert not browser.ok
-    assert browser.notes == ["it didn't use browser"]
+    # The stand-in never calls n8n: its request worked only if it used it.
+    n8n = by["globex-n8n in Globex portal"]
+    assert not n8n.ok
+    assert n8n.notes == ["it didn't use globex-n8n"]
+    browser = by["browser"]  # an MCP server: tested without a model
+    assert browser.ok
+    assert browser.result == "Connected: 2 tools (navigate, read_page)."
+    assert browser.thread is None
     setup = by["A question about your setup"]
     assert setup.routed == "answered as a question about Ringkeeper"
     assert setup.result == "Acme web uses Acme DB."
@@ -378,7 +445,7 @@ def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> No
         ).all()
         assert sorted(pending) == [DecisionKind.APPROVE, DecisionKind.ROUTE]
         tagged = setup_check.tagged(session)
-        assert len(tagged) == len(outcomes) - 1  # the follow-up went into the first one
+        assert len(tagged) == len(outcomes) - 2  # the follow-up went into the first one
         assert all(t.title.startswith("Check my setup: ") for t in tagged)
 
     text = setup_check.render(outcomes, gaps, day="2026-11-11")
@@ -387,7 +454,7 @@ def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> No
         in text
     )
     assert "**acme-sheets** (Acme Inc): not linked to any project" in text
-    assert "Note: it didn't use browser." in text
+    assert "Note: it didn't use globex-n8n." in text
     assert "Held: " in text
     assert "(left for you in Approvals)." in text
     assert "ringkeeper scenarios archive --mine" in text
@@ -444,6 +511,7 @@ def test_it_says_when_the_app_isn_t_picking_requests_up(
 ) -> None:
     del database_url
     monkeypatch.setattr(setup_check, "POLL_SECONDS", 0.05)
+    monkeypatch.setattr(probes_service, "test_connection", button_says("Connected: 2 tools."))
     seeded()
     with session_scope(commit=False) as session:
         probes, _ = setup_check.plan(session)

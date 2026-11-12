@@ -5,6 +5,8 @@ n8n lists one workflow; Airtable and Vercel ask who the token belongs to;
 Twilio lists one phone number; Gmail signs in and opens the inbox. Nothing is
 written to the service. The result is
 saved on the connection (last_test_*) and audited as a change by the owner.
+Check my setup uses it too, and also counts what a vendor's API or an HTTP API's
+OpenAPI description offers (an MCP server's tools are always counted).
 """
 
 import asyncio
@@ -102,15 +104,34 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, P
             raise ToolError(f"Testing {kind} connections isn't supported yet.")
 
 
+async def _offers(kind: InstanceType, target: Target) -> str:
+    """What the connection offers, counted by Ringkeeper itself: no model is asked."""
+    if kind is InstanceType.VENDOR:
+        count = len((await vendor.list_operations.handler(target))["operations"])
+        return f"It offers {count} operation{'s' if count != 1 else ''}."
+    if kind is InstanceType.HTTP and http_api.settings(target.secret.reveal()).get("spec_url"):
+        found = await http_api.list_endpoints.handler(target)
+        count = len(found["endpoints"])
+        more = "+" if found["more"] else ""
+        return f"Its OpenAPI description lists {count}{more} endpoint{'s' if count != 1 else ''}."
+    return ""
+
+
+async def _tested(kind: InstanceType, target: Target, counted: bool) -> str:
+    said = await _probe(kind, target)
+    return f"{said} {await _offers(kind, target)}".strip() if counted else said
+
+
 def _limited(name: str, shown: str) -> ProbeResult:
     """The connection works: it's the plan that stops it, which its card says."""
     plan_notes.note(name, None, shown)
     return ProbeResult(True, shown)
 
 
-def test_connection(name: str, *, by: str) -> ProbeResult:
+def test_connection(name: str, *, by: str, counted: bool = False) -> ProbeResult:  # noqa: PT028 (the Test button, not a test)
     """Read the connection, probe it with no transaction open (an MCP server may take
-    a minute to start, and SQLite has one writer), then record the result."""
+    a minute to start, and SQLite has one writer), then record the result. `counted`:
+    also say how many operations or endpoints it offers."""
     with session_scope(commit=False) as session:
         instance = instances.get_instance(session, name)
         kind, env, base_url, ref = (
@@ -127,7 +148,7 @@ def test_connection(name: str, *, by: str) -> ProbeResult:
         if kind in ADAPTERS:
             secret.also_scrub(*ADAPTERS[kind].secret_fragments(secret.reveal()))
         target = Target(name, env, base_url, secret, config)
-        message = asyncio.run(asyncio.wait_for(_probe(kind, target), timeout=timeout))
+        message = asyncio.run(asyncio.wait_for(_tested(kind, target, counted), timeout=timeout))
         result = ProbeResult(True, message)
         plan_notes.clear(name)
         if kind is InstanceType.GITHUB:

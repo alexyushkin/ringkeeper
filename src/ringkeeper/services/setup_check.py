@@ -44,6 +44,7 @@ from ringkeeper.models import (
     DecisionKind,
     DecisionStatus,
     Instance,
+    InstanceType,
     Message,
     MessageRole,
     Project,
@@ -56,6 +57,7 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.services import cleanup, inbox, instances, onboarding, tasks, threads, titles
+from ringkeeper.services import probes as test_button
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,10 @@ SETTLED = frozenset({*TERMINAL_STATUSES, TaskStatus.NEEDS_INPUT})
 SETUP_QUESTION = "Which projects do I have, and which connections does each one use?"
 WEB_LOOKUP = "Look up the latest stable Python release on python.org and tell me its version."
 FOLLOW_UP = "Thanks. Now say that again in one or two sentences."
+# Tested without a model: connect, and count what it offers (the connection's Test button).
+DIRECT = frozenset({InstanceType.MCP, InstanceType.VENDOR, InstanceType.HTTP})
+DIRECT_REQUEST = "Connect, and count the tools it offers (without a model)"
+TESTED = "tested directly, without a model"
 
 
 @dataclass(frozen=True)
@@ -88,9 +94,12 @@ class Probe:
     connection: str | None = None
     connection_title: str = ""
     service: str = ""
+    direct: bool = False  # tested by Ringkeeper itself, without a model or the router
 
     @property
     def label(self) -> str:
+        if self.direct:
+            return self.connection_title
         if self.kind == "connection":
             return f"{self.connection_title} in {self.project_title}"
         if self.kind == "project":
@@ -125,7 +134,7 @@ class Outcome:
     @property
     def reached(self) -> bool:
         """A connection's request used that connection (or left something for the user)."""
-        if self.probe.kind != "connection" or self.left:
+        if self.probe.kind != "connection" or self.probe.direct or self.left:
             return True
         return any(r.endswith(f" on {self.probe.connection}") for r in self.ran)
 
@@ -158,8 +167,8 @@ def plan(session: Session) -> tuple[list[Probe], list[Gap]]:
         mine = [_probe(project, i, linked) for i in sorted(asked, key=lambda i: i.name)
                 if i.id not in done]  # fmt: skip
         done.update(i.id for i in asked)
-        if asked and not mine:  # its connections were checked elsewhere: is it reached?
-            mine = [
+        if asked and all(p.direct for p in mine):  # none go through the router: is it reached?
+            mine += [
                 Probe(
                     "project", onboarding.FOLDER.format(project=project.title),
                     project=project.name, project_title=project.title,
@@ -177,10 +186,12 @@ def _probe(project: Project, instance: Instance, linked: Sequence[Instance]) -> 
     said = asks.format(project=project.title, connection=_of(instance))
     if "{connection}" not in asks and sum(i.type is instance.type for i in linked) > 1:
         said += f", using {_of(instance)}"  # which of its databases (say) is meant
+    direct = instance.type in DIRECT
     return Probe(
-        "connection", said,
+        "connection", DIRECT_REQUEST if direct else said,
         project=project.name, project_title=project.title,
         connection=instance.name, connection_title=_of(instance), service=instance.type.value,
+        direct=direct,
     )  # fmt: skip
 
 
@@ -442,7 +453,23 @@ class Runner:
             spent += sum(float((m.routing or {}).get("cost_usd") or 0.0) for m in mine)
             out.cost = round(spent, 4)
 
+    def _test(self, probe: Probe) -> Outcome:
+        """Connect and count what it offers, as its Test button does: no model, no router."""
+        out = Outcome(probe, routed=TESTED, ran=[f"Test on {probe.connection}"])
+        try:
+            tested = test_button.test_connection(str(probe.connection), by=AUTHOR, counted=True)
+        except RingkeeperError as error:  # removed since, say
+            out.error = str(error)
+            return out
+        if tested.ok:
+            out.result = tested.message
+        else:
+            out.error = tested.message
+        return out
+
     def one(self, probe: Probe, thread: str | None = None) -> Outcome:
+        if probe.direct:
+            return self._test(probe)
         out = Outcome(probe)
         since = datetime.now(UTC) - timedelta(seconds=1)  # the database keeps whole seconds
         try:
@@ -475,7 +502,8 @@ class Runner:
                 finished, _ = wait(under_way, return_when=FIRST_COMPLETED)
                 for future in finished:
                     out = future.result()
-                    if not arrived and out.timed_out and out.routed in ("", NOT_ROUTED):
+                    sent = [o for o in arrived.values() if not o.probe.direct]
+                    if not sent and out.timed_out and out.routed in ("", NOT_ROUTED):
                         self.stop.set()  # the others wait the same way: send no more
                         raise NotPickedUpError(NOT_PICKED_UP)
                     arrived[under_way.pop(future)] = out

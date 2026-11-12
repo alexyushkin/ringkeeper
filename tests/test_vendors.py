@@ -21,6 +21,7 @@ from ringkeeper.services import (
     developer_apps,
     env_scan,
     inbox,
+    probes,
     secrets_in,
     trusts,
     undo,
@@ -464,6 +465,18 @@ async def test_undoing_a_metadata_edit_puts_it_back(api: FakeApi) -> None:
 
 async def test_the_test_button_says_which_instance(api: FakeApi) -> None:
     assert await vendor.probe(clerk()) == "Connected to Clerk: the development instance ins_1."
+
+
+@pytest.mark.usefixtures("api", "linked")
+def test_check_my_setup_also_counts_the_operations() -> None:
+    count = sum(1 for name in vendor.OPERATIONS if name.startswith("clerk."))
+    said = probes.test_connection("acme-clerk", by="setup-check", counted=True)
+    assert said.ok
+    assert said.message == (
+        f"Connected to Clerk: the development instance ins_1. It offers {count} operations."
+    )
+    # The Test button itself says what it said before.
+    assert probes.test_connection("acme-clerk", by="owner").message.endswith("ins_1.")
 
 
 def test_a_projects_clerk_key_is_found(tmp_path: Path) -> None:

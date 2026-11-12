@@ -23,9 +23,13 @@ folder; this checks what you've actually set up.
   first project the connection is linked to: a connection linked to several projects, or to all
   of them, is checked once. When a project has two connections of a kind (two databases, say),
   each request names its connection.
-- For a project none of those went to (its connections were checked in another project), one
-  request of its own, "Explain what's in Acme shop's folder, in a few lines", to check that its
-  requests reach it.
+- An MCP server, an add-on tool's API or an HTTP API isn't sent a request: Ringkeeper connects
+  to it itself, as its **Test** button does, and counts the tools it offers (an HTTP API's
+  endpoints, if it has an OpenAPI address). No model is asked, so it costs nothing, and the
+  connection's card shows the result.
+- For a project none of those went through the router for (its connections were checked in
+  another project, or tested directly), one request of its own, "Explain what's in Acme shop's
+  folder, in a few lines", to check that its requests reach it.
 - A question about your setup: "Which projects do I have, and which connections does each one
   use?"
 - A web lookup.
