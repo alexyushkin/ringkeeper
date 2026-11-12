@@ -9,7 +9,8 @@ publishes it as the release notes and the app shows it with the update.
   projects has the mail connection. A connection only one of a client's projects has
   decides it.
 - **Self-test:** memory-reuse asks a question the tables lead to (who has spent the most),
-  so the note a task saves isn't its answer.
+  so the note a task saves isn't its answer, and it doesn't need the first task to list the
+  tables: describing the ones it needs is fine.
 
 - **Data, ops and general tasks start with a shorter prompt.** Work on a project's code keeps
   Claude Code's own; anything else gets a short one with the same rules for working
