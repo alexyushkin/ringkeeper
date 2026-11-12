@@ -897,7 +897,7 @@
 "doc": "services/github",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** repositories, issues, pull requests, files, branches, commits, and the checks on a commit. Each list says how many there are in all, and for issues and pull requests of every state, how many are open. - **Change:** open and update issues, comment, open and merge pull requests, push a branch. A push never forces."
+"text": "- **Read:** repositories, issues, pull requests, files, branches, commits, and the checks on a commit. Pull requests can be filtered by label, like issues. Each list says how many there are in all, and for issues and pull requests of every state, how many are open. - **Change:** open and update issues, comment, open and merge pull requests, push a branch. A push never forces."
 },
 {
 "doc": "services/github",
@@ -1023,7 +1023,7 @@
 "doc": "services/n8n",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** list workflows and their runs (executions), get one of each. A list of workflows says how many there are in all and how many are on, not only on the page it shows. A list of runs says how many there are and how many of each status (succeeded, failed, running...), counting the newest 1,000 at most. - **Change:** turn a workflow on or off, replace a workflow, run a past execution again, stop a running one."
+"text": "- **Read:** list workflows and their runs (executions), get one of each. A list of workflows says how many there are in all and how many are on, not only on the page it shows. It can be filtered by words in the name, the start of the name, tags and whether it's on, and then counts only those. A long list also says how many there are by the name's prefix (before \"#\" or the first dash: \"Seaside #12\" is Seaside's) and by tag, so a count is n8n's, not a guess. A list of runs says how many there are and how many of each status (succeeded, failed, running...), counting the newest 1,000 at most. - **Change:** turn a workflow on or off, replace a workflow, run a past execution again, stop a running one."
 },
 {
 "doc": "services/n8n",

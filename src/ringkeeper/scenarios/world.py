@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ringkeeper.adapters import sqlite_file
 from ringkeeper.config import Settings
 from ringkeeper.models import Autonomy, Env, InstanceType
-from ringkeeper.scenarios import demo_airtable, demo_service
+from ringkeeper.scenarios import demo_airtable, demo_n8n, demo_service
 from ringkeeper.scenarios.catalog import (
     ACME,
     ACME_DB,
@@ -29,6 +29,7 @@ from ringkeeper.scenarios.catalog import (
     DEV_DB,
     LONG_EMAIL_END,
     MAIL,
+    N8N,
     OWN_CLIENT,
     ROUTINE,
     SHOP,
@@ -93,6 +94,7 @@ def _connection(
     owner: str,
     project: str,
     config: dict[str, Any] | None = None,
+    base_url: str | None = None,
 ) -> None:
     ref = CONNECTION_REF.format(name=name)
     vault.store(ref, secret)
@@ -100,7 +102,7 @@ def _connection(
         session,
         InstanceIn(
             name=name, title=title, type=kind, env=env, secret_ref=ref, owner=owner,
-            config=config or {},
+            config=config or {}, base_url=base_url,
         ),
     )  # fmt: skip
     bindings.set_binding(session, BindingIn(project=project, instance=name))
@@ -218,6 +220,12 @@ def build(
     _connection(
         session, vault, name=AIRTABLE, title="Demo Co ops (Airtable)", kind=InstanceType.AIRTABLE,
         env=Env.PROD, owner=owner, project=SHOP, secret=demo_airtable.TOKEN,
+    )  # fmt: skip
+    # Demo Co's n8n: two groups of workflows by name, over two pages, to be counted right.
+    demo_n8n.install()
+    _connection(
+        session, vault, name=N8N, title="Demo Co automations (n8n)", kind=InstanceType.N8N,
+        env=Env.PROD, owner=owner, project=SHOP, secret=demo_n8n.KEY, base_url=demo_n8n.URL,
     )  # fmt: skip
 
     # An agent held to the shop's database, and a routine that runs it.

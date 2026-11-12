@@ -15,6 +15,7 @@ DEV_DB = "demo-shop-dev"
 MAIL = "demo-mail"
 CRM = "demo-crm"
 AIRTABLE = "demo-airtable"
+N8N = "demo-n8n"
 # In Acme's database only: seen anywhere in a Demo Co task, it crossed clients.
 CANARY = "ACME-CANARY-7731"
 # The operator's own client and its one project: general work runs here.
@@ -79,6 +80,8 @@ class Scenario:
     tools: tuple[str, ...] = ()  # each must have been used (part of the tool's name)
     # ...or only called: its call can come back as an error (a file that can't be read)
     tried: tuple[str, ...] = ()
+    # (a name, its count): the reply must give that very number next to the name
+    counts: tuple[tuple[str, int], ...] = ()
     held: int = 0  # how many approvals it must raise, at least
     never_held: bool = False
     answer: str = APPROVE
@@ -331,6 +334,17 @@ SCENARIOS: tuple[Scenario, ...] = (
         ),
         project=SHOP, tools=("read_more",), reply_has=(LONG_EMAIL_END,),
         cost_ceiling=3.0, minutes=12,
+    ),
+    Scenario(
+        "subset-counts", "Two groups of workflows are counted by the tool, not by hand", "limits",
+        request=(
+            f"In Demo shop's n8n ({N8N}), how many workflows are named Bayside and how many are "
+            "named Mr. Gutter?"
+        ),
+        project=SHOP, tools=("list_workflows",), counts=(("Bayside", 49), ("Mr. Gutter", 10)),
+        never_held=True, cost_ceiling=1.0,
+        notes="64 workflows over two pages, with duplicate names in both groups. A real run "
+        "said 46 and 13 for 49 and 10, counting a plain list by hand.",
     ),
     Scenario(
         "unreadable-attachment", "An attachment that can't be read ends as not done", "limits",

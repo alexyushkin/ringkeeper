@@ -25,6 +25,7 @@ from ringkeeper.router.service import named_agent
 from ringkeeper.scenarios import (
     checks,
     demo_airtable,
+    demo_n8n,
     demo_service,
     driver,
     launcher,
@@ -36,6 +37,7 @@ from ringkeeper.scenarios.catalog import (
     AIRTABLE,
     APPROVE,
     CANARY,
+    N8N,
     SCENARIOS,
     SHOP,
     SHOP_DB,
@@ -177,6 +179,42 @@ def test_a_failed_tool_call_doesn_t_count_as_using_the_tool() -> None:
     assert tool_names([*events, event("sdk.user", refused)]) == ["query"]
     # ...but it was tried: a file that can't be read always comes back as an error.
     assert tool_names([*events, event("sdk.user", refused)], errors=True) == ["query", "execute"]
+
+
+def test_two_groups_must_be_counted_right() -> None:
+    """From a real run: "Seaside (46)" and "Mr. Stormdoor (13)" for 49 and 10."""
+    counted = next(s for s in SCENARIOS if s.key == "subset-counts")
+    assert counted.counts == (("Bayside", 49), ("Mr. Gutter", 10))
+    assert demo_n8n.COUNTS == {"Bayside": 49, "Mr. Gutter": 10}
+    assert len(demo_n8n.WORKFLOWS) > 50  # more than one page
+    names = [w["name"] for w in demo_n8n.WORKFLOWS]
+    assert len(names) > len(set(names))  # and duplicate names in it
+    right = "Bayside: 49 workflows. Mr. Gutter: 10 workflows."
+    seen = Evidence(projects=[SHOP], statuses=["succeeded"], tools=["list_workflows"])
+    assert judge(counted, replace(seen, replies=right)) == []
+    wrong = judge(counted, replace(seen, replies="Bayside (46) and Mr. Gutter (13)."))
+    assert "the answer doesn't say Bayside: 49" in wrong
+    assert "the answer doesn't say Mr. Gutter: 10" in wrong
+
+
+@pytest.mark.anyio
+async def test_the_demo_n8n_answers_only_its_own_key() -> None:
+    from ringkeeper.adapters import n8n  # noqa: PLC0415
+    from ringkeeper.adapters.base import Target  # noqa: PLC0415
+    from ringkeeper.models import Env  # noqa: PLC0415
+    from ringkeeper.vault import Secret  # noqa: PLC0415
+
+    previous = n8n.transport
+    demo_n8n.install()
+    try:
+        target = Target(N8N, Env.PROD, demo_n8n.URL, Secret("r", demo_n8n.KEY))
+        page = await n8n.list_workflows.handler(target, name_starts_with="Bayside")
+        assert page["total"] == 49
+        assert (await n8n.list_workflows.handler(target))["groups"]["by_name"] == {
+            "Bayside": 49, "Mr. Gutter": 10,
+        }  # fmt: skip
+    finally:
+        n8n.transport = previous
 
 
 def test_a_tool_that_must_be_tried_can_come_back_as_an_error() -> None:

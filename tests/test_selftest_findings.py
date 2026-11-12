@@ -203,6 +203,15 @@ def test_the_worker_knows_its_final_message_is_the_answer() -> None:
     assert "give it once: no correcting it mid-message" in HEADLESS_NOTE
 
 
+def test_a_count_is_the_tool_s_total_not_a_hand_count() -> None:
+    """From a real run: "Seaside (46)" and "Mr. Stormdoor (13)" for 49 and 10, though the
+    items listed under each added up right."""
+    note = " ".join(HEADLESS_NOTE.split())
+    assert 'For "how many", call the tool with a filter and quote the total it returns' in note
+    assert "never count items by reading a list" in note
+    assert "A count printed next to a list must equal the items in that list" in note
+
+
 def test_a_connection_is_reached_only_through_its_own_gateway() -> None:
     """From a real run: with no tool for the job, the worker tried "the Ringkeeper MCP route"
     for the Airtable connection too."""

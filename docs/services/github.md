@@ -16,7 +16,7 @@ add its address.
 ## What it can do
 
 - **Read:** repositories, issues, pull requests, files, branches, commits, and the
-  checks on a commit. Each list says how many there are in all, and for issues and pull
+  checks on a commit. Pull requests can be filtered by label, like issues. Each list says how many there are in all, and for issues and pull
   requests of every state, how many are open.
 - **Change:** open and update issues, comment, open and merge pull requests,
   push a branch. A push never forces.

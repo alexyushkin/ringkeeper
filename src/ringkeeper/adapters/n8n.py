@@ -16,6 +16,7 @@ there and are the only option on older self-hosted versions, so we use them.
 """
 
 import re
+from collections import Counter
 from dataclasses import replace
 from typing import Annotated, Any, cast
 
@@ -236,31 +237,105 @@ async def _every_workflow(target: Target, params: JSON) -> tuple[list[JSON], boo
     return found, True
 
 
+GROUPS_SHOWN = 30
+_GROUP_MARKS = ("#", " - ", " \u2013 ", "-")  # \u2013: an en dash
+
+
+def group_of(name: str) -> str | None:
+    """The part of a workflow's name that says whose or what it is: "Seaside #12" is
+    Seaside's, "Lead sync - Acme" is a lead sync. None when the name has no such mark."""
+    for mark in _GROUP_MARKS:
+        head, found, _rest = name.partition(mark)
+        if found and head.strip():
+            return head.strip()
+    return None
+
+
+def _groups(workflows: list[JSON]) -> JSON:
+    """Counts the adapter made, to quote instead of counting a list: by the name's prefix
+    (before "#" or the first dash) and by tag."""
+    by_name: Counter[str] = Counter()
+    by_tag: Counter[str] = Counter()
+    for workflow in workflows:
+        if (group := group_of(str(workflow.get("name") or ""))) is not None:
+            by_name[group] += 1
+        for tag in cast(list[JSON], workflow.get("tags") or []):
+            by_tag[str(tag.get("name"))] += 1
+    # A group of one isn't a group: just a name with a dash in it.
+    return {
+        "by_name": {g: n for g, n in by_name.most_common(GROUPS_SHOWN) if n > 1},
+        "by_tag": dict(by_tag.most_common(GROUPS_SHOWN)),
+    }
+
+
+def _matches(workflow: JSON, contains: str | None, starts: str | None, tags: list[str]) -> bool:
+    name = str(workflow.get("name") or "").casefold()
+    if contains and contains.casefold() not in name:
+        return False
+    if starts and not name.startswith(starts.casefold()):
+        return False
+    has = {str(t.get("name")).casefold() for t in cast(list[JSON], workflow.get("tags") or [])}
+    return not tags or any(t.casefold() in has for t in tags)
+
+
+def _offset(cursor: str | None) -> int:
+    """A filtered list's own cursor ("f150"): where the next page starts."""
+    return int(cursor[1:]) if cursor and cursor.startswith("f") and cursor[1:].isdigit() else 0
+
+
 @read
 async def list_workflows(
     target: Target,
     active: bool | None = None,
     name: Annotated[str | None, Field(description="Filter by exact name.")] = None,
+    name_contains: Annotated[
+        str | None, Field(description="Only workflows whose name has these words.", max_length=200)
+    ] = None,
+    name_starts_with: Annotated[
+        str | None, Field(description="Only workflows whose name starts so.", max_length=200)
+    ] = None,
+    tags: Annotated[
+        str | None, Field(description="Comma-separated: workflows with any of these tags.")
+    ] = None,
     limit: Limit = 50,
     cursor: Cursor = None,
 ) -> JSON:
     """List workflows (id, name, active, updatedAt, tags), one page at a time. total and active
-    count every workflow that matches, on every page, not only this one."""
+    count every workflow that matches the filters, on every page. To answer "how many X",
+    filter (name_contains, name_starts_with, tags, active) and quote total: never count a list
+    by hand. groups counts them all by the name's prefix (before "#" or the first dash) and by
+    tag."""
     params = {
         "active": None if active is None else str(active).lower(),
         "name": name,
         **(_scope_params(target) if target.scope else {}),
     }
+    wanted = [t.strip() for t in (tags or "").split(",") if t.strip()]
+    if name_contains or name_starts_with or wanted:
+        # n8n can't filter like this: every page is read, filtered here, and paged again.
+        found, more = await _every_workflow(target, params)
+        matching = [w for w in found if _matches(w, name_contains, name_starts_with, wanted)]
+        start = _offset(cursor)
+        shown = matching[start : start + limit]
+        following = f"f{start + limit}" if start + limit < len(matching) else None
+        page = (
+            {"workflows": [_workflow_summary(w) for w in shown], "next_cursor": following}
+            | _counts(matching, more=more)
+            | {"groups": _groups(matching)}
+        )
+        return {**page, "limited_to": _scope_words(target)} if target.scope else page
     data = await _call(target, "GET", "/workflows", params={**params, "limit": limit,
                                                              "cursor": cursor})  # fmt: skip
     # n8n filtered it; nothing outside goes back, whatever it sent.
     kept = [w for w in cast(list[JSON], data.get("data", [])) if _in_scope(target, w)]
+    extra: JSON = {}
     if cursor is None and not data.get("nextCursor"):
         counts = _counts(kept, more=False)  # this page is all of them
     else:
         found, more = await _every_workflow(target, params)
         counts = _counts(found, more=more)
-    page = _page({**data, "data": kept}, "workflows", _workflow_summary) | counts
+        extra = {"groups": _groups(found)}  # a long list: counts to quote, made here
+    page = _page({**data, "data": kept}, "workflows", _workflow_summary) | counts | extra
     return {**page, "limited_to": _scope_words(target)} if target.scope else page
 
 

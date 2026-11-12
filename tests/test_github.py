@@ -203,6 +203,39 @@ def test_lists_say_how_many_there_are_in_all(monkeypatch: pytest.MonkeyPatch) ->
     assert (one["total"], one["open"], len(asked)) == (1, 1, 1)
 
 
+def test_pull_requests_with_a_label_are_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GitHub's pull list can't filter by label: its issue list can, and its search counts
+    them, so "how many PRs are labelled release" is a total, not a hand count."""
+    asked: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        asked.append(request)
+        if request.url.path == "/search/issues":
+            open_only = "is:open" in request.url.params["q"]
+            return httpx2.Response(200, json={"total_count": 12 if open_only else 31, "items": []})
+        assert request.url.path == "/repos/acme-inc/website/issues"
+        assert request.url.params["labels"] == "release"
+        size = int(request.url.params["per_page"])
+        pull: dict[str, Any] = {"title": "x", "state": "open", "pull_request": {}}
+        items = [{"number": n, **pull} for n in range(size)]
+        return httpx2.Response(200, json=items)
+
+    monkeypatch.setattr(github, "transport", httpx2.MockTransport(handle))
+    tgt = Target("acme-gh", Env.DEV, None, Secret("file://acme/gh", TOKENS["acme-gh"]))
+
+    async def go() -> Any:
+        tool = github.ADAPTER.tool("list_pulls")
+        return await tool.handler(tgt, repo="acme-inc/website", state="all", labels="release",
+                                  limit=2)  # fmt: skip
+
+    pulls = asyncio.run(go())
+    assert (len(pulls["pulls"]), pulls["total"], pulls["open"]) == (2, 31, 12)
+    assert [r.url.params["q"] for r in asked if r.url.path == "/search/issues"] == [
+        'repo:acme-inc/website is:pr label:"release"',
+        'repo:acme-inc/website is:pr label:"release" is:open',
+    ]
+
+
 def test_a_link_pinned_to_several_repositories(
     world: tuple[FakeGitHub, FakeGit, dict[str, Path]],
 ) -> None:
