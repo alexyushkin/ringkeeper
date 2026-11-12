@@ -74,11 +74,42 @@ async def test_executions(fake: FakeN8n) -> None:
     page = await n8n.list_executions.handler(target(), workflow_id="wf1")
     assert page == {
         "executions": [{"id": "ex1", "workflowId": "wf1", "status": "success"}],
-        "next_cursor": "page-2",
+        "next_cursor": None,
+        "total": 1,
+        "by_status": {"success": 1},
     }
     detail = await n8n.get_execution.handler(target(), execution_id="ex1", include_data=True)
     assert detail["data"] == {}
     assert fake.requests[-1].url.params["includeData"] == "true"
+
+
+async def test_execution_totals_count_every_page(fake: FakeN8n) -> None:
+    """A page of 20 runs isn't how many there are: "how many failed?" is answered by
+    by_status, over every page that matches."""
+    for i in range(2, 31):
+        fake.executions.append(
+            {"id": f"ex{i}", "workflowId": "wf1", "status": "error" if i % 3 == 0 else "success"}
+        )
+    first = await n8n.list_executions.handler(target(), limit=5)
+    assert len(first["executions"]) == 5
+    assert first["total"] == 30
+    assert first["by_status"] == {"error": 10, "success": 20}
+    second = await n8n.list_executions.handler(target(), limit=5, cursor=first["next_cursor"])
+    assert (second["total"], second["by_status"]) == (30, first["by_status"])
+    failed = await n8n.list_executions.handler(target(), status="error", limit=5)
+    assert (failed["total"], failed["by_status"]) == (10, {"error": 10})
+    assert "counted" not in failed
+
+
+async def test_execution_totals_stop_at_the_newest_thousand(
+    fake: FakeN8n, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(n8n, "EXECUTIONS_COUNTED", 12)
+    for i in range(2, 31):
+        fake.executions.append({"id": f"ex{i}", "workflowId": "wf1", "status": "success"})
+    page = await n8n.list_executions.handler(target(), limit=5)
+    assert page["total"] == 12
+    assert page["counted"] == "only the newest 12: there are more"
 
 
 async def test_activate_and_deactivate(fake: FakeN8n) -> None:

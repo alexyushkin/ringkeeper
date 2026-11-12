@@ -9,7 +9,9 @@ address too, like `https://n8n.acme.example`. n8n Cloud's free trial has no API.
 ## What it can do
 
 - **Read:** list workflows and their runs (executions), get one of each. A list of workflows
-  says how many there are in all and how many are on, not only on the page it shows.
+  says how many there are in all and how many are on, not only on the page it shows. A list
+  of runs says how many there are and how many of each status (succeeded, failed, running...),
+  counting the newest 1,000 at most.
 - **Change:** turn a workflow on or off, replace a workflow, run a past
   execution again, stop a running one.
 

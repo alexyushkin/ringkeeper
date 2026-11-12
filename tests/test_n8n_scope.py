@@ -123,6 +123,7 @@ async def test_a_change_to_another_client_s_workflow_is_refused_not_held(
 async def test_runs_show_only_the_client_s_workflows(hosted: FakeN8n, vault: Vault) -> None:
     page = await run_call(call("list_executions"), vault)
     assert [e["id"] for e in page["executions"]] == ["11"]
+    assert page["total"] == 1  # the count leaks nothing about the other client's runs
     with pytest.raises(RefusalError, match="execution 12 isn't one"):
         await run_call(call("get_execution", execution_id="12"), vault)
     with pytest.raises(RefusalError, match="workflow a1 isn't one"):
