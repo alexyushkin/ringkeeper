@@ -391,7 +391,7 @@ def test_a_task_that_couldn_t_do_it_ends_not_done_with_an_offer(
 
 
 def test_a_task_that_did_part_of_it_is_partly_done(run_stub: Callable[..., Run]) -> None:
-    """From real use (Seaside): part 1 was done and part 2 wasn't, and the task said only
+    """From real use (Bayside): part 1 was done and part 2 wasn't, and the task said only
     "Not done". It stays not_done, and keeps what it finished: its card says Partly done."""
     run = run_stub({"not_done": "Airtable tools here can't list automations.",
                     "done": "Listed the 59 workflows by client."})  # fmt: skip
