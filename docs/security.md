@@ -93,7 +93,12 @@ click.
 - **To the services you connect:** the calls tasks make (Airtable, your
   database, GitHub, Google, and so on), with their keys.
 - **To Telegram, Slack or Discord, if you set them up:** short summaries of
-  approvals and finished tasks (never keys, code or full SQL).
+  approvals and finished tasks (never keys, code or full SQL). A task you asked for
+  from a chat sends its full result back there (tables as lines, code and SQL stay in
+  the app), with the files it made: small ones, never one that looks like a secret, and
+  known secrets masked. To keep results and files in the app, turn off **Full results
+  and files for requests from here** in that channel's choices (Settings ›
+  Notifications): the chat then only hears how the task ended, with a link.
 - **To GitHub:** the update check (`latest.json` from the releases page) and
   the update download.
 - **To the MCP registry and Hugging Face, only when you use them:** catalog

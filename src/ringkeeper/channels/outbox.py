@@ -407,9 +407,11 @@ class Runner:
                 link = self._link(session, links.task_page(self.settings, task.id))
                 offer = news.offer_button(task)
                 buttons = [cards.Button(offer[0], offer[1], style="primary")] if offer else []
-                text = news.result_text(task, link)
+                full = self.prefs.full_results
+                text = news.result_text(task, link, full=full)
                 sent += self._send_direct(session, text, buttons, task_id=task.id)
-                self._attach(session, task)
+                if full:
+                    self._attach(session, task)
         return sent
 
     def _attach(self, session: Session, task: Task) -> None:

@@ -15,6 +15,7 @@ export interface Prefs {
   quiet: { from: string; to: string; tz: string } | null;
   clients: string[];
   projects: string[];
+  full_results?: boolean; // a request from this chat gets its result and files back (on unless turned off)
 }
 
 export interface Channel {
@@ -112,6 +113,12 @@ export function ChannelPrefs({ prefs, onSave }: { prefs: Prefs; onSave: (prefs: 
           <Field label="To" type="time" value={draft.quiet.to} onChange={(to) => setDraft({ ...draft, quiet: { ...draft.quiet!, to, tz: browserZone() } })} />
         </div>
       ) : null}
+      <Toggle
+        label="Full results and files for requests from here"
+        checked={draft.full_results !== false}
+        onChange={(on) => setDraft({ ...draft, full_results: on })}
+        hint="A task asked for from this chat ends there with its result and the files it made (small ones, never one that looks like a secret). Off, only how it ended and a link to read it in Ringkeeper."
+      />
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">About which clients and projects</legend>
         <label className="flex items-center gap-2 text-sm">

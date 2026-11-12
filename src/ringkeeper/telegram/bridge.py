@@ -355,9 +355,11 @@ class Bridge:
                 )
                 .order_by(Task.finished_at)
             ).all()
+            full = telegram_state(session)[0].full_results if finished else True
             for task in finished:
                 path = links.task_page(self.settings, task.id)
-                text = result_text(task, links.open_url(session, self.settings, path))
+                link = links.open_url(session, self.settings, path)
+                text = result_text(task, link, full=full)
                 offer = offer_button(task)
                 markup = (
                     {"inline_keyboard": [[{"text": offer[0], "callback_data": offer[1]}]]}
@@ -365,7 +367,8 @@ class Bridge:
                     else None
                 )
                 sent += self._notify(session, text, task.thread_id, markup, task_id=task.id)
-                self._attach(session, task)
+                if full:
+                    self._attach(session, task)
         return sent
 
     def _attach(self, session: Session, task: Task) -> None:
