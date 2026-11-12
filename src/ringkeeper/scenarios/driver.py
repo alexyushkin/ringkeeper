@@ -289,9 +289,11 @@ class Driver:
 
     # --- What happened ---
 
-    def _gather(self, thread: uuid.UUID, scenario: Scenario, seen: Evidence) -> list[str]:
+    def _gather(self, places: list[uuid.UUID], scenario: Scenario, seen: Evidence) -> list[str]:
         with session_scope(commit=False) as session:
-            found = session.scalars(select(Task).where(Task.thread_id == thread)).all()
+            found = session.scalars(
+                select(Task).where(Task.thread_id.in_(places)).order_by(Task.created_at)
+            ).all()
             ids = [t.id for t in found]
             sessions = session.scalars(
                 select(WorkerSession).where(WorkerSession.task_id.in_(ids))
@@ -305,7 +307,7 @@ class Driver:
             )
             messages = session.scalars(
                 select(Message)
-                .where(Message.thread_id == thread)
+                .where(Message.thread_id.in_(places))
                 .order_by(Message.created_at, Message.id)
             ).all()
             said = [m.body for m in messages if m.role is not MessageRole.USER]
@@ -325,6 +327,9 @@ class Driver:
                     agent = session.get(Agent, task.agent_id)
                     seen.agents.append(agent.name if agent else "?")
             seen.tools = tool_names(events)
+            if found:
+                last = {s.id for s in sessions if s.task_id == found[-1].id}
+                seen.last_tools = tool_names([e for e in events if e.session_id in last])
             seen.replies = "\n".join(said)
             for task in found:
                 own = {s.id for s in sessions if s.task_id == task.id}
@@ -464,14 +469,19 @@ class Driver:
         deadline = time.monotonic() + scenario.minutes * 60
         try:
             thread = self._start(scenario)
+            places = [thread]
             self._wait(thread, scenario, seen, deadline)
             for follow_up in scenario.then:
                 with session_scope() as session:
-                    threads.post_message(
-                        session, follow_up, author=AUTHOR, source="web", thread=str(thread)
-                    )
-                self._wait(thread, scenario, seen, deadline)
-            ids = self._gather(thread, scenario, seen)
+                    posted = threads.post_message(
+                        session, follow_up, author=AUTHOR, source="web",
+                        thread=None if scenario.then_new else str(thread),
+                    )  # fmt: skip
+                    later = posted.thread_id
+                if later not in places:
+                    places.append(later)
+                self._wait(later, scenario, seen, deadline)
+            ids = self._gather(places, scenario, seen)
             if seen.left_open:
                 with session_scope() as session:
                     seen.still_open = all(

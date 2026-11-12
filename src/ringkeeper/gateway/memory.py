@@ -23,8 +23,9 @@ def build_memory_server(current_caller: Callable[[], Caller]) -> FastMCP:
         name="ringkeeper-memory",
         version=__version__,
         instructions=(
-            "This project keeps notes between runs. Use recall when you start, and remember for "
-            "what the next run should know: decisions, preferences, how things are set up. "
+            "This project keeps notes between runs. The latest are in your instructions: use "
+            "recall to search for more, and remember for what the next run should know: where "
+            "things are, decisions, preferences, how things are set up. "
             "Never note secrets, card or bank numbers, or anyone's full personal details. "
             "Everything about a client or project goes here, never in Notion's personal memory."
         ),

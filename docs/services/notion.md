@@ -44,6 +44,28 @@ tried again on the next task. **Stop for new projects** keeps every project wher
 A Notion memory connection only holds notes: it isn't linked to projects, and no task calls it as
 a tool. Its **Test** button still checks the token. Links made before 0.1.0-beta.38 were removed.
 
+## What agents keep
+
+Every task starts with its project's latest notes (and Shared notes and My memory, if they're on),
+so it doesn't have to search for what an earlier task found. Before it finishes, it saves what a
+later run would otherwise have to find again: where things live (IDs, bases, tables, workflows,
+files and pages it found by searching), decisions and corrections you gave, how this client wants
+things done, and gotchas that cost it steps. Not the task's result, one-off facts or secrets: one
+to three short notes, or none.
+
+A task's answer mentions memory only when it saved something. Its page and the conversation show
+**Saved to memory** under the result, with each note. Check my setup only reads, so it keeps
+nothing.
+
+You can add notes yourself, with the same rules and in the same place:
+
+- **Add a note** on the project's **Memory** (in its Settings).
+- **Remember this** under a result or a reply: edit the text, and save it.
+- Say **"remember that …"** in a conversation. When it's clear which project (the one chosen at the
+  top, the one the message names, or the one the conversation is about), it's saved straight
+  away, with no task, and the reply says what was saved and where. Otherwise the request is
+  routed as usual.
+
 ## What it can do
 
 - **Agents** have two tools, `recall` and `remember`. Neither takes a place: a run reaches its own

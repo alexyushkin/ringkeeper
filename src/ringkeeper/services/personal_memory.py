@@ -68,6 +68,7 @@ every client. Reach it with call_tool on {name}.
   applies with notion-memory-search.
 - When you finish: if you learned a lasting preference of the owner's, save it with
   notion-create-pages, parent "memory", with Type set to Preference, Profile, Work or Notes.
+  Mention it in your final message only if you saved one.
 - Never put anything about a client or project there: no client or project names, and no client
   data. That's refused. It goes in this project's own memory, with `remember`.
 """

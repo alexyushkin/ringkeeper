@@ -865,3 +865,155 @@ def test_every_project_through_the_api(owner: TestClient, notion: FakeNotion) ->
     assert owner.delete("/memory/every").status_code == 204
     assert owner.get("/memory/every").json()["every"] is None
     assert owner.get("/projects/acme-web/memory").json()["backend"] == "notion"  # kept
+
+
+# --- Workers save, and start from the latest notes ---
+
+
+def age(note: str, minutes: int) -> None:
+    """Notes made in one test share a clock tick: set one's time so the order is known."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    with session_scope() as session:
+        row = session.scalars(select(MemoryNote).where(MemoryNote.body.startswith(note))).one()
+        row.created_at = datetime.now(UTC) - timedelta(minutes=minutes)
+
+
+def block(project: str, *, saving: bool = True) -> str:
+    with session_scope() as session:
+        return memory.project_block(session, projects.get_project(session, project), None,
+                                    saving=saving)  # fmt: skip
+
+
+def test_a_worker_is_told_what_to_save_and_gets_the_latest_notes(notion: FakeNotion) -> None:
+    memory.remember(worker("acme-web"), "Invoices live in the Billing base, table Invoices")
+    memory.remember(worker("acme-web"), "Acme wants totals in USD")
+    memory.remember(worker("globex-app"), "Globex's own note")
+    age("Invoices live", 10)
+    told = block("acme-web")
+    assert "PROJECT MEMORY" in told
+    assert "where things live" in told
+    assert "Don't save the task's result" in told
+    assert "only if you saved a note" in told
+    assert memory.READ_AS_NOTES in told
+    newest, older = told.index("totals in USD"), told.index("Billing base")
+    assert newest < older
+    assert "Globex" not in told
+    assert "PROJECT MEMORY" not in block("acme-web", saving=False)  # Check my setup only reads
+    assert "Billing base" in block("acme-web", saving=False)
+
+
+def test_the_latest_notes_are_capped(notion: FakeNotion) -> None:
+    for n in range(30):
+        memory.remember(worker("acme-web"), f"Note {n}: " + "x" * 400)
+        age(f"Note {n}:", 100 - n)
+    told = block("acme-web")
+    notes = told.split(memory.LATEST, 1)[1]
+    assert len(notes) <= memory.LATEST_CHARS + 200
+    assert "Note 29" in notes
+    assert "Note 0:" not in notes
+
+
+def test_no_notes_yet_means_only_what_to_save(notion: FakeNotion) -> None:
+    told = block("acme-blog")
+    assert "PROJECT MEMORY" in told
+    assert memory.LATEST not in told
+
+
+def test_the_owner_adds_a_note_to_the_projects_own_place(notion: FakeNotion) -> None:
+    to_notion("acme-web", "acme-notion")
+    kept = memory.keep("acme-web", "Acme's books close on the 5th")
+    assert kept == {"kept": True, "where": "Notion", "note": "Acme's books close on the 5th"}
+    fresh()
+    assert said(memory.recall(worker("acme-web"))) == ["Acme's books close on the 5th"]
+    assert memory.recall(worker("acme-web"))["notes"][0]["by"] == "a person"
+    with pytest.raises(RuleViolationError, match="wasn't kept"):
+        memory.keep("acme-web", "Card 4242 4242 4242 4242 is on file")
+    assert memory.keep("acme-blog", "Kept here")["where"] == "Ringkeeper"
+
+
+def test_a_task_page_shows_what_it_saved(owner: TestClient, notion: FakeNotion) -> None:
+    caller = worker("acme-web")
+    memory.remember(caller, "The Billing base is appXYZ")
+    with session_scope() as session:
+        task = str(memory._worker(session, caller.session_id).task_id)  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
+    assert owner.get(f"/tasks/{task}/memory").json() == [
+        {"note": "The Billing base is appXYZ", "where": "Ringkeeper"}
+    ]
+    added = owner.post("/projects/acme-web/memory/notes",
+                       json={"note": "Remember the Friday cutoff", "task": task})  # fmt: skip
+    assert added.status_code == 201, added.text
+    assert len(owner.get(f"/tasks/{task}/memory").json()) == 2
+    secret = "token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"
+    refused = owner.post("/projects/acme-web/memory/notes", json={"note": secret})
+    assert refused.status_code == 409
+
+
+# --- "Remember that ..." in a conversation ---
+
+
+@pytest.mark.parametrize(
+    ("body", "note"),
+    [
+        ("Remember that Acme's invoices go out on Fridays", "Acme's invoices go out on Fridays"),
+        ("please remember: the staging base is appABC", "The staging base is appABC"),
+        ("Remember that file I sent?", None),
+        ("Remember to send the report on Monday", None),
+        ("What do you remember about Acme?", None),
+    ],
+)
+def test_what_counts_as_remember_that(body: str, note: str | None) -> None:
+    from ringkeeper.router import remember_now  # noqa: PLC0415
+
+    assert remember_now.note_in(body) == note
+
+
+def post(body: str, target: str | None = None) -> uuid.UUID:
+    from ringkeeper.services import threads  # noqa: PLC0415
+
+    with session_scope() as session:
+        message = threads.post_message(session, body, author="owner", source="web")
+        message.target_project = target
+        return message.id
+
+
+def test_remember_that_with_a_clear_project_is_kept_without_a_task(notion: FakeNotion) -> None:
+    from ringkeeper.config import get_settings  # noqa: PLC0415
+    from ringkeeper.models import Message  # noqa: PLC0415
+    from ringkeeper.router.service import route_next  # noqa: PLC0415
+    from tests.fake_router import FakeModel  # noqa: PLC0415
+
+    ident = post("Remember that Acme's invoices go out on Fridays", target="acme-web")
+    route_next(get_settings(), FakeModel([]))  # no model call: it would have nothing to say
+    with session_scope() as session:
+        message = session.get_one(Message, ident)
+        assert message.routed_at is not None
+        assert message.routing
+        assert message.routing["remembered"] == "acme-web"
+        reply = message.routing["answer"]
+        assert session.scalars(select(Task).where(Task.message_id == ident)).all() == []
+    assert reply.startswith("Saved to ")
+    assert "here in Ringkeeper" in reply
+    assert said(memory.recall(worker("acme-web"))) == ["Acme's invoices go out on Fridays"]
+
+
+def test_remember_that_without_a_clear_project_is_routed_as_usual(notion: FakeNotion) -> None:
+    from ringkeeper.config import get_settings  # noqa: PLC0415
+    from ringkeeper.router.service import route_next  # noqa: PLC0415
+    from tests.fake_router import FakeModel, output, routed  # noqa: PLC0415
+
+    post("Remember that reports are monthly")  # three projects, none named
+    model = FakeModel([output(routed("acme-web"))])
+    route_next(get_settings(), model)
+    assert model.calls  # the model routed it
+    assert said(memory.recall(worker("acme-web"))) == []
+
+
+def test_remember_that_never_keeps_a_secret(notion: FakeNotion) -> None:
+    from ringkeeper.config import get_settings  # noqa: PLC0415
+    from ringkeeper.router.service import route_next  # noqa: PLC0415
+    from tests.fake_router import FakeModel  # noqa: PLC0415
+
+    post("Remember that the card is 4242 4242 4242 4242", target="acme-web")
+    route_next(get_settings(), FakeModel([]))
+    assert all("4242" not in n for n in said(memory.recall(worker("acme-web"))))

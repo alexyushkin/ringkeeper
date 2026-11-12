@@ -199,7 +199,8 @@ def test_the_full_loop_with_checks_gating_escalation_and_the_review_cap() -> Non
     run(manager)
     worker = config_of(director.specs[2])
     assert (worker["role"], worker["checks"], worker["resume"]) == ("worker", ["pytest -q"], None)
-    assert worker["prompt"] == "Write format_plan."
+    assert worker["prompt"].startswith("Write format_plan.\n\n")
+    assert "PROJECT MEMORY" in worker["prompt"]  # what to keep for later runs
     assert worker["model"] == "claude-sonnet-5-5"  # medium complexity
     assert director.specs[2].workspace_read_only is False
     assert verify_token(director.specs[2].env["RINGKEEPER_GATEWAY_TOKEN"]).role is TokenRole.WORKER

@@ -25,6 +25,7 @@ class Evidence:
     go_aheads: list[str] = field(default_factory=list[str])  # those questions, answered yes
     notes: list[str] = field(default_factory=list[str])  # said in the report, pass or fail
     tools: list[str] = field(default_factory=list[str])
+    last_tools: list[str] = field(default_factory=list[str])  # the latest task's own
     holds: list[str] = field(default_factory=list[str])
     typed_enforced: bool = False  # approving without the name was refused
     refusals: list[str] = field(default_factory=list[str])
@@ -125,6 +126,11 @@ def judge(scenario: Scenario, seen: Evidence) -> list[str]:
         if not any(tool in used for used in seen.tools)
     ]
     answer = seen.replies.lower()
+    wrong += [
+        f"the last task used {tool} again, instead of the project's notes"
+        for tool in scenario.then_skips
+        if any(tool in used for used in seen.last_tools)
+    ]
     wrong += [
         f"the answer doesn't say {word!r}"
         for word in scenario.reply_has

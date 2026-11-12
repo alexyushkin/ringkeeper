@@ -16,6 +16,19 @@ publishes it as the release notes and the app shows it with the update.
     tasks can't call it, and it's left out of Check my setup and Home's requests to try. Its Test
     button still works. Existing links are removed.
   - Each project's About says where its notes go, with a link to its Notion database.
+- **Tasks save what they find, and start from it.** Before, a task was told about memory only by
+  its memory tool, so tasks ended with "nothing needed saving" and kept nothing.
+  - Every task now starts with its project's latest notes, and before it finishes it saves what
+    a later run would otherwise have to find again: where things live, your decisions and
+    corrections, how the client wants things done, and gotchas. One to three short notes, never
+    the result or secrets.
+  - An answer mentions memory only when something was saved. **Saved to memory** shows each note
+    under the result, on the task's page and in the conversation.
+  - Add a note yourself: **Add a note** on a project's Memory, **Remember this** under a result
+    or a reply, or say "remember that …" in a conversation. With a clear project it's saved
+    straight away, with no task, and the reply says what was saved and where.
+  - A new self-test scenario: a fact one task found is saved, and the next task, in a new
+    conversation, uses it without searching again.
 
 ## 0.1.0-beta.37 (2026-11-11)
 

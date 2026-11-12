@@ -186,6 +186,22 @@ def test_a_worker_is_told_about_the_owners_notion_memory_only_when_its_on() -> N
 
 
 @pytest.mark.usefixtures("task_registry")
+def test_a_worker_is_told_what_to_keep_and_starts_from_the_latest_notes() -> None:
+    from ringkeeper.models import MemoryNote, Project  # noqa: PLC0415
+
+    with session_scope() as session:
+        project = session.scalars(select(Project).where(Project.name == "acme-web")).one()
+        session.add(MemoryNote(project_id=project.id, backend="local", body="Invoices: base appX"))
+    m, runtime = manager()
+    run_task()
+    m.tick()
+    m.wait_idle()
+    prompt = str(task_env(runtime.started[0])["prompt"])
+    assert "PROJECT MEMORY" in prompt
+    assert "Invoices: base appX" in prompt
+
+
+@pytest.mark.usefixtures("task_registry")
 def test_api_key_mode_gives_a_worker_no_key() -> None:
     m, runtime = manager()
     run_task()

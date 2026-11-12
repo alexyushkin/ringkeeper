@@ -65,6 +65,8 @@ class Scenario:
     request: str = ""
     selected: str | None = None  # the project chosen at the top of the app when it's sent
     then: tuple[str, ...] = ()  # follow-ups in the same conversation
+    then_new: bool = False  # ...or each in a new conversation, so only memory carries over
+    then_skips: tuple[str, ...] = ()  # tools the last task mustn't need (its notes say)
     routine: str | None = None  # run this routine as a test, instead of a request
     needs: str | None = None  # a sandbox from scenarios.toml; skipped without it
     project: str | tuple[str, ...] | None = None  # where the work must land
@@ -222,6 +224,18 @@ SCENARIOS: tuple[Scenario, ...] = (
         request="Remember for Demo shop: Demo Co's courier collects on Tuesdays.",
         then=("In Demo shop, which day does the courier collect?",),
         project=SHOP, tools=("remember",), reply_has=("Tuesday",), cost_ceiling=1.0,
+    ),
+    Scenario(
+        "memory-reuse", "A fact found once is saved, and the next task starts from it",
+        "routing",
+        request="In Demo shop's database, find which table holds the orders and count them. "
+        "Tell me the table's name and the count.",
+        then=("How many orders are in Demo shop's database now?",), then_new=True,
+        project=SHOP, tools=("list_tables", "remember"), then_skips=("list_tables",),
+        never_held=True, cost_ceiling=1.5,
+        notes="The first task saves where the orders are. The next request comes in a new "
+        "conversation, so only the project's notes carry over: it queries without listing the "
+        "tables again.",
     ),
     Scenario(
         "files", "A change to a project's own files", "routing",

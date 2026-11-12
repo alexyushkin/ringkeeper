@@ -13,6 +13,7 @@ import { Waiting } from "@/components/waiting";
 import { Markdown } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
+import { RememberThis, SavedToMemory } from "@/components/memory";
 import { TaskFiles } from "@/components/task-files";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref, threadHref } from "@/lib/client/routes";
@@ -241,6 +242,8 @@ export function TaskView({ id }: { id: string }) {
           <TidyButtons kind="task" id={id} archived={Boolean(t.archived)} status={t.status} onArchived={task.reload} onDeleted={() => router.push("/tasks")} />
         </div>
         <Markdown text={t.summary ?? t.outcome ?? t.prompt} className="text-sm" />
+        <SavedToMemory task={id} />
+        {t.summary && !["running", "queued"].includes(t.status) ? <RememberThis text={t.summary} projects={[t.project]} task={id} /> : null}
         {t.plan_limit ? <Alert tone="warn">{t.plan_limit}</Alert> : null}
         {t.error && t.status !== "succeeded" ? <Alert>{t.status === "not_done" ? `Not done: ${t.error}` : t.error}</Alert> : null}
         {t.offer ? <LinkAndRetry id={id} label={t.offer.label} onDone={(again) => router.push(taskHref(again))} /> : null}

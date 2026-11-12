@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Button, ConfirmButton, Empty, Field, Loading, Section, Select, Toggle, timeAgo } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Empty, Field, Loading, Section, Select, TextArea, Toggle, timeAgo } from "@/components/ui";
 import { LoadMore, ListTotal } from "@/components/tidy";
 import { api, useApi, usePaged } from "@/lib/client/api";
+import { projectName, useScope } from "@/lib/client/scope";
 
 interface Where {
   connection: string;
@@ -108,6 +109,13 @@ function NoteList({ project, status, onChange }: { project: string; status: Stat
 
   return (
     <div className="space-y-2">
+      <AddNote
+        project={project}
+        onAdded={() => {
+          notes.reload();
+          onChange();
+        }}
+      />
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1">
           <Field label="Search notes" value={words} onChange={setWords} placeholder="Words from a note" />
@@ -500,6 +508,121 @@ export function EveryProject({ connection: fixed }: { connection?: string }) {
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+/** What a task saved to memory, under its result. Nothing when it saved nothing. */
+export function SavedToMemory({ task }: { task: string }) {
+  const saved = useApi<{ note: string; where: string }[]>(`tasks/${task}/memory`);
+  if (!saved.data?.length) return null;
+  return (
+    <div className="space-y-1 rounded-xl border border-line p-2 text-sm">
+      <p className="text-xs font-medium text-muted">Saved to memory</p>
+      <ul className="space-y-1">
+        {saved.data.map((n, i) => (
+          <li key={i} className="whitespace-pre-wrap break-words">
+            {n.note} <span className="text-xs text-muted">({n.where === "Ringkeeper" ? "here" : `in ${n.where}`})</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const MOST_CHARS = 2000;
+
+/** "Remember this" on a message or a result: an editable note for one project's memory. */
+export function RememberThis({ text, projects, task }: { text: string; projects: string[]; task?: string }) {
+  const scope = useScope();
+  const offered = projects.length ? projects : scope.projects.map((p) => p.name);
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [project, setProject] = useState(offered[0] ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!offered.length) return null;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const kept = await api<{ where: string }>(`projects/${project}/memory/notes`, { method: "POST", json: { note: note.trim(), ...(task ? { task } : {}) } });
+      setSaid(`Saved to ${projectName(project)}'s memory, ${kept.where === "Notion" ? "in Notion" : "here in Ringkeeper"}.`);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          kind="ghost"
+          onClick={() => {
+            setNote(text.trim().slice(0, MOST_CHARS));
+            setSaid(null);
+            setOpen(true);
+          }}
+        >
+          Remember this
+        </Button>
+        {said ? <span className="text-xs text-good">{said}</span> : null}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-xl border border-line p-2">
+      <TextArea label="Note to keep" value={note} onChange={setNote} rows={4} hint={`Keep the point: at most ${MOST_CHARS} characters. Secrets, card and bank numbers aren't kept.`} />
+      {offered.length > 1 ? <Select label="Project" value={project} onChange={setProject} options={offered.map((p): [string, string] => [p, projectName(p)])} /> : null}
+      {error ? <Alert>{error}</Alert> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button kind="primary" busy={busy} disabled={!note.trim() || note.length > MOST_CHARS || !project} onClick={() => void save()}>
+          Save to memory
+        </Button>
+        <Button kind="ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A note typed by hand on the project's Memory: the same filter and place as an agent's. */
+function AddNote({ project, onAdded }: { project: string; onAdded: () => void }) {
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaid(null);
+    try {
+      const kept = await api<{ where: string }>(`projects/${project}/memory/notes`, { method: "POST", json: { note: note.trim() } });
+      setNote("");
+      setSaid(kept.where === "Notion" ? "Saved, in Notion." : "Saved.");
+      onAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <TextArea label="Add a note" value={note} onChange={setNote} rows={2} placeholder="Something later runs should know, like where a client's invoices live" />
+      {error ? <Alert>{error}</Alert> : null}
+      {said ? <Alert tone="good">{said}</Alert> : null}
+      <Button disabled={!note.trim() || note.length > MOST_CHARS} busy={busy} onClick={() => void save()}>
+        Add note
+      </Button>
     </div>
   );
 }

@@ -82,6 +82,11 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
         (scenario(no_work=True), Evidence(projects=[SHOP]), "started work"),
         (scenario(agent="Bo"), Evidence(), "Bo didn't run it"),
         (scenario(tools=("query",)), Evidence(tools=["list_tables"]), "didn't use query"),
+        (
+            scenario(then_skips=("list_tables",)),
+            Evidence(last_tools=["ringkeeper-database list_tables"]),
+            "used list_tables again",
+        ),
         (scenario(held=1), Evidence(), "expected 1 approval"),
         (
             scenario(project=SHOP, never_held=True),
