@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import OWNER, RecentAuth, SessionDep, WriteSessionDep, require_owner
+from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import MemoryNote
 from ringkeeper.schemas import Input
@@ -99,6 +100,27 @@ def list_notes(
     page = memory.notes(session, name, words=q, limit=limit, cursor=cursor)
     page.tell(response)
     return [_note(n) for n in page.items]
+
+
+class NoteIn(Input):
+    note: Annotated[str, Field(min_length=1, max_length=memory.MOST_CHARS)]
+    task: uuid.UUID | None = None
+
+
+@router.post("/projects/{name}/memory/notes", status_code=201)
+def add_note(name: str, data: NoteIn, session: SessionDep) -> dict[str, Any]:
+    """A note of the owner's: the same filter as an agent's, in the project's own place."""
+    projects.get_project(session, name)
+    kept = memory.keep(name, data.note, str(data.task) if data.task else None)
+    with session_scope() as writing:
+        admin_audit.record(writing, "memory.keep", "added a note", by=OWNER, project=name)
+    return kept
+
+
+@router.get("/tasks/{task_id}/memory")
+def task_notes(task_id: uuid.UUID, session: SessionDep) -> list[dict[str, str]]:
+    """What this task saved to memory."""
+    return memory.saved_by(session, task_id)
 
 
 @router.delete("/projects/{name}/memory/notes/{note_id}", status_code=204)

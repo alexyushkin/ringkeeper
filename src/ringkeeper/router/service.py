@@ -60,7 +60,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.names import slug
-from ringkeeper.router import follow_up, self_answer
+from ringkeeper.router import follow_up, remember_now, self_answer
 from ringkeeper.router.model import ClaudeUnavailableError, RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
 from ringkeeper.router.schema import (
@@ -71,9 +71,11 @@ from ringkeeper.router.schema import (
     parse,
 )
 from ringkeeper.services import (
+    admin_audit,
     clients,
     examples,
     inbox,
+    memory,
     mentions,
     tasks,
     threads,
@@ -815,6 +817,41 @@ def _claim(settings: Settings) -> tuple[uuid.UUID | None, bool]:
     return ident, True
 
 
+def _remember_now(ident: uuid.UUID) -> bool:
+    """'Remember that ...' for a clear project: kept with no model call and no task. False:
+    it isn't one, and the message is routed as usual."""
+    with session_scope(commit=False) as session:
+        message = session.get_one(Message, ident)
+        note = remember_now.note_in(message.body)
+        if note is None:
+            return False
+        project = remember_now.project_for(
+            session, message, conversation_projects(session, message)
+        )
+        found = session.scalar(select(Project).where(Project.name == project)) if project else None
+        if found is None:
+            return False
+        name, title = found.name, found.title or found.name
+    try:
+        reply = remember_now.said(title, memory.keep(name, note))
+        kept: dict[str, Any] = {"remembered": name}
+    except RingkeeperError as error:
+        reply, kept = str(error), {"remembered": None}
+    with session_scope() as session:
+        message = session.get_one(Message, ident)
+        if message.routed_at is None and message.canceled_at is None:
+            threads.mark_routed(
+                session, message, {**kept, "tasks": [], "decisions": [], "answer": reply}
+            )
+            threads.add_reply(session, message.thread_id, reply)
+            if kept["remembered"]:
+                admin_audit.record(
+                    session, "memory.keep", "kept a note from a message", by="owner",
+                    project=name,
+                )  # fmt: skip
+    return True
+
+
 def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
     """Route the oldest unrouted message, if any. Returns its id.
 
@@ -825,6 +862,8 @@ def route_next(settings: Settings, model: RouterModel) -> uuid.UUID | None:
     if ident is None or not more:
         return ident
     try:
+        if _remember_now(ident):
+            return ident
         with session_scope(commit=False) as session:
             message = session.get_one(Message, ident)
             thought = think(session, settings, message, model)

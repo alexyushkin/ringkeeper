@@ -512,9 +512,17 @@ class Manager:
             if job.role is not SessionRole.ARCHITECT:
                 # Which connections it has, so its first call names one (connection_note).
                 told = connection_note.note(project, agent)
-                prompt = "\n\n".join(
-                    [prompt, *([told] if told else []), *memory.hints(session, project, agent)]
+                # What to keep for later runs (not when it only reads), and the latest notes.
+                # A resumed session has them already.
+                kept = (
+                    memory.project_block(session, project, agent, saving=not read_only)
+                    if job.sdk_session_id is None
+                    else ""
                 )
+                prompt = "\n\n".join([
+                    prompt, *([told] if told else []), *([kept] if kept else []),
+                    *memory.hints(session, project, agent),
+                ])  # fmt: skip
             # Memory is every worker's: it's pinned to the token's project.
             endpoints = sorted({"memory", *(agent_name(service) for service in served)})
         architect_role = job.role is SessionRole.ARCHITECT

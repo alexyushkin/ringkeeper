@@ -11,6 +11,7 @@ import { type Decision } from "@/components/decision-card";
 import { Markdown, plainText } from "@/components/markdown";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
+import { RememberThis, SavedToMemory } from "@/components/memory";
 import { TaskFiles } from "@/components/task-files";
 import { Waiting } from "@/components/waiting";
 import { CancelButton } from "@/components/scheduled";
@@ -97,6 +98,7 @@ export function ThreadView({ id }: { id: string }) {
               <Card>
                 <p className="text-xs font-medium text-muted">Ringkeeper</p>
                 <Markdown text={message.body} className="mt-1 text-sm" />
+              {message.role === "router" ? <RememberThis text={message.body} projects={[...new Set((tasks.data ?? []).map((t) => t.project))]} /> : null}
               {message.routing?.help ? <HelpExtras help={message.routing.help} /> : null}
               {message.routing?.retry ? <TryAgain id={message.routing.retry} onDone={thread.reload} /> : null}
               </Card>
@@ -146,6 +148,12 @@ export function ThreadView({ id }: { id: string }) {
                     <TaskFiles id={task.id} compact />
                   </div>
                 ) : null}
+                {["queued", "running"].includes(task.status) ? null : (
+                  <div className="space-y-1 px-4 pt-1">
+                    <SavedToMemory task={task.id} />
+                    {task.summary ? <RememberThis text={task.summary} projects={[task.project]} task={task.id} /> : null}
+                  </div>
+                )}
               </div>
             ))}
           </div>
