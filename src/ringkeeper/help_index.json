@@ -674,6 +674,12 @@
 {
 "doc": "faq",
 "anchor": "",
+"title": "Can a task run up a big bill?",
+"text": "Each task has a spending cap (Settings › Advanced, $1 by default). At the cap it pauses and asks whether to go on, with a Continue button. On a Claude subscription, which isn't billed per task, the cap is counted from the estimated cost."
+},
+{
+"doc": "faq",
+"anchor": "",
 "title": "Can it change things without asking?",
 "text": "Live client data never changes without asking. Reads always run. Changes on staging and development connections run and are logged. Changes on production connections, and anything that reaches real people (emails, texts), wait for your approval. See Approvals and safety."
 },

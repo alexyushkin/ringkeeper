@@ -164,6 +164,8 @@ def create_task(
         raise RuleViolationError("The spending cap must be more than $0.")
     if budget_usd is None and mode is AuthMode.API_KEY:
         budget_usd = settings.task_budget_usd  # paused and asked at the cap
+    # A subscription isn't billed per task: it pauses at the same cap, as estimated.
+    estimate_cap = settings.task_budget_usd if mode is not AuthMode.API_KEY else None
     turns = max_turns or settings.default_max_turns
     runtime = max_runtime_s or settings.default_max_runtime_seconds
     if turns < 1:
@@ -181,6 +183,7 @@ def create_task(
         max_turns=turns,
         max_runtime_s=runtime,
         budget_usd=budget_usd,
+        estimate_cap_usd=estimate_cap,
         changed_files=[],
         kind=kind,
         risk=risk,

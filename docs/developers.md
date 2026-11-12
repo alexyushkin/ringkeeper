@@ -603,10 +603,11 @@ records the model it ran on (`ringkeeper task show`).
 Each role also has an effort setting (`RINGKEEPER_EFFORT_ROUTER`,
 `RINGKEEPER_EFFORT_ARCHITECT`, `RINGKEEPER_EFFORT_WORKER`: low, medium, high,
 xhigh or max). A worker's effort follows its task's size, never above its
-setting; a task without a size gets the setting. In API key mode every task
-has a spending cap (`RINGKEEPER_TASK_BUDGET_USD`, $1 by default) across all
-its sessions: at the cap the task pauses and asks whether to give it that much
-more. Settings in the web app lists Anthropic's models (recommended first)
+setting; a task without a size gets the setting. Every task has a spending cap
+(`RINGKEEPER_TASK_BUDGET_USD`, $1 by default) across all its sessions: at the
+cap the task pauses and asks whether to give it that much more. On a Claude
+subscription, which isn't billed per task, the cap is the estimated cost
+(`tasks.estimate_cap_usd`), and a Continue adds the same again. Settings in the web app lists Anthropic's models (recommended first)
 and changes all of these, and the maximum steps per task, without a restart.
 
 ## Notification channels

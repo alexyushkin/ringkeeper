@@ -627,6 +627,8 @@ class Task(Base):
     max_turns: Mapped[int] = mapped_column(Integer)
     max_runtime_s: Mapped[int] = mapped_column(Integer)
     budget_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
+    # On a subscription, which isn't billed per task: the estimated cost it pauses at.
+    estimate_cap_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
     git_branch: Mapped[str | None] = mapped_column(Text)
     git_commit: Mapped[str | None] = mapped_column(Text)
     changed_files: Mapped[list[str]] = mapped_column(TextList, server_default="{}")
