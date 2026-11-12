@@ -1,5 +1,6 @@
 """Judging a scenario from what was recorded. No model and no database here."""
 
+import re
 from dataclasses import dataclass, field
 
 from ringkeeper.scenarios.catalog import DENY, TYPED, Scenario
@@ -114,6 +115,18 @@ def _finished(scenario: Scenario, seen: Evidence) -> list[str]:
     return [f"a task ended as {', '.join(bad)}"] if bad else []
 
 
+def said_count(reply: str, name: str, count: int, near: int = 60) -> bool:
+    """Whether the reply gives `count` next to `name` (within a few words of it)."""
+    text = reply.lower()
+    at = text.find(name.lower())
+    while at >= 0:
+        around = text[max(0, at - near) : at + len(name) + near]
+        if str(count) in re.findall(r"\d+", around):
+            return True
+        at = text.find(name.lower(), at + 1)
+    return False
+
+
 def judge(scenario: Scenario, seen: Evidence) -> list[str]:
     """What went wrong: nothing, if the scenario passed."""
     wrong = [*_routing(scenario, seen), *_holds(scenario, seen), *_finished(scenario, seen)]
@@ -125,6 +138,11 @@ def judge(scenario: Scenario, seen: Evidence) -> list[str]:
         f"it didn't use {tool}"
         for tool in scenario.tools
         if not any(tool in used for used in seen.tools)
+    ]
+    wrong += [
+        f"the answer doesn't say {name}: {count}"
+        for name, count in scenario.counts
+        if not said_count(seen.replies, name, count)
     ]
     wrong += [
         f"it didn't try {tool}"

@@ -64,6 +64,47 @@ async def test_the_totals_count_every_page_not_only_this_one(fake: FakeN8n) -> N
     assert "counted" not in on
 
 
+def seaside(fake: FakeN8n) -> None:
+    """From a real run: 49 "Seaside #N" and 10 "Mr. Stormdoor #N" workflows, reported as 46
+    and 13 because the worker counted a plain list by hand."""
+    for n in range(1, 50):
+        fake.add_workflow(f"s{n}", f"Seaside #{n}", tags=("seaside",))
+    for n in range(1, 11):
+        fake.add_workflow(f"m{n}", f"Mr. Stormdoor #{n}", tags=("stormdoor",))
+
+
+async def test_a_subset_is_counted_by_a_filter_across_every_page(fake: FakeN8n) -> None:
+    seaside(fake)
+    first = await n8n.list_workflows.handler(target(), name_starts_with="Seaside", limit=20)
+    assert (len(first["workflows"]), first["total"]) == (20, 49)
+    rest = await n8n.list_workflows.handler(
+        target(), name_starts_with="Seaside", limit=20, cursor=first["next_cursor"]
+    )
+    assert rest["total"] == 49
+    assert rest["workflows"][0]["name"] == "Seaside #21"
+    storm = await n8n.list_workflows.handler(target(), name_contains="stormdoor", limit=5)
+    assert storm["total"] == 10
+    tagged = await n8n.list_workflows.handler(target(), tags="stormdoor, nothing")
+    assert tagged["total"] == 10
+
+
+async def test_a_long_list_comes_with_counts_by_name_and_tag(fake: FakeN8n) -> None:
+    seaside(fake)
+    page = await n8n.list_workflows.handler(target(), limit=50)
+    assert page["total"] == 61  # with the two from the fixture
+    assert page["groups"]["by_name"] == {"Seaside": 49, "Mr. Stormdoor": 10}
+    assert page["groups"]["by_tag"]["seaside"] == 49
+    assert page["groups"]["by_tag"]["stormdoor"] == 10
+
+
+def test_a_name_s_group_is_what_comes_before_a_number_or_a_dash() -> None:
+    assert n8n.group_of("Seaside #12") == "Seaside"
+    assert n8n.group_of("Mr. Stormdoor #3") == "Mr. Stormdoor"
+    assert n8n.group_of("Lead sync - Acme") == "Lead sync"
+    assert n8n.group_of("Lead sync \u2013 Acme") == "Lead sync"
+    assert n8n.group_of("Nightly report") is None
+
+
 async def test_get_workflow(fake: FakeN8n) -> None:
     result = await n8n.get_workflow.handler(target(), workflow_id="wf2")
     assert result["name"] == "Nightly report"

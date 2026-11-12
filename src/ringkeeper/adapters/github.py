@@ -291,10 +291,17 @@ async def get_issue(
 
 @read
 async def list_pulls(
-    target: Target, repo: Repo, state: Literal["open", "closed", "all"] = "open", limit: Limit = 30
+    target: Target,
+    repo: Repo,
+    state: Literal["open", "closed", "all"] = "open",
+    labels: Annotated[str, Field(max_length=500, description="Comma-separated.")] = "",
+    limit: Limit = 30,
 ) -> JSON:
     """Pull requests in a repository (number, title, branch, author). total counts every one
-    that matches, not only the ones listed; with state all, open says how many are open."""
+    that matches, not only the ones listed; with state all, open says how many are open. To
+    count pull requests with a label, filter by labels and quote total."""
+    if labels.strip():
+        return await _labelled_pulls(target, repo, state, labels, limit)
     path = f"{_repo(repo)}/pulls"
     found = await _call(target, "GET", path, params={"state": state, "per_page": limit})
     items = cast(list[JSON], found.get("data") or [])
@@ -310,6 +317,32 @@ async def list_pulls(
     return {
         "pulls": [_issue(p) | {"head": cast(JSON, p.get("head") or {}).get("ref")} for p in items]
     } | counts
+
+
+async def _labelled_pulls(target: Target, repo: str, state: str, labels: str, limit: int) -> JSON:
+    """Pull requests with labels: GitHub's pull list can't filter by label, its issue list
+    (which holds pull requests too) can, and its search counts them."""
+    found = await _call(
+        target, "GET", f"{_repo(repo)}/issues",
+        params={"state": state, "labels": labels, "per_page": limit},
+    )  # fmt: skip
+    items = cast(list[JSON], found.get("data") or [])
+    pulls = [_issue(i) for i in items if "pull_request" in i]
+    query = f"repo:{repo} is:pr" + "".join(
+        f' label:"{label.strip()}"' for label in labels.split(",") if label.strip()
+    )
+    counts: JSON = {}
+    if len(items) < limit:
+        counts["total"] = len(pulls)
+        if state == "all":
+            counts["open"] = sum(1 for p in pulls if p["state"] == "open")
+    else:
+        counts["total"] = await _searched(
+            target, query if state == "all" else f"{query} is:{state}"
+        )
+        if state == "all":
+            counts["open"] = await _searched(target, f"{query} is:open")
+    return {"pulls": pulls} | counts
 
 
 @read
