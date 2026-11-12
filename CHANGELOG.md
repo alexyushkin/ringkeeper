@@ -5,6 +5,12 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **"Read Acme's newest email" no longer asks which project** when only one of Acme's
+  projects has the mail connection. A connection only one of a client's projects has
+  decides it.
+- **Self-test:** memory-reuse asks a question the tables lead to (who has spent the most),
+  so the note a task saves isn't its answer.
+
 - **Data, ops and general tasks start with a shorter prompt.** Work on a project's code keeps
   Claude Code's own; anything else gets a short one with the same rules for working
   unattended. In the self-test, results held and the estimated cost per task fell by about a

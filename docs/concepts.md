@@ -129,7 +129,9 @@ names a client but none of its projects, for work on one project's own things ("
 to Acme's project folder"), is always asked about when the client has more than one. It
 doesn't ask:
 
-- **With one option.** If only one project could be meant, the work goes there.
+- **With one option.** If only one project could be meant, the work goes there. That
+  includes work that needs a connection only one of the client's projects has, like
+  their mailbox linked to just one of them.
 - **Again in the same conversation.** Once you've picked, later requests there go to the
   same project unless they name another.
 - **For work any of a client's projects would do**, like reading their email or Google.

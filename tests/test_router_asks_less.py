@@ -9,12 +9,12 @@ from sqlalchemy import select
 
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.models import Client, Decision, DecisionKind, DecisionStatus, Task
+from ringkeeper.models import Client, Decision, DecisionKind, DecisionStatus, InstanceType, Task
 from ringkeeper.router.service import route_next
 from ringkeeper.services import clients, inbox, threads
 from ringkeeper.services.inbox import Answer, Via
 from tests.fake_router import FakeModel, output, routed
-from tests.helpers import make_project
+from tests.helpers import bind, make_instance, make_project
 
 
 @pytest.fixture(autouse=True)
@@ -117,6 +117,23 @@ def test_the_answer_is_remembered_in_the_same_conversation() -> None:
     assert questions() == []
     ask("Make the button blue on General Informatics' site too")  # a new conversation
     route(unsure("gi-site", "gi-blog"))
+    assert len(questions()) == 1
+
+
+def test_a_connection_only_one_of_the_client_s_projects_has_decides_it() -> None:
+    """From the self-test: "Read Demo Co's newest email" asked which project, though only
+    one of Demo Co's projects has the mail connection the task was to use."""
+    with session_scope() as session:
+        make_instance(session, "gi-mail", type=InstanceType.MCP, owner="General Informatics LLC")
+    bind("gi-site", "gi-mail")
+    read = "Using the gi-mail connection, report the newest email's subject."
+    ask("Read General Informatics' newest email and tell me its subject")
+    route(output(routed("gi-site", 0.85, prompt=read)))
+    assert started() == ["gi-site"]
+    assert questions() == []
+    bind("gi-blog", "gi-mail")  # both have it: which one is still the operator's call
+    ask("Read General Informatics' newest email and tell me its subject")
+    route(output(routed("gi-site", 0.85, prompt=read)))
     assert len(questions()) == 1
 
 
