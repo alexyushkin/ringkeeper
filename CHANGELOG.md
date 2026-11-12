@@ -16,6 +16,11 @@ publishes it as the release notes and the app shows it with the update.
 - **A Google account is tried on what it was given.** Check my setup and Home's requests to try
   ask a Google account given only mail about its unread mail, not its calendar, which it can't
   read. With Calendar, it's still this week's events.
+- **Two connections no longer read the same.** When a client's connection gets a name another
+  one already has, its client's name is added: "Google · Acme · info@acme.example". Ones that
+  read the same before this update are renamed that way once; your own keep theirs. Check my
+  setup and Home's requests to try name a connection by its unique name (`acme-google`), so a
+  task always uses the one meant.
 - **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
   like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
   Memory said Notion.

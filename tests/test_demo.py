@@ -168,7 +168,7 @@ def test_a_google_account_s_request_follows_what_it_was_given(
     bind("acme-web", "acme-mail")
     with session_scope() as session:
         suggested = onboarding.suggestions(session, settings)
-        assert suggested[0] == "Summarize the unread emails in Acme mail"  # not its calendar
+        assert suggested[0] == "Summarize the unread emails in acme-mail"  # not its calendar
         found = instances.get_instance(session, "acme-mail")
         found.config = {"access": ["calendar_read", "mail_read"]}
         assert onboarding.request(found) == onboarding.BY_SERVICE[InstanceType.GOOGLE]

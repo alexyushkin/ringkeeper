@@ -94,6 +94,64 @@ def test_existing_connections_get_readable_titles(database_url: str) -> None:
     }
 
 
+def test_connections_that_read_the_same_get_their_client_s_name(database_url: str) -> None:
+    """0039: a client's connection titled like another one gets its client's name."""
+    migrate.downgrade(database_url, "0038")
+    dispose_engines()
+    same = "Google · a@example.com"
+    rows: tuple[tuple[str, str, str, dict[str, str], str, bool], ...] = (
+        ("acme-google", "google", same, {"email": "a@example.com"}, "acme", False),
+        ("globex-google", "google", same, {"email": "a@example.com"}, "globex", False),
+        ("my-google", "google", same, {"email": "a@example.com"}, "you", True),
+        ("acme-db", "supabase", "Database", {}, "acme", False),
+        ("globex-db", "supabase", "database", {}, "globex", False),
+        ("acme-gh", "github", "GitHub · Acme", {}, "acme", False),
+    )
+    probe = create_engine(database_url)
+    try:
+        with probe.begin() as connection:
+            connection.execute(
+                text("INSERT INTO clients (slug, name) VALUES ('acme', 'Acme Inc'), "
+                     "('globex', 'Globex')")
+            )  # fmt: skip
+            for name, kind, title, config, owner, shared in rows:
+                connection.execute(
+                    text(
+                        "INSERT INTO instances (id, name, title, type, env, secret_ref, owner,"
+                        " shared, config) VALUES (:id, :name, :title, :type, 'dev', :ref,"
+                        " :owner, :shared, :config)"
+                        if database_url.startswith("sqlite")
+                        else "INSERT INTO instances (id, name, title, type, env, secret_ref,"
+                        " owner, shared, config) VALUES (:id, :name, :title, :type, 'dev', :ref,"
+                        " :owner, :shared, CAST(:config AS jsonb))"
+                    ),
+                    {"id": str(uuid.uuid4()), "name": name, "title": title, "type": kind,
+                     "ref": f"file://{name}", "owner": owner, "shared": shared,
+                     "config": json.dumps(config)},
+                )  # fmt: skip
+    finally:
+        probe.dispose()
+    migrate.upgrade(database_url)
+    dispose_engines()
+    probe = create_engine(database_url)
+    try:
+        with probe.connect() as connection:
+            titles = {
+                row[0]: row[1]
+                for row in connection.execute(text("SELECT name, title FROM instances"))
+            }
+    finally:
+        probe.dispose()
+    assert titles == {
+        "acme-google": "Google · Acme Inc · a@example.com",
+        "globex-google": "Google · Globex · a@example.com",
+        "my-google": same,  # your own keeps its title
+        "acme-db": "Database · Acme Inc",
+        "globex-db": "database · Globex",
+        "acme-gh": "GitHub · Acme",  # no other reads the same
+    }
+
+
 def test_owners_become_clients(database_url: str) -> None:
     """0016: each owner becomes a client named as it was written, and projects and
     connections then name it by its slug ("Acme" and "acme" were one client)."""

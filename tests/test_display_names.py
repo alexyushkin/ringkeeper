@@ -48,6 +48,10 @@ def test_a_duplicate_name_gets_a_better_one(database_url: str) -> None:
             config={"email": "a.y@example.com"},
         )  # fmt: skip
         alone = make_instance(session, "acme-db", owner="Acme", title="Acme database")
+        # Made with a title another one has: its client's name is added.
+        assert second.title == "Google · Acme · a.y@example.com"
+        second.title = same  # as two made before that would read
+        session.flush()
         assert instances.suggested_title(first) == (
             "Google · General Informatics LLC · a.y@example.com"
         )
@@ -56,3 +60,19 @@ def test_a_duplicate_name_gets_a_better_one(database_url: str) -> None:
         second.title = "Google · Acme · a.y@example.com"
         session.flush()
         assert instances.suggested_title(first) is None  # no longer the same
+
+
+def test_a_client_s_connection_titled_like_another_gets_its_client_s_name(
+    database_url: str,
+) -> None:
+    del database_url
+    with session_scope() as session:
+        make_project(session, "acme-web", owner="Acme")
+        make_project(session, "globex-web", owner="Globex")
+        make_instance(session, "acme-db", owner="Acme", title="Database")
+        globex = make_instance(session, "globex-db", owner="Globex", title="Database")
+        assert globex.title == "Database · Globex"
+        mine = make_instance(
+            session, "my-db", owner=instances.SHARED_OWNER, shared=True, title="Database"
+        )
+        assert mine.title == "Database"  # your own keeps the title you gave it
