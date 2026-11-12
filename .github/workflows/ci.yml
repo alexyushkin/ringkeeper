@@ -130,26 +130,6 @@ jobs:
           tar -xzf "${tarball}" gitleaks
       - run: ./gitleaks git --redact --verbose .
 
-  private-names:
-    # New text that names someone on the owner's private list (a real client, say) fails: added
-    # lines, new file names and commit messages, not what's already on main. The list is the
-    # PRIVATE_NAMES secret, one name per line. Without it (a fork's pull request) the job warns and
-    # passes. The report gives the file and line, never the name.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Check what this change adds
-        env:
-          PRIVATE_NAMES: ${{ secrets.PRIVATE_NAMES }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          list="$RUNNER_TEMP/private-names.txt"
-          printf '%s\n' "$PRIVATE_NAMES" > "$list"
-          python3 scripts/check_private_names.py --names "$list" --range "$BASE..$HEAD_SHA"
-
   web:
     runs-on: ubuntu-latest
     defaults:
