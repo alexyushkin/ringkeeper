@@ -60,7 +60,7 @@ by name." A bad one: "n8n has 184 workflows; list_workflows returns 50 per page.
 A note that says what one already says, give or take a few words, is refused as "already noted".
 
 A task's answer mentions memory only when it saved something, and says exactly where:
-"this project's notes (Seaside, in Notion)", "My memory" or "shared notes". Its page and the
+"this project's notes (Bayside, in Notion)", "My memory" or "shared notes". Its page and the
 conversation show **Saved to memory** under the result, with each note and the same words. Check my
 setup only reads, so it keeps nothing.
 

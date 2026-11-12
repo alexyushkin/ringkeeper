@@ -242,8 +242,8 @@ _GROUP_MARKS = ("#", " - ", " \u2013 ", "-")  # \u2013: an en dash
 
 
 def group_of(name: str) -> str | None:
-    """The part of a workflow's name that says whose or what it is: "Seaside #12" is
-    Seaside's, "Lead sync - Acme" is a lead sync. None when the name has no such mark."""
+    """The part of a workflow's name that says whose or what it is: "Bayside #12" is
+    Bayside's, "Lead sync - Acme" is a lead sync. None when the name has no such mark."""
     for mark in _GROUP_MARKS:
         head, found, _rest = name.partition(mark)
         if found and head.strip():
