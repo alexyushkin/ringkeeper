@@ -375,7 +375,7 @@
 "doc": "backup",
 "anchor": "automatic-backups",
 "title": "Automatic backups",
-"text": "Turn on **Make a backup every week**, choose a folder (one your cloud drive copies is a good choice), how many to keep, and a password. The password is kept in Ringkeeper's vault on this computer so it can lock each backup; write it down, because you need it to restore. The first backup is made right away, then one every week; older ones are deleted, keeping the last few you chose."
+"text": "Turn on **Make a backup every week**, choose a folder (one your cloud drive copies is a good choice), how many to keep, and a password. The password is kept in Ringkeeper's vault on this computer so it can lock each backup; write it down, because you need it to restore. The first backup is made right away, then one every week; older ones are deleted, keeping the last few you chose. While they're off, Home asks once to turn them on, after your first real task (Check my setup's and the demo's don't count). **Not now** hides it for good, and so does turning them on, even if you turn them off again later."
 },
 {
 "doc": "backup",

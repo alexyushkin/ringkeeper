@@ -514,4 +514,6 @@ def backup_auto(data: AutoIn, session: WriteSessionDep) -> dict[str, Any]:
         session, get_vault(), enabled=data.enabled, folder=folder, keep=data.keep,
         password=data.password or None,
     )  # fmt: skip
+    if auto.enabled:
+        onboarding.backup_nudge_done(session)  # Home doesn't ask again, even if turned off
     return auto.__dict__

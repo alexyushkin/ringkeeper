@@ -37,6 +37,10 @@ kept in Ringkeeper's vault on this computer so it can lock each backup; write
 it down, because you need it to restore. The first backup is made right away,
 then one every week; older ones are deleted, keeping the last few you chose.
 
+While they're off, Home asks once to turn them on, after your first real task
+(Check my setup's and the demo's don't count). **Not now** hides it for good, and
+so does turning them on, even if you turn them off again later.
+
 ## On a server
 
 The server (Docker) keeps its data in Postgres and its data folder: back those

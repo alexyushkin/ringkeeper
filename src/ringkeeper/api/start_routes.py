@@ -53,12 +53,19 @@ def start(session: SessionDep) -> dict[str, Any]:
         "demo_offered": settings.mode == "desktop",
         "tour_seen": onboarding.tour_seen(session),
         "whats_new": onboarding.whats_new(session, settings.app_version),
+        "backup_nudge": onboarding.backup_nudge(session, settings),
     }
 
 
 @router.post("/start/dismiss", status_code=204)
 def dismiss(session: WriteSessionDep) -> None:
     onboarding.dismiss(session)
+
+
+@router.post("/start/backup-nudge", status_code=204)
+def backup_nudge_dismissed(session: WriteSessionDep) -> None:
+    """Not now: Home doesn't ask to turn automatic backups on again."""
+    onboarding.backup_nudge_done(session)
 
 
 @router.post("/start/whats-new", status_code=204)
