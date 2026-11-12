@@ -14,13 +14,14 @@ import pytest
 from sqlalchemy import select
 
 from ringkeeper.adapters import github
+from ringkeeper.adapters.base import Target
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import InstanceType, ProjectInstance
+from ringkeeper.models import Env, InstanceType, ProjectInstance
 from ringkeeper.services import bindings, instances, secrets_in
 from ringkeeper.services.calls import RefusalError, approve, run_call
-from ringkeeper.vault import get_vault
+from ringkeeper.vault import Secret, get_vault
 from tests.helpers import bind, make_instance, make_project
 
 TOKENS = {
@@ -141,9 +142,65 @@ def test_the_checks_on_the_default_branch_s_latest_commit(
         "id": 5, "name": "tests", "status": "completed", "conclusion": "failure",
         "sha": "abcdef123456", "completed": None, "url": "https://github.example/run/5",
     }]  # fmt: skip
+    assert found["total"] == 1
     assert fake.seen[-1][2].endswith("/repos/acme-inc/website/commits/main/check-runs?per_page=30")
     with pytest.raises(RefusalError):  # the connection's scope is still the one repository
         call("acme-web", "list_check_runs", "acme-gh", repo="globex/app")
+
+
+def test_lists_say_how_many_there_are_in_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full page isn't all of them: GitHub's own count says how many there are (its search
+    for issues, which its issue list mixes with pull requests; its last page, one to a page,
+    for the rest). A page that isn't full is all of them, and nothing more is asked."""
+    asked: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        asked.append(request)
+        path, params = request.url.path, request.url.params
+        if path == "/search/issues":
+            open_only = "is:open" in params["q"]
+            return httpx2.Response(200, json={"total_count": 12 if open_only else 40, "items": []})
+        if params["per_page"] == "1":  # counting: the last page's number is how many
+            last = {"/repos/acme-inc/website/pulls": 7 if params.get("state") == "open" else 9}
+            link = (
+                f'<https://api.github.com{path}?per_page=1&page={last.get(path, 25)}>; rel="last"'
+            )
+            return httpx2.Response(200, json=[{}], headers={"link": link})
+        state = "closed" if "pulls" in path else "open"
+        item = {"number": 1, "title": "x", "state": state, "name": "main", "sha": "abc"}
+        return httpx2.Response(200, json=[item] * int(params["per_page"]))
+
+    monkeypatch.setattr(github, "transport", httpx2.MockTransport(handle))
+    tgt = Target("acme-gh", Env.DEV, None, Secret("file://acme/gh", TOKENS["acme-gh"]))
+    repo = "acme-inc/website"
+
+    def run(tool: str, **args: Any) -> Any:
+        async def go() -> Any:
+            return await github.ADAPTER.tool(tool).handler(tgt, **args)
+
+        return asyncio.run(go())
+
+    issues = run("list_issues", repo=repo, state="all", labels="bug, urgent", limit=2)
+    assert (len(issues["issues"]), issues["total"], issues["open"]) == (2, 40, 12)
+    searched = [r.url.params["q"] for r in asked if r.url.path == "/search/issues"]
+    assert searched == [
+        f'repo:{repo} is:issue label:"bug" label:"urgent"',
+        f'repo:{repo} is:issue label:"bug" label:"urgent" is:open',
+    ]
+    pulls = run("list_pulls", repo=repo, state="all", limit=2)
+    assert (pulls["total"], pulls["open"]) == (9, 7)
+    assert run("list_branches", repo=repo, limit=2)["total"] == 25
+    assert run("list_commits", repo=repo, limit=2)["total"] == 25
+    assert run("list_repos", limit=2)["total"] == 25
+
+    def one_pull(request: httpx2.Request) -> httpx2.Response:
+        asked.append(request)
+        return httpx2.Response(200, json=[{"number": 1, "state": "open"}])
+
+    asked.clear()
+    monkeypatch.setattr(github, "transport", httpx2.MockTransport(one_pull))
+    one = run("list_pulls", repo=repo, state="all", limit=5)
+    assert (one["total"], one["open"], len(asked)) == (1, 1, 1)
 
 
 def test_a_link_pinned_to_several_repositories(

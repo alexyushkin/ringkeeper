@@ -171,27 +171,28 @@ async def list_tables(
         str | None, Field(description="Schema to list; null lists every non-system schema.")
     ] = "public",
 ) -> JSON:
-    """List tables and views."""
+    """List tables and views. total counts all of them, even past the ones listed."""
     demo = sqlite_file.path_of(target)
     if demo is not None:
         return await anyio.to_thread.run_sync(sqlite_file.list_tables, demo)
+    where = (
+        "FROM information_schema.tables "
+        "WHERE table_schema <> ALL(%s) AND (%s::text IS NULL OR table_schema = %s)"
+    )
+    params = [list(SYSTEM_SCHEMAS), schema, schema]
     statement = (
-        "SELECT table_schema, table_name, table_type FROM information_schema.tables "
-        "WHERE table_schema <> ALL(%s) AND (%s::text IS NULL OR table_schema = %s) "
-        "ORDER BY table_schema, table_name"
+        f"SELECT table_schema, table_name, table_type {where} ORDER BY table_schema, table_name"
     )
-    result = await _run(
-        target,
-        statement,
-        [list(SYSTEM_SCHEMAS), schema, schema],
-        read_only=True,
-        max_rows=MAX_ROWS,
-    )
+    result = await _run(target, statement, params, read_only=True, max_rows=MAX_ROWS)
     tables = [
         {"schema": s, "name": n, "type": "view" if t == "VIEW" else "table"}
         for s, n, t in result["rows"]
     ]
-    return {"tables": tables, "truncated": result["truncated"]}
+    total = len(tables)
+    if result["truncated"]:  # more than are listed: counted
+        counted = await _run(target, f"SELECT count(*) {where}", params, read_only=True, max_rows=1)
+        total = int(counted["rows"][0][0])
+    return {"tables": tables, "total": total, "truncated": result["truncated"]}
 
 
 @read

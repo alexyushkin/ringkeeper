@@ -92,6 +92,7 @@ def list_tables(path: Path) -> JSON:
     )
     return {
         "tables": [{"schema": "main", "name": n, "type": t} for n, t in found["rows"]],
+        "total": found["total_rows"],
         "truncated": found["truncated"],
     }
 

@@ -9,7 +9,8 @@ client's bases**. It starts with `pat`.
 
 ## What it can do
 
-- **Read:** list bases, tables (with their fields) and records; get one record.
+- **Read:** list bases, tables (with their fields) and records; get one record. Each list
+  says how many there are in all (records: counted up to 2,000), not only on the page it shows.
 - **Change:** create, update or delete up to 10 records at a time.
 
 ## What's held

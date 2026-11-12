@@ -8,7 +8,8 @@ address too, like `https://n8n.acme.example`. n8n Cloud's free trial has no API.
 
 ## What it can do
 
-- **Read:** list workflows and their runs (executions), get one of each.
+- **Read:** list workflows and their runs (executions), get one of each. A list of workflows
+  says how many there are in all and how many are on, not only on the page it shows.
 - **Change:** turn a workflow on or off, replace a workflow, run a past
   execution again, stop a running one.
 

@@ -2,6 +2,7 @@
 send, what they hand back to the agent, and what they refuse."""
 
 import json
+from typing import Any
 
 import httpx2
 import pytest
@@ -102,6 +103,7 @@ async def test_airtable_lists_tables_and_records(http: FakeHttp) -> None:
     http.routes[("GET", f"/v0/{BASE}/Open leads")] = {"records": [{"id": RECORD, "fields": {}}]}
     tables = await airtable.list_tables.handler(target(AIRTABLE_TOKEN), base_id=BASE)
     assert tables == {
+        "total": 1,
         "tables": [
             {
                 "id": "tblX",
@@ -109,7 +111,7 @@ async def test_airtable_lists_tables_and_records(http: FakeHttp) -> None:
                 "fields": [{"name": "Name", "type": "singleLineText"}],
                 "views": ["Open"],
             }
-        ]
+        ],
     }
     records = await airtable.list_records.handler(
         target(AIRTABLE_TOKEN), base_id=BASE, table="Open leads", filter_formula="{Status} = 'Open'"
@@ -119,6 +121,38 @@ async def test_airtable_lists_tables_and_records(http: FakeHttp) -> None:
     assert request.headers["authorization"] == f"Bearer {AIRTABLE_TOKEN}"
     assert request.url.raw_path.startswith(f"/v0/{BASE}/Open%20leads?".encode())  # one path segment
     assert request.url.params["filterByFormula"] == "{Status} = 'Open'"
+    assert records["total"] == 1  # one page: nothing more to ask
+
+
+async def test_airtable_counts_every_page_of_records(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Airtable doesn't say how many records match: the first page counts them all, with the
+    same filter, so the agent doesn't count by hand."""
+    every: list[dict[str, Any]] = [{"id": f"rec{i:014d}", "fields": {}} for i in range(230)]
+    asked: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        asked.append(request)
+        start = int(request.url.params.get("offset") or 0)
+        end = start + int(request.url.params["pageSize"])
+        more = {"offset": str(end)} if end < len(every) else {}
+        return httpx2.Response(200, json={"records": every[start:end], **more})
+
+    monkeypatch.setattr(airtable, "transport", httpx2.MockTransport(handle))
+    first = await airtable.list_records.handler(
+        target(AIRTABLE_TOKEN), base_id=BASE, table="Leads", view="Open", page_size=50
+    )
+    assert (len(first["records"]), first["offset"], first["total"]) == (50, "50", 230)
+    assert len(asked) == 4  # the page, then 100 at a time to count
+    assert {r.url.params["view"] for r in asked} == {"Open"}
+    second = await airtable.list_records.handler(
+        target(AIRTABLE_TOKEN), base_id=BASE, table="Leads", offset="50", page_size=50
+    )
+    assert "total" not in second  # counted on the first page
+    assert len(asked) == 5
+
+    monkeypatch.setattr(airtable, "MAX_COUNT_PAGES", 2)
+    capped = await airtable.list_records.handler(target(AIRTABLE_TOKEN), base_id=BASE, table="T")
+    assert (capped["total"], capped["counted"]) == (200, "only the first 200: there are more")
 
 
 async def test_airtable_writes_and_refuses_bad_ids(http: FakeHttp) -> None:

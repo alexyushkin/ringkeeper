@@ -39,11 +39,29 @@ async def test_list_workflows_summarizes(fake: FakeN8n) -> None:
             }
         ],
         "next_cursor": None,
+        "total": 1,
+        "active": 1,
     }
     request = fake.requests[-1]
     assert str(request.url).startswith("https://n8n.acme.example/api/v1/workflows?")
     assert request.url.params["active"] == "true"
     assert "cursor" not in request.url.params  # None params are not sent
+
+
+async def test_the_totals_count_every_page_not_only_this_one(fake: FakeN8n) -> None:
+    """The same n8n was once reported with 197 workflows and then 184: the agent counted by
+    hand. Each page says how many there are in all, and how many are on."""
+    for i in range(3, 8):
+        fake.add_workflow(f"wf{i}", f"Workflow {i}", active=i % 2 == 0)
+    first = await n8n.list_workflows.handler(target(), limit=3)
+    assert len(first["workflows"]) == 3
+    assert (first["total"], first["active"]) == (7, 3)
+    second = await n8n.list_workflows.handler(target(), limit=3, cursor=first["next_cursor"])
+    assert [w["id"] for w in second["workflows"]] == ["wf4", "wf5", "wf6"]
+    assert (second["total"], second["active"]) == (7, 3)
+    on = await n8n.list_workflows.handler(target(), active=True, limit=2)
+    assert (on["total"], on["active"]) == (3, 3)
+    assert "counted" not in on
 
 
 async def test_get_workflow(fake: FakeN8n) -> None:

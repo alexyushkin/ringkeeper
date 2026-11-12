@@ -32,6 +32,8 @@ RecordId = Annotated[str, Field(description="The record id (rec...).", pattern=R
 Fields = dict[str, Any]
 # Airtable takes at most 10 records per create, update or delete request.
 NewRecords = Annotated[list[Fields], Field(min_length=1, max_length=10)]
+# Airtable doesn't say how many records match: they're counted, 100 a page, up to 2,000.
+MAX_COUNT_PAGES = 20
 
 
 def _client(target: Target) -> httpx2.AsyncClient:
@@ -63,13 +65,35 @@ async def whoami(target: Target) -> JSON:
     return await _call(target, "GET", "/meta/whoami")
 
 
+async def _total(
+    target: Target, path: str, key: str, params: JSON, first: JSON, offset: str | None
+) -> JSON:
+    """How many there are in all, across every page: Airtable doesn't say, so they're counted
+    (`first` is the page already read, from `offset`)."""
+    if offset is None and not first.get("offset"):
+        return {"total": len(cast(list[Any], first.get(key) or []))}
+    total, at = 0, None
+    try:
+        for _ in range(MAX_COUNT_PAGES):
+            data = await _call(target, "GET", path, params={**params, "offset": at})
+            total += len(cast(list[Any], data.get(key) or []))
+            at = data.get("offset")
+            if not at:
+                return {"total": total}
+    except ToolError:  # a busy base: the page is still worth having
+        return {"total": None, "counted": "Airtable didn't let them be counted just now"}
+    return {"total": total, "counted": f"only the first {total}: there are more"}
+
+
 @read
 async def list_bases(
     target: Target,
     offset: Annotated[str | None, Field(description="offset from a previous page.")] = None,
 ) -> JSON:
-    """List the bases this token can reach (id, name, permission level)."""
-    return await _call(target, "GET", "/meta/bases", params={"offset": offset})
+    """List the bases this token can reach (id, name, permission level). total counts every
+    base, on every page."""
+    data = await _call(target, "GET", "/meta/bases", params={"offset": offset})
+    return data | await _total(target, "/meta/bases", "bases", {}, data, offset)
 
 
 @read
@@ -78,6 +102,7 @@ async def list_tables(target: Target, base_id: BaseId) -> JSON:
     data = await _call(target, "GET", f"/meta/bases/{_check(base_id, BASE_PATTERN, 'base')}/tables")
     tables = cast(list[JSON], data.get("tables", []))
     return {
+        "total": len(tables),
         "tables": [
             {
                 "id": t.get("id"),
@@ -89,7 +114,7 @@ async def list_tables(target: Target, base_id: BaseId) -> JSON:
                 "views": [v.get("name") for v in cast(list[JSON], t.get("views", []))],
             }
             for t in tables
-        ]
+        ],
     }
 
 
@@ -105,14 +130,14 @@ async def list_records(
     page_size: Annotated[int, Field(ge=1, le=100)] = 50,
     offset: Annotated[str | None, Field(description="offset from a previous page.")] = None,
 ) -> JSON:
-    """List records in a table, one page at a time."""
-    params = {
-        "filterByFormula": filter_formula,
-        "view": view,
-        "pageSize": page_size,
-        "offset": offset,
-    }
-    return await _call(target, "GET", _table_path(base_id, table), params=params)
+    """List records in a table, one page at a time. The first page's total counts every record
+    that matches, on every page, not only this one."""
+    path, matching = _table_path(base_id, table), {"filterByFormula": filter_formula, "view": view}
+    params = {**matching, "pageSize": page_size, "offset": offset}
+    data = await _call(target, "GET", path, params=params)
+    if offset is not None:
+        return data  # counted on the first page: counting again on each costs the base's quota
+    return data | await _total(target, path, "records", {**matching, "pageSize": 100}, data, offset)
 
 
 @read

@@ -290,7 +290,7 @@ async def list_tables(
     target: Target,
     schema: Annotated[str | None, Field(description="Owner; null: every non-system one.")] = None,
 ) -> JSON:
-    """List tables and views."""
+    """List tables and views. total counts all of them, even past the ones listed."""
     marks = ", ".join(f":{i + 1}" for i in range(len(ORACLE_SYSTEM)))
     where = f"owner NOT IN ({marks})"
     params: list[Any] = list(ORACLE_SYSTEM)
@@ -305,8 +305,19 @@ async def list_tables(
         read_only=True,
     )
     rows = cast(list[list[Any]], found["rows"])
+    total = len(rows)
+    if found["truncated"]:  # more than are listed: counted
+        counted = await _run(
+            target,
+            f"SELECT (SELECT count(*) FROM all_tables WHERE {where}) "  # noqa: S608 (binds)
+            f"+ (SELECT count(*) FROM all_views WHERE {where}) FROM dual",
+            params + params,
+            read_only=True,
+        )
+        total = int(cast(list[list[Any]], counted["rows"])[0][0])
     return {
         "tables": [{"schema": s, "name": n, "type": t} for s, n, t in rows],
+        "total": total,
         "truncated": found["truncated"],
     }
 

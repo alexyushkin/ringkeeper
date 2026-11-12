@@ -819,7 +819,7 @@
 "doc": "services/airtable",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** list bases, tables (with their fields) and records; get one record. - **Change:** create, update or delete up to 10 records at a time."
+"text": "- **Read:** list bases, tables (with their fields) and records; get one record. Each list says how many there are in all (records: counted up to 2,000), not only on the page it shows. - **Change:** create, update or delete up to 10 records at a time."
 },
 {
 "doc": "services/airtable",
@@ -849,7 +849,7 @@
 "doc": "services/database",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** list tables, describe a table, run a query. Every query runs inside a read-only transaction, one statement at a time. - **Change:** run one statement that writes (`INSERT`, `UPDATE`, `DELETE`, schema changes). A statement that only reads runs at once, even through this tool."
+"text": "- **Read:** list tables (with how many there are), describe a table, run a query. Every query runs inside a read-only transaction, one statement at a time. - **Change:** run one statement that writes (`INSERT`, `UPDATE`, `DELETE`, schema changes). A statement that only reads runs at once, even through this tool."
 },
 {
 "doc": "services/database",
@@ -879,7 +879,7 @@
 "doc": "services/github",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** repositories, issues, pull requests, files, branches, commits, and the checks on a commit. - **Change:** open and update issues, comment, open and merge pull requests, push a branch. A push never forces."
+"text": "- **Read:** repositories, issues, pull requests, files, branches, commits, and the checks on a commit. Each list says how many there are in all, and for issues and pull requests of every state, how many are open. - **Change:** open and update issues, comment, open and merge pull requests, push a branch. A push never forces."
 },
 {
 "doc": "services/github",
@@ -1005,7 +1005,7 @@
 "doc": "services/n8n",
 "anchor": "what-it-can-do",
 "title": "What it can do",
-"text": "- **Read:** list workflows and their runs (executions), get one of each. - **Change:** turn a workflow on or off, replace a workflow, run a past execution again, stop a running one."
+"text": "- **Read:** list workflows and their runs (executions), get one of each. A list of workflows says how many there are in all and how many are on, not only on the page it shows. - **Change:** turn a workflow on or off, replace a workflow, run a past execution again, stop a running one."
 },
 {
 "doc": "services/n8n",

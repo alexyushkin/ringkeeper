@@ -158,12 +158,47 @@ def _issue(item: JSON) -> JSON:
     }
 
 
+def _last_page(link: str) -> int | None:
+    for part in link.split(","):
+        if 'rel="last"' in part and (found := re.search(r"[?&]page=(\d+)", part)):
+            return int(found.group(1))
+    return None
+
+
+async def _how_many(target: Target, path: str, params: JSON) -> int | None:
+    """How many there are in all: the number of GitHub's last page, one to a page. None if
+    GitHub didn't say (the list is still worth having)."""
+    asked = {k: v for k, v in params.items() if v is not None} | {"per_page": 1}
+    try:
+        async with _client(target) as client:
+            response = await client.get(path, params=asked)
+    except httpx2.HTTPError:
+        return None
+    if response.status_code >= 400:
+        return None
+    if (last := _last_page(response.headers.get("link", ""))) is not None:
+        return last
+    body: Any = response.json() if response.content else None
+    return len(cast(list[Any], body)) if isinstance(body, list) else None
+
+
+async def _searched(target: Target, query: str) -> int | None:
+    """How many issues or pull requests a search finds: GitHub counts them."""
+    try:
+        found = await _call(target, "GET", "/search/issues", params={"q": query, "per_page": 1})
+    except ToolError:
+        return None
+    count = found.get("total_count")
+    return count if isinstance(count, int) else None
+
+
 # --- Reads ---
 
 
 @read
 async def list_repos(target: Target, limit: Limit = 30) -> JSON:
-    """The repositories this token can reach; on a link pinned to some, only those."""
+    """The repositories this token can reach; on a link pinned to some, only those. total
+    counts all of them, not only the ones listed."""
     pinned = [r.strip() for r in str(target.scope.get("repo") or "").split(",") if r.strip()]
     if pinned:
         found: list[JSON] = []
@@ -173,12 +208,16 @@ async def list_repos(target: Target, limit: Limit = 30) -> JSON:
                 found.append({"repo": one.get("full_name") or repo, "private": one.get("private")})
             except ToolError as error:
                 found.append({"repo": repo, "error": str(error)})
-        return {"repos": found}
+        return {"repos": found, "total": len(pinned)}
     found_all = await _call(
         target, "GET", "/user/repos", params={"per_page": limit, "sort": "updated"}
     )
     repos = cast(list[JSON], found_all.get("data") or [])
-    return {"repos": [{"repo": r.get("full_name"), "private": r.get("private")} for r in repos]}
+    total = len(repos) if len(repos) < limit else await _how_many(target, "/user/repos", {})
+    return {
+        "repos": [{"repo": r.get("full_name"), "private": r.get("private")} for r in repos],
+        "total": total,
+    }
 
 
 @read
@@ -199,13 +238,30 @@ async def list_issues(
     labels: Annotated[str, Field(max_length=500, description="Comma-separated.")] = "",
     limit: Limit = 30,
 ) -> JSON:
-    """Issues in a repository, newest first (pull requests left out)."""
+    """Issues in a repository, newest first (pull requests left out). total counts every issue
+    that matches, not only the ones listed; with state all, open says how many are open."""
     found = await _call(
         target, "GET", f"{_repo(repo)}/issues",
         params={"state": state, "labels": labels or None, "per_page": limit},
     )  # fmt: skip
     items = cast(list[JSON], found.get("data") or [])
-    return {"issues": [_issue(i) for i in items if "pull_request" not in i]}
+    issues = [_issue(i) for i in items if "pull_request" not in i]
+    # GitHub's issue list holds pull requests too; its search tells them apart.
+    query = f"repo:{repo} is:issue" + "".join(
+        f' label:"{label.strip()}"' for label in labels.split(",") if label.strip()
+    )
+    counts: JSON = {}
+    if len(items) < limit:
+        counts["total"] = len(issues)
+        if state == "all":
+            counts["open"] = sum(1 for i in issues if i["state"] == "open")
+    else:
+        counts["total"] = await _searched(
+            target, query if state == "all" else f"{query} is:{state}"
+        )
+        if state == "all":
+            counts["open"] = await _searched(target, f"{query} is:open")
+    return {"issues": issues} | counts
 
 
 @read
@@ -237,16 +293,23 @@ async def get_issue(
 async def list_pulls(
     target: Target, repo: Repo, state: Literal["open", "closed", "all"] = "open", limit: Limit = 30
 ) -> JSON:
-    """Pull requests in a repository (number, title, branch, author)."""
-    found = await _call(
-        target, "GET", f"{_repo(repo)}/pulls", params={"state": state, "per_page": limit}
-    )
+    """Pull requests in a repository (number, title, branch, author). total counts every one
+    that matches, not only the ones listed; with state all, open says how many are open."""
+    path = f"{_repo(repo)}/pulls"
+    found = await _call(target, "GET", path, params={"state": state, "per_page": limit})
+    items = cast(list[JSON], found.get("data") or [])
+    counts: JSON = {}
+    if len(items) < limit:
+        counts["total"] = len(items)
+        if state == "all":
+            counts["open"] = sum(1 for p in items if p.get("state") == "open")
+    else:
+        counts["total"] = await _how_many(target, path, {"state": state})
+        if state == "all":
+            counts["open"] = await _how_many(target, path, {"state": "open"})
     return {
-        "pulls": [
-            _issue(p) | {"head": cast(JSON, p.get("head") or {}).get("ref")}
-            for p in cast(list[JSON], found.get("data") or [])
-        ]
-    }
+        "pulls": [_issue(p) | {"head": cast(JSON, p.get("head") or {}).get("ref")} for p in items]
+    } | counts
 
 
 @read
@@ -303,27 +366,33 @@ async def get_file(
 
 @read
 async def list_branches(target: Target, repo: Repo, limit: Limit = 50) -> JSON:
-    """A repository's branches."""
-    found = await _call(target, "GET", f"{_repo(repo)}/branches", params={"per_page": limit})
-    return {"branches": [b.get("name") for b in cast(list[JSON], found.get("data") or [])]}
+    """A repository's branches. total counts all of them, not only the ones listed."""
+    path = f"{_repo(repo)}/branches"
+    found = await _call(target, "GET", path, params={"per_page": limit})
+    items = cast(list[JSON], found.get("data") or [])
+    total = len(items) if len(items) < limit else await _how_many(target, path, {})
+    return {"branches": [b.get("name") for b in items], "total": total}
 
 
 @read
 async def list_commits(
     target: Target, repo: Repo, branch: Branch | None = None, limit: Limit = 20
 ) -> JSON:
-    """Recent commits on a branch (the default one if left out)."""
-    found = await _call(
-        target, "GET", f"{_repo(repo)}/commits", params={"sha": branch, "per_page": limit}
-    )
+    """Recent commits on a branch (the default one if left out). total counts every commit on
+    it, not only the ones listed."""
+    path = f"{_repo(repo)}/commits"
+    found = await _call(target, "GET", path, params={"sha": branch, "per_page": limit})
+    items = cast(list[JSON], found.get("data") or [])
+    total = len(items) if len(items) < limit else await _how_many(target, path, {"sha": branch})
     return {
         "commits": [
             {
                 "sha": str(c.get("sha") or "")[:12],
                 "message": str(cast(JSON, c.get("commit") or {}).get("message") or "")[:300],
             }
-            for c in cast(list[JSON], found.get("data") or [])
-        ]
+            for c in items
+        ],
+        "total": total,
     }
 
 
@@ -332,13 +401,15 @@ async def list_check_runs(
     target: Target, repo: Repo, branch: Branch | None = None, limit: Limit = 30
 ) -> JSON:
     """The checks on a branch's latest commit (the default branch if left out): each with
-    its status and, once finished, its conclusion (success, failure, timed_out...)."""
+    its status and, once finished, its conclusion (success, failure, timed_out...). total
+    counts all of them, not only the ones listed."""
     ref = branch or str((await get_repo.handler(target, repo=repo)).get("default_branch") or "")
     found = await _call(
         target, "GET", f"{_repo(repo)}/commits/{ref}/check-runs", params={"per_page": limit}
     )
     return {
         "branch": ref,
+        "total": found.get("total_count"),
         "check_runs": [
             {
                 "id": c.get("id"),
