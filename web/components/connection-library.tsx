@@ -458,6 +458,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
           <Button onClick={() => void patch({ title: connection.suggested_title }, "Renamed.")}>Rename it to “{connection.suggested_title}”</Button>
         </div>
       ) : null}
+      {connection.type === "airtable" ? <AirtableCovers connection={connection} services={services} /> : null}
       {/* Why the last test failed, without opening anything. */}
       {connection.last_test_ok === false && connection.last_test_message ? <p className="text-sm text-bad">{connection.last_test_message}</p> : null}
       {notesOnly(connection) ? (
@@ -573,10 +574,29 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
 
 /** Connect a service you sign in to (or paste a token for). With `project`, the new
  * connection is linked to it, and the link can be narrowed right away. */
-export function ConnectRemote({ service, client, project, shared = false, onAdded }: { service: RemoteService; client: string; project?: string; shared?: boolean; onAdded: (name: string) => void }) {
+/** A built-in Airtable connection: what it covers, and Airtable's own server for what it
+ * doesn't (automations, interfaces), for the same client and base. */
+function AirtableCovers({ connection, services }: { connection: LibraryConnection; services: RemoteService[] }) {
+  const own = services.find((s) => s.key === "airtable");
+  const base = (connection.links ?? []).map((l) => l.scope.base ?? l.scope.base_id ?? "").find(Boolean) ?? "";
+  const query = new URLSearchParams({ service: "airtable", ...(connection.shared ? { kind: "shared" } : { client: connection.owner }), ...(base ? { base } : {}) });
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted">Reads and changes bases, tables and records, with undo. It can&apos;t see automations or interfaces.</span>
+      {own ? (
+        <Link href={`/connections/new?${query}`} className="font-medium text-accent">
+          Add Airtable&apos;s own server for automations
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+export function ConnectRemote({ service, client, project, shared = false, onAdded, startScope }: { service: RemoteService; client: string; project?: string; shared?: boolean; onAdded: (name: string) => void; startScope?: Record<string, string> }) {
   const [typed, setTyped] = useState<string | null>(null); // null: the suggested title
   const [env, setEnv] = useState("");
-  const [scope, setScope] = useState<Record<string, string>>({});
+  // A base already pinned on the built-in connection, offered again here.
+  const [scope, setScope] = useState<Record<string, string>>(startScope ?? {});
   const [token, setToken] = useState("");
   const [url, setUrl] = useState("");
   const [pasting, setPasting] = useState(!service.signin);

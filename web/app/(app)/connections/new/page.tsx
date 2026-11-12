@@ -125,7 +125,7 @@ function NewConnection() {
             <GoogleConnect owner={shared ? undefined : owner} shared={shared} onAdded={done} />
           </>
         ) : (
-          <Catalog client={owner} kind={kind} onAdded={done} />
+          <Catalog client={owner} kind={kind} onAdded={done} start={search.get("service") ?? undefined} startScope={search.get("base") ? { base: search.get("base") ?? "" } : undefined} />
         )}
         <Button kind="ghost" onClick={() => (shared ? setKind(null) : setClient(null))}>
           {shared ? "‹ Back" : "‹ Another client"}

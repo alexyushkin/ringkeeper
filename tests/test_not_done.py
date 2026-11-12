@@ -99,3 +99,30 @@ def test_the_task_page_offers_it(owner: TestClient) -> None:
     again = owner.post(f"/tasks/{ident}/link-and-retry")
     assert again.status_code == 201, again.text
     assert again.json()["project"] == "gi-site"
+
+
+def test_a_missing_automation_tool_recommends_airtable_s_own_server() -> None:
+    """The built-in Airtable can't see automations; Airtable's own server can. When a task
+    ends not done over that, and the client hasn't added the server, it says so with a link."""
+    with session_scope() as session:
+        make_instance(session, "gi-airtable", type=InstanceType.AIRTABLE,
+                      owner="General Informatics LLC")  # fmt: skip
+    from tests.helpers import bind  # noqa: PLC0415
+
+    bind("gi-site", "gi-airtable")
+    with session_scope() as session:
+        task = tasks.create_task(session, get_settings(), project="gi-site", prompt="automations?")
+        task.status = TaskStatus.NOT_DONE
+        task.error = "The Airtable tools here can't list automations."
+        offer = link_offer.find(session, task, "")
+        assert offer is not None
+        assert offer["recommend"] == "airtable"
+        assert offer["label"].startswith("Airtable's own server can see automations")
+        assert offer["href"].startswith("/connections/new?service=airtable&client=")
+        assert "instance" not in offer  # nothing to link and retry
+        make_instance(session, "gi-airtable-mcp", type=InstanceType.MCP,
+                      owner="General Informatics LLC", config={"remote": "airtable"})  # fmt: skip
+    with session_scope() as session:
+        task = tasks.create_task(session, get_settings(), project="gi-site", prompt="again")
+        task.error = "The Airtable tools here can't list automations."
+        assert link_offer.find(session, task, "") is None  # the client has the server now

@@ -5,6 +5,14 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Airtable's own server can be connected.** It was in Ringkeeper's list, but search showed only
+  the built-in Airtable, and typing its address said "connect it from Recommended above" with
+  nothing there. Both now show, each saying what it's for: built in for bases and records with
+  undo, Airtable's own server for automations and interfaces. Typing a known service's address
+  opens its form right there. The built-in connection's card says what it can't see and offers
+  the server for the same client and base; a project with both tells its tasks which is for
+  what; a task that couldn't see automations says the server would; and Check my setup says
+  whether the server's tools include automations.
 - **Home's last 24 hours tells it straight.** Check my setup's requests and the demo's tasks
   aren't counted as your clients' work: a line says they ran, with a link to the report. A
   task that wasn't done is counted apart from one that broke ("1 not done" in amber, "1 failed"

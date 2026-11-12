@@ -722,3 +722,26 @@ def test_one_environment_needs_no_question() -> None:
     assert "- acme-db: database, not production (dev), the default for its kind" in prompt
     assert "- acme-n8n: n8n, production" in prompt
     assert "ask_user" not in prompt  # different kinds: nothing to choose between
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_both_airtable_connections_say_which_is_for_what() -> None:
+    """A client can link the built-in Airtable and Airtable's own server to one project: the
+    worker is told records go through one and automations through the other."""
+    from ringkeeper.services import connection_note, projects  # noqa: PLC0415
+
+    with session_scope() as session:
+        make_instance(session, "acme-airtable", InstanceType.AIRTABLE, env=Env.PROD)
+        make_instance(
+            session, "acme-airtable-mcp", InstanceType.MCP, env=Env.PROD,
+            config={"remote": "airtable"},
+        )  # fmt: skip
+    bind("acme-web", "acme-airtable")
+    bind("acme-web", "acme-airtable-mcp")
+    with session_scope() as session:
+        told = connection_note.note(projects.get_project(session, "acme-web")) or ""
+    assert (
+        "Airtable is here twice: records, bases and tables (built in, with undo) through "
+        "acme-airtable; automations and interfaces (Airtable's own server) through "
+        "acme-airtable-mcp."
+    ) in told
