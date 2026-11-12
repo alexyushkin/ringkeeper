@@ -32,6 +32,7 @@ from ringkeeper.services import (
     backup,
     claude_desktop,
     claude_work,
+    downloads,
     inbox,
     onboarding,
     runtime,
@@ -517,3 +518,30 @@ def backup_auto(data: AutoIn, session: WriteSessionDep) -> dict[str, Any]:
     if auto.enabled:
         onboarding.backup_nudge_done(session)  # Home doesn't ask again, even if turned off
     return auto.__dict__
+
+
+# --- Saving files into Downloads (services.downloads) ---
+
+
+class DownloadIn(Input):
+    name: Annotated[str, Field(min_length=1, max_length=200)]
+    text: Annotated[str, Field(max_length=900_000)]  # under the 1 MB a request can be
+
+
+class SavedIn(Input):
+    path: Annotated[str, Field(min_length=1, max_length=2000)]
+
+
+@router.post("/downloads")
+def save_download(data: DownloadIn) -> dict[str, str]:
+    """What a browser would download (a table as CSV, a report): saved into Downloads,
+    under the next free name. The app window can't download a link itself."""
+    path = downloads.save(get_settings(), data.name, data.text)
+    return {"path": str(path), "name": path.name}
+
+
+@router.post("/downloads/show")
+def show_download(data: SavedIn) -> dict[str, bool]:
+    """Show a file saved into Downloads in its folder."""
+    downloads.show(get_settings(), data.path)
+    return {"ok": True}

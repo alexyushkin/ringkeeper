@@ -192,6 +192,9 @@ class Settings(BaseSettings):
     # installed app's Python.
     voice_packages: Path | None = None
     ocr_packages: Path | None = None
+    # Desktop mode: where Download CSV and Save report put files (services.downloads);
+    # None: the Downloads folder in your home folder.
+    downloads_dir: Path | None = None
     # The MCP Registry the catalog searches (services.catalog); None: the official one.
     mcp_registry_url: str | None = None
 

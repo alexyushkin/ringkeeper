@@ -17,6 +17,10 @@ publishes it as the release notes and the app shows it with the update.
   backups are off, Home shows **Turn on automatic backups** with a link to Settings › Backup.
   Check my setup and the demo don't count. **Not now** hides it for good, and so does turning
   them on.
+- **Download CSV works in the desktop app.** It did nothing there, on every table. Now the
+  table is saved in your Downloads folder (`table.csv`, then `table (2).csv`: nothing is
+  overwritten), the button says where, and **Show in folder** shows it. In a browser it
+  downloads as before.
 - **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
   subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
   subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by

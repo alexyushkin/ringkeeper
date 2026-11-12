@@ -85,7 +85,9 @@ code task's files are on its branch until you keep them: they open from a copy, 
 folder isn't touched. Only documents open: PDFs, Office files, text, Markdown, CSV, JSON
 and pictures. Anything else (a program, a script, a web page) is only shown in its folder,
 so nothing a task wrote runs by a click. A table in a result has **Copy** (to paste into a
-spreadsheet) and **Download CSV**.
+spreadsheet) and **Download CSV**. In the desktop app the CSV is saved in your Downloads
+folder (as `table.csv`, or `table (2).csv` when that's taken; nothing is overwritten), and
+**Show in folder** shows it there.
 
 ### Where a request goes
 
