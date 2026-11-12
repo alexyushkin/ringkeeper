@@ -13,6 +13,9 @@ from ringkeeper_worker.privileges import is_root
 
 # Appended to Claude Code's own system prompt. Nobody reads a worker's final
 # message as it happens, so a question asked in prose would go unanswered.
+# Nothing runs after the session ends, so nothing may run in the background: Claude Code's
+# own switch turns off background shells and agents.
+NO_BACKGROUND = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
 HEADLESS_NOTE = """\
 You are running unattended inside Ringkeeper. {workspace} is the root of your
 project; there is no other project directory. No one reads your messages while
@@ -22,6 +25,9 @@ Your final message is what the operator reads: when you're asked to tell, report
 or reply with something, put it there. That isn't a request to send an email or
 post a message anywhere, unless the task says to send one.
 Check your answer before you give it, and give it once: no correcting it mid-message.
+Finish all the work before your final message: never leave part of it to a
+background task or agent, and never end saying something is still being fetched.
+Nothing runs after you end. If you can't finish it, call not_done.
 If you couldn't do what was asked (a tool refused it, you lack the access or the
 connection, or it can't be done), call the not_done tool with why before you end.
 Never end as if it were done. The main thing asked for decides: if it isn't in your
@@ -74,6 +80,7 @@ def build_options(
         # The container is the sandbox; the project's autonomy decides which tools exist.
         permission_mode="bypassPermissions",
         disallowed_tools=config.disallowed_tools,
+        env=NO_BACKGROUND,
         stderr=lambda line: emit("sdk.stderr", line=line),
         # The agent runs as the worker user, never as the runner (root).
         user="worker" if is_root() else None,

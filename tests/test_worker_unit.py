@@ -75,6 +75,8 @@ def test_options_isolate_the_session() -> None:
     prompt = cast(dict[str, Any], options.system_prompt)
     assert (prompt["type"], prompt["preset"]) == ("preset", "claude_code")
     assert "call the ask_user tool" in prompt["append"]
+    assert "never leave part of it to a\nbackground task or agent" in prompt["append"]
+    assert options.env == {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}  # nothing outlives it
     assert options.max_turns == 7
     assert options.max_budget_usd == 1.5
     assert options.permission_mode == "bypassPermissions"
