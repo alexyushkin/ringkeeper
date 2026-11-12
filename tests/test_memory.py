@@ -49,6 +49,8 @@ class FakeNotion:
         self.parents: dict[str, str] = {}  # a page's or data source's parent page
         self.bodies: dict[str, str] = {}
         self.calls: list[tuple[str, str]] = []
+        self.kinds: dict[str, str] = {}  # a row's Kind
+        self.added_columns: list[dict[str, Any]] = []  # what PATCH /data_sources added
         self.down = False
         self.clock = 0
 
@@ -119,6 +121,9 @@ class FakeNotion:
                 "results": [self.page(i, r) for i, r in shown], "has_more": more,
                 "next_cursor": str(start + size) if more else None,
             })  # fmt: skip
+        if path.startswith("/data_sources/") and request.method == "PATCH":
+            self.added_columns.append(body["properties"])
+            return httpx2.Response(200, json={"object": "data_source"})
         if path.startswith("/data_sources/"):
             return httpx2.Response(200, json={
                 "object": "data_source", "url": "https://notion.so/ds",
@@ -150,6 +155,13 @@ class FakeNotion:
                 source, props["Note"]["title"][0]["text"]["content"],
                 self.value(props, "Agent"), self.value(props, "Source task"),
             )  # fmt: skip
+            children = cast(list[dict[str, Any]], body.get("children") or [])
+            if children:
+                self.bodies[ident] = "\n".join(
+                    c["paragraph"]["rich_text"][0]["text"]["content"] for c in children
+                )
+            if "Kind" in props:
+                self.kinds[ident] = props["Kind"]["select"]["name"]
             return httpx2.Response(200, json=self.page(ident, self.databases[source][ident]))
         if path.startswith("/pages/") and request.method == "PATCH":
             ident = path.split("/")[2]
@@ -368,6 +380,75 @@ def test_a_project_note_in_notion_is_never_called_personal(notion: FakeNotion) -
     for said_where in (where, audit, shown[0]["where"]):
         assert "personal" not in said_where.lower()
         assert memory.MY_MEMORY not in said_where
+
+
+LONG = (
+    "Bayside's workflows in agency-n8n are named 'Bayside #N' and 'Mr. Gutter #N', and the "
+    "older ones still carry the 2024 prefix. Filter by name rather than listing them all."
+)
+
+
+def test_a_note_in_notion_has_a_short_title_a_kind_and_its_whole_text_in_the_page(
+    notion: FakeNotion,
+) -> None:
+    """From a real note: the title was the whole text, Agent was empty and Source task was a
+    bare ID."""
+    source = to_notion("acme-web", "acme-notion")
+    caller = worker("acme-web")
+    memory.remember(caller, LONG, kind="Where things live")
+    ((ident, row),) = notion.databases[source].items()
+    assert len(row["text"]) <= notion_api.TITLE_CHARS
+    assert row["text"].endswith("…")
+    assert LONG.startswith(row["text"].rstrip("…"))
+    assert notion.bodies[ident] == LONG  # the whole note, in the page
+    assert notion.kinds[ident] == "Where things live"
+    assert row["agent"] == "Ringkeeper"  # no named agent ran
+    with session_scope() as session:
+        task = memory._worker(session, caller.session_id).task_id  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
+    assert row["task"].endswith(f"({task})")
+    assert len(row["task"]) > len(str(task)) + 2  # the request's first words come first
+    fresh()
+    assert said(memory.recall(worker("acme-web"))) == [LONG]  # read back once, not twice
+    with session_scope() as session:  # and still listed under the task that saved it
+        assert [n["note"] for n in memory.saved_by(session, task)] == [LONG]
+
+
+def test_a_row_typed_by_hand_with_only_a_title_still_reads(notion: FakeNotion) -> None:
+    source = to_notion("acme-web", "acme-notion")
+    notion.row(source, "Invoices are approved by Dana")
+    fresh()
+    assert said(memory.recall(worker("acme-web"))) == ["Invoices are approved by Dana"]
+
+
+def test_an_older_database_gets_the_kind_column_and_keeps_its_rows(notion: FakeNotion) -> None:
+    place = notion_api.use_place("ntn_fake", "older-source")
+    assert notion.added_columns == [{"Kind": {"select": {"options": [
+        {"name": k} for k in notion_api.KINDS
+    ]}}}]  # fmt: skip
+    assert place.columns["kind"] == "Kind"
+    assert not any(method == "PATCH" and path.startswith("/pages/")
+                   for method, path in notion.calls)  # fmt: skip
+
+
+def test_a_note_that_says_what_one_already_says_is_refused(notion: FakeNotion) -> None:
+    memory.remember(worker("acme-web"), "Invoices live in the Billing base, table Invoices.")
+    with pytest.raises(RuleViolationError, match="already noted"):
+        memory.remember(worker("acme-web"), "Invoices live in the Billing base, table Invoices")
+    with pytest.raises(RuleViolationError, match="already noted"):
+        memory.keep("acme-web", "invoices live in the billing base (table Invoices)")
+    memory.remember(worker("acme-web"), "Invoices are approved by Dana before they go out.")
+    assert len(said(memory.recall(worker("acme-web")))) == 2
+
+
+def test_workers_are_told_what_makes_a_good_note() -> None:
+    told = " ".join(memory.PROJECT_MEMORY.split())
+    assert "One fact per note, each understandable on its own" in told
+    assert "Never save counts, dates, statuses or anything else that changes" in told
+    assert "never how a tool works in general (paging, limits per call)" in told
+    assert "only when it blocks a kind of request" in told
+    assert "named 'Bayside #N' and 'Mr. Gutter #N'. Filter by name." in told  # a good one
+    assert "n8n has 184 workflows" in told  # a bad one
+    assert "already noted" in told
 
 
 def test_a_note_goes_to_the_projects_database_with_agent_and_task(notion: FakeNotion) -> None:
@@ -750,7 +831,7 @@ def test_an_agent_has_no_way_to_name_a_place_or_delete() -> None:
 
     assert list(inspect.signature(memory.recall).parameters) == ["caller", "words", "limit"]
     assert list(inspect.signature(memory.remember).parameters) == [
-        "caller", "text", "shared", "mine",
+        "caller", "text", "shared", "mine", "kind",
     ]  # fmt: skip
 
 

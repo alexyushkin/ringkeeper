@@ -19,10 +19,12 @@ next time it's set up or a task starts in it.
 """
 
 import hashlib
+import re
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from difflib import SequenceMatcher
 from typing import Any, cast
 
 from sqlalchemy import Select, delete, or_, select
@@ -41,8 +43,10 @@ from ringkeeper.models import (
     Instance,
     InstanceType,
     MemoryNote,
+    Message,
     Project,
     Setting,
+    Task,
     WorkerSession,
 )
 from ringkeeper.services import (
@@ -87,16 +91,30 @@ READ_AS_NOTES = (
 # What every worker is told about its project's memory, next to its connections.
 PROJECT_MEMORY = """\
 PROJECT MEMORY. Later runs of this project start from its notes (the latest are below, if
-there are any). Before your final message, save with `remember` what a later run would otherwise
-have to find again:
-- where things live: IDs, bases, tables, workflows, and file and page names you found by
-  listing or searching, even when the name looks obvious;
-- decisions and corrections the operator gave you;
-- how this client wants things done;
-- gotchas that cost you steps.
-Don't save the task's result, one-off facts, anything secret, or what the notes already say. Use
-one to three short notes, or none when there's nothing new. Mention memory in your final message
-only if you saved a note, in one line ("Saved to memory: ..."). Otherwise say nothing about it."""
+there are any). Before your final message, save with `remember` what identifies this client's
+things, so a later run finds them without searching:
+- where things live: names and naming patterns, IDs, the filters that find them, and which
+  base, table, workflow or page does what (found by listing or searching, even when the name
+  looks obvious);
+- decisions and corrections the operator gave you, and how this client wants things done;
+- a limit of a connection, only when it blocks a kind of request.
+One fact per note, each understandable on its own, with its kind: Where things live, How we do
+it, Gotcha or Decision. Never save counts, dates, statuses or anything else that changes, and
+never how a tool works in general (paging, limits per call). Don't save the task's result,
+anything secret, or what the notes below already say: a note that says the same is refused as
+"already noted".
+Good notes:
+- "Bayside's workflows in agency-n8n are named 'Bayside #N' and 'Mr. Gutter #N'. Filter by
+  name." (Where things live)
+- "The Airtable tools here can't list Northwind's automations: they're checked in Airtable
+  itself." (Gotcha)
+Bad notes:
+- "n8n has 184 workflows; list_workflows returns 50 per page, follow next_cursor." (a count,
+  and how a tool works)
+- "Checked Northwind's invoices on Nov 12: 7 unpaid." (the task's result, a date, a count)
+Use one to three short notes, or none when there's nothing new. Mention memory in your final
+message only if you saved a note, in one line ("Saved to memory: ..."). Otherwise say nothing
+about it."""
 LATEST = (
     "NOTES FROM EARLIER RUNS, newest first. " + READ_AS_NOTES
     + " Use recall to search for older ones."
@@ -452,7 +470,7 @@ def _write_rows(
     for row in rows:
         if row.id not in bodies:
             continue
-        text = "\n".join(t for t in (row.text, bodies[row.id]) if t)
+        text = notion_api.joined(row.text, bodies[row.id])
         note = known.get(row.id)
         if not text.strip():
             if note is not None:
@@ -673,6 +691,52 @@ def _where_to(who: Who, shared: bool, mine: bool) -> dict[str, Any]:
     return who.notion if who.backend == NOTION else {}
 
 
+SAME_ENOUGH = 0.85  # how alike two notes are before the second is "already noted"
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9#]+", text.lower())
+
+
+def already_noted(text: str, notes: list[str]) -> str | None:
+    """A note already there that says the same, give or take a few words: the new one is
+    refused, so notes don't pile up copies."""
+    new = _words(text)
+    for note in notes:
+        old = _words(note)
+        if new == old or SequenceMatcher(None, new, old).ratio() >= SAME_ENOUGH:
+            return note
+    return None
+
+
+def _same_place(session: Session, project: uuid.UUID | None, backend: str) -> list[str]:
+    owned = MemoryNote.project_id == project if project else MemoryNote.project_id.is_(None)
+    return list(
+        session.scalars(select(MemoryNote.body).where(owned, MemoryNote.backend == backend))
+    )
+
+
+def _refuse_copy(text: str, notes: list[str]) -> None:
+    if (found := already_noted(text, notes)) is not None:
+        raise RuleViolationError(f'already noted: "{found[:200]}". Nothing was saved.')
+
+
+def _as_id(text: str | None) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(text)) if text else None
+    except ValueError:
+        return None
+
+
+def _request_of(session: Session, task: uuid.UUID | None) -> str | None:
+    """The request a task came from, for the Source task column."""
+    row = session.get(Task, task) if task else None
+    if row is None:
+        return None
+    message = session.get(Message, row.message_id) if row.message_id else None
+    return message.body if message is not None else row.prompt
+
+
 def _checked(text: str) -> str:
     text = text.strip()
     if not text:
@@ -689,8 +753,9 @@ def _note_row(
     return MemoryNote(
         project_id=project, backend=backend, agent=agent, body=text, source_task=task,
         external_id=external[0] if external else None,
-        external_seen=_seen(Row(external[0], external[1], text, None, None, None))
-        if external else None,
+        external_seen=_seen(
+            Row(external[0], external[1], notion_api.short_title(text), None, None, None)
+        ) if external else None,
     )  # fmt: skip
 
 
@@ -710,8 +775,13 @@ def keep(name: str, text: str, task: str | None = None) -> dict[str, Any]:
             raise RuleViolationError("This project's Notion page isn't set up.")
         token = _token(session, str(saved["connection"])) if saved else None
         ident, title = project.id, project.title or project.name
+        _refuse_copy(text, _same_place(session, ident, NOTION if notion else LOCAL))
+        request = _request_of(session, _as_id(task))
     day = datetime.now(UTC).date().isoformat()
-    external = notion_api.add(token, _place(saved), text, None, day, task) if token else None
+    external = (
+        notion_api.add(token, _place(saved), text, None, day, task, request=request)
+        if token else None
+    )  # fmt: skip
     backend = NOTION if external else LOCAL
     with session_scope() as session:
         session.add(_note_row(ident, backend, None, text, task, external))
@@ -770,7 +840,9 @@ def project_block(
     return "\n\n".join(told)
 
 
-def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False) -> dict[str, Any]:
+def remember(
+    caller: Caller, text: str, shared: bool = False, mine: bool = False, kind: str | None = None
+) -> dict[str, Any]:
     text = _checked(text)
     with session_scope(commit=False) as session:
         if setup_check.session_from_check(session, caller.session_id):
@@ -787,16 +859,24 @@ def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False
         token = _token(session, str(saved["connection"])) if saved else None
         here = projects.get_project(session, who.name)
         title = here.title or here.name
+        place = None if across else who.project
+        going = MINE if mine else (NOTION if token is not None else LOCAL)
+        copy = already_noted(text, _same_place(session, place, going))
+        request = _request_of(session, who.task)
+    if copy is not None:
+        _record(caller, "remember", AuditOutcome.REFUSED, "not kept: already noted")
+        raise RuleViolationError(f'already noted: "{copy[:200]}". Nothing was saved.')
     day = datetime.now(UTC).date().isoformat()
     task = str(who.task) if who.task else None
+    agent = who.agent or "Ringkeeper"  # no named agent ran: Ringkeeper's own worker
     external: tuple[str, str] | None = None
     if token is not None:
-        external = notion_api.add(token, _place(saved), text, who.agent, day, task)
+        external = notion_api.add(
+            token, _place(saved), text, agent, day, task, kind=kind, request=request
+        )
     backend = MINE if mine else (NOTION if external else LOCAL)
     with session_scope() as session:
-        session.add(
-            _note_row(None if across else who.project, backend, who.agent, text, task, external)
-        )
+        session.add(_note_row(place, backend, agent, text, task, external))
     where = place_words(None if across else title, backend)
     _record(caller, "remember", AuditOutcome.EXECUTED, f"kept a note in {where}")
     return {"kept": True, "where": where, **({"removed": removed} if removed else {})}

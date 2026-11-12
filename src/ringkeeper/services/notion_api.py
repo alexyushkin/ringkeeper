@@ -6,6 +6,7 @@ Notion itself keeps memory where it was put, and each note is a row of its own: 
 touching anyone else's, with its own edit time, and gone from the query when it's deleted.
 """
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, cast
@@ -25,7 +26,7 @@ TEXT_LIMIT = 2000  # Notion's limit on one piece of rich text
 transport: httpx2.BaseTransport | None = None
 
 JSON = dict[str, Any]
-NOTE, AGENT, DATE, TASK = "Note", "Agent", "Date", "Source task"
+NOTE, AGENT, DATE, TASK, KIND = "Note", "Agent", "Date", "Source task", "Kind"
 TEXT_BLOCKS = (
     "paragraph", "bulleted_list_item", "numbered_list_item", "to_do", "quote", "callout",
     "heading_1", "heading_2", "heading_3", "toggle",
@@ -43,7 +44,7 @@ class Place:
     database: str
     data_source: str
     url: str
-    columns: dict[str, str]  # what each column is called there: note, agent, date, task
+    columns: dict[str, str]  # what each column is called there: note, agent, date, task, kind
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,50 @@ def _text(content: str) -> list[JSON]:
     return [{"type": "text", "text": {"content": content[:TEXT_LIMIT]}}]
 
 
+TITLE_CHARS = 80
+# What kind of note it is, a column of its own.
+KINDS = ("Where things live", "How we do it", "Gotcha", "Decision")
+_KIND_COLUMN: JSON = {"select": {"options": [{"name": k} for k in KINDS]}}
+_TASK_ID = re.compile(r"\(([0-9a-fA-F-]{8,36})\)\s*$")
+
+
+def short_title(text: str) -> str:
+    """A note's title in its database: its first line, up to about 80 characters, cut at a
+    word. The whole note is in the page."""
+    first = " ".join(text.strip().splitlines()[0].split()) if text.strip() else ""
+    if len(first) <= TITLE_CHARS:
+        return first
+    cut = first[: TITLE_CHARS - 1].rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:.") + "…"
+
+
+def task_label(task: str, request: str | None) -> str:
+    """The Source task column: the request's first words, then the task's ID in brackets."""
+    words = " ".join((request or "").split()[:8])
+    if not words:
+        return task
+    more = "…" if len((request or "").split()) > 8 else ""
+    return f"{words}{more} ({task})"
+
+
+def task_id(label: str | None) -> str | None:
+    """The task's ID back from the Source task column ("Count the ... (9f6b1285-...)")."""
+    if not label:
+        return None
+    found = _TASK_ID.search(label)
+    return found.group(1) if found else label.strip()
+
+
+def joined(title: str, body: str) -> str:
+    """A note read back: its title and its page. A title that's the start of the page (how
+    Ringkeeper writes a long note) isn't repeated; a row typed by hand with only a title is
+    just the title."""
+    head = title.rstrip("…").strip()
+    if body.strip() and head and " ".join(body.split()).startswith(" ".join(head.split())):
+        return body
+    return "\n".join(t for t in (title, body) if t)
+
+
 def page_of(token: str, page: str) -> tuple[str, str]:
     """A page this connection was given: its title and link. Refused if it can't reach it."""
     found = call(token, "GET", f"/pages/{page}")
@@ -151,14 +196,14 @@ def create_place(token: str, parent: str, title: str) -> Place:
         "parent": {"type": "page_id", "page_id": parent},
         "title": _text(title),
         "initial_data_source": {"properties": {
-            NOTE: {"title": {}}, AGENT: {"rich_text": {}}, DATE: {"date": {}},
-            TASK: {"rich_text": {}},
+            NOTE: {"title": {}}, KIND: _KIND_COLUMN, AGENT: {"rich_text": {}},
+            DATE: {"date": {}}, TASK: {"rich_text": {}},
         }},
     })  # fmt: skip
     sources = cast(list[JSON], made.get("data_sources") or [])
     if not sources:
         raise NotionError("Notion made the database but didn't say how to reach it.")
-    columns = {"note": NOTE, "agent": AGENT, "date": DATE, "task": TASK}
+    columns = {"note": NOTE, "kind": KIND, "agent": AGENT, "date": DATE, "task": TASK}
     return Place(str(made["id"]), str(sources[0]["id"]), str(made.get("url") or ""), columns)
 
 
@@ -171,9 +216,18 @@ def use_place(token: str, data_source: str) -> Place:
         raise NotionError("That isn't a Notion database Ringkeeper can keep notes in.")
     columns = {"note": title}
     for key, name, kind in (("agent", AGENT, "rich_text"), ("date", DATE, "date"),
-                            ("task", TASK, "rich_text")):  # fmt: skip
+                            ("task", TASK, "rich_text"), ("kind", KIND, "select")):  # fmt: skip
         if (props.get(name) or {}).get("type") == kind:
             columns[key] = name
+    if "kind" not in columns and KIND not in props:
+        # A database from before: the Kind column is added; its rows aren't touched.
+        try:
+            call(
+                token, "PATCH", f"/data_sources/{data_source}", {"properties": {KIND: _KIND_COLUMN}}
+            )
+            columns["kind"] = KIND
+        except NotionError:
+            pass  # not allowed to change it: notes go in without a kind
     parent = cast(JSON, found.get("parent") or {})
     return Place(str(parent.get("database_id") or ""), data_source, str(found.get("url") or ""),
                  columns)  # fmt: skip
@@ -190,7 +244,7 @@ def _row(found: JSON, columns: dict[str, str]) -> Row:
     return Row(
         str(found["id"]), str(found.get("last_edited_time") or ""),
         _plain((props.get(columns["note"]) or {}).get("title")),
-        rich("agent"), cast(str | None, day.get("start")), rich("task"),
+        rich("agent"), cast(str | None, day.get("start")), task_id(rich("task")),
     )  # fmt: skip
 
 
@@ -234,21 +288,38 @@ def body_of(token: str, page: str) -> str:
 
 
 def add(
-    token: str, place: Place, text: str, agent: str | None, day: str, task: str | None
+    token: str,
+    place: Place,
+    text: str,
+    agent: str | None,
+    day: str,
+    task: str | None,
+    *,
+    kind: str | None = None,
+    request: str | None = None,
 ) -> tuple[str, str]:
-    """A new row: its id and edit time."""
+    """A new row: its id and edit time. A short title, and the whole note in the page."""
     columns = place.columns
-    props: JSON = {columns["note"]: {"title": _text(text)}}
+    title = short_title(text)
+    props: JSON = {columns["note"]: {"title": _text(title)}}
+    if "kind" in columns and kind in KINDS:
+        props[columns["kind"]] = {"select": {"name": kind}}
     if "agent" in columns and agent:
         props[columns["agent"]] = {"rich_text": _text(agent)}
     if "date" in columns:
         props[columns["date"]] = {"date": {"start": day}}
     if "task" in columns and task:
-        props[columns["task"]] = {"rich_text": _text(task)}
-    made = call(token, "POST", "/pages", {
+        props[columns["task"]] = {"rich_text": _text(task_label(task, request))}
+    body: JSON = {
         "parent": {"type": "data_source_id", "data_source_id": place.data_source},
         "properties": props,
-    })  # fmt: skip
+    }
+    if title != " ".join(text.split()):
+        body["children"] = [
+            {"object": "block", "type": "paragraph", "paragraph": {"rich_text": _text(part)}}
+            for part in (p for p in text.split("\n") if p.strip())
+        ]
+    made = call(token, "POST", "/pages", body)
     return str(made["id"]), str(made.get("last_edited_time") or "")
 
 
