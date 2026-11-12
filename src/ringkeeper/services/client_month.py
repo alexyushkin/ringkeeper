@@ -42,6 +42,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.scrub import scrub
 from ringkeeper.services import bindings, clients
+from ringkeeper.services import tasks as tasks_service
 
 if TYPE_CHECKING:
     from ringkeeper.config import Settings
@@ -336,7 +337,8 @@ class Month:
     projects: dict[str, str]
     tasks: list[TaskLine] = field(default_factory=list[TaskLine])
     done: int = 0
-    failed: int = 0
+    failed: int = 0  # broke: failed, out of time, over its cap
+    not_done: int = 0  # ran, and said it couldn't do what was asked
     stopped: int = 0
     open: int = 0
     changes: int = 0
@@ -390,6 +392,7 @@ def month_of(session: Session, client: str, year: int, month: int, mode: AuthMod
     rows = session.scalars(
         select(Task)
         .where(Task.project.in_(names), Task.created_at >= start, Task.created_at < end)
+        .where(tasks_service.real_work())  # not Check my setup's requests
         .options(selectinload(Task.sessions))
         .order_by(Task.created_at)
     )
@@ -401,6 +404,8 @@ def month_of(session: Session, client: str, year: int, month: int, mode: AuthMod
             found.done += 1
         elif task.status is TaskStatus.STOPPED:
             found.stopped += 1
+        elif task.status is TaskStatus.NOT_DONE:
+            found.not_done += 1
         elif task.status in TERMINAL_STATUSES:
             found.failed += 1
         else:
@@ -450,7 +455,8 @@ def _count(n: int, one: str, many: str | None = None) -> str:
 def summary_lines(found: Month, *, cost: bool) -> list[str]:
     tasks = _count(len(found.tasks), "task")
     parts = [f"{found.done} done"]
-    parts += [f"{found.failed} didn't finish"] if found.failed else []
+    parts += [f"{found.not_done} not done"] if found.not_done else []
+    parts += [f"{found.failed} failed"] if found.failed else []
     parts += [f"{found.stopped} stopped"] if found.stopped else []
     parts += [f"{found.open} still open"] if found.open else []
     lines = [f"{tasks}: {', '.join(parts)}" if found.tasks else "No tasks"]

@@ -147,7 +147,7 @@ def test_a_client_s_month_counts_only_their_projects_and_that_month(
     assert (found.approved, found.denied) == (1, 1)
     assert not found.estimated
     lines = client_month.summary_lines(found, cost=True)
-    assert lines[0] == "3 tasks: 1 done, 1 didn't finish, 1 still open"
+    assert lines[0] == "3 tasks: 1 done, 1 failed, 1 still open"
     assert "2 changes waited for your approval: 1 approved, 1 declined" in lines
     assert lines[-1] == "AI cost: $2.00"
 

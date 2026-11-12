@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import Link from "@/components/link";
 import { fillRequest } from "@/components/composer";
 import { EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { ConnectionAdded } from "@/components/connection-added";
@@ -20,31 +21,77 @@ interface ClientDay {
   client: string;
   name: string;
   ran: number;
-  failed: string[];
+  failed: string[]; // broke: failed, out of time, over its cap
+  not_done: string[]; // ran, and said it couldn't do what was asked
   waiting: string[];
 }
 
-/** Home: per client, what ran, failed and waits, for the last day. */
+interface Day {
+  since: string;
+  clients: ClientDay[];
+  left_out: { label: string; href: string; link: string }[]; // Check my setup's requests, the demo's
+}
+
+/** When the window started, as a person says it: "Wed 12:16 PM". */
+function sinceWords(since: string): string {
+  return new Date(since).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+/** The tasks a count stands for: the same client, outcome and window, the owner's own work. */
+function tasksLink(client: string, since: string, outcome?: "broke" | "not_done"): string {
+  const query = new URLSearchParams({ client, since, real: "1", ...(outcome ? { outcome } : {}) });
+  return `/tasks?${query}`;
+}
+
+/** Home: per client, what ran, wasn't done, failed and waits, for the last day. Check my
+ * setup's requests and the demo's aren't counted: a muted line says they ran. */
 export function DigestCard({ client }: { client?: string }) {
-  const digest = useApi<{ clients: ClientDay[] }>("digest");
+  const digest = useApi<Day>("digest");
   useLive((event) => {
     if (event.type === "task" || event.type === "approval") digest.reload();
   });
   const days = (digest.data?.clients ?? []).filter((day) => !client || sameClient(day.client, client));
-  if (!days.length) return null;
+  const leftOut = digest.data?.left_out ?? [];
+  if (!days.length && !leftOut.length) return null;
+  const since = digest.data?.since ?? "";
   return (
     <Card className="mt-4 space-y-2">
-      <h2 className="text-sm font-semibold text-muted">The last 24 hours</h2>
+      <h2 className="text-sm font-semibold text-muted" title={since ? `since ${sinceWords(since)}` : undefined}>
+        The last 24 hours
+      </h2>
       <ul className="space-y-1 text-sm">
         {days.map((day) => (
           <li key={day.client} className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{day.name}</span>
-            <span className="text-muted">{day.ran} ran</span>
-            {day.failed.length ? <Badge tone="bad">{day.failed.length} failed</Badge> : null}
-            {day.waiting.length ? <Badge tone="warn">{day.waiting.length} waiting for you</Badge> : null}
+            <Link href={tasksLink(day.client, since)} className="text-muted hover:text-accent">
+              {day.ran} ran
+            </Link>
+            {day.not_done.length ? (
+              <Link href={tasksLink(day.client, since, "not_done")} title={day.not_done.join("\n")}>
+                <Badge tone="warn">{day.not_done.length} not done</Badge>
+              </Link>
+            ) : null}
+            {day.failed.length ? (
+              <Link href={tasksLink(day.client, since, "broke")} title={day.failed.join("\n")}>
+                <Badge tone="bad">{day.failed.length} failed</Badge>
+              </Link>
+            ) : null}
+            {day.waiting.length ? (
+              <Link href="/approvals">
+                <Badge tone="warn">{day.waiting.length} waiting for you</Badge>
+              </Link>
+            ) : null}
           </li>
         ))}
       </ul>
+      {leftOut.map((line) => (
+        <p key={line.label} className="text-xs text-muted">
+          {line.label} ·{" "}
+          <Link href={line.href} className="hover:text-accent">
+            {line.link}
+          </Link>
+        </p>
+      ))}
     </Card>
   );
 }

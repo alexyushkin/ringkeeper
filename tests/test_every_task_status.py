@@ -8,7 +8,7 @@ import pytest
 
 from ringkeeper.models import TERMINAL_STATUSES, Task, TaskStatus
 from ringkeeper.scenarios import driver
-from ringkeeper.services import cleanup, client_month, digest, pass_tasks
+from ringkeeper.services import cleanup, client_month, digest, pass_tasks, tasks
 
 ENDED = sorted(TERMINAL_STATUSES)
 
@@ -16,10 +16,12 @@ ENDED = sorted(TERMINAL_STATUSES)
 @pytest.mark.parametrize("status", list(TaskStatus))
 def test_each_status_is_sorted_everywhere(status: TaskStatus) -> None:
     ended = status in TERMINAL_STATUSES
-    # The digest: an ending is a problem unless it's done or stopped by you.
+    # The digest: an ending is a problem unless it's done or stopped by you; not done is
+    # counted apart from what broke.
     assert (status in digest.FAILED) is (
-        ended and status not in (TaskStatus.SUCCEEDED, TaskStatus.STOPPED)
+        ended and status not in (TaskStatus.SUCCEEDED, TaskStatus.STOPPED, TaskStatus.NOT_DONE)
     )
+    assert (status in tasks.BROKE) is (status in digest.FAILED)
     # The month report has a word for every ending.
     if ended:
         assert status in client_month.STATUS_WORDS, status

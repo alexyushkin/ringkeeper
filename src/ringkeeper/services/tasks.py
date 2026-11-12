@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, cast, func, or_, select, update
+from sqlalchemy import ColumnElement, String, and_, cast, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
@@ -259,6 +259,21 @@ def list_tasks(
     ).items  # fmt: skip
 
 
+# A task that broke: failed, ran out of time or over budget. Not done is apart: it ran, and
+# said it couldn't do what was asked.
+BROKE = frozenset({TaskStatus.FAILED, TaskStatus.TIMED_OUT, TaskStatus.BUDGET_EXCEEDED})
+
+
+def real_work() -> ColumnElement[bool]:
+    """A task of the owner's own work: not one Check my setup sent, not the demo's."""
+    from ringkeeper.services import demo, setup_check  # noqa: PLC0415 (they import this)
+
+    checks = select(Thread.id).where(Thread.tag == setup_check.TAG)
+    return and_(
+        or_(Task.thread_id.is_(None), Task.thread_id.not_in(checks)), Task.project != demo.PROJECT
+    )
+
+
 def page_of_tasks(
     session: Session,
     *,
@@ -269,6 +284,9 @@ def page_of_tasks(
     search: str | None = None,
     projects: list[str] | None = None,
     cursor: str | None = None,
+    statuses: frozenset[TaskStatus] | None = None,
+    since: datetime | None = None,
+    real: bool = False,
 ) -> paging.Page[Task]:
     """`search`: a LIKE pattern over the request, outcome, summary, project and the words of its
     conversation; it finds archived tasks too. Otherwise archived ones are listed only when
@@ -291,6 +309,12 @@ def page_of_tasks(
         )
     if status is not None:
         query = query.where(Task.status == status)
+    if statuses is not None:
+        query = query.where(Task.status.in_(statuses))
+    if since is not None:
+        query = query.where(Task.created_at >= since)
+    if real:
+        query = query.where(real_work())
     if project is not None:
         query = query.where(Task.project == project)
     if projects is not None:

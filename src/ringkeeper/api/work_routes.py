@@ -10,7 +10,7 @@ import io
 import uuid
 from collections.abc import Iterator
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
@@ -233,12 +233,22 @@ def list_tasks(
     q: Annotated[str | None, Query(max_length=200)] = None,
     client: str | None = None,
     cursor: Annotated[str | None, Query(max_length=300)] = None,
+    outcome: Literal["broke", "not_done"] | None = None,
+    since: datetime | None = None,
+    real: bool = False,
 ) -> list[dict[str, Any]]:
-    """The headers say how many there are and how to get the next page."""
+    """The headers say how many there are and how to get the next page. `outcome`, `since` and
+    `real` are what Home's last-day counts link to: what broke or wasn't done, since then, of
+    the owner's own work (not Check my setup's or the demo's)."""
     page = tasks.page_of_tasks(
         session, status=status, limit=limit, archived=archived, cursor=cursor,
         search=_like(q.strip()) if q and q.strip() else None,
         projects=projects.in_scope(session, client, project),
+        statuses=(
+            tasks.BROKE if outcome == "broke"
+            else frozenset({TaskStatus.NOT_DONE}) if outcome == "not_done" else None
+        ),
+        since=since, real=real,
     )  # fmt: skip
     page.tell(response)
     owners = projects.owners(session)
