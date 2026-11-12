@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ringkeeper.claude_auth import BILLING_ENV_VARS
 from ringkeeper.config import Settings, get_settings
@@ -368,6 +369,36 @@ def answer(decision: Decision, text: str) -> None:
             session, get_settings(), str(decision.id), inbox.Answer(text=text),
             by="owner", via=inbox.Via.API,
         )  # fmt: skip
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_a_limit_reached_while_a_tick_claims_starts_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flaky in CI (test_a_usage_limit_pauses_new_tasks, 3 sessions for 2): a tick saw no
+    pause, then another run hit Claude's limit and its retry queued a session, which the same
+    tick claimed and started. The claim checks again, and leaves the session queued."""
+    from ringkeeper import claude_failures  # noqa: PLC0415
+    from ringkeeper.claude_failures import Failure, Kind, Pause  # noqa: PLC0415
+
+    m, runtime = manager()
+    task_id = run_task()
+    real_paused = claude_failures.paused
+    looks = iter([False])  # the tick's first look: no pause yet
+
+    def paused_meanwhile(session: Session, now: datetime | None = None) -> Pause | None:
+        if next(looks, True):
+            return real_paused(session, now)
+        failure = Failure(Kind.USAGE_LIMIT, "Your Claude plan's limit is reached.",
+                          datetime.now(UTC) + timedelta(hours=1))  # fmt: skip
+        with session_scope() as other:  # another run's limit, committed after that look
+            claude_failures.pause_until(other, failure)
+        return None
+
+    monkeypatch.setattr(claude_failures, "paused", paused_meanwhile)
+    m.tick()
+    assert runtime.started == []
+    assert session_of(task_id).status is TaskStatus.QUEUED  # still queued, not running
 
 
 @pytest.mark.usefixtures("task_registry")

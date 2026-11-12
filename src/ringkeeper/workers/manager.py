@@ -284,6 +284,10 @@ def _save_result(row: WorkerSession, result: dict[str, Any]) -> None:
     row.sdk_session_id = result.get("session_id") or row.sdk_session_id
 
 
+class _PausedMeanwhile(Exception):  # noqa: N818 (an outcome, not an error)
+    """Claude's limit was reached while a tick was claiming the next session."""
+
+
 class Manager:
     def __init__(
         self,
@@ -375,9 +379,17 @@ class Manager:
             with self._lock:
                 if len(self._active) >= cap:
                     return
-            with session_scope() as session:
-                row = tasks.claim_next(session)
-                job = Job.of(row) if row else None
+            try:
+                with session_scope() as session:
+                    row = tasks.claim_next(session)
+                    # A run that hit Claude's limit while this tick was getting here: whatever
+                    # queued this session was committed after the pause, so the pause is seen
+                    # now. The claim is undone and the session stays queued.
+                    if row is not None and claude_failures.paused(session) is not None:
+                        raise _PausedMeanwhile
+                    job = Job.of(row) if row else None
+            except _PausedMeanwhile:
+                return
             if job is None:
                 return
             with self._lock:
