@@ -21,6 +21,9 @@ publishes it as the release notes and the app shows it with the update.
   read the same before this update are renamed that way once; your own keep theirs. Check my
   setup and Home's requests to try name a connection by its unique name (`acme-google`), so a
   task always uses the one meant.
+- **A request in Check my setup works only when its answer is complete.** An answer that says
+  it's only part of what was asked, like "the list is partly read" or "a background agent is
+  still fetching", no longer counts as worked; the report quotes what it said.
 - **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
   like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
   Memory said Notion.
