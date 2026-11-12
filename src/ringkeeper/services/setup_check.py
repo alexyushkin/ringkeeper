@@ -182,11 +182,11 @@ def plan(session: Session) -> tuple[list[Probe], list[Gap]]:
 
 
 def _probe(project: Project, instance: Instance, linked: Sequence[Instance]) -> Probe:
-    asks = onboarding.BY_SERVICE[instance.type]
-    said = asks.format(project=project.title, connection=_of(instance))
-    if "{connection}" not in asks and sum(i.type is instance.type for i in linked) > 1:
+    asks = onboarding.request(instance)  # by what it was given, for a Google account
+    said = (asks or "").format(project=project.title, connection=_of(instance))
+    if asks and "{connection}" not in asks and sum(i.type is instance.type for i in linked) > 1:
         said += f", using {_of(instance)}"  # which of its databases (say) is meant
-    direct = instance.type in DIRECT
+    direct = instance.type in DIRECT or asks is None  # nothing it can read: its Test button
     return Probe(
         "connection", DIRECT_REQUEST if direct else said,
         project=project.name, project_title=project.title,

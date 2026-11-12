@@ -166,6 +166,30 @@ def test_mcp_vendor_and_http_connections_are_tested_without_a_model(database_url
     assert api.error == "No answer within 20 seconds."
 
 
+def test_a_google_account_s_request_follows_what_it_was_given(database_url: str) -> None:
+    del database_url
+    with session_scope() as session:
+        make_project(session, "acme-web", title="Acme web")
+        make_project(session, "acme-shop", title="Acme shop")
+        make_instance(
+            session, "acme-mail", type=InstanceType.GOOGLE, secret_ref="file://a/m",
+            title="Acme mail", config={"access": ["mail_read", "mail_drafts"]},
+        )  # fmt: skip
+        make_instance(
+            session, "acme-send", type=InstanceType.GOOGLE, secret_ref="file://a/s",
+            title="Acme send", config={"access": ["mail_send"]},
+        )  # fmt: skip
+    bind("acme-web", "acme-mail")
+    bind("acme-shop", "acme-send")
+    with session_scope() as session:
+        probes, _ = setup_check.plan(session)
+    sent = [(p.connection, p.direct, p.request) for p in probes if p.connection]
+    assert sent == [
+        ("acme-send", True, setup_check.DIRECT_REQUEST),  # nothing it can read: tested
+        ("acme-mail", False, "Summarize the unread emails in Acme mail"),  # not its calendar
+    ]
+
+
 def test_two_databases_in_one_project_are_each_named(database_url: str) -> None:
     del database_url
     with session_scope() as session:
