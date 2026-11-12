@@ -62,8 +62,16 @@ It stops sending new requests at an estimated $5 (on an API key), or whatever yo
 
 ## The report
 
-One row per request: where it was routed, whether it asked anything, which tools ran, what came
-back or the error, and what it cost. Then the gaps.
+One row per request: whether it worked, where it was routed, whether it asked anything, which
+tools ran, what came back or the error, and what it cost. Then the gaps.
+
+Each request ends one of three ways:
+
+- **Worked**: it went where it was written for, did what was asked, and the answer is complete.
+- **Needs you**: it's waiting on you, so it didn't run to the end. A write held in
+  **Approvals**, say, or a web lookup in a project whose tasks can't use the web.
+- **Failed**: an error, no answer in time, or it went to another project than the one it was
+  written for (the Google request for Acme web's account answered in another project, say).
 
 A request to a connection works only if its task used that connection, and only if the answer is
 complete: one that says it's only part of what was asked ("the list is partly read", "a

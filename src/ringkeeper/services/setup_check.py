@@ -142,14 +142,42 @@ class Outcome:
 
     @property
     def reached(self) -> bool:
-        """A connection's request used that connection (or left something for the user)."""
-        if self.probe.kind != "connection" or self.probe.direct or self.left:
+        """A connection's request used that connection, and a project's started work there
+        (or either left something for the user)."""
+        if self.probe.direct or self.left:
+            return True
+        if self.probe.kind == "project":
+            return self.probe.project in self.projects
+        if self.probe.kind != "connection":
             return True
         return any(r.endswith(f" on {self.probe.connection}") for r in self.ran)
 
     @property
+    def elsewhere(self) -> bool:
+        """Its work went to another project than the one it was written for."""
+        return bool(
+            self.probe.project and self.projects and self.probe.project not in self.projects
+        )
+
+    @property
+    def failed(self) -> bool:
+        return bool(
+            self.error or self.timed_out or not self.reached or self.partial or self.elsewhere
+        )
+
+    @property
+    def needs_you(self) -> bool:
+        """It waits on the user (a held write, the web to turn on): it didn't run to the end,
+        so it isn't a pass, and nothing went wrong either."""
+        return bool(self.left) and not self.failed
+
+    @property
     def ok(self) -> bool:
-        return not self.error and not self.timed_out and self.reached and not self.partial
+        return not self.failed and not self.left
+
+    @property
+    def status(self) -> str:
+        return "Worked" if self.ok else "Needs you" if self.needs_you else "Failed"
 
 
 def _of(instance: Instance) -> str:
@@ -585,8 +613,15 @@ def _judge(out: Outcome) -> None:
     """Notes on what makes a request that raised no error fail all the same."""
     if out.error:
         return
+    if out.elsewhere:
+        out.error = f"it went to {out.routed}, not {out.probe.project_title}"
+        return
     if not out.reached:
-        out.notes.append(f"it didn't use {out.probe.connection_title}")
+        out.notes.append(
+            f"it didn't use {out.probe.connection_title}"
+            if out.probe.kind == "connection"
+            else f"it started no work in {out.probe.project_title}"
+        )
     if out.partial:
         out.notes.append(f"the answer isn't complete: it says “{out.partial}”")
 
@@ -657,11 +692,10 @@ def render(
     outcomes: Sequence[Outcome], gaps: Sequence[Gap], *, day: str, skipped: Sequence[Probe] = ()
 ) -> str:
     spent = sum(o.cost for o in outcomes)
-    worked = sum(1 for o in outcomes if o.ok)
     lines = [
         f"# Check my setup, {day}",
         "",
-        f"{worked} of {len(outcomes)} requests worked. Cost about ${spent:.2f}. "
+        f"{tally(outcomes)}. Cost about ${spent:.2f}. "
         "Nothing was changed: anything that would have is left for you in Approvals.",
         "",
         *table(outcomes),
@@ -687,11 +721,21 @@ def render(
     return "\n".join(lines)
 
 
+def tally(outcomes: Sequence[Outcome]) -> str:
+    """Like "5 of 8 requests worked, 2 need you, 1 failed"."""
+    worked = sum(1 for o in outcomes if o.ok)
+    needs = sum(1 for o in outcomes if o.needs_you)
+    failed = sum(1 for o in outcomes if o.failed)
+    said = f"{worked} of {len(outcomes)} requests worked"
+    said += f", {needs} need{'s' if needs == 1 else ''} you" if needs else ""
+    return said + (f", {failed} failed" if failed else "")
+
+
 def table(outcomes: Sequence[Outcome]) -> list[str]:
     """One row per request: the report's, and what has come back while it runs."""
     lines = [
-        "| Request | Routed to | Asked | Ran | Result or error | Cost |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Request | Outcome | Routed to | Asked | Ran | Result or error | Cost |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for o in outcomes:
         what = f'**{o.probe.label}**: "{_cell(o.probe.request)}"'
@@ -703,7 +747,7 @@ def table(outcomes: Sequence[Outcome]) -> list[str]:
                 [*(f"{_upper(x)}." for x in o.left), *(f"Note: {n}." for n in o.notes)]
             )
         lines.append(
-            f"| {what} | {_cell(o.routed) or '-'} | {_cell(asked)} | {_cell(ran)} | "
+            f"| {what} | {o.status} | {_cell(o.routed) or '-'} | {_cell(asked)} | {_cell(ran)} | "
             f"{_cell(said)} | ${o.cost:.2f} |"
         )
     return lines
@@ -727,6 +771,7 @@ def save(settings: Settings, text: str, outcomes: Sequence[Outcome], day: str) -
             {
                 "day": day,
                 "worked": sum(1 for o in outcomes if o.ok),
+                "needs_you": sum(1 for o in outcomes if o.needs_you),
                 "sent": len(outcomes),
                 "threads": [o.thread for o in outcomes if o.thread],
             }

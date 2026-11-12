@@ -438,10 +438,13 @@ def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> No
     assert shop.result.startswith("Done: List the tables")
     assert shop.cost == 0.02
     github = by["acme-gh in Acme web"]
-    assert github.ok
+    assert github.needs_you  # a held write: not a pass, and nothing went wrong
+    assert not github.ok
+    assert github.status == "Needs you"
     assert "left for you in Approvals" in github.left[0]
     web = by["A web lookup"]
     assert web.left == ["asked to let Acme web use the web: left for you"]
+    assert web.status == "Needs you"  # it never ran: the web is off there
     # The stand-in never calls n8n: its request worked only if it used it.
     n8n = by["globex-n8n in Globex portal"]
     assert not n8n.ok
@@ -475,12 +478,13 @@ def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> No
 
     text = setup_check.render(outcomes, gaps, day="2026-11-11")
     assert (
-        '| **Acme DB in Acme shop**: "List the tables in Acme shop\'s database" | Acme shop |'
-        in text
+        '| **Acme DB in Acme shop**: "List the tables in Acme shop\'s database" | Worked |'
+        " Acme shop |" in text
     )
     assert "**acme-sheets** (Acme Inc): not linked to any project" in text
     assert "Note: it didn't use globex-n8n." in text
     assert "Held: " in text
+    assert "requests worked, 2 need you, 1 failed." in text  # n8n wasn't used
     assert "(left for you in Approvals)." in text
     assert "ringkeeper scenarios archive --mine" in text
 
@@ -529,6 +533,24 @@ def test_three_at_a_time_and_each_result_as_it_comes_back(monkeypatch: pytest.Mo
     assert setup_check.table(outcomes[:1])[2].startswith(
         '| **A question about your setup**: "Question 0" |'
     )
+
+
+def test_a_request_that_went_to_another_project_failed(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del database_url
+    monkeypatch.setattr(setup_check, "POLL_SECONDS", 0.05)
+    seeded()
+    # Written for Acme shop; the stand-in sends it to Acme web, as a router might.
+    probe = setup_check.Probe(
+        "project", "Explain what's in the folder, in a few lines", project="acme-shop",
+        project_title="Acme shop",
+    )  # fmt: skip
+    with StandIn():
+        out = setup_check.Runner(get_settings(), minutes=0.1).one(probe)
+    assert out.routed == "Acme web"
+    assert out.error == "it went to Acme web, not Acme shop"
+    assert out.status == "Failed"
 
 
 @pytest.mark.parametrize(
