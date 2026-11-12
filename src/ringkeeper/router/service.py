@@ -281,7 +281,8 @@ def _which_of_client(
         return task
     theirs = sorted(p for p, owner in owners.items() if owner == named[0])
     before = remembered(session, message)
-    if len(theirs) < 2 or before in theirs:  # one project, or asked once in this conversation
+    # One project, asked once in this conversation, or only one has the connection it uses.
+    if len(theirs) < 2 or before in theirs or _only_one_has_it(session, task, theirs):
         return task
     whose = clients.display(session, named[0])
     return task.model_copy(
@@ -308,6 +309,21 @@ def named_connections(session: Session, text: str) -> list[Instance]:
             if len(name) > 2
         )
     ]
+
+
+def _only_one_has_it(session: Session, task: RoutedTask, theirs: list[str]) -> bool:
+    """The task's own instructions name a connection that its project has and none of the
+    client's other projects do ("Using the demo-mail connection, ..."): only it can do it."""
+    named = {i.id for i in named_connections(session, task.prompt)}
+    if not named:
+        return False
+    linked = {
+        p.name: {b.instance_id for b in p.bindings} & named
+        for p in session.scalars(select(Project).where(Project.name.in_(theirs)))
+    }
+    return bool(linked.get(task.project)) and not any(
+        ids for name, ids in linked.items() if name != task.project
+    )
 
 
 def _names_connection(session: Session, text: str) -> bool:

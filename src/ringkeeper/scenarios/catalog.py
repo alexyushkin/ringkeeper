@@ -230,12 +230,13 @@ SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
         "memory-reuse", "A fact found once is saved, and the next task starts from it",
         "routing",
-        request="In Demo shop's database, find which table holds the orders and count them. "
-        "Tell me the table's name and the count.",
-        then=("How many orders are in Demo shop's database now?",), then_new=True,
-        project=SHOP, tools=("list_tables", "remember"), then_skips=("list_tables",),
-        never_held=True, cost_ceiling=1.5,
-        notes="The first task saves where the orders are. The next request comes in a new "
+        # The tables are how it gets there, not the answer: a note isn't "the task's result".
+        request="In Demo shop's database, which customer has spent the most, and how much?",
+        then=("In Demo shop's database, how much have the customers in Lisbon spent in all?",),
+        then_new=True, project=SHOP, tools=("list_tables", "remember"),
+        then_skips=("list_tables",), never_held=True, cost_ceiling=1.5,
+        notes="The first task saves how the tables fit (orders.total, joined to customers on "
+        "customer_id). The next request comes in a new "
         "conversation, so only the project's notes carry over: it queries without listing the "
         "tables again.",
     ),
