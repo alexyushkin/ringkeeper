@@ -2,7 +2,7 @@
 takes a place, so there's nowhere else to read or write."""
 
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import anyio.to_thread
 from fastmcp import FastMCP
@@ -62,12 +62,16 @@ def build_memory_server(current_caller: Callable[[], Caller]) -> FastMCP:
             bool,
             Field(description="In the owner's My memory: their own preferences, never a client's."),
         ] = False,
+        kind: Annotated[
+            Literal["Where things live", "How we do it", "Gotcha", "Decision"] | None,
+            Field(description="What kind of note it is."),
+        ] = None,
     ) -> dict[str, Any]:
-        """Keep a note for later runs of this project. It runs without asking. Secrets, card and
-        bank numbers are refused."""
+        """Keep one fact for later runs of this project. It runs without asking. Secrets, card
+        and bank numbers are refused, and so is a note that says what one already says."""
         try:
             return await anyio.to_thread.run_sync(
-                memory.remember, current_caller(), note, shared, mine
+                memory.remember, current_caller(), note, shared, mine, kind
             )
         except RingkeeperError as error:
             raise McpToolError(scrub(str(error))) from None

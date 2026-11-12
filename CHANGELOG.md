@@ -3,6 +3,20 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Notes say exactly where they went.** A project's note saved to its Notion database was
+  reported as "Notion", and a task took that for your personal memory and asked you to delete it
+  by hand. Answers, the activity log and **Saved to memory** now say "this project's notes
+  (Seaside, in Notion)", "My memory" or "shared notes".
+- **Better notes.** One fact per note, about what identifies this client's things (names and
+  naming patterns, IDs, filters, which base or workflow does what), never counts, dates or how a
+  tool works in general. A note that repeats one already there is refused as "already noted".
+- **Notes in Notion read better.** A short title with the whole note in its page, a Kind column
+  (Where things live, How we do it, Gotcha, Decision), Agent says Ringkeeper when no named agent
+  ran, and Source task shows the request's first words with its ID. Existing databases get the
+  Kind column; their rows aren't changed.
+
 ## 0.1.0-beta.39 (2026-11-12)
 
 - **Backups that outlive this computer.** Settings › Backup offered only a local folder, and a

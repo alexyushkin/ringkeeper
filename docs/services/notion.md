@@ -47,15 +47,35 @@ a tool. Its **Test** button still checks the token. Links made before 0.1.0-beta
 ## What agents keep
 
 Every task starts with its project's latest notes (and Shared notes and My memory, if they're on),
-so it doesn't have to search for what an earlier task found. Before it finishes, it saves what a
-later run would otherwise have to find again: where things live (IDs, bases, tables, workflows,
-files and pages it found by listing or searching, even obvious ones), decisions and corrections you gave, how this client wants
-things done, and gotchas that cost it steps. Not the task's result, one-off facts or secrets: one
-to three short notes, or none.
+so it doesn't have to search for what an earlier task found. Before it finishes, it saves what
+identifies this client's things: names and naming patterns, IDs, the filters that find them, and
+which base, table, workflow or page does what; decisions and corrections you gave; how this client
+wants things done; and a limit of a connection when it blocks a kind of request. One fact per note,
+each understandable on its own. Never counts, dates, statuses or anything that changes, never how a
+tool works in general, and never the task's result or a secret: one to three short notes, or none.
 
-A task's answer mentions memory only when it saved something. Its page and the conversation show
-**Saved to memory** under the result, with each note. Check my setup only reads, so it keeps
-nothing.
+A good note: "Bayside's workflows in agency-n8n are named 'Bayside #N' and 'Mr. Gutter #N'. Filter
+by name." A bad one: "n8n has 184 workflows; list_workflows returns 50 per page."
+
+A note that says what one already says, give or take a few words, is refused as "already noted".
+
+A task's answer mentions memory only when it saved something, and says exactly where:
+"this project's notes (Seaside, in Notion)", "My memory" or "shared notes". Its page and the
+conversation show **Saved to memory** under the result, with each note and the same words. Check my
+setup only reads, so it keeps nothing.
+
+### A note in Notion
+
+Each note is a row in the project's database:
+
+- **Note**: a short title, up to about 80 characters. The whole note is in the row's page.
+- **Kind**: Where things live, How we do it, Gotcha or Decision.
+- **Agent**: the agent that saved it, or Ringkeeper when no named agent ran. Empty for a note you
+  added yourself.
+- **Source task**: the first words of the request, then the task's ID.
+
+A database made before the Kind column existed gets it added the next time a task uses it; its rows
+aren't changed. A row you type with only a title still counts as a note.
 
 You can add notes yourself, with the same rules and in the same place:
 
