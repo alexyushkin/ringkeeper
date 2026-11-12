@@ -233,7 +233,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         # The tables are how it gets there, not the answer: a note isn't "the task's result".
         request="In Demo shop's database, which customer has spent the most, and how much?",
         then=("In Demo shop's database, how much have the customers in Lisbon spent in all?",),
-        then_new=True, project=SHOP, tools=("list_tables", "remember"),
+        then_new=True, project=SHOP, tools=("remember",),
         then_skips=("list_tables",), never_held=True, cost_ceiling=1.5,
         notes="The first task saves how the tables fit (orders.total, joined to customers on "
         "customer_id). The next request comes in a new "

@@ -189,6 +189,18 @@ def test_a_tool_that_must_be_tried_can_come_back_as_an_error() -> None:
     assert "it didn't try read_attachment" in wrong
 
 
+def test_memory_reuse_needs_the_note_not_a_table_list() -> None:
+    """From the self-test: the first task described the two tables it needed instead of
+    listing them, saved how they fit, and the next one used that note."""
+    reuse = next(s for s in SCENARIOS if s.key == "memory-reuse")
+    first = ["mcp__ringkeeper-database__describe_table", "mcp__ringkeeper-memory__remember"]
+    seen = Evidence(projects=[SHOP], statuses=["succeeded", "succeeded"], tools=first)
+    assert judge(reuse, seen) == []
+    listed_again = replace(seen, last_tools=["mcp__ringkeeper-database__list_tables"])
+    assert any("instead of the project's notes" in w for w in judge(reuse, listed_again))
+    assert "it didn't use remember" in judge(reuse, replace(seen, tools=first[:1]))
+
+
 def test_not_done_is_called_with_the_field_it_takes() -> None:
     """The note named it "why", and tasks called it with `why`: one refused call each."""
     note = " ".join(HEADLESS_NOTE.split())
