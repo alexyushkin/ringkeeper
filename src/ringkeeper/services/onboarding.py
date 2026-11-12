@@ -183,9 +183,8 @@ def suggestions(session: Session, settings: Settings) -> list[str]:
             if instances.notes_only(instance):  # it holds notes: no task calls it
                 continue
             seen_services.add(instance.type)
-            picked.append(
-                asks.format(project=project.title, connection=instance.title or instance.name)
-            )
+            # Its name, not its title: two can read the same, and the name is what tasks call.
+            picked.append(asks.format(project=project.title, connection=instance.name))
             break
         if len(picked) >= MAX_SUGGESTIONS - 1:
             break

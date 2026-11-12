@@ -186,7 +186,7 @@ def test_a_google_account_s_request_follows_what_it_was_given(database_url: str)
     sent = [(p.connection, p.direct, p.request) for p in probes if p.connection]
     assert sent == [
         ("acme-send", True, setup_check.DIRECT_REQUEST),  # nothing it can read: tested
-        ("acme-mail", False, "Summarize the unread emails in Acme mail"),  # not its calendar
+        ("acme-mail", False, "Summarize the unread emails in acme-mail"),  # not its calendar
     ]
 
 
@@ -201,8 +201,8 @@ def test_two_databases_in_one_project_are_each_named(database_url: str) -> None:
     with session_scope() as session:
         probes, _ = setup_check.plan(session)
     assert [p.request for p in probes if p.kind == "connection"] == [
-        "List the tables in Acme web's database, using Acme DB",
-        "List the tables in Acme web's database, using Acme DB (dev)",
+        "List the tables in Acme web's database, using acme-db",
+        "List the tables in Acme web's database, using acme-db-dev",
     ]
 
 

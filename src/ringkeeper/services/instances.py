@@ -138,6 +138,18 @@ def suggested_title(instance: Instance) -> str | None:
     return better if better.lower() != shown.lower() else None
 
 
+def _tell_apart(instance: Instance) -> None:
+    """A client's connection titled like another one gets its client's name in the title."""
+    if not instance.title or instance.shared or instance.owner == SHARED_OWNER:
+        return
+    better = suggested_title(instance)
+    if better is not None:
+        instance.title = better
+        session = object_session(instance)
+        if session is not None:
+            session.flush()
+
+
 def describe_reach(instance: Instance) -> str:
     """What it reaches, like "All projects except Acme (client), Website", or for a
     client's connection "All Acme projects except Website" ("" if not for all projects)."""
@@ -185,6 +197,7 @@ def create_instance(session: Session, data: InstanceIn) -> Instance:
     instance = Instance(**data.model_dump(), bindings=[])
     session.add(instance)
     session.flush()
+    _tell_apart(instance)
     if instance.all_projects:
         link_everywhere(session, instance)
     return instance
@@ -225,6 +238,8 @@ def update_instance(session: Session, data: InstanceIn) -> Instance:
     for field, value in data.model_dump(exclude=keep).items():
         setattr(instance, field, value)
     session.flush()
+    if data.title is not None:
+        _tell_apart(instance)
     # The FK cascade rewrote instance_type/instance_env on the bindings.
     for binding in instance.bindings:
         session.refresh(binding)
