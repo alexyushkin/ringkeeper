@@ -34,6 +34,7 @@ def usable(project: Project, agent: Agent | None = None) -> list[ProjectInstance
         b
         for b in sorted(project.bindings, key=lambda b: b.instance.name)
         if b.instance_type in ADAPTERS
+        and not instances.notes_only(b.instance)
         and not bindings.crosses_clients(project, b.instance)
         and not instances.excluded(b.instance, project)
         and (agent is None or b.instance.name in agent.connections)

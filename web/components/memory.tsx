@@ -21,6 +21,7 @@ interface Status {
   shared_notes: boolean;
   shared_available: boolean;
   notes: number;
+  follows: boolean;
   connections: { name: string; title: string }[];
 }
 
@@ -46,10 +47,11 @@ const BACKENDS: [string, string][] = [
 ];
 
 /** A Notion connection, and the page or database it was given. */
-function NotionPicker({ connections, connection, onConnection, place, onPlace }: { connections: { name: string; title: string }[]; connection: string; onConnection: (v: string) => void; place: string; onPlace: (v: string) => void }) {
+function NotionPicker({ connections, connection, onConnection, place, onPlace, pagesOnly = false }: { connections: { name: string; title: string }[]; connection: string; onConnection: (v: string) => void; place: string; onPlace: (v: string) => void; pagesOnly?: boolean }) {
   const [words, setWords] = useState("");
   const pages = useApi<Found[]>(connection ? `notion/${connection}/pages` : null, { q: words.trim() || undefined });
-  const options: [string, string][] = (pages.data ?? []).map((p) => [`${p.kind}:${p.id}`, p.kind === "page" ? `${p.title} (make a database under this page)` : `${p.title} (use this database)`]);
+  const found = (pages.data ?? []).filter((p) => !pagesOnly || p.kind === "page");
+  const options: [string, string][] = found.map((p) => [`${p.kind}:${p.id}`, pagesOnly ? p.title : p.kind === "page" ? `${p.title} (make a database under this page)` : `${p.title} (use this database)`]);
   return (
     <div className="space-y-2">
       {connections.length ? (
@@ -61,8 +63,8 @@ function NotionPicker({ connections, connection, onConnection, place, onPlace }:
         <>
           <Field label="Find a page" value={words} onChange={setWords} placeholder="Words from its title" />
           {pages.error ? <Alert>{pages.error}</Alert> : null}
-          {pages.data && !pages.data.length ? <Alert tone="warn">Notion shows nothing yet. In Notion, open the page, choose ••• › Connections, and add this connection.</Alert> : null}
-          {pages.data?.length ? <Select label="Parent page" value={place} onChange={onPlace} options={[["", "Choose one"], ...options]} /> : null}
+          {pages.data && !found.length ? <Alert tone="warn">Notion shows nothing yet. In Notion, open the page, choose ••• › Connections, and add this connection.</Alert> : null}
+          {found.length ? <Select label={pagesOnly ? "Root page" : "Parent page"} value={place} onChange={onPlace} options={[["", "Choose one"], ...options]} /> : null}
         </>
       ) : null}
     </div>
@@ -191,6 +193,8 @@ export function ProjectMemory({ project }: { project: string }) {
                 </a>
                 .
               </p>
+            ) : data.follows ? (
+              <p className="text-sm text-muted">Notion is on for every project: this one gets its database under its client&apos;s page when its first task starts.</p>
             ) : (
               <p className="text-sm text-muted">Ringkeeper makes a database called “{data.title}”, with one row per note: the agent, the date and the task it came from.</p>
             )}
@@ -385,5 +389,117 @@ export function SharedNotes() {
         </div>
       </div>
     </Section>
+  );
+}
+
+/** Where a project's notes go, for its About: here, or Notion with a link. */
+export function NotesWhere({ project }: { project: string }) {
+  const status = useApi<Status>(`projects/${project}/memory`);
+  const data = status.data;
+  if (!data) return <span className="text-muted">…</span>;
+  if (data.backend === "notion" && data.notion) {
+    return (
+      <span>
+        In Notion:{" "}
+        <a href={data.notion.url} target="_blank" rel="noreferrer" className="text-accent">
+          {data.title}
+        </a>
+      </span>
+    );
+  }
+  return <span>{data.follows ? "Here in Ringkeeper until its first task, then in Notion" : "Here in Ringkeeper"}</span>;
+}
+
+interface Every {
+  every: { connection: string; root: string; title: string; url: string } | null;
+  connections: { name: string; title: string }[];
+  projects: { name: string; title: string; where: "local" | "notion"; url: string | null }[];
+}
+
+/** Notion for every project: one root page, a page per client, a database per project. */
+export function EveryProject({ connection: fixed }: { connection?: string }) {
+  const status = useApi<Every>("memory/every");
+  const [connection, setConnection] = useState(fixed ?? "");
+  const [place, setPlace] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const data = status.data;
+  useEffect(() => {
+    if (!fixed && data?.every) setConnection(data.every.connection);
+  }, [data, fixed]);
+  if (!data) return null;
+  const usable = fixed ? data.connections.filter((c) => c.name === fixed) : data.connections;
+  const root = picked(place).parent;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaid(null);
+    try {
+      const done = await api<{ set_up: string[]; failed: Record<string, string> }>("memory/every", { method: "PUT", json: { connection, root } });
+      const failed = Object.keys(done.failed);
+      setSaid(`On. ${done.set_up.length} project${done.set_up.length === 1 ? "" : "s"} set up now.${failed.length ? ` Notion refused ${failed.join(", ")}: they're tried again when a task starts.` : ""}`);
+      setPlace("");
+      status.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stop() {
+    await api("memory/every", { method: "DELETE" });
+    setSaid("New projects keep their notes here now. The others stay where they are.");
+    status.reload();
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted">One Notion page for every client&apos;s notes. Ringkeeper makes a page per client under it and a database per project under its client&apos;s page, so one client&apos;s page never holds another&apos;s notes. Projects already in Notion keep their place. New projects follow.</p>
+      {data.every ? (
+        <p className="text-sm">
+          On, under{" "}
+          <a href={data.every.url} target="_blank" rel="noreferrer" className="text-accent">
+            {data.every.title}
+          </a>
+          .
+        </p>
+      ) : null}
+      {usable.length ? (
+        <NotionPicker connections={usable} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} pagesOnly />
+      ) : (
+        <Alert tone="warn">This needs a Notion memory connection that&apos;s your own tool, since it holds every client&apos;s notes. A client&apos;s connection holds only that client&apos;s notes: choose it in each of their projects&apos; Memory.</Alert>
+      )}
+      {error ? <Alert>{error}</Alert> : null}
+      {said ? <Alert tone="good">{said}</Alert> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button kind="primary" busy={busy} disabled={!connection || !root} onClick={() => void save()}>
+          Use Notion for every project
+        </Button>
+        {data.every ? (
+          <ConfirmButton question="Stop putting new projects' notes in Notion? Every project keeps where its notes are now." confirm="Stop" onConfirm={stop}>
+            Stop for new projects
+          </ConfirmButton>
+        ) : null}
+      </div>
+      {data.projects.length ? (
+        <ul className="space-y-1 text-sm">
+          {data.projects.map((p) => (
+            <li key={p.name} className="flex flex-wrap gap-2">
+              <span>{p.title}</span>
+              {p.where === "notion" && p.url ? (
+                <a href={p.url} target="_blank" rel="noreferrer" className="text-accent">
+                  in Notion
+                </a>
+              ) : (
+                <span className="text-muted">here in Ringkeeper</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }

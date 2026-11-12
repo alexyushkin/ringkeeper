@@ -474,6 +474,10 @@ class Manager:
 
     def _prepare(self, job: Job) -> tuple[WorkerSpec, str]:
         settings = self.settings
+        with session_scope(commit=False) as session:
+            checking = setup_check.from_check(session, session.get(Task, job.task_id))
+        if not checking:
+            memory.follow_new(job.project)  # Notion for every project: a new one follows
         with session_scope() as session:
             project = projects.get_project(session, job.project)
             workspace = resolve_workspace(project.workspace_path, settings.workspaces_root)

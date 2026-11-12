@@ -17,7 +17,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.schemas import ProjectIn
 from ringkeeper.services import clients, titles
-from ringkeeper.services.instances import excluded, link_everywhere
+from ringkeeper.services.instances import excluded, link_everywhere, notes_only
 
 
 def find_project(session: Session, name: str) -> Project | None:
@@ -56,7 +56,7 @@ def create_project(session: Session, data: ProjectIn) -> Project:
     # What's for all projects comes with every new one it reaches: shared tools, unless
     # they leave out its client, and its client's own connections.
     for tool in session.scalars(select(Instance).where(Instance.all_projects)):
-        if not excluded(tool, project):
+        if not excluded(tool, project) and not notes_only(tool):
             session.add(ProjectInstance(project=project, instance=tool))
     session.flush()
     return project

@@ -153,7 +153,9 @@ def plan(session: Session) -> tuple[list[Probe], list[Gap]]:
         ]  # fmt: skip
         for instance in sorted(linked, key=lambda i: i.name):
             asks = onboarding.BY_SERVICE.get(instance.type)
-            if asks is None or (instance.all_projects and instance.id in done):
+            if asks is None or instances.notes_only(instance):
+                continue
+            if instance.all_projects and instance.id in done:
                 continue
             done.add(instance.id)
             said = asks.format(project=project.title, connection=_of(instance))

@@ -5,7 +5,7 @@ from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.models import Env, Instance, Project, ProjectInstance
 from ringkeeper.schemas import BindingIn
 from ringkeeper.services import clients
-from ringkeeper.services.instances import excluded, find_instance
+from ringkeeper.services.instances import NOT_A_TOOL, excluded, find_instance, notes_only
 from ringkeeper.services.projects import find_project, get_project
 from ringkeeper.wording import service
 
@@ -84,6 +84,8 @@ def set_binding(session: Session, data: BindingIn) -> tuple[ProjectInstance, boo
     Returns the binding and whether it was newly created.
     """
     project, instance = _resolve(session, data.project, data.instance)
+    if notes_only(instance):
+        raise RuleViolationError(NOT_A_TOOL.format(name=instance.title or instance.name))
     _refuse_crossing(session, project, instance)
     if excluded(instance, project):
         raise RuleViolationError(

@@ -4,14 +4,14 @@ import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { EVERY_REPO, reachesEverything, ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
+import { EVERY_REPO, notesOnly, reachesEverything, ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
 import { Catalog, ServiceMark } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
 import { connectionTitle } from "@/components/connection-form";
 import { ProjectScan } from "@/components/conveniences";
 import { ProjectForm, TestButton, type ProjectData } from "@/components/forms";
 import { ProjectClaudePlace } from "@/components/claude-place";
-import { ProjectMemory } from "@/components/memory";
+import { NotesWhere, ProjectMemory } from "@/components/memory";
 import { Alert, Button, ConfirmButton, Details, EnvBadge, Field, Loading, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { Agents, type AgentData } from "@/components/agents";
 import { NewRoutine, RoutineList } from "@/components/routines";
@@ -122,7 +122,7 @@ export function ProjectView({ name }: { name: string }) {
   // A client's connection is shared only among that client's projects; a shared tool goes anywhere.
   const client = project.data.owner.trim().toLowerCase();
   const byName = new Map((connections.data ?? []).map((c) => [c.name, c]));
-  const available = (connections.data ?? []).filter((c) => !bound.has(c.name) && (c.shared || c.owner.trim().toLowerCase() === client));
+  const available = (connections.data ?? []).filter((c) => !bound.has(c.name) && !notesOnly(c) && (c.shared || c.owner.trim().toLowerCase() === client));
 
   const instances = project.data.instances;
   const production = instances.filter((i) => i.env === "prod").length;
@@ -302,6 +302,10 @@ export function ProjectView({ name }: { name: string }) {
             <dd>{instances.length ? instances.map(connectionTitle).join(", ") : "None yet. Link one in the Connections tab."}{production ? ` (${production} production)` : ""}</dd>
             <dt className="text-muted">Works</dt>
             <dd>{autonomy}</dd>
+            <dt className="text-muted">Notes</dt>
+            <dd>
+              <NotesWhere project={name} />
+            </dd>
             <dt className="text-muted">Web access</dt>
             <dd>{about.web_allowed ? "On: its tasks can look things up on the web" : "Off: its tasks can't use the web"}</dd>
           </dl>

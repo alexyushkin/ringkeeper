@@ -11,6 +11,11 @@ written, and an agent is told it's notes to weigh and not instructions.
 
 `Project.memory`: {"backend": "local" | "notion", "notion": {...where}, "shared_notes": bool}.
 `Agent.memory`: None (as its project does), "local" or "notion".
+
+"Use Notion for every project" is one shared connection and one root page: each client gets a
+page under it, and each project a database under its client's page, so one client's page never
+holds another's notes. A project already in Notion keeps its place, and a new one follows the
+next time it's set up or a task starts in it.
 """
 
 import hashlib
@@ -60,6 +65,7 @@ BACKENDS = (LOCAL, NOTION)
 VENDOR = "notion_memory"
 SHARED_KEY = "memory-shared-notes"
 MINE_KEY = "memory-mine"
+EVERY_KEY = "memory-every-project"
 MY_MEMORY = "My memory"
 MY_INSTRUCTIONS = """\
 The owner keeps "My memory" in Notion: their preferences, style and how they work, across every
@@ -206,6 +212,83 @@ def attach(
     }  # fmt: skip
     project.memory = {**saved, "notion": where}
     return where
+
+
+# --- Notion for every project ---
+
+
+def every_settings(session: Session) -> dict[str, Any]:
+    return _own(session, EVERY_KEY)
+
+
+def _client_page(session: Session, token: str, every: dict[str, Any], owner: str) -> str:
+    """The client's page under the root, made the first time."""
+    pages = cast(dict[str, str], every.setdefault("clients", {}))
+    key = clients.key(owner)
+    if key not in pages:
+        name = clients.names(session).get(owner, owner)
+        title = f"{name} › Ringkeeper"  # noqa: RUF001 (the user's own)
+        pages[key] = notion_api.create_page(token, str(every["root"]), title)[0]
+    return pages[key]
+
+
+def follow(session: Session, project: Project) -> bool:
+    """Put a project's notes in Notion if every project's are. True: it was set up now. A
+    project already in Notion keeps its place, and uses it."""
+    every = every_settings(session)
+    if not every:
+        return False
+    saved = settings_of(project)
+    if saved.get("notion"):
+        if saved.get("backend") != NOTION:
+            project.memory = {**saved, "backend": NOTION}
+        return False
+    every = {**every, "clients": dict(every.get("clients") or {})}
+    page = _client_page(session, _token(session, str(every["connection"])), every, project.owner)
+    _store_own(session, EVERY_KEY, every)
+    attach(session, project.name, str(every["connection"]), parent=page)
+    choose(session, project.name, NOTION)
+    return True
+
+
+def follow_new(name: str) -> None:
+    """Best effort, before a task starts: if Notion doesn't answer, notes stay here this time."""
+    try:
+        with session_scope() as session:
+            if every_settings(session):
+                follow(session, projects.get_project(session, name))
+    except RingkeeperError:
+        return
+
+
+def use_everywhere(session: Session, connection: str, root: str) -> dict[str, Any]:
+    """Every project's notes in Notion, under `root`. Returns what was set up, and what Notion
+    refused (those are tried again when a task starts)."""
+    _usable(session, None, connection)
+    token = _token(session, connection)
+    before = every_settings(session)
+    same = before.get("connection") == connection and before.get("root") == root
+    title, url = notion_api.page_of(token, root)
+    _store_own(session, EVERY_KEY, {
+        "connection": connection, "root": root, "title": title, "url": url,
+        "clients": dict(before.get("clients") or {}) if same else {},
+    })  # fmt: skip
+    done: list[str] = []
+    failed: dict[str, str] = {}
+    for project in session.scalars(select(Project).order_by(Project.title)):
+        try:
+            if follow(session, project):
+                done.append(project.name)
+        except RingkeeperError as error:
+            failed[project.name] = str(error)
+    return {"set_up": done, "failed": failed}
+
+
+def stop_everywhere(session: Session) -> None:
+    """New projects stop following. Every project keeps where its notes are now."""
+    row = session.get(Setting, EVERY_KEY)
+    if row:
+        session.delete(row)
 
 
 def choose(

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ringkeeper.config import Settings
 from ringkeeper.models import Instance, InstanceType, Project, ProjectInstance, Setting, Task
+from ringkeeper.services import instances
 
 DISMISSED_KEY = "onboarding.checklist_dismissed"
 TOUR_KEY = "onboarding.tour_seen"
@@ -59,13 +60,12 @@ class Checklist:
 def unlinked(session: Session) -> list[Instance]:
     """Connections linked to no project, so no task can use them (the demo's are linked)."""
     linked = select(ProjectInstance.instance_id)
-    return list(
-        session.scalars(
-            select(Instance)
-            .where(Instance.all_projects.is_(False), Instance.id.not_in(linked))
-            .order_by(Instance.name)
-        )
+    found = session.scalars(
+        select(Instance)
+        .where(Instance.all_projects.is_(False), Instance.id.not_in(linked))
+        .order_by(Instance.name)
     )
+    return [i for i in found if not instances.notes_only(i)]  # memory's: never linked
 
 
 def checklist(session: Session, claude_ready: bool) -> Checklist:
@@ -152,7 +152,7 @@ def suggestions(session: Session, settings: Settings) -> list[str]:
     for project in found:
         for binding in sorted(project.bindings, key=lambda b: b.instance.name):
             instance = binding.instance
-            if instance.shared or instance.type in seen_services:
+            if instance.shared or instance.type in seen_services or instances.notes_only(instance):
                 continue
             seen_services.add(instance.type)
             picked.append(

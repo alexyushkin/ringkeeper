@@ -8,7 +8,7 @@ import { ModelSettings, MoneySetting } from "@/components/model-settings";
 import { TelegramPairing } from "@/components/telegram";
 import { KindSection, TelegramPrefs, useChannels } from "@/components/channels";
 import { Alert, Button, Card, ConfirmButton, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
-import { MyMemory, PersonalMemory, SharedNotes } from "@/components/memory";
+import { EveryProject, MyMemory, PersonalMemory, SharedNotes } from "@/components/memory";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { applyTheme, readTheme } from "@/lib/client/theme";
@@ -279,7 +279,10 @@ export default function SettingsPage() {
       label: "Memory",
       content: () => (
         <div className="space-y-4">
-          <p className="text-sm text-muted">Each project keeps its own memory, in its Settings. These are yours, across clients.</p>
+          <p className="text-sm text-muted">Each project keeps its own memory: here, or in Notion. Choose it for every project below, or in a project&apos;s Settings. The rest are yours, across clients.</p>
+          <Section id="every-project" title="Notion for every project" defaultOpen>
+            <EveryProject />
+          </Section>
           <MyMemory />
           <PersonalMemory />
           <SharedNotes />

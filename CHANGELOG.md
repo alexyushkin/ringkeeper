@@ -3,6 +3,20 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
+  like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
+  Memory said Notion.
+  - **Settings › Memory › Notion for every project** (also on the connection's card): pick one
+    root page. Ringkeeper makes a page per client under it and a database per project under its
+    client's page, so one client's page never holds another's notes. Projects already in Notion
+    keep their place, and new projects follow.
+  - The Notion memory connection isn't a project's tool any more: it isn't linked to projects,
+    tasks can't call it, and it's left out of Check my setup and Home's requests to try. Its Test
+    button still works. Existing links are removed.
+  - Each project's About says where its notes go, with a link to its Notion database.
+
 ## 0.1.0-beta.37 (2026-11-11)
 
 - **Tasks read files better, wherever they come from.** Gmail, Google, any mailbox, Microsoft

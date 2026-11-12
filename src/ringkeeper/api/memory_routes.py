@@ -1,7 +1,7 @@
 """Where a project's notes are kept, the notes themselves, and the owner's shared notes."""
 
 import uuid
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import Field
@@ -41,6 +41,7 @@ def _where(saved: dict[str, Any]) -> dict[str, Any] | None:
 def memory_status(name: str, session: SessionDep) -> dict[str, Any]:
     project = projects.get_project(session, name)
     saved = memory.settings_of(project)
+    every = memory.every_settings(session)
     kept = session.scalar(
         select(func.count()).select_from(MemoryNote).where(MemoryNote.project_id == project.id)
     )
@@ -51,6 +52,8 @@ def memory_status(name: str, session: SessionDep) -> dict[str, Any]:
         "shared_notes": saved.get("shared_notes", True),
         "shared_available": bool(memory.shared_settings(session) or memory.mine_settings(session)),
         "notes": int(kept or 0),
+        # Notion for every project is on, and this one follows when its first task starts.
+        "follows": bool(every) and not saved.get("notion"),
         "connections": [
             {"name": i.name, "title": i.title or i.name}
             for i in memory.connections_for(session, project)
@@ -138,6 +141,54 @@ def set_personal(data: PersonalIn, session: WriteSessionDep) -> dict[str, Any]:
         instance=data.connection,
     )  # fmt: skip
     return personal_status(session)
+
+
+def _place_of(project: Any) -> dict[str, Any]:
+    saved = memory.settings_of(project)
+    where = cast(dict[str, Any], saved.get("notion") or {})
+    in_notion = saved.get("backend") == memory.NOTION and bool(where)
+    return {"name": project.name, "title": project.title,
+            "where": memory.NOTION if in_notion else memory.LOCAL,
+            "url": where.get("url") if in_notion else None}  # fmt: skip
+
+
+@router.get("/memory/every")
+def every_status(session: SessionDep) -> dict[str, Any]:
+    """Notion for every project: the root page, and where each project's notes are now."""
+    every = memory.every_settings(session)
+    return {
+        "every": {k: every.get(k) for k in ("connection", "root", "title", "url")} if every
+        else None,
+        "connections": [
+            {"name": i.name, "title": i.title or i.name}
+            for i in memory.connections_for(session, None)
+        ],
+        "projects": [_place_of(p) for p in projects.list_projects(session)],
+    }  # fmt: skip
+
+
+class EveryIn(Input):
+    connection: Annotated[str, Field(max_length=63)]
+    root: NotionId
+
+
+@router.put("/memory/every")
+def set_every(data: EveryIn, session: WriteSessionDep) -> dict[str, Any]:
+    try:
+        done = memory.use_everywhere(session, data.connection, data.root)
+    except notion_api.NotionError as error:
+        raise HTTPException(409, detail=str(error)) from None
+    admin_audit.record(
+        session, "memory.every", "kept every project's notes in Notion", by=OWNER,
+        instance=data.connection,
+    )  # fmt: skip
+    return {**every_status(session), **done}
+
+
+@router.delete("/memory/every", status_code=204)
+def stop_every(session: WriteSessionDep) -> None:
+    memory.stop_everywhere(session)
+    admin_audit.record(session, "memory.every", "stopped Notion for new projects", by=OWNER)
 
 
 @router.get("/memory/mine")

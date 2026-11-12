@@ -11,6 +11,26 @@ from ringkeeper.wording import service
 
 # The owner shown for a shared tool: yours, not a client's (Instance.shared decides).
 SHARED_OWNER = "you"
+# Connections that hold agents' notes for services.memory: never a project's tool, so never
+# linked to a project, given to all of them, or called through the gateway.
+NOTES_ONLY = frozenset({"notion_memory"})
+NOT_A_TOOL = (
+    "{name} holds agents' notes, so it isn't linked to projects. Choose it in Settings › "  # noqa: RUF001
+    "Memory, or in a project's Memory."
+)
+
+
+def notes_only(instance: Instance | InstanceIn) -> bool:
+    return instance.type is InstanceType.VENDOR and (instance.config or {}).get("vendor") in (
+        NOTES_ONLY
+    )
+
+
+def _not_everywhere(data: InstanceIn) -> InstanceIn:
+    if not notes_only(data):
+        return data
+    return data.model_copy(update={"all_projects": False, "except_clients": [],
+                                   "except_projects": []})  # fmt: skip
 
 
 def find_instance(session: Session, name: str) -> Instance | None:
@@ -137,6 +157,8 @@ def link_everywhere(session: Session, instance: Instance) -> list[str]:
     linked to yet, and unlinked from the projects left out. A link it already has keeps
     its scope. Returns the projects it was newly linked to."""
     added: list[str] = []
+    if notes_only(instance):
+        return added
     for project in session.scalars(select(Project).order_by(Project.name)):
         binding = next((b for b in instance.bindings if b.project_id == project.id), None)
         if excluded(instance, project):
@@ -157,6 +179,7 @@ def create_instance(session: Session, data: InstanceIn) -> Instance:
             f"There's already a connection named {data.name}. Pick another name."
         )
     _check_kind(session, data)
+    data = _not_everywhere(data)
     if not data.shared:
         data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     instance = Instance(**data.model_dump(), bindings=[])
@@ -170,6 +193,7 @@ def create_instance(session: Session, data: InstanceIn) -> Instance:
 def update_instance(session: Session, data: InstanceIn) -> Instance:
     instance = get_instance(session, data.name)
     _check_kind(session, data, instance)
+    data = _not_everywhere(data)
     if not data.shared:
         data = data.model_copy(update={"owner": clients.ensure(session, data.owner)})
     if instance.shared and not data.shared:
