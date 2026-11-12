@@ -201,3 +201,11 @@ def test_the_worker_knows_its_final_message_is_the_answer() -> None:
     assert "That isn't a request to send an email" in HEADLESS_NOTE
     # Checked first, then said once: not "4 are active", then "no, three" in one message.
     assert "give it once: no correcting it mid-message" in HEADLESS_NOTE
+
+
+def test_a_list_request_gets_the_list_and_an_offer_of_detail() -> None:
+    """From Check my setup: "List the tables" came back with every field of 39 tables."""
+    note = " ".join(HEADLESS_NOTE.split())
+    assert "Answer what was asked, at the size it was asked" in note
+    assert '"list the tables" is their names, not every column of each' in note
+    assert "offer them in one line at the end" in note

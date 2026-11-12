@@ -5,6 +5,8 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A list request gets the list.** "List the tables" came back with every field of 39 tables.
+  Tasks now answer what was asked, at the size it was asked, and offer the detail in one line.
 - **Answers don't talk about memory unless something was saved.** Check my setup's answers said
   things like "I also saved no memory notes" and "I didn't change any files or save any
   memory". Its tasks were still told to save your preferences at the end, though nothing is
