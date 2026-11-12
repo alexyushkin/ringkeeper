@@ -24,6 +24,12 @@ publishes it as the release notes and the app shows it with the update.
 - **A request in Check my setup works only when its answer is complete.** An answer that says
   it's only part of what was asked, like "the list is partly read" or "a background agent is
   still fetching", no longer counts as worked; the report quotes what it said.
+- **Check my setup's report says Worked, Needs you or Failed for each request.** A request that
+  went to another project than the one it was written for fails. One that waits on you (a write
+  held in Approvals, or a web lookup in a project whose tasks can't use the web) says Needs you,
+  where it used to count as worked though it never ran.
+- **Tasks give their answer once.** They check it before they reply, instead of saying "4 are
+  active" and correcting it to three further down the same message.
 - **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
   like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
   Memory said Notion.

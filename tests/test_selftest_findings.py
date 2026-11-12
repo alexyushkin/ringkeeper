@@ -199,3 +199,5 @@ def test_the_router_doesn_t_invent_limits() -> None:
 def test_the_worker_knows_its_final_message_is_the_answer() -> None:
     assert "Your final message is what the operator reads" in HEADLESS_NOTE
     assert "That isn't a request to send an email" in HEADLESS_NOTE
+    # Checked first, then said once: not "4 are active", then "no, three" in one message.
+    assert "give it once: no correcting it mid-message" in HEADLESS_NOTE

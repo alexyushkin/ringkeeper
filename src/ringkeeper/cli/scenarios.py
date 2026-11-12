@@ -41,7 +41,7 @@ def _check_mine(out: Path | None, ceiling: float | None) -> None:
         out.write_text(text, encoding="utf-8")
     where = out or settings.data_dir / setup_check.FOLDER
     worked = sum(1 for o in outcomes if o.ok)
-    typer.echo(f"{worked} of {len(outcomes)} worked: {where}")
+    typer.echo(f"{setup_check.tally(outcomes)}: {where}")
     if worked < len(outcomes):
         raise typer.Exit(1)
 
