@@ -13,6 +13,9 @@ publishes it as the release notes and the app shows it with the update.
 - **Check my setup tests MCP servers, add-on tools and HTTP APIs without a model.** It connects
   to each one itself, as its Test button does, and says how many tools it offers. Before, it
   asked a task to "list the tools it offers", which could be reworded on the way and fail.
+- **A Google account is tried on what it was given.** Check my setup and Home's requests to try
+  ask a Google account given only mail about its unread mail, not its calendar, which it can't
+  read. With Calendar, it's still this week's events.
 - **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
   like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
   Memory said Notion.

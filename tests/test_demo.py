@@ -13,7 +13,7 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Client, Env, Instance, InstanceType, Project, Task, Thread
-from ringkeeper.services import demo, onboarding, tasks
+from ringkeeper.services import demo, instances, onboarding, tasks
 from ringkeeper.services.calls import run_call
 from ringkeeper.vault import Secret, VaultError, get_vault
 from tests import test_web_api
@@ -153,6 +153,29 @@ def test_the_checklist_and_suggestions_follow_what_is_there(data_dir: Path, tmp_
         assert all("delete" not in s.lower() and "update" not in s.lower() for s in suggested)
         onboarding.dismiss(session)
         assert onboarding.checklist(session, claude_ready=True).dismissed
+
+
+def test_a_google_account_s_request_follows_what_it_was_given(
+    data_dir: Path, tmp_path: Path
+) -> None:
+    settings = desktop(data_dir, tmp_path)
+    with session_scope() as session:
+        make_project(session, "acme-web", title="Acme web")
+        make_instance(
+            session, "acme-mail", type=InstanceType.GOOGLE, secret_ref="file://a/g",
+            title="Acme mail", config={"access": ["mail_read", "mail_drafts"]},
+        )  # fmt: skip
+    bind("acme-web", "acme-mail")
+    with session_scope() as session:
+        suggested = onboarding.suggestions(session, settings)
+        assert suggested[0] == "Summarize the unread emails in Acme mail"  # not its calendar
+        found = instances.get_instance(session, "acme-mail")
+        found.config = {"access": ["calendar_read", "mail_read"]}
+        assert onboarding.request(found) == onboarding.BY_SERVICE[InstanceType.GOOGLE]
+        found.config = {"access": ["mail_send"]}  # nothing it can read
+        assert onboarding.request(found) is None
+        found.config = {}  # from before access was recorded
+        assert onboarding.request(found) == onboarding.BY_SERVICE[InstanceType.GOOGLE]
 
 
 def test_a_connection_linked_to_no_project_is_counted(data_dir: Path, tmp_path: Path) -> None:

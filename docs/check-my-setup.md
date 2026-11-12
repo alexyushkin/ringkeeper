@@ -22,7 +22,9 @@ folder; this checks what you've actually set up.
   web's database", "List the open pull requests in Acme web's GitHub repository". It goes in the
   first project the connection is linked to: a connection linked to several projects, or to all
   of them, is checked once. When a project has two connections of a kind (two databases, say),
-  each request names its connection.
+  each request names its connection. A Google account's request follows what it was given: its
+  calendar if it has Calendar, its unread mail if it only has mail, and so on. One given nothing
+  it can read (only sending mail, say) is tested like an MCP server, below.
 - An MCP server, an add-on tool's API or an HTTP API isn't sent a request: Ringkeeper connects
   to it itself, as its **Test** button does, and counts the tools it offers (an HTTP API's
   endpoints, if it has an OpenAPI address). No model is asked, so it costs nothing, and the

@@ -6,6 +6,7 @@ ever read: listing, summarizing, explaining. Nothing in them changes anything.
 """
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -38,8 +39,32 @@ BY_SERVICE: dict[InstanceType, str] = {
     InstanceType.VENDOR: "In {project}, use {connection} to list the tools it offers",
     InstanceType.ORACLE: "List the tables in {project}'s database",
 }
+# A Google account's, by what it was given (Instance.config["access"], as google.config_access
+# reads it): the first of these it has. One given only mail gets a mail request, say.
+GOOGLE_BY_ACCESS: tuple[tuple[frozenset[str], str], ...] = (
+    (frozenset({"calendar_read", "calendar_write"}), BY_SERVICE[InstanceType.GOOGLE]),
+    (frozenset({"mail_read"}), "Summarize the unread emails in {connection}"),
+    (frozenset({"drive_files", "drive_read_all"}), "List the latest files in {connection}'s Drive"),
+    (frozenset({"search_console_read"}), "List the sites {connection} has in Search Console"),
+    (frozenset({"analytics_read"}), "List the Analytics properties {connection} can read"),
+    (
+        frozenset({"youtube_read", "youtube_manage"}),
+        "List the latest videos on {connection}'s YouTube channel",
+    ),
+)
 FOLDER = "Explain what's in {project}'s folder, in a few lines"
 TASKS = "What did my tasks do this week?"
+
+
+def request(instance: Instance) -> str | None:
+    """The read-only request to try on a connection, with {project} and {connection} to fill
+    in. None: it has none (a Google account given nothing it can read, say)."""
+    if instance.type is not InstanceType.GOOGLE:
+        return BY_SERVICE.get(instance.type)
+    given = {str(a) for a in cast(list[Any], (instance.config or {}).get("access") or [])}
+    if not given:  # from before access was recorded
+        return BY_SERVICE[InstanceType.GOOGLE]
+    return next((asks for needs, asks in GOOGLE_BY_ACCESS if needs & given), None)
 
 
 @dataclass(frozen=True)
@@ -152,13 +177,14 @@ def suggestions(session: Session, settings: Settings) -> list[str]:
     for project in found:
         for binding in sorted(project.bindings, key=lambda b: b.instance.name):
             instance = binding.instance
-            if instance.shared or instance.type in seen_services or instances.notes_only(instance):
+            asks = request(instance)
+            if asks is None or instance.shared or instance.type in seen_services:
+                continue
+            if instances.notes_only(instance):  # it holds notes: no task calls it
                 continue
             seen_services.add(instance.type)
             picked.append(
-                BY_SERVICE[instance.type].format(
-                    project=project.title, connection=instance.title or instance.name
-                )
+                asks.format(project=project.title, connection=instance.title or instance.name)
             )
             break
         if len(picked) >= MAX_SUGGESTIONS - 1:
