@@ -10,6 +10,7 @@ type Progress = { done: number; total: number; current: string | null };
 type Status = {
   running: boolean;
   progress: Progress | null;
+  so_far: string | null;
   failed: string | null;
   requests: number;
   gaps: number;
@@ -53,7 +54,7 @@ export function SetupCheck() {
     <Section id="setup-check" title="Check my setup" summary={running ? "running" : day ? `last run ${day}` : "not run yet"} defaultOpen={false}>
       <div className="space-y-3 text-sm">
         <p>
-          Sends {requests ? `${requests} real requests` : "real requests"} through Ringkeeper, on your own projects: one per connection linked to each, then a question about your setup, a web lookup and a follow-up. The report says, for each one, where it went, whether it asked anything, what ran, what came back, and what it cost.
+          Sends {requests ? `${requests} real requests` : "real requests"} through Ringkeeper, on your own projects, three at a time: one per connection, in the first project it&apos;s linked to, one for each project none of those went to, then a question about your setup, a web lookup and a follow-up. The report says, for each one, where it went, whether it asked anything, what ran, what came back, and what it cost.
         </p>
         <p className="text-muted">
           It only reads. Its tasks can&apos;t edit files or run commands, and anything that would change something is held for you in Approvals, not done.
@@ -65,7 +66,8 @@ export function SetupCheck() {
               <Spinner />
               {now && now.total ? `${now.done} of ${now.total} done${now.current ? `: ${now.current}` : ""}` : "Getting ready..."}
             </p>
-            <Button onClick={() => act("setup-check/stop")}>Stop after this one</Button>
+            <Button onClick={() => act("setup-check/stop")}>Stop after these</Button>
+            {status.data?.so_far ? <Markdown text={status.data.so_far} className="text-sm" /> : null}
           </div>
         ) : (
           <ConfirmButton question={`Send ${requests || "these"} read-only requests through your setup? Each one uses your Claude sign-in.`} confirm="Check it" kind="secondary" onConfirm={() => act("setup-check")}>

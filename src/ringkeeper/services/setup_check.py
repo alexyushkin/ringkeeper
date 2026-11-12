@@ -1,10 +1,11 @@
 """Check my setup: real read-only requests on this install's own projects and connections.
 
-The self-test runs made-up clients in a scratch folder; this runs on what's here. For each
-project and each connection linked to it, one read-only request (the kind Home suggests) goes
-through the real router, worker and gateway. Then a question about the setup, a web lookup, and
-a follow-up in the same conversation. A connection linked to no project is a gap: reported, not
-run.
+The self-test runs made-up clients in a scratch folder; this runs on what's here. Each
+connection gets one read-only request (the kind Home suggests), in the first project it's linked
+to, through the real router, worker and gateway; a project none of them went to gets one of its
+own, to check that requests reach it. Then a question about the setup, a web lookup, and a
+follow-up in the same conversation. Three run at a time. A connection linked to no project is a
+gap: reported, not run.
 
 Nothing in it changes anything. Its conversations carry a tag, and the work they start:
 - gets no tool that edits files or runs commands (Edit, Write, Bash and the like), and
@@ -22,6 +23,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -69,6 +71,7 @@ PROBE_MINUTES = 6.0
 POLL_SECONDS = 1.0
 DEFAULT_CEILING = 5.0  # USD: no more requests are started past this (an API key's spend)
 START_SECONDS = 90  # the first request not routed by then: the app isn't running
+AT_ONCE = 3  # requests under way at the same time
 SETTLED = frozenset({*TERMINAL_STATUSES, TaskStatus.NEEDS_INPUT})
 
 SETUP_QUESTION = "Which projects do I have, and which connections does each one use?"
@@ -78,7 +81,7 @@ FOLLOW_UP = "Thanks. Now say that again in one or two sentences."
 
 @dataclass(frozen=True)
 class Probe:
-    kind: str  # connection, setup, web, follow-up
+    kind: str  # connection, project, setup, web, follow-up
     request: str
     project: str | None = None  # where it should go (a project's name)
     project_title: str = ""
@@ -90,6 +93,8 @@ class Probe:
     def label(self) -> str:
         if self.kind == "connection":
             return f"{self.connection_title} in {self.project_title}"
+        if self.kind == "project":
+            return f"A request for {self.project_title}"
         return {"setup": "A question about your setup", "web": "A web lookup"}.get(
             self.kind, "A follow-up in the same conversation"
         )
@@ -134,9 +139,10 @@ def _of(instance: Instance) -> str:
 
 
 def plan(session: Session) -> tuple[list[Probe], list[Gap]]:
-    """One read-only request per project and connection linked to it (a connection linked to
-    every project once, from the first of them), then the setup question and the web lookup.
-    The follow-up goes into the first conversation and isn't listed here."""
+    """One read-only request per connection, in the first project it's linked to, and one
+    for each project none of those went to (so every project is checked for routing). Then
+    the setup question and the web lookup. The follow-up goes into the first conversation
+    and isn't listed here."""
     found = session.scalars(
         select(Project)
         .options(selectinload(Project.bindings).selectinload(ProjectInstance.instance))
@@ -147,33 +153,35 @@ def plan(session: Session) -> tuple[list[Probe], list[Gap]]:
     everywhere = session.scalars(select(Instance).where(Instance.all_projects.is_(True))).all()
     for project in found:
         linked = [b.instance for b in project.bindings]
-        linked += [
-            i for i in everywhere
-            if i.id not in done and i not in linked and _reaches(i, project)
-        ]  # fmt: skip
-        for instance in sorted(linked, key=lambda i: i.name):
-            asks = onboarding.BY_SERVICE.get(instance.type)
-            if asks is None or instances.notes_only(instance):
-                continue
-            if instance.all_projects and instance.id in done:
-                continue
-            done.add(instance.id)
-            said = asks.format(project=project.title, connection=_of(instance))
-            if "{connection}" not in asks and sum(i.type is instance.type for i in linked) > 1:
-                said += f", using {_of(instance)}"  # which of its databases (say) is meant
-            probes.append(
+        linked += [i for i in everywhere if i not in linked and _reaches(i, project)]
+        asked = [i for i in linked if onboarding.BY_SERVICE.get(i.type) is not None]
+        mine = [_probe(project, i, linked) for i in sorted(asked, key=lambda i: i.name)
+                if i.id not in done]  # fmt: skip
+        done.update(i.id for i in asked)
+        if asked and not mine:  # its connections were checked elsewhere: is it reached?
+            mine = [
                 Probe(
-                    "connection",
-                    said,
+                    "project", onboarding.FOLDER.format(project=project.title),
                     project=project.name, project_title=project.title,
-                    connection=instance.name, connection_title=_of(instance),
-                    service=instance.type.value,
                 )
-            )  # fmt: skip
+            ]  # fmt: skip
+        probes += mine
     probes.append(Probe("setup", SETUP_QUESTION))
     probes.append(Probe("web", WEB_LOOKUP))
     gaps = [Gap(i.name, _of(i), _client(session, i)) for i in onboarding.unlinked(session)]
     return probes, gaps
+
+
+def _probe(project: Project, instance: Instance, linked: Sequence[Instance]) -> Probe:
+    asks = onboarding.BY_SERVICE[instance.type]
+    said = asks.format(project=project.title, connection=_of(instance))
+    if "{connection}" not in asks and sum(i.type is instance.type for i in linked) > 1:
+        said += f", using {_of(instance)}"  # which of its databases (say) is meant
+    return Probe(
+        "connection", said,
+        project=project.name, project_title=project.title,
+        connection=instance.name, connection_title=_of(instance), service=instance.type.value,
+    )  # fmt: skip
 
 
 def _client(session: Session, instance: Instance) -> str:
@@ -268,7 +276,7 @@ def _work(
 
 
 class Runner:
-    """Sends each request in turn and waits on it, answering only what reads."""
+    """Sends the requests, three at a time, and waits on them, answering only what reads."""
 
     def __init__(
         self,
@@ -278,12 +286,15 @@ class Runner:
         minutes: float = PROBE_MINUTES,
         stop: threading.Event | None = None,
         progress: Callable[[int, int, str | None], None] | None = None,
+        arrived: Callable[[list[Outcome]], None] | None = None,
     ) -> None:
         self.settings = settings
         self.ceiling = ceiling
         self.minutes = minutes
         self.stop = stop or threading.Event()
         self.progress: Callable[[int, int, str | None], None] = progress or _quiet
+        # What has come back so far, in the order planned, each time one comes back.
+        self.arrived: Callable[[list[Outcome]], None] = arrived or _unheard
 
     # --- One request ---
 
@@ -446,33 +457,51 @@ class Runner:
     # --- The whole check ---
 
     def run(self, probes: Sequence[Probe]) -> tuple[list[Outcome], list[Probe]]:
-        """Each request in turn, then the follow-up. Returns what ran and what wasn't sent."""
-        outcomes: list[Outcome] = []
+        """Three requests at a time, then the follow-up. Returns what ran (in the order
+        planned) and what wasn't sent."""
         total = len(probes) + 1  # and the follow-up
-        spent = 0.0
-        first: Outcome | None = None
-        for probe in probes:
-            if self.stop.is_set() or (self.ceiling and spent >= self.ceiling):
-                break
-            self.progress(len(outcomes), total, probe.label)
-            out = self.one(probe)
-            if not outcomes and out.timed_out and out.routed in ("", NOT_ROUTED):
-                raise NotPickedUpError(NOT_PICKED_UP)
-            outcomes.append(out)
-            spent += out.cost
-            if first is None and out.ok and out.projects and probe.kind == "connection":
-                first = out
-        skipped = list(probes[len(outcomes) :])
+        arrived: dict[int, Outcome] = {}
+        under_way: dict[Future[Outcome], int] = {}
+        waiting = list(enumerate(probes))
+        with ThreadPoolExecutor(AT_ONCE, thread_name_prefix="rk-setup-check") as pool:
+            while waiting or under_way:
+                spent = sum(o.cost for o in arrived.values())
+                while waiting and len(under_way) < AT_ONCE and not self._enough(spent):
+                    index, probe = waiting.pop(0)
+                    under_way[pool.submit(self.one, probe)] = index
+                if not under_way:
+                    break
+                self._say(len(arrived), total, [probes[i] for i in under_way.values()])
+                finished, _ = wait(under_way, return_when=FIRST_COMPLETED)
+                for future in finished:
+                    out = future.result()
+                    if not arrived and out.timed_out and out.routed in ("", NOT_ROUTED):
+                        self.stop.set()  # the others wait the same way: send no more
+                        raise NotPickedUpError(NOT_PICKED_UP)
+                    arrived[under_way.pop(future)] = out
+                self.arrived([arrived[i] for i in sorted(arrived)])
+        outcomes = [arrived[i] for i in sorted(arrived)]
+        skipped = [p for i, p in enumerate(probes) if i not in arrived]
+        first = next(
+            (o for o in outcomes if o.ok and o.projects and o.probe.kind == "connection"), None
+        )
         if first is not None and first.thread and not self.stop.is_set():
             follow = Probe(
                 "follow-up", FOLLOW_UP, project=first.probe.project,
                 project_title=first.probe.project_title, connection=first.probe.connection,
                 connection_title=first.probe.connection_title, service=first.probe.service,
             )  # fmt: skip
-            self.progress(len(outcomes), total, follow.label)
+            self._say(len(outcomes), total, [follow])
             outcomes.append(self.one(follow, first.thread))
+            self.arrived(outcomes)
         self.progress(len(outcomes), len(outcomes), None)
         return outcomes, skipped
+
+    def _enough(self, spent: float) -> bool:
+        return self.stop.is_set() or bool(self.ceiling and spent >= self.ceiling)
+
+    def _say(self, done: int, total: int, now: Sequence[Probe]) -> None:
+        self.progress(done, total, ", ".join(p.label for p in now))
 
 
 NOT_ROUTED = "not routed yet"
@@ -510,6 +539,10 @@ def _untaught(session: Session, settings: Settings, decision: Decision, choice: 
 
 
 def _quiet(_done: int, _total: int, _now: str | None) -> None:
+    pass
+
+
+def _unheard(_so_far: list[Outcome]) -> None:
     pass
 
 
@@ -578,22 +611,8 @@ def render(
         f"{worked} of {len(outcomes)} requests worked. Cost about ${spent:.2f}. "
         "Nothing was changed: anything that would have is left for you in Approvals.",
         "",
-        "| Request | Routed to | Asked | Ran | Result or error | Cost |",
-        "| --- | --- | --- | --- | --- | --- |",
+        *table(outcomes),
     ]
-    for o in outcomes:
-        what = f'**{o.probe.label}**: "{_cell(o.probe.request)}"'
-        asked = "; ".join(o.asked) or "no"
-        ran = ", ".join(o.ran) or "-"
-        said = f"Error: {o.error}" if o.error else (o.result or "-")
-        if o.left or o.notes:
-            said += " " + " ".join(
-                [*(f"{_upper(x)}." for x in o.left), *(f"Note: {n}." for n in o.notes)]
-            )
-        lines.append(
-            f"| {what} | {_cell(o.routed) or '-'} | {_cell(asked)} | {_cell(ran)} | "
-            f"{_cell(said)} | ${o.cost:.2f} |"
-        )
     if skipped:
         lines += ["", "Not sent (stopped, or past the cost limit):"]
         lines += [f"- {p.label}" for p in skipped]
@@ -613,6 +632,28 @@ def render(
         "",
     ]
     return "\n".join(lines)
+
+
+def table(outcomes: Sequence[Outcome]) -> list[str]:
+    """One row per request: the report's, and what has come back while it runs."""
+    lines = [
+        "| Request | Routed to | Asked | Ran | Result or error | Cost |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for o in outcomes:
+        what = f'**{o.probe.label}**: "{_cell(o.probe.request)}"'
+        asked = "; ".join(o.asked) or "no"
+        ran = ", ".join(o.ran) or "-"
+        said = f"Error: {o.error}" if o.error else (o.result or "-")
+        if o.left or o.notes:
+            said += " " + " ".join(
+                [*(f"{_upper(x)}." for x in o.left), *(f"Note: {n}." for n in o.notes)]
+            )
+        lines.append(
+            f"| {what} | {_cell(o.routed) or '-'} | {_cell(asked)} | {_cell(ran)} | "
+            f"{_cell(said)} | ${o.cost:.2f} |"
+        )
+    return lines
 
 
 def _upper(text: str) -> str:
@@ -662,6 +703,7 @@ class InApp:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._now: dict[str, Any] | None = None
+        self._so_far: list[Outcome] = []
         self._failed: str | None = None
 
     def running(self) -> bool:
@@ -675,7 +717,10 @@ class InApp:
             self._stop = threading.Event()
             self._failed = None
             self._now = {"done": 0, "total": 0, "current": None}
-            runner = Runner(settings, stop=self._stop, progress=self._progress)
+            self._so_far = []
+            runner = Runner(
+                settings, stop=self._stop, progress=self._progress, arrived=self._arrived
+            )
             self._thread = threading.Thread(
                 target=self._run, args=(settings, runner), daemon=True, name="rk-setup-check"
             )
@@ -684,6 +729,10 @@ class InApp:
     def _progress(self, done: int, total: int, current: str | None) -> None:
         with self._lock:
             self._now = {"done": done, "total": total, "current": current}
+
+    def _arrived(self, so_far: list[Outcome]) -> None:
+        with self._lock:
+            self._so_far = list(so_far)
 
     def _run(self, settings: Settings, runner: Runner) -> None:
         try:
@@ -698,7 +747,7 @@ class InApp:
                 )
 
     def stop(self) -> None:
-        """Finish the request under way, and send no more."""
+        """Finish the requests under way, and send no more."""
         self._stop.set()
 
     def status(self, session: Session, settings: Settings) -> dict[str, Any]:
@@ -707,11 +756,13 @@ class InApp:
         last = reports[-1] if reports else None
         running = self.running()
         with self._lock:
-            now, failed = self._now, self._failed
+            now, failed, so_far = self._now, self._failed, self._so_far
         probes, gaps = plan(session)
         return {
             "running": running,
             "progress": now if running else None,
+            # The rows that have come back, while it runs.
+            "so_far": "\n".join(table(so_far)) if running and so_far else None,
             "failed": failed,
             "requests": len(probes) + 1,
             "gaps": len(gaps),

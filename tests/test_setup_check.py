@@ -74,16 +74,15 @@ def seeded() -> None:
     bind("globex-portal", "globex-n8n")
 
 
-def test_one_read_only_request_per_project_and_linked_connection(database_url: str) -> None:
+def test_one_read_only_request_per_connection(database_url: str) -> None:
     del database_url
     seeded()
     with session_scope() as session:
         probes, gaps = setup_check.plan(session)
     connections = [(p.project, p.connection) for p in probes if p.kind == "connection"]
     assert connections == [
-        ("acme-shop", "acme-db"),
-        ("acme-shop", "browser"),  # linked to every project: checked once, from the first
-        ("acme-web", "acme-db"),
+        ("acme-shop", "acme-db"),  # linked to two projects: checked once, from the first
+        ("acme-shop", "browser"),  # linked to every project: the same
         ("acme-web", "acme-gh"),
         ("globex-portal", "globex-n8n"),
     ]
@@ -93,6 +92,27 @@ def test_one_read_only_request_per_project_and_linked_connection(database_url: s
     assert [p.kind for p in probes[-2:]] == ["setup", "web"]
     # Linked to nothing: a gap, reported and not run.
     assert [(g.connection, g.client) for g in gaps] == [("acme-sheets", "Acme Inc")]
+
+
+def test_a_project_whose_connections_were_checked_elsewhere_gets_a_request_of_its_own(
+    database_url: str,
+) -> None:
+    del database_url
+    with session_scope() as session:
+        make_project(session, "acme-web", title="Acme web")
+        make_project(session, "acme-shop", title="Acme shop")
+        make_project(session, "acme-blog", title="Acme blog")  # no connection: nothing sent
+        make_instance(session, "acme-db", title="Acme DB", secret_ref="file://a/db")
+    bind("acme-web", "acme-db")
+    bind("acme-shop", "acme-db")
+    with session_scope() as session:
+        probes, _ = setup_check.plan(session)
+    sent = [(p.kind, p.project, p.request) for p in probes if p.project]
+    assert sent == [
+        ("connection", "acme-shop", "List the tables in Acme shop's database"),
+        ("project", "acme-web", "Explain what's in Acme web's folder, in a few lines"),
+    ]
+    assert probes[1].label == "A request for Acme web"
 
 
 def test_two_databases_in_one_project_are_each_named(database_url: str) -> None:
@@ -389,6 +409,36 @@ def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> No
         assert found.archived_at is None
 
 
+def test_three_at_a_time_and_each_result_as_it_comes_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    probes = [setup_check.Probe("setup", f"Question {i}") for i in range(7)]
+    lock = threading.Lock()
+    now, most = [0], [0]
+
+    def one(_self: setup_check.Runner, probe: setup_check.Probe, _thread: str | None = None):
+        with lock:
+            now[0] += 1
+            most[0] = max(most[0], now[0])
+        time.sleep(0.05 if probe.request != "Question 0" else 0.2)  # the first comes back last
+        with lock:
+            now[0] -= 1
+        return setup_check.Outcome(probe, routed="answered without starting work")
+
+    monkeypatch.setattr(setup_check.Runner, "one", one)
+    seen: list[list[str]] = []
+    runner = setup_check.Runner(
+        get_settings(), arrived=lambda so_far: seen.append([o.probe.request for o in so_far])
+    )
+    outcomes, skipped = runner.run(probes)
+    assert most[0] == setup_check.AT_ONCE == 3
+    assert not skipped
+    assert [o.probe.request for o in outcomes] == [p.request for p in probes]  # as planned
+    assert "Question 0" not in seen[0]  # each shown as it came back, before the first
+    assert seen[-1] == [p.request for p in probes]
+    assert setup_check.table(outcomes[:1])[2].startswith(
+        '| **A question about your setup**: "Question 0" |'
+    )
+
+
 def test_it_says_when_the_app_isn_t_picking_requests_up(
     database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -411,7 +461,7 @@ def test_settings_shows_what_it_would_send_and_archives_its_conversations(
     seeded()
     status = owner.get("/setup-check").json()
     assert status["running"] is False
-    assert status["requests"] == 8  # five connections, the setup, the web, the follow-up
+    assert status["requests"] == 7  # four connections, the setup, the web, the follow-up
     assert status["gaps"] == 1
     assert status["conversations"] == 0
     with session_scope() as session:
