@@ -45,8 +45,9 @@ const STATUS: Record<string, [Tone, string]> = {
   not_done: ["bad", "Not done"],
 };
 
-export function StatusBadge({ status }: { status: string }) {
-  const [tone, label] = STATUS[status] ?? ["neutral", "Other"];
+/** `partly`: a Not done task that did finish part of it (what it finished). */
+export function StatusBadge({ status, partly }: { status: string; partly?: string | null }) {
+  const [tone, label] = status === "not_done" && partly ? (["warn", "Partly done"] as [Tone, string]) : (STATUS[status] ?? ["neutral", "Other"]);
   return <Badge tone={tone}>{label}</Badge>;
 }
 

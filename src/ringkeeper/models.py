@@ -629,6 +629,8 @@ class Task(Base):
     budget_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
     # On a subscription, which isn't billed per task: the estimated cost it pauses at.
     estimate_cap_usd: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False))
+    # Not done, but part of it was: what was finished. Its card says "Partly done".
+    partly_done: Mapped[str | None] = mapped_column(Text)
     git_branch: Mapped[str | None] = mapped_column(Text)
     git_commit: Mapped[str | None] = mapped_column(Text)
     changed_files: Mapped[list[str]] = mapped_column(TextList, server_default="{}")

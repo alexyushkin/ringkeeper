@@ -203,6 +203,15 @@ def test_the_worker_knows_its_final_message_is_the_answer() -> None:
     assert "give it once: no correcting it mid-message" in HEADLESS_NOTE
 
 
+def test_a_connection_is_reached_only_through_its_own_gateway() -> None:
+    """From a real run: with no tool for the job, the worker tried "the Ringkeeper MCP route"
+    for the Airtable connection too."""
+    note = " ".join(HEADLESS_NOTE.split())
+    assert "A connection is reached only through its own gateway endpoint" in note
+    assert "stop there and say so" in note
+    assert "with done saying what you did finish" in note
+
+
 def test_a_list_request_gets_the_list_and_an_offer_of_detail() -> None:
     """From Check my setup: "List the tables" came back with every field of 39 tables."""
     note = " ".join(HEADLESS_NOTE.split())

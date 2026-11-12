@@ -19,6 +19,7 @@ export interface TaskCard {
   outcome: string | null;
   summary: string | null;
   error: string | null;
+  partly_done?: string | null; // not done, but this part was
   thread_id: string | null;
   created_at: string;
   finished_at: string | null;
@@ -41,14 +42,15 @@ export function TaskCardView({ task }: { task: TaskCard }) {
     <Link href={taskHref(task.id)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{place(task.client, task.project)}</span>
-        <StatusBadge status={task.status} />
+        <StatusBadge status={task.status} partly={task.partly_done} />
         {task.archived ? <span className="text-xs text-muted">archived</span> : null}
         {task.phase && task.status !== "succeeded" ? <span className="text-xs text-muted">{PHASE[task.phase] ?? task.phase}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(task.finished_at ?? task.created_at)}</span>
       </div>
       {task.waiting_for_folder ? <p className="mt-1 text-xs text-muted">Waiting for another task in this project to finish.</p> : null}
       <p className="mt-2 line-clamp-3 text-sm [overflow-wrap:anywhere]">{firstSentences(plainText(withoutTables(task.summary ?? task.outcome ?? "—")))}</p>
-      {task.error && task.status !== "succeeded" ? <p className="mt-1 line-clamp-3 text-sm text-bad [overflow-wrap:anywhere]">{task.error}</p> : null}
+      {task.partly_done && task.status === "not_done" ? <p className="mt-1 line-clamp-2 text-sm text-good [overflow-wrap:anywhere]">Done: {task.partly_done}</p> : null}
+      {task.error && task.status !== "succeeded" ? <p className={`mt-1 line-clamp-3 text-sm [overflow-wrap:anywhere] ${task.partly_done ? "text-warn" : "text-bad"}`}>{task.partly_done ? `Not done: ${task.error}` : task.error}</p> : null}
       <p className="mt-2 text-xs text-muted">
         {task.turns} steps · {money(task.cost_usd)} · open the transcript ›
       </p>

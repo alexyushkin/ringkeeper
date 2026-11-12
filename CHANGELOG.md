@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Partly done.** A task that did part of the job and couldn't do the rest showed only "Not
+  done". Its card and page now say **Partly done**, with what was done and what wasn't. It still
+  counts as not done.
+- **A task stops at the connection's own tools.** With no tool for the job, a task tried the
+  same Airtable connection through another route. It now stops there and says so.
 - **Notes say exactly where they went.** A project's note saved to its Notion database was
   reported as "Notion", and a task took that for your personal memory and asked you to delete it
   by hand. Answers, the activity log and **Saved to memory** now say "this project's notes
