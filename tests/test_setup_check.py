@@ -292,10 +292,11 @@ class StandIn:
     request, holds a write for the GitHub one, asks to turn the web on for the lookup,
     answers the setup question itself, and resumes the earlier task for a follow-up."""
 
-    def __init__(self) -> None:
+    def __init__(self, answer: str | None = None) -> None:
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self.errors: list[str] = []
+        self.answer = answer  # what each task ends with, if not "Done: ..."
 
     def __enter__(self) -> "StandIn":
         self.thread.start()
@@ -405,7 +406,7 @@ class StandIn:
                     task.status = TaskStatus.WAITING
                 else:
                     task.status = TaskStatus.SUCCEEDED
-                    task.summary = f"Done: {task.prompt}"
+                    task.summary = self.answer or f"Done: {task.prompt}"
 
 
 def test_a_whole_check(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -528,6 +529,36 @@ def test_three_at_a_time_and_each_result_as_it_comes_back(monkeypatch: pytest.Mo
     assert setup_check.table(outcomes[:1])[2].startswith(
         '| **A question about your setup**: "Question 0" |'
     )
+
+
+@pytest.mark.parametrize(
+    ("answer", "complete"),
+    [
+        ("Read 4 of the 9 tables so far: the list is partly read, and a background agent is "
+         "still fetching the rest.", False),
+        ("Based on part of the list (the first page): orders, customers.", False),
+        ("The database has 9 tables: orders, customers, invoices and 6 more. Two partial "
+         "refunds are still running.", True),
+    ],
+)  # fmt: skip
+def test_a_request_works_only_when_its_answer_is_complete(
+    database_url: str, monkeypatch: pytest.MonkeyPatch, answer: str, complete: bool
+) -> None:
+    del database_url
+    monkeypatch.setattr(setup_check, "POLL_SECONDS", 0.05)
+    with session_scope() as session:
+        make_project(session, "acme-web", title="Acme web")
+        make_instance(session, "acme-db", title="Acme DB", secret_ref="file://a/db")
+    bind("acme-web", "acme-db")
+    with session_scope(commit=False) as session:
+        probes, _ = setup_check.plan(session)
+    with StandIn(answer):
+        out = setup_check.Runner(get_settings(), minutes=0.1).one(probes[0])
+    assert out.ran == ["list_tables on acme-db"]
+    assert not out.error
+    assert out.ok is complete
+    if not complete:
+        assert out.notes[-1].startswith("the answer isn't complete: it says “")
 
 
 def test_it_says_when_the_app_isn_t_picking_requests_up(

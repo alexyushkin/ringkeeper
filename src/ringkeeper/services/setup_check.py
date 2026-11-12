@@ -19,6 +19,7 @@ click.
 import contextlib
 import json
 import logging
+import re
 import threading
 import time
 import uuid
@@ -75,6 +76,13 @@ DEFAULT_CEILING = 5.0  # USD: no more requests are started past this (an API key
 START_SECONDS = 90  # the first request not routed by then: the app isn't running
 AT_ONCE = 3  # requests under way at the same time
 SETTLED = frozenset({*TERMINAL_STATUSES, TaskStatus.NEEDS_INPUT})
+# An answer that says it's only part of what was asked, or that work goes on after it.
+PARTIAL = re.compile(
+    r"\b(partly|partially|incomplete|only (?:read |got |fetched |listed )?(?:a )?part of"
+    r"|based on part|not (?:yet )?(?:finished|complete)|(?:a |the )?background (?:agent|task)"
+    r"|in the background|still (?:fetching|loading|reading|gathering|collecting))\b",
+    re.IGNORECASE,
+)
 
 SETUP_QUESTION = "Which projects do I have, and which connections does each one use?"
 WEB_LOOKUP = "Look up the latest stable Python release on python.org and tell me its version."
@@ -130,6 +138,7 @@ class Outcome:
     notes: list[str] = field(default_factory=list[str])  # refused calls it got past, and such
     cost: float = 0.0
     timed_out: bool = False
+    partial: str = ""  # what its answer says that shows it isn't complete
 
     @property
     def reached(self) -> bool:
@@ -140,7 +149,7 @@ class Outcome:
 
     @property
     def ok(self) -> bool:
-        return not self.error and not self.timed_out and self.reached
+        return not self.error and not self.timed_out and self.reached and not self.partial
 
 
 def _of(instance: Instance) -> str:
@@ -407,25 +416,14 @@ class Runner:
             ).all()
             out.projects = sorted({t.project for t in found})
             mine = [m for m in messages if m.role is MessageRole.USER]
-            meta: dict[str, Any] = (mine[-1].routing or {}) if mine else {}
-            if found:
-                out.routed = ", ".join(titles.of(session, p) for p in out.projects)
-                if any(t.general for t in found):
-                    out.routed += " (general work)"
-            elif meta.get("about_ringkeeper") or meta.get("help"):
-                out.routed = "answered as a question about Ringkeeper"
-            elif meta.get("unplaced"):
-                out.routed = "nowhere: it asked which project in its reply"
-            elif any(m.route_error for m in mine):
-                out.routed = "nowhere: the router failed"
-            elif mine and mine[-1].routed_at is not None:
-                out.routed = "answered without starting work"
-            elif mine:
-                out.routed = NOT_ROUTED
+            out.routed = _where(session, found, mine)
             out.ran = _tools(session, sessions)
             replies = [m.body for m in messages if m.role is not MessageRole.USER]
             summaries = [t.summary for t in found if t.summary]
-            out.result = _short(" ".join(summaries) or (replies[-1] if replies else ""), 500)
+            answer = " ".join(summaries) or (replies[-1] if replies else "")
+            out.result = _short(answer, 500)
+            said = PARTIAL.search(answer)
+            out.partial = said.group(0) if said else ""
             errors = [str(m.route_error) for m in mine if m.route_error]
             errors += [str(t.error) for t in found if t.error]
             refused = [
@@ -448,8 +446,7 @@ class Runner:
                 out.notes += [f"the gateway {r} (it went on)" for r in dict.fromkeys(refused)]
             if errors and not out.error:
                 out.error = _short("; ".join(errors), 400)
-            if not out.error and not out.reached:
-                out.notes.append(f"it didn't use {out.probe.connection_title}")
+            _judge(out)
             spent = sum(s.cost_usd or 0.0 for s in sessions)
             spent += sum(float((m.routing or {}).get("cost_usd") or 0.0) for m in mine)
             out.cost = round(spent, 4)
@@ -565,6 +562,33 @@ def _untaught(session: Session, settings: Settings, decision: Decision, choice: 
     else:
         for column, value in kept.items():
             setattr(saved, column, value)
+
+
+def _where(session: Session, found: Sequence[Task], mine: Sequence[Message]) -> str:
+    """Where a request went, in words."""
+    meta: dict[str, Any] = (mine[-1].routing or {}) if mine else {}
+    if found:
+        said = ", ".join(titles.of(session, p) for p in sorted({t.project for t in found}))
+        return said + (" (general work)" if any(t.general for t in found) else "")
+    if meta.get("about_ringkeeper") or meta.get("help"):
+        return "answered as a question about Ringkeeper"
+    if meta.get("unplaced"):
+        return "nowhere: it asked which project in its reply"
+    if any(m.route_error for m in mine):
+        return "nowhere: the router failed"
+    if mine and mine[-1].routed_at is not None:
+        return "answered without starting work"
+    return NOT_ROUTED if mine else ""
+
+
+def _judge(out: Outcome) -> None:
+    """Notes on what makes a request that raised no error fail all the same."""
+    if out.error:
+        return
+    if not out.reached:
+        out.notes.append(f"it didn't use {out.probe.connection_title}")
+    if out.partial:
+        out.notes.append(f"the answer isn't complete: it says “{out.partial}”")
 
 
 def _quiet(_done: int, _total: int, _now: str | None) -> None:
