@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
+  subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
+  subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by
+  default), counted from the estimated cost, and asks whether to go on, with a Continue button.
+  A subscription still isn't billed per task: this is what the estimate says.
 - **A task finishes its work before it answers.** A task could hand part of its work to a
   background agent and answer while that was still fetching, and the answer counted as done. A
   task's background shells and agents are now off, and it's told to finish everything before

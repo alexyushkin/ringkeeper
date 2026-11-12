@@ -123,12 +123,14 @@ class Job:
     feature: bool = False  # the task runs the architect loop
     complexity: Complexity | None = None
     task_budget_usd: float | None = None  # the whole task's cap; budget_usd is what's left
+    estimated: bool = False  # the cap is an estimate: a subscription isn't billed per task
 
     @classmethod
     def of(cls, row: WorkerSession) -> "Job":
         task = row.task
         spent = sum(s.cost_usd or 0 for s in task.sessions if s.id != row.id)
-        left = None if task.budget_usd is None else max(task.budget_usd - spent, 0.01)
+        cap = task.budget_usd if task.budget_usd is not None else task.estimate_cap_usd
+        left = None if cap is None else max(cap - spent, 0.01)
         return cls(
             session_id=row.id,
             task_id=task.id,
@@ -146,7 +148,8 @@ class Job:
             model=row.model,
             feature=task.phase is not None,  # architect-led (tasks.planned)
             complexity=task.complexity,
-            task_budget_usd=task.budget_usd,
+            task_budget_usd=cap,
+            estimated=task.budget_usd is None and cap is not None,
         )
 
 
@@ -236,8 +239,10 @@ def outcome_status(  # noqa: PLR0911 (one return per outcome)
         job.budget_usd is not None and isinstance(cost, int | float) and cost > job.budget_usd
     )
     if subtype == "error_max_budget_usd" or over_budget:
+        estimate = ", estimated" if job.estimated else ""
         return TaskStatus.BUDGET_EXCEEDED, (
-            f"Stopped at its spending cap (${job.budget_usd:.2f}). Send a follow-up to continue."
+            f"Stopped at its spending cap (${job.budget_usd or 0:.2f}{estimate}). Send a "
+            "follow-up to continue."
         )
     if subtype == "success" and not result.get("is_error") and collected.exit_code == 0:
         if collected.not_done:  # it ran, but said it couldn't do it: never "done"
@@ -530,7 +535,8 @@ class Manager:
         # Whichever is configured now (the Settings screen's mode), not what was set
         # when the task was queued.
         with session_scope(commit=False) as session:
-            credential = claude_place.credential(session, self.vault, settings, job.project)
+            # Fails early when Claude isn't connected, and registers a cloud's secrets.
+            claude_place.credential(session, self.vault, settings, job.project)
             place = claude_place.chosen(session, job.project)
         model = claude_place.model_for(place, model)
         token, claims = issue_token(
@@ -573,7 +579,8 @@ class Manager:
             ),
             "role": job.role.value,
             "checks": checks if job.feature and not architect_role else [],
-            "max_budget_usd": job.budget_usd if credential.mode is AuthMode.API_KEY else None,
+            # On a subscription the cap is the estimated cost: Claude Code stops there too.
+            "max_budget_usd": job.budget_usd,
             "resume": job.sdk_session_id,
             "model": model,
             "effort": effort or session_effort(settings, job.role, job.complexity),
@@ -644,11 +651,15 @@ class Manager:
         task.finished_at = None
         task.error = None
         cap = job.task_budget_usd or 0
+        question = (
+            f"This task reached its spending cap (${cap:.2f}, estimated: a subscription isn't "
+            f"billed per task). Let it go on for another ${step:.2f}, or stop it here?"
+            if job.estimated
+            else f"This task reached its spending cap (${cap:.2f}). Give it another "
+            f"${step:.2f} to finish, or stop it here?"
+        )
         payload = {
-            "question": (
-                f"This task reached its spending cap (${cap:.2f}). Give it another "
-                f"${step:.2f} to finish, or stop it here?"
-            ),
+            "question": question,
             "budget": step,
             "role": job.role.value,
             "options": ["continue", "stop"],

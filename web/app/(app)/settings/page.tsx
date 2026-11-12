@@ -250,9 +250,12 @@ export default function SettingsPage() {
             <NumberSetting label="Tasks at once" value={v.max_concurrent_workers} onSave={(n) => change({ max_concurrent_workers: n })} hint="How many tasks can run at the same time." />
             <NumberSetting label="Keep full transcripts for (days)" value={v.retention_days} onSave={(n) => change({ retention_days: n })} hint="After this, transcripts are deleted. Task summaries, approvals and the activity log stay." />
             <NumberSetting label="Max steps per task" value={v.default_max_turns} onSave={(n) => change({ default_max_turns: n })} hint="A task stops after this many agent turns." />
-            {v.claude_auth_mode === "api_key" ? (
-              <MoneySetting label="Spending cap per task ($)" value={v.task_budget_usd} onSave={(n) => change({ task_budget_usd: n })} hint="At the cap a task pauses and asks whether to give it this much more." />
-            ) : null}
+            <MoneySetting
+              label="Spending cap per task ($)"
+              value={v.task_budget_usd}
+              onSave={(n) => change({ task_budget_usd: n })}
+              hint={v.claude_auth_mode === "api_key" ? "At the cap a task pauses and asks whether to give it this much more." : "A subscription isn't billed per task, so this is the estimated cost. At the cap a task pauses and asks whether to go on."}
+            />
           </Section>
           {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
           {DESKTOP ? (

@@ -514,7 +514,10 @@ def _answer_cap(
         task.finished_at = datetime.now(UTC)
         task.error = f"stopped at its spending cap by {by}"
         return
-    task.budget_usd = (task.budget_usd or 0) + float(payload["budget"])
+    if task.budget_usd is not None:
+        task.budget_usd += float(payload["budget"])
+    else:  # a subscription's estimated cap
+        task.estimate_cap_usd = (task.estimate_cap_usd or 0) + float(payload["budget"])
     role = SessionRole(payload.get("role", SessionRole.WORKER.value))
     sdk_session = tasks.last_sdk_session(task, role)
     if sdk_session is None:

@@ -255,7 +255,8 @@ def test_subscription_chosen_in_settings_runs_a_routed_task_without_an_api_key()
     env = fake.started[0].env
     assert [name for name in BILLING_ENV_VARS if name in env] == PROXY_VARS
     assert CLAUDE_OAUTH_TOKEN not in json.dumps(env)
-    assert task_env(fake.started[0])["max_budget_usd"] is None  # no USD cap on a subscription
+    # A subscription isn't billed per task: the cap is the estimated cost.
+    assert task_env(fake.started[0])["max_budget_usd"] == 1.0
 
 
 @pytest.mark.usefixtures("task_registry")
@@ -395,6 +396,32 @@ def test_at_the_spending_cap_a_task_pauses_and_asks() -> None:
     stopped = task(task_id)
     assert stopped.status is TaskStatus.STOPPED
     assert stopped.error == "stopped at its spending cap by owner"
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_on_a_subscription_a_task_pauses_at_the_estimated_cap() -> None:
+    with session_scope() as session:
+        runtime.update(session, {"claude_auth_mode": "subscription"}, by="owner")
+    spends = iter([1.1, 0.3])
+    m, fake = manager(
+        lambda _spec: Script(after=[result_line(subtype="error_max_budget_usd", cost=next(spends))])
+    )
+    task_id = run_task()
+    found = task(task_id)
+    assert found.budget_usd is None  # nothing is billed per task
+    assert found.estimate_cap_usd == 1.0
+    m.tick()
+    m.wait_idle()
+    assert task(task_id).status is TaskStatus.NEEDS_INPUT
+    question = cap_question(task_id)
+    assert question.payload is not None
+    assert "($1.00, estimated" in question.payload["question"]
+    assert question.payload["options"] == ["continue", "stop"]
+    answer(question, "continue")
+    assert task(task_id).estimate_cap_usd == 2.0
+    assert task(task_id).budget_usd is None
+    drive(m, lambda: len(fake.started) == 2)
+    assert task_env(fake.started[1])["max_budget_usd"] == pytest.approx(0.9)
 
 
 @pytest.mark.usefixtures("task_registry")

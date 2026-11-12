@@ -22,6 +22,10 @@ Finder, choose **Go › Applications**, right-click **Ringkeeper**, and choose
 **Where do I see what a task changed?** Open the task from Tasks: Data it changed
 lists what it did on connections, with Revert, and Changes shows its files.
 
+**Can a task run up a big bill?** Each task has a spending cap (Settings › Advanced, $1 by
+default). At the cap it pauses and asks whether to go on, with a Continue button. On a Claude
+subscription, which isn't billed per task, the cap is counted from the estimated cost.
+
 **Can it change things without asking?** Live client data never changes without
 asking. Reads always run. Changes on staging
 and development connections run and are logged. Changes on production
