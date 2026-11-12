@@ -6,8 +6,8 @@ Where a file is: in the project's folder (a task that didn't use a branch, or ch
 were kept), or only on the task's branch (a code task's changes, until you keep them). A
 file on the branch is opened from a copy taken from the branch, under the data folder, so
 the folder you work in isn't touched. Only files the task recorded as changed are ever
-read, and never outside the project's folder. A file that would run when opened (a program
-or a script) is shown in its folder instead.
+read, and never outside the project's folder. Only documents (PDF, Office files, text,
+Markdown, CSV, JSON and pictures) open in their app; anything else is shown in its folder.
 """
 
 import contextlib
@@ -29,46 +29,37 @@ from ringkeeper.services import branches, projects
 ATTACH_BYTES = 8 * 1024 * 1024  # each, so Discord (10 MB for a bot), Slack and Telegram take it
 MOST_ATTACHED = 5
 COPIES = "task-files"  # under the data folder: files opened from a task's branch
-# Opened, these would run: shown in their folder instead.
-RUNS = frozenset(
+# Opened in their app: documents only. Anything else (a program, a script, a web page, a
+# shortcut, a file with no type) is shown in its folder instead, so nothing runs by a click.
+OPENS = frozenset(
     [
-        ".exe",
-        ".com",
-        ".bat",
-        ".cmd",
-        ".ps1",
-        ".psm1",
-        ".vbs",
-        ".vbe",
-        ".js",
-        ".jse",
-        ".wsf",
-        ".wsh",
-        ".msi",
-        ".msp",
-        ".scr",
-        ".lnk",
-        ".url",
-        ".hta",
-        ".cpl",
-        ".reg",
-        ".jar",
-        ".sh",
-        ".bash",
-        ".zsh",
-        ".command",
-        ".app",
-        ".py",
-        ".pyw",
-        ".rb",
-        ".pl",
-        ".appref-ms",
-        ".scf",
-        ".dmg",
-        ".pkg",
-        ".deb",
-        ".rpm",
-        ".desktop",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".odt",
+        ".ods",
+        ".odp",
+        ".rtf",
+        ".txt",
+        ".log",
+        ".md",
+        ".markdown",
+        ".csv",
+        ".tsv",
+        ".json",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".tif",
+        ".tiff",
+        ".heic",
     ]
 )
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -79,11 +70,16 @@ class TaskFile:
     path: str  # in the project's folder, with /
     size: int | None  # None: gone (the task deleted it)
     on_branch: bool  # only on the task's branch, not in the folder yet
-    runs: bool  # a program or script: shown in its folder, never opened
+    runs: bool  # not a document (see OPENS): shown in its folder, never opened
 
     @property
     def attachable(self) -> bool:
         return self.size is not None and 0 < self.size <= ATTACH_BYTES
+
+
+def shown_only(path: str | Path) -> bool:
+    """Not a document type: shown in its folder, never opened."""
+    return Path(path).suffix.lower() not in OPENS
 
 
 def _root(session: Session, settings: Settings, task: Task) -> Path:
@@ -129,13 +125,11 @@ def listed(session: Session, settings: Settings, task: Task) -> list[TaskFile]:
     try:
         root = _root(session, settings, task)
     except Exception:
-        return [
-            TaskFile(p, None, False, Path(p).suffix.lower() in RUNS) for p in task.changed_files
-        ]
+        return [TaskFile(p, None, False, shown_only(p)) for p in task.changed_files]
     branch = _branch(settings, root, task)
     found: list[TaskFile] = []
     for path in task.changed_files:
-        runs = Path(path).suffix.lower() in RUNS
+        runs = shown_only(path)
         if branch is not None:
             found.append(TaskFile(path, _on_branch_size(settings, root, branch, path), True, runs))
             continue
@@ -216,14 +210,14 @@ def attachments(session: Session, settings: Settings, task: Task) -> list[tuple[
 
 
 def show(path: Path, *, reveal: bool) -> None:
-    """Open the file in its app, or show it in its folder (a program or script: always
-    shown, never run)."""
-    reveal = reveal or path.suffix.lower() in RUNS
+    """Open the file in its app, or show it in its folder (anything but a document: always
+    shown, never opened)."""
+    reveal = reveal or shown_only(path)
     if sys.platform == "win32":
         if reveal:
             subprocess.Popen(["explorer", f"/select,{path}"], creationflags=_NO_WINDOW)  # noqa: S603, S607
         else:
-            os.startfile(path)  # noqa: S606 (a file the task made, not a program: see RUNS)  # type: ignore[attr-defined]
+            os.startfile(path)  # noqa: S606 (a document the task made: see OPENS)  # type: ignore[attr-defined]
     elif sys.platform == "darwin":
         subprocess.Popen(["open", "-R", str(path)] if reveal else ["open", str(path)])  # noqa: S603
     else:

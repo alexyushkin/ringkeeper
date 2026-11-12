@@ -150,3 +150,10 @@ def test_a_program_is_shown_in_its_folder_never_run(
         ("popen", ["explorer", f"/select,{tmp_path / 'run.bat'}"]),
         ("open", tmp_path / "notes.txt"),
     ]
+
+
+def test_only_documents_open_everything_else_is_shown_in_its_folder() -> None:
+    for name in ["report.pdf", "Q3.XLSX", "notes.md", "orders.csv", "data.json", "logo.png"]:
+        assert not task_files.shown_only(name), name
+    for name in ["page.html", "logo.svg", "macro.xlsm", "run.bat", "tool", "setup.exe", "a.js"]:
+        assert task_files.shown_only(name), name

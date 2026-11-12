@@ -419,8 +419,8 @@ def task_files_of(task_id: str, session: SessionDep) -> list[dict[str, Any]]:
 
 @router.post("/tasks/{task_id}/files/open")
 def open_task_file(task_id: str, data: FileIn, session: SessionDep) -> dict[str, bool]:
-    """Desktop: open a file the task made in its app, or show it in its folder (a program
-    or script is only ever shown). A file only on the task's branch opens from a copy."""
+    """Desktop: open a file the task made in its app, or show it in its folder (anything but
+    a document is only ever shown). A file only on the task's branch opens from a copy."""
     settings = current_settings()
     if settings.mode != "desktop":
         raise HTTPException(

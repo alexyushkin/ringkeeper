@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Only documents open from a task's files.** **Open** works for PDFs, Office files, text,
+  Markdown, CSV, JSON and pictures. Anything else a task wrote (a web page, a program, a
+  script, a file with no type) is shown in its folder instead, so nothing runs by a click.
+  Before, only a list of known program types was held back.
 - **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
   subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
   subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by
