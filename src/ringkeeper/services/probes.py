@@ -99,9 +99,26 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, P
             tools = listed["tools"]
             names = ", ".join(t["name"] for t in tools[:8]) + (", ..." if len(tools) > 8 else "")
             said = f"Connected: {len(tools)} tool{'s' if len(tools) != 1 else ''} ({names})."
+            said = f"{said} {_looked_for(target, [str(t['name']) for t in tools])}".strip()
             return f"{said} {await mcp.accounts(target)}".strip()
         case _:
             raise ToolError(f"Testing {kind} connections isn't supported yet.")
+
+
+# What a service's own server is added for, when the built-in connection can't do it: said
+# on its Test and in Check my setup, so it's plain whether it's there.
+LOOKED_FOR: dict[str, tuple[str, str]] = {"airtable": ("automation", "Automations")}
+
+
+def _looked_for(target: Target, names: list[str]) -> str:
+    wanted = LOOKED_FOR.get(str((target.config or {}).get("remote") or ""))
+    if wanted is None:
+        return ""
+    word, label = wanted
+    found = [n for n in names if word in n.lower()]
+    if found:
+        return f"{label}: {', '.join(found[:4])}{', ...' if len(found) > 4 else ''}."
+    return f"No {label.lower()} tools among them."
 
 
 async def _offers(kind: InstanceType, target: Target) -> str:

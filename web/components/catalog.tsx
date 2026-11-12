@@ -200,8 +200,15 @@ const BUILT_IN: Tile[] = [
   { key: "formsonfire", label: "Forms On Fire", sub: "Forms and data sources", open: "form", category: "Other", badge: "Unverified", words: ["forms", "formsonfire", "fof", "appenate", "truecontext"] },
   { key: "dataforseo", label: "DataForSEO", sub: "SEO data", open: "form", category: "Other", words: ["dataforseo", "seo", "keywords", "serp", "backlinks"] },
 ];
-// Sign-in services shown as built-in tiles instead (Airtable: the built-in one has undo).
-const NOT_SIGN_IN = new Set(["retell", "airtable", "github"]);
+// Sign-in services left off the shelf: only when a built-in tile opens that same service
+// (Retell), or the server isn't offered at all (GitHub: shelf=False in remote.py). A service
+// with both its own server and a built-in connection shows both, each saying what it's for
+// (Airtable). tests/test_catalog.py checks every name here against remote.py.
+const NOT_SIGN_IN = new Set(["retell", "github"]);
+// What a service's own server is for, when the built-in tile is there too.
+const SIGN_IN_SUB: Record<string, string> = {
+  airtable: "Automations and interfaces: Airtable's own server",
+};
 // Where the services you sign in to belong.
 const SIGN_IN_CATEGORY: Record<string, Category> = {
   neon: "Databases",
@@ -215,6 +222,7 @@ const SIGN_IN_CATEGORY: Record<string, Category> = {
 // What else a search for a service you sign in to might say.
 const SIGN_IN_WORDS: Record<string, string[]> = {
   calcom: ["calendar", "booking", "bookings", "scheduling", "schedule", "meetings", "appointments"],
+  airtable: ["automations", "automation", "interfaces", "interface"],
 };
 
 // Services with no logo in lib/client/logos or public/logos: their initials on their color.
@@ -311,17 +319,28 @@ function TileButton({ mark, label, sub, badge, onClick, database = false }: { ma
 
 type Opened = { tile: Tile } | { service: RemoteService } | { vendor: VendorInfo };
 
-export function Catalog(target: Target) {
+export function Catalog({ start, startScope, ...target }: Target & { start?: string; startScope?: Record<string, string> }) {
   const services = useApi<RemoteService[]>("remote-services");
   const vendors = useApi<VendorInfo[]>("vendors");
   const [opened, setOpened] = useState<Opened | null>(null);
+  // A link to one service's own server (?service=airtable): its form, once the list is in.
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    if (!start || started || !services.data) return;
+    const service = services.data.find((s) => s.key === start);
+    if (service) setOpened({ service });
+    setStarted(true);
+  }, [start, started, services.data]);
   const [searching, setSearching] = useState(false);
   const shared = target.kind === "shared";
   const signIn = (services.data ?? []).filter((s) => !NOT_SIGN_IN.has(s.key));
-  const openKey = (key: string) => {
-    const tile = BUILT_IN.find((t) => t.key === key);
-    const service = (services.data ?? []).find((s) => s.key === key);
-    const vendor = (vendors.data ?? []).find((v) => v.key === key);
+  // A tile's id says which kind it is: "tile:airtable" (built in) or "service:airtable"
+  // (Airtable's own server) are two different things with the same key.
+  const openId = (id: string) => {
+    const [kind, key] = id.split(":", 2) as [string, string];
+    const tile = kind === "tile" ? BUILT_IN.find((t) => t.key === key) : undefined;
+    const service = kind === "service" ? (services.data ?? []).find((s) => s.key === key) : undefined;
+    const vendor = kind === "vendor" ? (vendors.data ?? []).find((v) => v.key === key) : undefined;
     if (tile) setOpened({ tile });
     else if (service) setOpened({ service });
     else if (vendor) setOpened({ vendor });
@@ -350,7 +369,7 @@ export function Catalog(target: Target) {
         ) : tile?.open === "google" ? (
           <GoogleConnect owner={shared ? undefined : target.client} shared={shared} project={target.project} onAdded={target.onAdded} />
         ) : service ? (
-          <ConnectRemote service={service} client={target.client} project={target.project} shared={shared} onAdded={target.onAdded} />
+          <ConnectRemote service={service} client={target.client} project={target.project} shared={shared} onAdded={target.onAdded} startScope={service.key === start ? startScope : undefined} />
         ) : (
           <Spinner />
         )}
@@ -361,17 +380,19 @@ export function Catalog(target: Target) {
   // Every service, by what people look for: built in (Ringkeeper's own rules) and the
   // service's own server you sign in to.
   const tiles = [
-    ...BUILT_IN.map((tile) => ({ key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: tile.badge ?? "Built in", words: tile.words, open: () => setOpened({ tile }) })),
+    ...BUILT_IN.map((tile) => ({ id: `tile:${tile.key}`, key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: tile.badge ?? "Built in", words: tile.words, open: () => setOpened({ tile }) })),
     ...signIn.map((service) => ({
+      id: `service:${service.key}`,
       key: service.key,
       label: service.name,
-      sub: service.needs || (service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token"),
+      sub: SIGN_IN_SUB[service.key] ?? (service.needs || (service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token")),
       category: SIGN_IN_CATEGORY[service.key] ?? ((service.category || "Other") as Category),
       badge: "Official",
       words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/), ...(SIGN_IN_WORDS[service.key] ?? [])],
       open: () => setOpened({ service }),
     })),
     ...(vendors.data ?? []).map((vendor) => ({
+      id: `vendor:${vendor.key}`,
       key: vendor.key,
       label: vendor.name,
       sub: vendor.sub,
@@ -388,7 +409,7 @@ export function Catalog(target: Target) {
           Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
         </p>
       ) : null}
-      <CatalogSearch {...target} featured={tiles} onFeatured={openKey} onTyped={setSearching} />
+      <CatalogSearch {...target} featured={tiles} onFeatured={openId} onTyped={setSearching} />
       {searching ? null : (
         <>
           <p className="text-xs text-muted">
@@ -401,7 +422,7 @@ export function Catalog(target: Target) {
                 <h3 className="font-medium">{category}</h3>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {here.map((tile) => (
-                    <TileButton key={tile.key} mark={tile.key} database={tile.key === "supabase" && tile.badge === "Built in"} label={tile.label} sub={tile.sub} badge={tile.badge} onClick={tile.open} />
+                    <TileButton key={tile.id} mark={tile.key} database={tile.key === "supabase" && tile.badge === "Built in"} label={tile.label} sub={tile.sub} badge={tile.badge} onClick={tile.open} />
                   ))}
                 </div>
               </section>
@@ -411,7 +432,7 @@ export function Catalog(target: Target) {
         </>
       )}
       <Details label="Add a server by its address">
-        <AddByUrl {...target} />
+        <AddByUrl {...target} services={services.data ?? []} onOpen={openId} />
       </Details>
       <Details label="Install extension (.mcpb file)">
         <InstallExtension {...target} />
@@ -421,6 +442,7 @@ export function Catalog(target: Target) {
 }
 
 interface Featured {
+  id: string; // "tile:airtable", "service:airtable": the key alone can be both
   key: string;
   label: string;
   sub: string;
@@ -554,8 +576,8 @@ function CatalogSearch({ featured = [], onFeatured, onTyped, ...target }: Target
       {matches.length ? (
         <ul className="space-y-2" aria-label="Built in">
           {matches.map((f) => (
-            <li key={f.key}>
-              <button type="button" onClick={() => onFeatured?.(f.key)} className="flex w-full items-center gap-3 rounded-xl border border-accent bg-accent-soft px-3 py-2 text-left text-sm">
+            <li key={f.id}>
+              <button type="button" onClick={() => onFeatured?.(f.id)} className="flex w-full items-center gap-3 rounded-xl border border-accent bg-accent-soft px-3 py-2 text-left text-sm">
                 <ServiceMark id={f.key} database={f.key === "supabase"} />
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
@@ -1011,8 +1033,10 @@ function SharedChoice({ fixed, kind, onKind, all, onAll, project }: { fixed?: Ki
   );
 }
 
-/** Any remote MCP server, by its address: sign in if it offers that, else a key. */
-function AddByUrl(target: Target) {
+/** Any remote MCP server, by its address: sign in if it offers that, else a key. A known
+ * service's address opens that service's own form here, or its built-in one: never "connect
+ * it from above" with nothing above to connect. */
+function AddByUrl({ services, onOpen, ...target }: Target & { services: RemoteService[]; onOpen: (id: string) => void }) {
   const [url, setUrl] = useState("");
   const [probed, setProbed] = useState<{ url: string; signin: boolean; open: boolean; recommended: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1039,11 +1063,37 @@ function AddByUrl(target: Target) {
       </Button>
       {error ? <Alert>{error}</Alert> : null}
       {probed?.recommended ? (
-        <Alert tone="good">That&apos;s a service with built-in rules: connect it from Recommended above.</Alert>
+        <KnownService name={probed.recommended} services={services} onOpen={onOpen} {...target} />
       ) : null}
       {probed && !probed.recommended ? <RemoteConnect key={probed.url} url={probed.url} headers={[]} signin={probed.signin} open={probed.open} title={new URL(probed.url).hostname.split(".").slice(-2, -1)[0] ?? "server"} {...target} /> : null}
     </div>
   );
+}
+
+/** A typed address that's a service Ringkeeper knows: its own server's form, right here, or
+ * (when its server isn't offered, like GitHub's) its built-in connection. */
+function KnownService({ name, services, onOpen, ...target }: Target & { name: string; services: RemoteService[]; onOpen: (id: string) => void }) {
+  const service = services.find((s) => s.key === name);
+  const tile = BUILT_IN.find((t) => t.key === name);
+  if (service) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted">That&apos;s {service.name}&apos;s own server, with Ringkeeper&apos;s rules for it.</p>
+        <ConnectRemote service={service} client={target.client} project={target.project} shared={target.kind === "shared"} onAdded={target.onAdded} />
+      </div>
+    );
+  }
+  if (tile) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted">Ringkeeper connects {tile.label} with its built-in connection: {tile.sub.toLowerCase()}.</p>
+        <Button kind="primary" onClick={() => onOpen(`tile:${tile.key}`)}>
+          Connect {tile.label}
+        </Button>
+      </div>
+    );
+  }
+  return <Alert>Ringkeeper knows that address, but can&apos;t connect it here yet.</Alert>;
 }
 
 /** A local server with a newer version in the catalog: offered, never installed by itself. */

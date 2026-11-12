@@ -43,7 +43,9 @@ def result_text(
     head = f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
     said = (task.summary if task.status is TaskStatus.SUCCEEDED else task.error) or ""
     if task.status is TaskStatus.NOT_DONE and task.offer:
-        said += f"\n\n{task.offer['label']}?"
+        # A link and retry asks; a recommendation (the service's own server) just says so.
+        ending = " (in Ringkeeper, under Connectors)." if "recommend" in task.offer else "?"
+        said += f"\n\n{task.offer['label']}{ending}"
     if not full or not said.strip():
         return head + (f"\n{link}" if link else "")
     shown = telegram_text.question(said, limit)
@@ -86,8 +88,8 @@ LINK_PREFIX = "rkl"  # a chat button: link the connection a task lacked, and run
 
 def offer_button(task: Task) -> tuple[str, str] | None:
     """(label, action) for a not-done task's one-click link, if it has one."""
-    if task.status is not TaskStatus.NOT_DONE or not task.offer:
-        return None
+    if task.status is not TaskStatus.NOT_DONE or not task.offer or "instance" not in task.offer:
+        return None  # nothing to link here: a recommendation is added in the app
     label = str(task.offer["label"])
     return (label if len(label) <= 75 else "Link it and retry"), f"{LINK_PREFIX}:{task.id}"
 

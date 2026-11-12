@@ -625,3 +625,36 @@ def test_no_logo_can_run_or_fetch_anything() -> None:
     for logo in folder.glob("*.svg"):
         body = logo.read_text(encoding="utf-8")
         assert not re.search(r"<script|onload=|<foreignObject|href=\"http", body, re.I), logo.name
+
+
+def test_every_service_on_the_shelf_can_be_reached_from_search_and_its_address(
+    owner: TestClient,
+) -> None:
+    """Airtable's own server was in remote.py but nowhere in the app: the shelf hid it, search
+    hid it, and its address said "connect it from Recommended above". The shelf lists every
+    shelf service, its address resolves to it (and the form opens there), and the web leaves a
+    service off only when a built-in tile opens it, or remote.py keeps it off the shelf."""
+    import re  # noqa: PLC0415
+
+    from ringkeeper import remote  # noqa: PLC0415
+
+    shelf = {s["key"] for s in owner.get("/remote-services").json()}
+    for service in remote.CATALOG:
+        if not service.shelf:
+            continue
+        assert service.key in shelf, service.key
+        if "{" not in service.url:  # an address of its own, not one the user types in
+            probed = owner.post("/catalog/probe", json={"url": service.url})
+            if probed.status_code == 200:
+                assert probed.json()["recommended"] == service.key, service.key
+    source = (Path(__file__).parents[1] / "web" / "components" / "catalog.tsx").read_text(
+        encoding="utf-8"
+    )
+    listed = re.search(r"NOT_SIGN_IN = new Set\(\[(.*?)\]\)", source)
+    assert listed is not None
+    hidden = set(re.findall(r'"([a-z0-9]+)"', listed.group(1)))
+    opened_by_tile = set(re.findall(r'\{ key: "([a-z0-9]+)",[^}]*open: "remote"', source))
+    for key in hidden:
+        service = remote.BY_KEY[key]
+        assert not service.shelf or key in opened_by_tile, key
+    assert "airtable" not in hidden  # both: built in for records, its own server for automations

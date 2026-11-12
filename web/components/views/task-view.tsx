@@ -45,7 +45,7 @@ interface Task {
   summary: string | null;
   error: string | null;
   plan_limit?: string | null;
-  offer?: { label: string } | null;
+  offer?: { label: string; instance?: string; recommend?: string; href?: string } | null;
   partly_done?: string | null; // not done, but this part was
   prompt: string;
   thread_id: string | null;
@@ -248,7 +248,15 @@ export function TaskView({ id }: { id: string }) {
         {t.plan_limit ? <Alert tone="warn">{t.plan_limit}</Alert> : null}
         {t.partly_done && t.status === "not_done" ? <Alert tone="good">Done: {t.partly_done}</Alert> : null}
         {t.error && t.status !== "succeeded" ? <Alert tone={t.partly_done ? "warn" : undefined}>{t.status === "not_done" ? `Not done: ${t.error}` : t.error}</Alert> : null}
-        {t.offer ? <LinkAndRetry id={id} label={t.offer.label} onDone={(again) => router.push(taskHref(again))} /> : null}
+        {t.offer?.instance ? <LinkAndRetry id={id} label={t.offer.label} onDone={(again) => router.push(taskHref(again))} /> : null}
+        {t.offer?.recommend && t.offer.href ? (
+          <p className="text-sm">
+            {t.offer.label}:{" "}
+            <Link href={t.offer.href} className="font-medium text-accent">
+              add it
+            </Link>
+          </p>
+        ) : null}
         {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>

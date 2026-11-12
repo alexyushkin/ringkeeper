@@ -23,6 +23,36 @@ ASK = (
 )
 
 
+# A service a project can have twice over: Ringkeeper's built-in connection, and the service's
+# own MCP server (remote.py). Which one is for what, said when a project has both.
+BOTH: dict[str, tuple[InstanceType, str, str, str]] = {
+    "airtable": (
+        InstanceType.AIRTABLE,
+        "Airtable",
+        "records, bases and tables (built in, with undo)",
+        "automations and interfaces (Airtable's own server)",
+    ),
+}
+
+
+def _both(links: list[ProjectInstance]) -> list[str]:
+    """For each service with both kinds linked: which connection to use for what."""
+    lines: list[str] = []
+    for remote, (kind, name, built_in, own) in BOTH.items():
+        builtins = [link.instance.name for link in links if link.instance_type is kind]
+        servers = [
+            link.instance.name for link in links
+            if link.instance_type is InstanceType.MCP
+            and (link.instance.config or {}).get("remote") == remote
+        ]  # fmt: skip
+        if builtins and servers:
+            lines.append(
+                f"{name} is here twice: {built_in} through {', '.join(builtins)}; "
+                f"{own} through {', '.join(servers)}."
+            )
+    return lines
+
+
 def _where(env: Env) -> str:
     return "production" if env is Env.PROD else f"not production ({env.value})"
 
@@ -60,4 +90,5 @@ def note(project: Project, agent: Agent | None = None) -> str | None:
         places.setdefault(link.instance_type, set()).add(link.instance.env)
     if any(len(envs) > 1 for envs in places.values()):
         lines.append(ASK)
+    lines += _both(links)
     return "\n".join(lines)
