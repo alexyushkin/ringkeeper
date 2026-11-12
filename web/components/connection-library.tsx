@@ -8,6 +8,7 @@ import { connectionTitle, defaultTitle, EnvChoice, nameFor, useTakenNames } from
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { GoogleAccount } from "@/components/google";
 import { McpTools } from "@/components/mcp-tools";
+import { EveryProject } from "@/components/memory";
 import { Alert, Badge, Button, ConfirmButton, Details, EnvBadge, Field, LinkButton, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { clientHref, projectHref } from "@/lib/client/routes";
@@ -63,6 +64,11 @@ export function markOf(connection: { type: string; config?: Record<string, unkno
 }
 
 /** What the service's plan doesn't allow, if it said so. */
+/** A connection that holds agents' notes (Notion memory): never linked to a project. */
+export function notesOnly(connection: { type: string; config?: Record<string, unknown> | null }): boolean {
+  return connection.type === "vendor" && connection.config?.vendor === "notion_memory";
+}
+
 /** A connection that can save email drafts on its own (a Google account has this per tool). */
 export function savesDrafts(connection: { type: string; config?: Record<string, unknown> | null }): boolean {
   return connection.type === "gmail" || connection.type === "mailbox" || (connection.type === "vendor" && connection.config?.vendor === "microsoft");
@@ -439,7 +445,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         {connection.type === "google" || connection.shared ? null : <EnvBadge env={connection.env} />}
         {kind !== connectionTitle(connection) ? <span className="text-xs text-muted">{kind}</span> : null}
         {connection.shared ? <Badge tone="accent">your tool</Badge> : null}
-        {!connection.all_projects && !links.length ? <Badge tone="warn">Not linked to any project</Badge> : null}
+        {!connection.all_projects && !links.length && !notesOnly(connection) ? <Badge tone="warn">Not linked to any project</Badge> : null}
         {planLimit(connection) ? <Badge tone="warn">Plan limit</Badge> : connection.last_test_ok === true ? <Badge tone="good">Works</Badge> : null}
         {connection.last_test_ok === false ? <Badge tone="bad">Last test failed</Badge> : null}
         {left !== null && left <= 14 ? <Badge tone={left <= 7 ? "bad" : "warn"}>{left < 0 ? "key expired" : `key expires in ${left} day${left === 1 ? "" : "s"}`}</Badge> : null}
@@ -454,7 +460,13 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
       ) : null}
       {/* Why the last test failed, without opening anything. */}
       {connection.last_test_ok === false && connection.last_test_message ? <p className="text-sm text-bad">{connection.last_test_message}</p> : null}
-      <p className="text-sm">
+      {notesOnly(connection) ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted">It holds agents&apos; notes, so it isn&apos;t linked to projects and no task calls it. Choose it for every project here, or in a project&apos;s Settings › Memory.</p>
+          <EveryProject connection={connection.name} />
+        </div>
+      ) : null}
+      <p className={notesOnly(connection) ? "hidden" : "text-sm"}>
         {connection.all_projects ? (
           <span>{connection.reach || "Every project, new ones too"}</span>
         ) : links.length ? (
@@ -475,7 +487,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
         )}
       </p>
       <div className="flex flex-wrap gap-2">
-        {connection.all_projects ? null : (
+        {connection.all_projects || notesOnly(connection) ? null : (
           <Button kind={links.length ? "secondary" : "primary"} onClick={() => setLinking(!linking)}>
             {linking ? "Cancel" : links.length ? "Link to project…" : "Link"}
           </Button>
@@ -496,7 +508,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
       ) : null}
       {open ? (
         <div className="space-y-3 border-t border-line pt-3">
-          <AllProjects connection={connection} onChange={onChange} />
+          {notesOnly(connection) ? null : <AllProjects connection={connection} onChange={onChange} />}
           {links.length ? (
             <ul className="space-y-1">
               {links.map((link) => (

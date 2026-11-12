@@ -29,8 +29,9 @@ NOTION_MEMORY = Vendor(
     key_url="https://www.notion.so/profile/integrations",
     steps="In Notion, create an internal connection and copy its token. Then open the page the "
     "notes go under, choose ••• > Connections, and add it.",
-    note="For agent memory only: choose it in a project's Settings. It reaches only pages you "
-    "share with it. Agents never get it as a tool.",
+    note="For agent memory only: choose it in Settings › Memory for every project, or in a "  # noqa: RUF001
+    "project's Settings. It reaches only pages you share with it. It isn't linked to projects, "
+    "and agents never get it as a tool.",
     ops=(reads("whoami", "/users/me", "Which Notion workspace this is"),),
 )  # fmt: skip
 

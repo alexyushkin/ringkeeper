@@ -130,6 +130,21 @@ def _text(content: str) -> list[JSON]:
     return [{"type": "text", "text": {"content": content[:TEXT_LIMIT]}}]
 
 
+def page_of(token: str, page: str) -> tuple[str, str]:
+    """A page this connection was given: its title and link. Refused if it can't reach it."""
+    found = call(token, "GET", f"/pages/{page}")
+    return _title(found) or "Untitled", str(found.get("url") or "")
+
+
+def create_page(token: str, parent: str, title: str) -> tuple[str, str]:
+    """A plain page under `parent`, to hold one client's databases: its id and link."""
+    made = call(token, "POST", "/pages", {
+        "parent": {"type": "page_id", "page_id": parent},
+        "properties": {"title": {"title": _text(title)}},
+    })  # fmt: skip
+    return str(made["id"]), str(made.get("url") or "")
+
+
 def create_place(token: str, parent: str, title: str) -> Place:
     """A database of notes under `parent`."""
     made = call(token, "POST", "/databases", {

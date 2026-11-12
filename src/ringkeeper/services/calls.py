@@ -113,13 +113,30 @@ async def _db[T](fn: Callable[[Session], T]) -> T:
 
 
 def _usable(project: Project) -> list[ProjectInstance]:
-    """The project's links, without any to another client's connection (refused anyway)."""
-    return [b for b in project.bindings if not bindings.crosses_clients(project, b.instance)]
+    """The project's links, without any to another client's connection or one that holds
+    notes (both refused anyway)."""
+    return [
+        b for b in project.bindings
+        if not bindings.crosses_clients(project, b.instance)
+        and not instances.notes_only(b.instance)
+    ]  # fmt: skip
 
 
 def _bound_names(project: Project, call: ToolCall) -> str:
     names = sorted(b.instance.name for b in _usable(project) if b.instance_type == call.service)
     return ", ".join(names) or "none"
+
+
+def _named(session: Session, name: str, unavailable: str) -> Instance:
+    instance = session.scalars(select(Instance).where(Instance.name == name)).one_or_none()
+    if instance is None:
+        raise RefusalError(unavailable, f"instance '{name}' does not exist")
+    if instances.notes_only(instance):
+        raise RefusalError(
+            f"instance '{name}' holds agents' notes, so it isn't a tool. Use recall and remember.",
+            f"instance '{name}' is for memory only",
+        )
+    return instance
 
 
 def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
@@ -158,9 +175,7 @@ def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
         f"instance '{name}' is not available to project '{project.name}'. "
         f"{agent_name(call.service)} instances it can use: {_bound_names(project, call)}"
     )
-    instance = session.scalars(select(Instance).where(Instance.name == name)).one_or_none()
-    if instance is None:
-        raise RefusalError(unavailable, f"instance '{name}' does not exist")
+    instance = _named(session, name, unavailable)
     binding = session.scalars(
         select(ProjectInstance).where(
             ProjectInstance.project_id == project.id, ProjectInstance.instance_id == instance.id

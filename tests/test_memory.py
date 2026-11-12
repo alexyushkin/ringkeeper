@@ -45,6 +45,7 @@ class FakeNotion:
         self.shared = {PARENT, OTHER_PARENT}
         self.databases: dict[str, dict[str, Any]] = {}  # data source -> its rows, by id
         self.titles: dict[str, str] = {}
+        self.parents: dict[str, str] = {}  # a page's or data source's parent page
         self.bodies: dict[str, str] = {}
         self.calls: list[tuple[str, str]] = []
         self.down = False
@@ -98,6 +99,7 @@ class FakeNotion:
                 return httpx2.Response(404, json={"message": "not shared"})
             source, database = str(uuid.uuid4()), str(uuid.uuid4())
             self.databases[source] = {}
+            self.parents[source] = parent
             self.titles[source] = body["title"][0]["text"]["content"]
             return httpx2.Response(200, json={
                 "object": "database", "id": database, "url": f"https://notion.so/{database}",
@@ -121,6 +123,22 @@ class FakeNotion:
                 "object": "data_source", "url": "https://notion.so/ds",
                 "parent": {"type": "database_id", "database_id": "db-1"},
                 "properties": {"Name": {"type": "title"}, "Date": {"type": "date"}},
+            })  # fmt: skip
+        if path == "/pages" and request.method == "POST" and "page_id" in body["parent"]:
+            if body["parent"]["page_id"] not in self.shared:
+                return httpx2.Response(404, json={"message": "not shared"})
+            ident = str(uuid.uuid4())
+            self.shared.add(ident)  # a page under a shared page is shared too
+            self.titles[ident] = body["properties"]["title"]["title"][0]["text"]["content"]
+            self.parents[ident] = body["parent"]["page_id"]
+            return httpx2.Response(200, json={"id": ident, "url": f"https://notion.so/{ident}"})
+        if path.startswith("/pages/") and request.method == "GET":
+            ident = path.split("/")[2]
+            if ident not in self.shared:
+                return httpx2.Response(404, json={"message": "not shared"})
+            return httpx2.Response(200, json={
+                "object": "page", "id": ident, "url": f"https://notion.so/{ident}",
+                "properties": {"title": {"type": "title", "title": [{"plain_text": "Clients"}]}},
             })  # fmt: skip
         if path == "/pages" and request.method == "POST":
             source = body["parent"]["data_source_id"]
@@ -702,3 +720,148 @@ def test_the_memory_token_never_reaches_a_note_or_the_vault_log(notion: FakeNoti
     memory.remember(worker("acme-web"), "Plain")
     with session_scope() as session:
         assert all("ntn_" not in n.body for n in session.scalars(select(MemoryNote)))
+
+
+# --- A Notion memory connection is never a project's tool ---
+
+
+def test_notion_memory_cant_be_linked_or_given_to_every_project(notion: FakeNotion) -> None:
+    from ringkeeper.schemas import BindingIn  # noqa: PLC0415
+    from ringkeeper.services import bindings  # noqa: PLC0415
+
+    with session_scope() as session, pytest.raises(RuleViolationError, match="holds agents"):
+        bindings.set_binding(session, BindingIn(project="acme-web", instance="acme-notion"))
+    with session_scope() as session:
+        team = instances.get_instance(session, "team-notion")
+        data = InstanceIn.model_validate(team, from_attributes=True)
+        instances.update_instance(session, data.model_copy(update={"all_projects": True}))
+    with session_scope() as session:
+        assert instances.get_instance(session, "team-notion").all_projects is False
+        assert all(not p.bindings for p in projects.list_projects(session))
+
+
+def test_a_worker_cant_call_notion_memory(notion: FakeNotion) -> None:
+    from ringkeeper.adapters import ADAPTERS  # noqa: PLC0415
+    from ringkeeper.calls import ToolCall  # noqa: PLC0415
+    from ringkeeper.models import ProjectInstance  # noqa: PLC0415
+    from ringkeeper.services import connection_note, onboarding  # noqa: PLC0415
+    from ringkeeper.services.calls import RefusalError, authorize  # noqa: PLC0415
+
+    with session_scope() as session:  # linked before this change, say
+        project = projects.get_project(session, "acme-web")
+        notes = instances.get_instance(session, "acme-notion")
+        session.add(ProjectInstance(project=project, instance=notes))
+    vendor_ = InstanceType.VENDOR
+    call = ToolCall(Caller("acme-web", "s", "t"), vendor_, "call_operation", "acme-notion",
+                    {"operation": "whoami"})  # fmt: skip
+    with session_scope() as session:
+        with pytest.raises(RefusalError, match="holds agents' notes"):
+            authorize(session, call, ADAPTERS[vendor_].tool("call_operation"))
+        assert connection_note.note(projects.get_project(session, "acme-web")) is None
+        assert "acme-notion" not in [i.name for i in onboarding.unlinked(session)]
+        tried = onboarding.suggestions(session, get_test_settings())
+        assert all("notion" not in s.lower() for s in tried)
+
+
+def get_test_settings() -> Any:
+    from ringkeeper.config import get_settings  # noqa: PLC0415
+
+    return get_settings()
+
+
+def test_links_made_before_go_away(database_url: str, notion: FakeNotion) -> None:
+    """0039: a Notion memory connection's links and "every project" go; the rest stay."""
+    from ringkeeper import migrate  # noqa: PLC0415
+    from ringkeeper.db import dispose_engines  # noqa: PLC0415
+    from ringkeeper.models import Instance, ProjectInstance  # noqa: PLC0415
+    from tests.helpers import make_instance  # noqa: PLC0415
+
+    with session_scope() as session:
+        make_instance(session, "acme-db", owner="acme")
+        session.flush()
+        web = projects.get_project(session, "acme-web")
+        for name in ("acme-notion", "acme-db"):
+            session.add(
+                ProjectInstance(project=web, instance=instances.get_instance(session, name))
+            )
+        instances.get_instance(session, "team-notion").all_projects = True
+    migrate.downgrade(database_url, "0038")
+    dispose_engines()
+    migrate.upgrade(database_url)
+    dispose_engines()
+    with session_scope() as session:
+        linked = {b.instance.name for b in projects.get_project(session, "acme-web").bindings}
+        assert linked == {"acme-db"}
+        team = session.scalars(select(Instance).where(Instance.name == "team-notion")).one()
+        assert team.all_projects is False
+
+
+# --- Notion for every project ---
+
+
+def test_every_project_gets_a_database_under_its_clients_page(notion: FakeNotion) -> None:
+    kept = to_notion("acme-blog", "acme-notion", OTHER_PARENT)  # set up before: keeps its place
+    with session_scope() as session:
+        done = memory.use_everywhere(session, "team-notion", PARENT)
+    assert sorted(done["set_up"]) == ["acme-web", "globex-app"]
+    assert done["failed"] == {}
+    with session_scope() as session:
+        places = {p.name: memory.settings_of(p) for p in projects.list_projects(session)}
+    assert all(s["backend"] == memory.NOTION for s in places.values())
+    assert places["acme-blog"]["notion"]["data_source"] == kept
+    pages = {notion.titles[p]: p for p, parent in notion.parents.items() if parent == PARENT}
+    assert sorted(pages) == ["acme › Ringkeeper", "globex › Ringkeeper"]  # noqa: RUF001
+    acme, globex = (places[n]["notion"]["data_source"] for n in ("acme-web", "globex-app"))
+    assert notion.parents[acme] == pages["acme › Ringkeeper"]  # noqa: RUF001
+    assert notion.parents[globex] == pages["globex › Ringkeeper"]  # noqa: RUF001
+    memory.remember(worker("globex-app"), "Globex invoices in euros")
+    assert said(memory.recall(worker("acme-web"))) == []
+
+
+def test_a_new_project_follows_and_reuses_its_clients_page(notion: FakeNotion) -> None:
+    with session_scope() as session:
+        memory.use_everywhere(session, "team-notion", PARENT)
+        make_project(session, "acme-shop", owner="acme")
+    memory.follow_new("acme-shop")
+    with session_scope() as session:
+        shop = memory.settings_of(projects.get_project(session, "acme-shop"))
+        web = memory.settings_of(projects.get_project(session, "acme-web"))
+    assert shop["backend"] == memory.NOTION
+    assert shop["notion"]["parent"] == web["notion"]["parent"]
+    assert sum(parent == PARENT for parent in notion.parents.values()) == 2  # one per client
+
+
+def test_every_project_needs_your_own_connection_and_a_reachable_page(
+    notion: FakeNotion,
+) -> None:
+    with session_scope() as session, pytest.raises(RuleViolationError, match="shared Notion"):
+        memory.use_everywhere(session, "acme-notion", PARENT)
+    with session_scope() as session, pytest.raises(notion_api.NotionError):
+        memory.use_everywhere(session, "team-notion", OUTSIDE)
+    with session_scope() as session:
+        assert memory.every_settings(session) == {}
+
+
+def test_when_notion_is_down_a_task_still_starts(notion: FakeNotion) -> None:
+    with session_scope() as session:
+        memory.use_everywhere(session, "team-notion", PARENT)
+        make_project(session, "acme-shop", owner="acme")
+    notion.down = True
+    memory.follow_new("acme-shop")  # doesn't raise: notes stay here this time
+    with session_scope() as session:
+        assert memory.settings_of(projects.get_project(session, "acme-shop")).get("backend") is None
+
+
+def test_every_project_through_the_api(owner: TestClient, notion: FakeNotion) -> None:
+    shown = owner.get("/memory/every").json()
+    assert shown["every"] is None
+    assert [c["name"] for c in shown["connections"]] == ["team-notion"]
+    saved = owner.put("/memory/every", json={"connection": "team-notion", "root": PARENT})
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["every"]["title"] == "Clients"
+    assert {p["where"] for p in body["projects"]} == {"notion"}
+    assert owner.get("/projects/acme-web/memory").json()["follows"] is False
+    assert owner.delete("/memory/every").status_code == 204
+    assert owner.get("/memory/every").json()["every"] is None
+    assert owner.get("/projects/acme-web/memory").json()["backend"] == "notion"  # kept
