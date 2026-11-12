@@ -90,7 +90,7 @@ PROJECT MEMORY. Later runs of this project start from its notes (the latest are 
 there are any). Before your final message, save with `remember` what a later run would otherwise
 have to find again:
 - where things live: IDs, bases, tables, workflows, and file and page names you found by
-  searching;
+  listing or searching, even when the name looks obvious;
 - decisions and corrections the operator gave you;
 - how this client wants things done;
 - gotchas that cost you steps.

@@ -77,6 +77,8 @@ class Scenario:
     leave_open: bool = False  # don't answer "which project?": the next request mustn't either
     agent: str | None = None
     tools: tuple[str, ...] = ()  # each must have been used (part of the tool's name)
+    # ...or only called: its call can come back as an error (a file that can't be read)
+    tried: tuple[str, ...] = ()
     held: int = 0  # how many approvals it must raise, at least
     never_held: bool = False
     answer: str = APPROVE
@@ -335,7 +337,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             f"Use {MAIL} to open the email called '{UNREADABLE_SUBJECT}' and tell me the price "
             "of the oak cutting board from its attachment."
         ),
-        project=SHOP, tools=("read_attachment",), never_held=True, not_done=True,
+        project=SHOP, tried=("read_attachment",), never_held=True, not_done=True,
         cost_ceiling=1.0,
         notes=f"The price is only in {UNREADABLE_FILE}, a Numbers file Ringkeeper can't read: "
         "the task must end as Not done, even if it offers ways forward.",

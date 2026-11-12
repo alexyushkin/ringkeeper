@@ -26,6 +26,7 @@ class Evidence:
     notes: list[str] = field(default_factory=list[str])  # said in the report, pass or fail
     tools: list[str] = field(default_factory=list[str])
     last_tools: list[str] = field(default_factory=list[str])  # the latest task's own
+    tried: list[str] = field(default_factory=list[str])  # called, errors included
     holds: list[str] = field(default_factory=list[str])
     typed_enforced: bool = False  # approving without the name was refused
     refusals: list[str] = field(default_factory=list[str])
@@ -124,6 +125,11 @@ def judge(scenario: Scenario, seen: Evidence) -> list[str]:
         f"it didn't use {tool}"
         for tool in scenario.tools
         if not any(tool in used for used in seen.tools)
+    ]
+    wrong += [
+        f"it didn't try {tool}"
+        for tool in scenario.tried
+        if not any(tool in called for called in seen.tried)
     ]
     answer = seen.replies.lower()
     wrong += [

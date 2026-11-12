@@ -49,7 +49,7 @@ a tool. Its **Test** button still checks the token. Links made before 0.1.0-beta
 Every task starts with its project's latest notes (and Shared notes and My memory, if they're on),
 so it doesn't have to search for what an earlier task found. Before it finishes, it saves what a
 later run would otherwise have to find again: where things live (IDs, bases, tables, workflows,
-files and pages it found by searching), decisions and corrections you gave, how this client wants
+files and pages it found by listing or searching, even obvious ones), decisions and corrections you gave, how this client wants
 things done, and gotchas that cost it steps. Not the task's result, one-off facts or secrets: one
 to three short notes, or none.
 
