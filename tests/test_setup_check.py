@@ -265,7 +265,18 @@ def test_a_check_s_worker_can_t_edit_files_run_commands_or_make_a_branch() -> No
     m.wait_idle()
     config = task_env(runtime.started[0])
     assert set(setup_check.READ_ONLY_TOOLS) <= set(config["disallowed_tools"])  # type: ignore[arg-type]
+    assert "mcp__ringkeeper-memory__remember" in config["disallowed_tools"]  # type: ignore[operator]
     assert config["git"] is False
+    assert "PROJECT MEMORY" not in str(config["prompt"])  # nothing to save, nothing to report
+
+
+def test_a_worker_says_nothing_about_memory_unless_it_saved_a_note() -> None:
+    """From Check my setup: "I also saved no memory notes, since I learned no lasting
+    preference" and "I didn't change any files or save any memory"."""
+    from ringkeeper_worker.agent import HEADLESS_NOTE  # noqa: PLC0415
+
+    note = " ".join(HEADLESS_NOTE.split())
+    assert "Say nothing about memory or notes in your final message unless you saved one" in note
 
 
 @pytest.mark.usefixtures("task_registry")

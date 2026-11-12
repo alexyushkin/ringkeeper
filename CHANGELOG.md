@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Answers don't talk about memory unless something was saved.** Check my setup's answers said
+  things like "I also saved no memory notes" and "I didn't change any files or save any
+  memory". Its tasks were still told to save your preferences at the end, though nothing is
+  kept from a check. They're no longer told, and can't save, and every task is told to say
+  nothing about memory unless it saved a note.
 - **Backups that outlive this computer.** Settings › Backup offered only a local folder, and a
   backup on the same disk is lost with the computer. Now:
   - The synced folders it finds (OneDrive, Google Drive, Dropbox, iCloud Drive) are one click
@@ -15,6 +20,7 @@ publishes it as the release notes and the app shows it with the update.
   - The password fields say it's needed on the new computer and can't be recovered, so keep it
     in a password manager. The automatic backups' password is stored only on this computer.
   - Home's **Turn on automatic backups** opens the folder choice first.
+
 - **Ctrl+K finds every setting.** It knew clients, projects and pages, and found nothing for
   "my setup". Now each section of Settings is there by its title and a few plain words
   ("setup", "test", "memory", "backup", "budget"), and choosing one opens Settings on the
@@ -27,9 +33,6 @@ publishes it as the release notes and the app shows it with the update.
   many of each status (succeeded, failed, running...), not only the 20 on the page, so "how
   many of its runs failed?" gets the real number. It counts the newest 1,000 at most, and says
   when there are more.
-
-## Unreleased
-
 - **A Google mail search shows the start of each message.** Each message found now comes with
   a preview of its own text (not the thread it quotes) and whether it's unread, instead of
   Gmail's one-line snippet, so a summary of the inbox says what each email is about. It
