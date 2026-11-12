@@ -15,6 +15,7 @@ interface Place {
   label: string;
   root: string;
   folder: string;
+  note: string | null; // its app isn't running: nothing uploads until it is
 }
 
 /** Google Drive (services.backup_drive): the account chosen, and the last upload. */
@@ -47,12 +48,16 @@ interface Info {
 interface Checked {
   folder: string;
   synced: string | null;
+  service: string | null;
+  note: string | null;
   same_disk: boolean;
   backed_up_elsewhere: boolean;
   warning: string | null;
 }
 
 const ELSEWHERE = "I back this folder up another way (iDrive, Backblaze, Time Machine...)";
+const NO_SYNCED =
+  "No synced folder (OneDrive, Google Drive, Dropbox, iCloud Drive) is signed in on this computer. Choose a folder on another drive, or one a backup tool already covers and say so below.";
 const MARKED = "rk-backup-elsewhere"; // one card marked a folder: the others check again
 const KEEP_PASSWORD = "You need it on the new computer, and it can't be recovered: keep it in a password manager.";
 
@@ -117,15 +122,16 @@ function FolderField({ value, onChange, placeholder, synced }: { value: string; 
         ) : null}
       </div>
       {synced.length ? (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted">Synced folders:</span>
+        <div className="flex flex-wrap items-center gap-2">
           {synced.map((place) => (
-            <Button key={place.root} kind="ghost" onClick={() => onChange(place.folder)}>
-              {place.label}
+            <Button key={place.root} onClick={() => onChange(place.folder)}>
+              Use {place.label}
             </Button>
           ))}
         </div>
-      ) : null}
+      ) : (
+        <p className="text-xs text-muted">{NO_SYNCED}</p>
+      )}
       <FolderCheck folder={value.trim() || placeholder} />
     </div>
   );
@@ -160,22 +166,38 @@ function FolderCheck({ folder }: { folder: string }) {
     };
   }, [folder, again]);
   if (!checked || checked.folder !== folder) return null;
-  if (checked.synced) return <p className="text-xs text-muted">In {checked.synced}: its app copies it off this computer.</p>;
-  if (!checked.warning) return null;
+  if (checked.synced) {
+    return (
+      <div className="space-y-1 text-xs text-muted">
+        <p>
+          Backups go to <span className="font-mono break-all">{checked.folder}</span>.
+        </p>
+        <p>{checked.service} uploads this folder for you.</p>
+        {checked.note ? <Alert tone="warn">{checked.note}</Alert> : null}
+      </div>
+    );
+  }
+  if (!checked.same_disk) return null; // another drive: it outlives this one
+  const mark = (backedUp: boolean) => {
+    setChecked({ ...checked, backed_up_elsewhere: backedUp }); // ticked at once; the check follows
+    void api("desktop/backup/elsewhere", { method: "PUT", json: { folder, backed_up: backedUp } }).then(
+      () => window.dispatchEvent(new Event(MARKED)),
+      (err: unknown) => setError(message(err)),
+    );
+  };
   return (
     <div className="space-y-2">
-      <Alert tone="warn">{checked.warning}</Alert>
-      <Button
-        kind="ghost"
-        onClick={() =>
-          void api("desktop/backup/elsewhere", { method: "PUT", json: { folder, backed_up: true } }).then(
-            () => window.dispatchEvent(new Event(MARKED)),
-            (err: unknown) => setError(message(err)),
-          )
-        }
-      >
+      {checked.backed_up_elsewhere ? (
+        <p className="text-xs text-muted">
+          You back up <span className="font-mono break-all">{checked.folder}</span> another way.
+        </p>
+      ) : checked.warning ? (
+        <Alert tone="warn">{checked.warning}</Alert>
+      ) : null}
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={checked.backed_up_elsewhere} onChange={(e) => mark(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
         {ELSEWHERE}
-      </Button>
+      </label>
       {error ? <Alert>{error}</Alert> : null}
     </div>
   );

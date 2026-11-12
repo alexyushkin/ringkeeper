@@ -12,10 +12,18 @@ apart from the file.
 A backup on the same disk as Ringkeeper is lost with the computer. To restore
 on a new one, keep it somewhere that leaves this computer:
 
-- **A synced folder.** Next to **Browse**, Settings › Backup lists the synced
-  folders it finds: OneDrive, Google Drive, Dropbox and iCloud Drive. One click
-  puts the backup in a "Ringkeeper backups" folder there. Ringkeeper uploads
-  nothing itself: it writes the file, and that service's own app copies it.
+- **A synced folder.** Next to **Browse**, Settings › Backup has a button for each
+  synced folder signed in on this computer: **Use OneDrive**, **Use Google Drive**,
+  **Use Dropbox**, **Use iCloud Drive**. Click one and it shows the folder it chose, a
+  "Ringkeeper backups" folder in that account's own folder, and that the service
+  uploads it. Ringkeeper uploads nothing itself: it writes the file, and that
+  service's own app copies it. A folder is offered only when its app has an account
+  signed in here (OneDrive's accounts in Windows' settings, Dropbox's linked
+  account, Google Drive's own drive while it runs, iCloud Drive on a Mac): a
+  OneDrive folder with no account signed in syncs nowhere. If the app is signed in
+  but not running, the button says it won't upload until it is. iCloud for Windows
+  isn't offered, since Ringkeeper can't tell whether it's signed in: Browse to its
+  folder instead. With none found, the screen says so.
 - **Another drive**, like a USB drive or a second disk.
 - **A folder you back up another way** (iDrive, Backblaze, Time Machine...). The
   default folder, Documents › Ringkeeper backups, is in Documents, so most backup
@@ -24,8 +32,8 @@ on a new one, keep it somewhere that leaves this computer:
 When the folder is on the same disk as Ringkeeper and isn't a synced folder,
 Settings › Backup says so: "This backup is on the same disk as Ringkeeper. If this
 computer is lost, so is the backup." If you back that folder up another way,
-choose **I back this folder up another way**: the warning isn't shown again for
-that folder.
+tick **I back this folder up another way**: the warning gives way to a line naming
+the folder, and untick it to see the warning again.
 
 **Project folders aren't in the backup.** They stay where they are. A restored
 project points to the same folder path; on a new computer, copy the folders
