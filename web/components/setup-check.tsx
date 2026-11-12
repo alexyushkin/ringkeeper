@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Markdown } from "@/components/markdown";
 import { RunReports } from "@/components/run-reports";
-import { Alert, Button, ConfirmButton, Section, Spinner } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Section, Spinner, useNamedHere } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
 type Progress = { done: number; total: number; current: string | null };
@@ -28,6 +28,7 @@ export function SetupCheck() {
   const [archived, setArchived] = useState<number | null>(null);
   const running = status.data?.running ?? false;
   const reload = status.reload;
+  const { run } = useNamedHere("setup-check"); // Ctrl+K's "Run Check my setup": asks first
 
   useEffect(() => {
     if (!running) return;
@@ -71,7 +72,7 @@ export function SetupCheck() {
             {status.data?.so_far ? <Markdown text={status.data.so_far} className="text-sm" /> : null}
           </div>
         ) : (
-          <ConfirmButton question={`Send ${requests || "these"} read-only requests through your setup? Each one uses your Claude sign-in.`} confirm="Check it" kind="secondary" onConfirm={() => act("setup-check")}>
+          <ConfirmButton question={`Send ${requests || "these"} read-only requests through your setup? Each one uses your Claude sign-in.`} confirm="Check it" kind="secondary" ask={run} onConfirm={() => act("setup-check")}>
             Check my setup
           </ConfirmButton>
         )}

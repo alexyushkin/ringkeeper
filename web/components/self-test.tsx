@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { RunReports } from "@/components/run-reports";
-import { Alert, Button, ConfirmButton, Section, Spinner } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Section, Spinner, useNamedHere } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
 type Progress = { done: number; total: number; current: string | null; passed: number; failed: number; cost: number };
@@ -22,6 +22,7 @@ export function SelfTest() {
   const [error, setError] = useState<string | null>(null);
   const running = status.data?.running ?? false;
   const reload = status.reload;
+  const { run } = useNamedHere("self-test"); // Ctrl+K's "Run the self-test": asks first
 
   useEffect(() => {
     if (!running) return;
@@ -62,7 +63,7 @@ export function SelfTest() {
             <Button onClick={() => act("desktop/self-test/stop")}>Stop after this one</Button>
           </div>
         ) : (
-          <ConfirmButton question="Run the self-test? It takes about 10 minutes." confirm="Run it" onConfirm={() => act("desktop/self-test")}>
+          <ConfirmButton question="Run the self-test? It takes about 10 minutes." confirm="Run it" ask={run} onConfirm={() => act("desktop/self-test")}>
             Run the self-test
           </ConfirmButton>
         )}

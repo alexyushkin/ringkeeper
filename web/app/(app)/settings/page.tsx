@@ -411,7 +411,7 @@ function ClaudeCard({ settings, onSaved }: { settings: Settings; onSaved: () => 
   }
   const stored = mode === "api_key" ? settings.claude.api_key : settings.claude.subscription;
   return (
-    <Card className="mb-4 space-y-3">
+    <Card anchor="claude" className="mb-4 space-y-3">
       <h2 className="font-semibold">Claude</h2>
       {!allowed && settings.claude.mode === "subscription" ? (
         <Alert tone="warn">
@@ -570,7 +570,7 @@ function Passkeys() {
   }
 
   return (
-    <Card className="mb-4 space-y-3">
+    <Card anchor="passkeys" className="mb-4 space-y-3">
       <h2 className="font-semibold">Passkeys</h2>
       <p className="text-sm text-muted">Sign in with your fingerprint, face or device PIN instead of the password.</p>
       <ul className="space-y-1 text-sm">
@@ -601,7 +601,7 @@ function RecoveryKey() {
     }
   }
   return (
-    <Card className="mb-4 space-y-3">
+    <Card anchor="recovery-key" className="mb-4 space-y-3">
       <h2 className="font-semibold">Recovery key</h2>
       <p className="text-sm text-muted">If you lose this file, you'll need to re-enter your connection secrets.</p>
       <Details label="Download it again">

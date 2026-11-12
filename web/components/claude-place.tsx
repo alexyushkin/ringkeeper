@@ -84,7 +84,7 @@ export function ClaudePlace() {
 
   const hasKey = saved.data?.stored.includes(chosen);
   return (
-    <Card>
+    <Card anchor="claude-place">
       <h3 className="mb-2 font-semibold">Where Claude runs</h3>
       <p className="mb-3 text-sm text-muted">Tasks, the architect and the router all run here. A project can use another on its own page.</p>
       <div className="space-y-3">

@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Ctrl+K finds every setting.** It knew clients, projects and pages, and found nothing for
+  "my setup". Now each section of Settings is there by its title and a few plain words
+  ("setup", "test", "memory", "backup", "budget"), and choosing one opens Settings on the
+  right tab with that section open. **Run Check my setup** and **Run the self-test** open
+  theirs with the question asked, so nothing runs until you say so.
 - **Show in folder finds the file when its name has a space.** On Windows it opened your
   Documents folder instead, for "Check my setup 2026-11-12.md" and any task file, download or
   report with a space in its path. It now asks Windows to select the file directly.

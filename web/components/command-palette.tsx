@@ -9,11 +9,16 @@ import { startTour } from "@/components/tour";
 import { useApi } from "@/lib/client/api";
 import { DESKTOP, connectionHref, projectHref } from "@/lib/client/routes";
 import { place, useScope } from "@/lib/client/scope";
+import { score } from "@/lib/palette-match";
+import { sectionHref, shownSections } from "@/lib/settings-sections";
+
+export { fuzzy } from "@/lib/palette-match";
 
 interface Command {
   label: string;
   group: string;
   hint?: string;
+  words?: string; // also found by these, not shown
   run: () => void;
 }
 
@@ -24,36 +29,32 @@ export function openPalette(): void {
   window.dispatchEvent(new Event(OPEN));
 }
 
-/** How well `query` matches `text`: its letters in order, closer together and at
- * word starts scoring higher; null when they aren't all there. */
-export function fuzzy(query: string, text: string): number | null {
-  const q = query.toLowerCase().replace(/\s+/g, "");
-  if (!q) return 0;
-  const t = text.toLowerCase();
-  let score = 0;
-  let at = -1;
-  for (const ch of q) {
-    const next = t.indexOf(ch, at + 1);
-    if (next < 0) return null;
-    score += next === at + 1 ? 3 : 0; // runs of letters
-    score += next === 0 || /[\s›/_-]/.test(t[next - 1] ?? "") ? 2 : 0; // word starts
-    score -= Math.min(next - at - 1, 5) * 0.1; // gaps
-    at = next;
-  }
-  return t.includes(query.toLowerCase().trim()) ? score + 10 : score;
-}
+/** Settings' tabs, as their tab row names them. */
+const TABS: Record<string, string> = {
+  claude: "Claude",
+  models: "Models",
+  voice: "Voice",
+  scans: "Reading scans",
+  "developer-apps": "Developer apps",
+  passes: "Passes",
+  notifications: "Notifications",
+  security: "Security",
+  advanced: "Advanced",
+  memory: "Memory",
+  backup: "Backup",
+  general: "General",
+  appearance: "Appearance",
+  about: "About",
+};
 
-const SETTINGS: [string, string][] = [
-  ["claude", "Claude"],
-  ["models", "Models and effort"],
-  ...(DESKTOP ? ([["developer-apps", "Developer apps"]] as [string, string][]) : []),
-  ["notifications", "Notifications (Telegram, Slack, Discord)"],
-  ...(DESKTOP ? ([["backup", "Backup and restore"]] as [string, string][]) : []),
-  ["advanced", "Advanced"],
-  ["general", "General (send with Enter or Ctrl+Enter)"],
-  ["appearance", "Appearance"],
-  ["about", "About and updates"],
-];
+/** Settings, at a tab and a section. On Settings already, the hash changes in place (the
+ * page follows it); from elsewhere, the page opens there. */
+function openSettings(href: string, push: (href: string) => void): void {
+  const hash = href.slice(href.indexOf("#"));
+  if (window.location.pathname.replace(/\/$/, "") !== "/settings") return push(href);
+  if (window.location.hash === hash) window.dispatchEvent(new HashChangeEvent("hashchange"));
+  else window.location.hash = hash;
+}
 
 const PAGES: [string, string][] = [
   ["/", "Home"],
@@ -133,9 +134,31 @@ function Palette({ onClose }: { onClose: () => void }) {
       { label: "New agent", group: "Do", run: go("/agents?new=1") },
       { label: "New routine", group: "Do", run: go("/routines?new=1") },
       { label: "Report a problem", group: "Do", hint: "Logs with secrets removed; you see it all first", run: go("/help?report=1") },
+      {
+        label: "Run Check my setup",
+        group: "Do",
+        hint: "Read-only requests through your own setup; asks first",
+        words: "test check setup diagnose",
+        run: () => openSettings(sectionHref({ tab: "advanced", id: "setup-check" }, true), router.push),
+      },
+      ...(DESKTOP
+        ? [{
+            label: "Run the self-test",
+            group: "Do",
+            hint: "Real requests against two made-up clients; asks first",
+            words: "test scenarios check",
+            run: () => openSettings(sectionHref({ tab: "advanced", id: "self-test" }, true), router.push),
+          }]
+        : []),
       { label: "Show the tour again", group: "Do", run: () => { router.push("/"); startTour(); } },
       ...PAGES.map(([href, label]): Command => ({ label, group: "Go to", run: go(href) })),
-      ...SETTINGS.map(([tab, label]): Command => ({ label: `Settings › ${label}`, group: "Settings", run: go(`/settings#${tab}`) })),
+      ...shownSections(DESKTOP).map((section): Command => ({
+        label: section.title,
+        group: "Settings",
+        hint: TABS[section.tab] ?? section.tab,
+        words: `settings ${section.words}`,
+        run: () => openSettings(sectionHref(section), router.push),
+      })),
       { label: "All clients", group: "Switch to", hint: "Show everything", run: () => scope.set({ client: "", project: "" }) },
       ...scope.clients.map((c): Command => ({ label: c.name, group: "Switch to", hint: "client", run: () => scope.set({ client: c.slug, project: "" }) })),
       ...(projects.data ?? []).map((p): Command => ({
@@ -156,9 +179,11 @@ function Palette({ onClose }: { onClose: () => void }) {
   }, [router, scope, projects.data, connections.data, prefs.pins, prefs.recents]);
 
   const shown = useMemo(() => {
-    if (!query.trim()) return commands.filter((c) => c.group !== "Open").slice(0, 40);
+    // Before anything's typed: no single connections or Settings sections (there are
+    // dozens), so the clients and projects to switch to stay in view.
+    if (!query.trim()) return commands.filter((c) => c.group !== "Open" && c.group !== "Settings").slice(0, 40);
     return commands
-      .map((command) => ({ command, score: fuzzy(query, `${command.label} ${command.hint ?? ""}`) }))
+      .map((command) => ({ command, score: score(query, command.label, command.hint, command.words) }))
       .filter((m): m is { command: Command; score: number } => m.score !== null)
       .sort((a, b) => b.score - a.score)
       .slice(0, 40)
@@ -189,7 +214,7 @@ function Palette({ onClose }: { onClose: () => void }) {
           ref={input}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Type a page, a client, a project or an action…"
+          placeholder="Type a page, a setting, a client, a project or an action…"
           role="combobox"
           aria-expanded="true"
           aria-controls="palette-list"
@@ -226,7 +251,7 @@ function Palette({ onClose }: { onClose: () => void }) {
               {command.hint ? <span className="hidden truncate text-xs text-muted sm:inline">{command.hint}</span> : null}
             </li>
           ))}
-          {!shown.length ? <li className="px-3 py-4 text-sm text-muted">Nothing matches “{query}”. Try a client, project or page name.</li> : null}
+          {!shown.length ? <li className="px-3 py-4 text-sm text-muted">Nothing matches “{query}”. Try a client, project, page or setting.</li> : null}
         </ul>
         <p className="border-t border-line px-4 py-2 text-xs text-muted">↑ ↓ to choose · Enter to open · Esc to close · Ctrl+K any time</p>
       </div>

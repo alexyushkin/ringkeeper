@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import type { SendKeys } from "@/lib/client/use-send-keys";
+import { namedInHash } from "@/lib/settings-sections";
 
 /* Small building blocks. Plain language on the surface; technical detail behind "Show details". */
 
@@ -90,16 +91,22 @@ export function ConfirmButton({
   confirm,
   onConfirm,
   kind = "danger",
+  ask = false,
 }: {
   children: ReactNode;
   question: ReactNode;
   confirm: string;
   onConfirm: () => Promise<unknown> | unknown;
   kind?: "danger" | "secondary";
+  /** Show the question already (Ctrl+K's "Run ..."): the action still waits for its OK. */
+  ask?: boolean;
 }) {
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState(ask);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (ask) setAsking(true);
+  }, [ask]);
   if (!asking) {
     return (
       <span className="inline-flex flex-col gap-2">
@@ -153,8 +160,40 @@ export function Spinner() {
   return <span aria-hidden className="inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />;
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-line bg-surface p-4 ${className}`}>{children}</section>;
+/**
+ * Whether the URL names this section (`#tab/id`, as Ctrl+K opens Settings): it's scrolled
+ * into view, and `run` says the URL asked to run it too (`#tab/id/run`).
+ */
+export function useNamedHere(id: string | undefined): { named: boolean; run: boolean } {
+  const [named, setNamed] = useState({ named: false, run: false });
+  useEffect(() => {
+    if (!id) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const follow = () => {
+      const { section, run } = namedInHash(window.location.hash);
+      const here = section === id;
+      setNamed({ named: here, run: here && run });
+      // Again later: the sections above may still be loading their data and push it down.
+      if (here) for (const wait of [50, 500, 1200]) timers.push(setTimeout(() => document.getElementById(`section-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), wait));
+    };
+    follow();
+    window.addEventListener("hashchange", follow);
+    return () => {
+      window.removeEventListener("hashchange", follow);
+      timers.forEach(clearTimeout);
+    };
+  }, [id]);
+  return named;
+}
+
+/** `anchor`: its id on the page, so a link (Ctrl+K) can scroll to it. */
+export function Card({ children, className = "", anchor }: { children: ReactNode; className?: string; anchor?: string }) {
+  useNamedHere(anchor);
+  return (
+    <section id={anchor ? `section-${anchor}` : undefined} className={`scroll-mt-4 rounded-2xl border border-line bg-surface p-4 ${className}`}>
+      {children}
+    </section>
+  );
 }
 
 export function PageHeader({ title, subtitle, action, help }: { title: string; subtitle?: string; action?: ReactNode; help?: ReactNode }) {
@@ -444,9 +483,15 @@ export function Section({ id, title, summary, action, defaultOpen = true, childr
   const [page, setPage] = useState("");
   useEffect(() => setPage(window.location.pathname + window.location.search), []);
   const [state, setState] = useRemembered(`rk-section:${page}:${id}`, defaultOpen ? "open" : "closed");
+  const { named } = useNamedHere(id);
+  useEffect(() => {
+    // A link to it (Ctrl+K) opens it. Again once `page` is known: the remembered
+    // "folded" is read then, and would close it again.
+    if (named) setState("open");
+  }, [named, page]);
   const open = state === "open";
   return (
-    <section className="mb-4 rounded-2xl border border-line bg-surface">
+    <section id={`section-${id}`} className="mb-4 scroll-mt-4 rounded-2xl border border-line bg-surface">
       <div className="flex items-center gap-2 p-3 sm:px-4">
         <button type="button" onClick={() => setState(open ? "closed" : "open")} aria-expanded={open} className="flex min-h-9 min-w-0 flex-1 items-center gap-2 text-left">
           <span aria-hidden className={`inline-block text-muted transition-transform ${open ? "rotate-90" : ""}`}>
