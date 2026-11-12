@@ -350,7 +350,7 @@ def test_every_worker_hears_where_client_knowledge_goes() -> None:
     from ringkeeper.gateway.memory import build_memory_server  # noqa: PLC0415
 
     server = build_memory_server(lambda: Caller("p", "s", "t"))
-    assert "never in Notion's personal memory" in (server.instructions or "")
+    assert "never in My memory (mine=true)" in (server.instructions or "")
 
 
 # --- Settings, and a refreshed tool list ---
