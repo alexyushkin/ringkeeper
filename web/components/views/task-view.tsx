@@ -46,6 +46,7 @@ interface Task {
   error: string | null;
   plan_limit?: string | null;
   offer?: { label: string } | null;
+  partly_done?: string | null; // not done, but this part was
   prompt: string;
   thread_id: string | null;
   branch: string | null;
@@ -235,7 +236,7 @@ export function TaskView({ id }: { id: string }) {
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold">{projectName(t.project)}</h1>
-          <StatusBadge status={t.status} />
+          <StatusBadge status={t.status} partly={t.partly_done} />
           {t.kind ? <Badge>{t.kind}</Badge> : null}
           {t.archived ? <Badge>archived</Badge> : null}
           <span className="ml-auto" />
@@ -245,7 +246,8 @@ export function TaskView({ id }: { id: string }) {
         <SavedToMemory task={id} />
         {t.summary && !["running", "queued"].includes(t.status) ? <RememberThis text={t.summary} projects={[t.project]} task={id} /> : null}
         {t.plan_limit ? <Alert tone="warn">{t.plan_limit}</Alert> : null}
-        {t.error && t.status !== "succeeded" ? <Alert>{t.status === "not_done" ? `Not done: ${t.error}` : t.error}</Alert> : null}
+        {t.partly_done && t.status === "not_done" ? <Alert tone="good">Done: {t.partly_done}</Alert> : null}
+        {t.error && t.status !== "succeeded" ? <Alert tone={t.partly_done ? "warn" : undefined}>{t.status === "not_done" ? `Not done: ${t.error}` : t.error}</Alert> : null}
         {t.offer ? <LinkAndRetry id={id} label={t.offer.label} onDone={(again) => router.push(taskHref(again))} /> : null}
         {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">

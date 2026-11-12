@@ -164,6 +164,7 @@ class Collected:
     question: str | None = None  # the worker called ask_user
     claude_error: str | None = None  # an assistant message's error type (rate_limit, ...)
     not_done: str | None = None  # the worker called not_done: why
+    partly: str | None = None  # ...and what it did finish
     needs: str = ""  # the kind of connection it said it lacked
     checks: dict[str, Any] | None = None  # architect loop: this worker turn's checks
     diff: str | None = None
@@ -647,6 +648,7 @@ class Manager:
                 collected.question = str(event.get("question", "")) or None
             elif event_type == "ringkeeper.not_done" and not collected.not_done:
                 collected.not_done = str(event.get("reason", "")) or None
+                collected.partly = str(event.get("done") or "").strip() or None
                 collected.needs = str(event.get("needs", ""))
             elif event_type == "ringkeeper.error":
                 cast(list[str], collected.errors).append(str(event.get("message", "")))
@@ -765,6 +767,8 @@ class Manager:
                     task.summary = drafts.linked(session, task, kept)  # where its drafts are
                 if status is TaskStatus.NOT_DONE:
                     task.offer = link_offer.find(session, task, collected.needs)
+                # A run that did part of it: "Partly done" (a later run that finishes clears it).
+                task.partly_done = collected.partly if status is TaskStatus.NOT_DONE else None
                 if job.feature and not waiting:
                     review = {
                         "checks": collected.checks,

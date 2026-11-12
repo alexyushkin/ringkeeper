@@ -72,10 +72,16 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
         "ways forward. The task then ends as not done, with "
         "your reason, instead of done. `needs`: the kind of connection that was missing, if "
         "that's why: one of email, google, slack, database, airtable, n8n, github, vercel, "
-        "or empty. Still end your turn with a short note for the operator.",
+        "or empty. `done`: what you did finish, when part of it is done (it then shows as "
+        "partly done); leave it out when nothing is. Still end your turn with a short note for "
+        "the operator.",
         {
             "type": "object",
-            "properties": {"reason": {"type": "string"}, "needs": {"type": "string"}},
+            "properties": {
+                "reason": {"type": "string"},
+                "needs": {"type": "string"},
+                "done": {"type": "string"},
+            },
             "required": ["reason"],
         },
     )
@@ -83,7 +89,10 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
         reason = str(args.get("reason", "")).strip()[:MAX_QUESTION_CHARS]
         if not reason:
             return {"content": [{"type": "text", "text": "Say why."}], "is_error": True}
-        emit("ringkeeper.not_done", reason=reason, needs=str(args.get("needs") or "").strip())
+        emit(
+            "ringkeeper.not_done", reason=reason, needs=str(args.get("needs") or "").strip(),
+            done=str(args.get("done") or "").strip()[:MAX_QUESTION_CHARS],
+        )  # fmt: skip
         return {"content": [{"type": "text", "text": NOTED}]}
 
     server = create_sdk_mcp_server(SERVER_NAME, tools=[ask_user, not_done])

@@ -387,6 +387,19 @@ def test_a_task_that_couldn_t_do_it_ends_not_done_with_an_offer(
         assert task.offer is not None
         assert task.offer["instance"] == "acme-mail"
         assert task.offer["label"].startswith("Link acme's acme-mail to Acme web and retry")
+        assert task.partly_done is None  # nothing of it was done
+
+
+def test_a_task_that_did_part_of_it_is_partly_done(run_stub: Callable[..., Run]) -> None:
+    """From real use (Seaside): part 1 was done and part 2 wasn't, and the task said only
+    "Not done". It stays not_done, and keeps what it finished: its card says Partly done."""
+    run = run_stub({"not_done": "Airtable tools here can't list automations.",
+                    "done": "Listed the 59 workflows by client."})  # fmt: skip
+    assert status_of(run.task_id) is TaskStatus.NOT_DONE
+    with session_scope() as session:
+        task = tasks.get_task(session, run.task_id)
+        assert task.partly_done == "Listed the 59 workflows by client."
+        assert task.error == "Airtable tools here can't list automations."
 
 
 def test_overloaded_claude_is_tried_again_then_said_plainly(

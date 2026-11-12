@@ -53,6 +53,12 @@ card, on its page, and in the chat you asked from. When what it lacked is a conn
 client has but the project isn't linked to, it offers one click, like "Link General
 Informatics' Google to Website and retry", in the app and as a button in the chat.
 
+When it did part of it, its card and page say **Partly done**, with what was done and what
+wasn't. It still counts as not done.
+
+A connection is reached only through its own tools. When they can't do something, the task
+stops there and says so, instead of trying the same connection another way.
+
 A task does all its work before it answers: nothing of it runs in the background or after it
 ends, so an answer never says the rest is still being fetched.
 
