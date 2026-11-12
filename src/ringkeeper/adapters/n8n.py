@@ -271,6 +271,38 @@ async def get_workflow(target: Target, workflow_id: WorkflowId) -> JSON:
     return await _call(target, "GET", f"/workflows/{_id(workflow_id)}")
 
 
+EXECUTIONS_COUNTED = 1000  # four pages: n8n keeps thousands of runs, and has no count
+
+
+def _execution_counts(executions: list[JSON], *, more: bool) -> JSON:
+    """How many runs match, and how many of each status. `more`: past what was counted."""
+    statuses: dict[str, int] = {}
+    for execution in executions:
+        status = str(execution.get("status") or "unknown")
+        statuses[status] = statuses.get(status, 0) + 1
+    counted: JSON = {"total": len(executions), "by_status": dict(sorted(statuses.items()))}
+    if more:
+        counted["counted"] = f"only the newest {len(executions)}: there are more"
+    return counted
+
+
+async def _every_execution(
+    target: Target, params: JSON, allowed: set[str] | None
+) -> tuple[list[JSON], bool]:
+    """The runs that match, newest first, up to EXECUTIONS_COUNTED; True if there are more."""
+    found: list[JSON] = []
+    cursor: str | None = None
+    while len(found) < EXECUTIONS_COUNTED:
+        data = await _call(target, "GET", "/executions", params={**params, "limit": 250,
+                                                                  "cursor": cursor})  # fmt: skip
+        listed = cast(list[JSON], data.get("data", []))
+        found += [e for e in listed if allowed is None or str(e.get("workflowId")) in allowed]
+        cursor = cast(str | None, data.get("nextCursor"))
+        if not cursor or not listed:
+            return found[:EXECUTIONS_COUNTED], len(found) > EXECUTIONS_COUNTED
+    return found[:EXECUTIONS_COUNTED], True
+
+
 @read
 async def list_executions(
     target: Target,
@@ -281,18 +313,26 @@ async def list_executions(
     limit: Limit = 20,
     cursor: Cursor = None,
 ) -> JSON:
-    """List workflow executions, newest first, one page at a time."""
-    params = {"workflowId": workflow_id, "status": status, "limit": limit, "cursor": cursor}
-    if not target.scope:
-        return _page(await _call(target, "GET", "/executions", params=params), "executions")
-    if workflow_id is not None:
-        await check_workflow(target, workflow_id)
-    allowed = await _scoped_ids(target)
-    params["projectId"] = _scope_params(target)["projectId"]
-    data = await _call(target, "GET", "/executions", params=params)
+    """List workflow executions, newest first, one page at a time. total and by_status
+    count every run that matches, not only this page (the newest 1,000 at most)."""
+    params: JSON = {"workflowId": workflow_id, "status": status}
+    allowed: set[str] | None = None
+    if target.scope:
+        if workflow_id is not None:
+            await check_workflow(target, workflow_id)
+        allowed = await _scoped_ids(target)
+        params["projectId"] = _scope_params(target)["projectId"]
+    data = await _call(target, "GET", "/executions", params={**params, "limit": limit,
+                                                              "cursor": cursor})  # fmt: skip
     listed = cast(list[JSON], data.get("data", []))
-    kept = [e for e in listed if str(e.get("workflowId")) in allowed]
-    return {**_page({**data, "data": kept}, "executions"), "limited_to": _scope_words(target)}
+    kept = [e for e in listed if allowed is None or str(e.get("workflowId")) in allowed]
+    if cursor is None and not data.get("nextCursor"):
+        counts = _execution_counts(kept, more=False)  # this page is all of them
+    else:
+        found, more = await _every_execution(target, params, allowed)
+        counts = _execution_counts(found, more=more)
+    page = _page({**data, "data": kept}, "executions") | counts
+    return {**page, "limited_to": _scope_words(target)} if target.scope else page
 
 
 @read

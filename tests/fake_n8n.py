@@ -85,7 +85,12 @@ class FakeN8n:
         if parts == ["executions"] and method == "GET":
             wid = request.url.params.get("workflowId")
             items = [e for e in self.executions if wid is None or e["workflowId"] == wid]
-            return httpx2.Response(200, json={"data": items, "nextCursor": "page-2"})
+            if status := request.url.params.get("status"):
+                items = [e for e in items if e["status"] == status]
+            start = int(request.url.params.get("cursor") or 0)
+            end = start + int(request.url.params.get("limit") or 100)
+            more = str(end) if end < len(items) else None
+            return httpx2.Response(200, json={"data": items[start:end], "nextCursor": more})
         if parts[0] == "executions" and len(parts) == 2 and method == "GET":
             for execution in self.executions:
                 if execution["id"] == parts[1]:

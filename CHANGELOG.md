@@ -3,6 +3,13 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **n8n runs are counted too.** A list of a workflow's runs says how many there are and how
+  many of each status (succeeded, failed, running...), not only the 20 on the page, so "how
+  many of its runs failed?" gets the real number. It counts the newest 1,000 at most, and says
+  when there are more.
+
 ## 0.1.0-beta.38 (2026-11-12)
 
 - **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
