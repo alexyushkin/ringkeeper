@@ -67,7 +67,11 @@ AUTHOR = "setup-check"
 TITLE = "Check my setup: "
 FOLDER = "setup-check"
 # Tools a check's worker doesn't get: it reads, and changes nothing in the project's folder.
-READ_ONLY_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash")
+# What a check's task can't use. remember too: nothing is kept, and a task that has it
+# says so ("I saved no memory notes").
+READ_ONLY_TOOLS = (
+    "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "mcp__ringkeeper-memory__remember",
+)  # fmt: skip
 NOTHING_KEPT = "Check my setup only reads, so nothing is kept from it. Don't call this again."
 ONLY_READ = "Only read: don't change anything. Use your best judgement and carry on."
 PROBE_MINUTES = 6.0

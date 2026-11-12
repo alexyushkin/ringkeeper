@@ -538,7 +538,7 @@ class Manager:
                 )
                 prompt = "\n\n".join([
                     prompt, *([told] if told else []), *([kept] if kept else []),
-                    *memory.hints(session, project, agent),
+                    *memory.hints(session, project, agent, saving=not read_only),
                 ])  # fmt: skip
             # Memory is every worker's: it's pinned to the token's project.
             endpoints = sorted({"memory", *(agent_name(service) for service in served)})

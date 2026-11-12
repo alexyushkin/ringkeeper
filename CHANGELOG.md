@@ -5,9 +5,15 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Answers don't talk about memory unless something was saved.** Check my setup's answers said
+  things like "I also saved no memory notes" and "I didn't change any files or save any
+  memory". Its tasks were still told to save your preferences at the end, though nothing is
+  kept from a check. They're no longer told, and can't save, and every task is told to say
+  nothing about memory unless it saved a note.
 - **Nothing starts while Claude's limit is reached.** When the limit was reached at the moment
   Ringkeeper picked the next task, that task could still start, hit the limit, and queue
   another. It now stays queued until the limit resets.
+
 - **Backups that outlive this computer.** Settings › Backup offered only a local folder, and a
   backup on the same disk is lost with the computer. Now:
   - The synced folders it finds (OneDrive, Google Drive, Dropbox, iCloud Drive) are one click
@@ -18,6 +24,7 @@ publishes it as the release notes and the app shows it with the update.
   - The password fields say it's needed on the new computer and can't be recovered, so keep it
     in a password manager. The automatic backups' password is stored only on this computer.
   - Home's **Turn on automatic backups** opens the folder choice first.
+
 - **Ctrl+K finds every setting.** It knew clients, projects and pages, and found nothing for
   "my setup". Now each section of Settings is there by its title and a few plain words
   ("setup", "test", "memory", "backup", "budget"), and choosing one opens Settings on the
