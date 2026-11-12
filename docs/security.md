@@ -13,7 +13,7 @@ Ringkeeper server: nothing about your clients goes to the people who make it.
 | Kept changes, for [Undo](undo.md) | `%LOCALAPPDATA%\Ringkeeper\undo` | Your Windows account. Deleted after 7 days. |
 | Logs | `%LOCALAPPDATA%\Ringkeeper\logs` | Secrets are removed before anything is written. |
 | Project folders | Wherever you chose (new ones in `Documents\Ringkeeper`) | Your Windows account. |
-| Backups you make | Where you save them | Encrypted with the password you chose ([Backup](backup.md)). |
+| Backups you make | Where you save them, and in Google Drive if you choose it | Encrypted with the password you chose ([Backup](backup.md)). The password never leaves this computer. |
 
 ## Signed links are taken out
 
@@ -99,6 +99,13 @@ click.
   known secrets masked. To keep results and files in the app, turn off **Full results
   and files for requests from here** in that channel's choices (Settings ›
   Notifications): the chat then only hears how the task ended, with a link.
+- **To Google Drive, only if you choose it under Settings › Backup:** each backup
+  file, encrypted with its password (AES-256-GCM, from the password with scrypt) before it
+  leaves. The password stays on this computer, so neither Google nor anyone with the file
+  can open it without you. It goes into a "Ringkeeper backups" folder Ringkeeper creates,
+  through one of your own Google accounts (never a client's), with the "Drive: files
+  Ringkeeper creates" access (`drive.file`): Ringkeeper can see and delete only the files
+  it made there, never the rest of your Drive.
 - **To GitHub:** the update check (`latest.json` from the releases page) and
   the update download.
 - **To the MCP registry and Hugging Face, only when you use them:** catalog

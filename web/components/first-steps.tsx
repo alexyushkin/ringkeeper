@@ -24,6 +24,7 @@ interface Start {
   demo_offered: boolean;
   whats_new: { version: string; notes: string } | null;
   backup_nudge?: boolean; // desktop: real tasks ran, automatic backups are off, not dismissed
+  backup_upload_error?: string | null; // the last upload to Google Drive didn't work
 }
 
 /** Home's first steps: the checklist (until done or dismissed), the demo, and
@@ -34,7 +35,7 @@ export function FirstSteps() {
     if (["task", "message_routed"].includes(event.type)) start.reload();
   });
   if (!start.data) return null;
-  const { checklist, suggestions, demo, demo_offered, whats_new, backup_nudge } = start.data;
+  const { checklist, suggestions, demo, demo_offered, whats_new, backup_nudge, backup_upload_error } = start.data;
   const showList = !checklist.done && !checklist.dismissed;
   const tries = demo ? suggestions.filter((s) => !demo.try.includes(s)) : suggestions;
   return (
@@ -43,6 +44,14 @@ export function FirstSteps() {
       {showList ? <Checklist steps={checklist} demoOffered={demo_offered && !demo} onChange={start.reload} /> : null}
       {!showList && checklist.unlinked.length ? <UnlinkedNote names={checklist.unlinked} /> : null}
       {backup_nudge ? <BackupNudge onDismissed={start.reload} /> : null}
+      {backup_upload_error ? (
+        <Alert tone="warn">
+          {backup_upload_error} The copy on this computer is saved.{" "}
+          <Link href="/settings#backup/backup-drive" className="font-medium">
+            Backup settings
+          </Link>
+        </Alert>
+      ) : null}
       {demo ? <DemoCard demo={demo} onRemoved={start.reload} /> : null}
       {tries.length ? <Suggestions items={tries} /> : null}
     </div>

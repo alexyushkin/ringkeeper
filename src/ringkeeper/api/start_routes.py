@@ -15,6 +15,7 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.schemas import Input
 from ringkeeper.services import (
     admin_audit,
+    backup_drive,
     claude_place,
     demo,
     onboarding,
@@ -63,6 +64,8 @@ def start(session: SessionDep) -> dict[str, Any]:
         "tour_seen": onboarding.tour_seen(session),
         "whats_new": onboarding.whats_new(session, settings.app_version),
         "backup_nudge": onboarding.backup_nudge(session, settings),
+        # The last upload of a backup to Google Drive didn't work: said on Home too.
+        "backup_upload_error": backup_drive.state(session).error,
     }
 
 
