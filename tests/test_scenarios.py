@@ -182,7 +182,7 @@ def test_a_failed_tool_call_doesn_t_count_as_using_the_tool() -> None:
 
 
 def test_two_groups_must_be_counted_right() -> None:
-    """From a real run: "Seaside (46)" and "Mr. Stormdoor (13)" for 49 and 10."""
+    """From a real run: "Bayside (46)" and "Mr. Gutter (13)" for 49 and 10."""
     counted = next(s for s in SCENARIOS if s.key == "subset-counts")
     assert counted.counts == (("Bayside", 49), ("Mr. Gutter", 10))
     assert demo_n8n.COUNTS == {"Bayside": 49, "Mr. Gutter": 10}

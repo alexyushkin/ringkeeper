@@ -359,7 +359,7 @@ def test_attaching_makes_one_database_named_for_the_project(notion: FakeNotion) 
 
 
 def test_a_project_note_in_notion_is_never_called_personal(notion: FakeNotion) -> None:
-    """From a real run: remember said {"where": "Notion"} for Seaside's own note, the worker
+    """From a real run: remember said {"where": "Notion"} for Bayside's own note, the worker
     took it for the owner's personal memory, and asked for it to be deleted by hand. The
     answer, the audit line and the task's page say whose notes it went to."""
     to_notion("acme-web", "acme-notion")
