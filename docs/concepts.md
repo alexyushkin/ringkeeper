@@ -53,6 +53,9 @@ card, on its page, and in the chat you asked from. When what it lacked is a conn
 client has but the project isn't linked to, it offers one click, like "Link General
 Informatics' Google to Website and retry", in the app and as a button in the chat.
 
+A task does all its work before it answers: nothing of it runs in the background or after it
+ends, so an answer never says the rest is still being fetched.
+
 ### A task's changes to files
 
 A task that works on a project's code (a feature, a fix, content) works on a branch of its
