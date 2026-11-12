@@ -65,36 +65,51 @@ async def test_the_totals_count_every_page_not_only_this_one(fake: FakeN8n) -> N
 
 
 def bayside(fake: FakeN8n) -> None:
-    """From a real run: 49 "Bayside #N" and 10 "Mr. Gutter #N" workflows, reported as 46
-    and 13 because the worker counted a plain list by hand."""
-    for n in range(1, 50):
+    """Made up: 37 "Bayside #N" and 8 "Mr. Gutter #N" workflows. A real run got such counts
+    wrong because the worker counted a plain list by hand."""
+    for n in range(1, 38):
         fake.add_workflow(f"s{n}", f"Bayside #{n}", tags=("bayside",))
-    for n in range(1, 11):
+    for n in range(1, 9):
         fake.add_workflow(f"m{n}", f"Mr. Gutter #{n}", tags=("gutter",))
 
 
 async def test_a_subset_is_counted_by_a_filter_across_every_page(fake: FakeN8n) -> None:
     bayside(fake)
     first = await n8n.list_workflows.handler(target(), name_starts_with="Bayside", limit=20)
-    assert (len(first["workflows"]), first["total"]) == (20, 49)
+    assert (len(first["workflows"]), first["total"]) == (20, 37)
     rest = await n8n.list_workflows.handler(
         target(), name_starts_with="Bayside", limit=20, cursor=first["next_cursor"]
     )
-    assert rest["total"] == 49
+    assert rest["total"] == 37
     assert rest["workflows"][0]["name"] == "Bayside #21"
     gutter = await n8n.list_workflows.handler(target(), name_contains="gutter", limit=5)
-    assert gutter["total"] == 10
+    assert gutter["total"] == 8
     tagged = await n8n.list_workflows.handler(target(), tags="gutter, nothing")
-    assert tagged["total"] == 10
+    assert tagged["total"] == 8
+
+
+async def test_an_exact_name_that_matches_nothing_says_how_many_have_it(fake: FakeN8n) -> None:
+    """From the self-test: "how many are named Bayside" asked with the exact-name filter came
+    back 0 and was answered 0, though 37 are "Bayside #N"."""
+    bayside(fake)
+    page = await n8n.list_workflows.handler(target(), name="Bayside")
+    assert page["total"] == 0
+    assert page["name_contains_total"] == 37
+    assert "the answer is 37" in page["not_exact"]
+    exact = await n8n.list_workflows.handler(target(), name="Bayside #3")
+    assert exact["total"] == 1
+    assert "not_exact" not in exact
+    none = await n8n.list_workflows.handler(target(), name="Nobody")
+    assert "not_exact" not in none
 
 
 async def test_a_long_list_comes_with_counts_by_name_and_tag(fake: FakeN8n) -> None:
     bayside(fake)
-    page = await n8n.list_workflows.handler(target(), limit=50)
-    assert page["total"] == 61  # with the two from the fixture
-    assert page["groups"]["by_name"] == {"Bayside": 49, "Mr. Gutter": 10}
-    assert page["groups"]["by_tag"]["bayside"] == 49
-    assert page["groups"]["by_tag"]["gutter"] == 10
+    page = await n8n.list_workflows.handler(target(), limit=20)
+    assert page["total"] == 47  # with the two from the fixture
+    assert page["groups"]["by_name"] == {"Bayside": 37, "Mr. Gutter": 8}
+    assert page["groups"]["by_tag"]["bayside"] == 37
+    assert page["groups"]["by_tag"]["gutter"] == 8
 
 
 def test_a_name_s_group_is_what_comes_before_a_number_or_a_dash() -> None:

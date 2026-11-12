@@ -341,10 +341,10 @@ SCENARIOS: tuple[Scenario, ...] = (
             f"In Demo shop's n8n ({N8N}), how many workflows are named Bayside and how many are "
             "named Mr. Gutter?"
         ),
-        project=SHOP, tools=("list_workflows",), counts=(("Bayside", 49), ("Mr. Gutter", 10)),
+        project=SHOP, tools=("list_workflows",), counts=(("Bayside", 37), ("Mr. Gutter", 8)),
         never_held=True, cost_ceiling=1.0,
-        notes="64 workflows over two pages, with duplicate names in both groups. A real run "
-        "said 46 and 13 for 49 and 10, counting a plain list by hand.",
+        notes="51 workflows over two pages, with duplicate names in both groups. A real run "
+        "counted a plain list by hand and got both wrong.",
     ),
     Scenario(
         "unreadable-attachment", "An attachment that can't be read ends as not done", "limits",

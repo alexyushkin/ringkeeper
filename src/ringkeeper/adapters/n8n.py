@@ -287,7 +287,13 @@ def _offset(cursor: str | None) -> int:
 async def list_workflows(
     target: Target,
     active: bool | None = None,
-    name: Annotated[str | None, Field(description="Filter by exact name.")] = None,
+    name: Annotated[
+        str | None,
+        Field(
+            description="Only the workflow with exactly this full name. For a client's workflows "
+            "or a kind of workflow, use name_contains or name_starts_with."
+        ),
+    ] = None,
     name_contains: Annotated[
         str | None, Field(description="Only workflows whose name has these words.", max_length=200)
     ] = None,
@@ -335,8 +341,28 @@ async def list_workflows(
         found, more = await _every_workflow(target, params)
         counts = _counts(found, more=more)
         extra = {"groups": _groups(found)}  # a long list: counts to quote, made here
+    if name and not kept and cursor is None:
+        extra = await _not_exact(target, params, name)
     page = _page({**data, "data": kept}, "workflows", _workflow_summary) | counts | extra
     return {**page, "limited_to": _scope_words(target)} if target.scope else page
+
+
+async def _not_exact(target: Target, params: JSON, name: str) -> JSON:
+    """No workflow has exactly this name: how many have it in their name, so "how many are
+    named Bayside" isn't answered 0 when there are "Bayside #1" to "Bayside #37"."""
+    found, more = await _every_workflow(target, {**params, "name": None})
+    near = [w for w in found if _matches(w, name, None, [])]
+    if not near:
+        return {}
+    n = len(near)
+    first = " (counting the first pages only)" if more else ""
+    return {
+        "not_exact": (
+            f'None is named exactly "{name}", but {n} have "{name}" in their name{first}. If '
+            f'the question means those, the answer is {n}: name_contains="{name}" lists them.'
+        ),
+        "name_contains_total": n,
+    }
 
 
 @read

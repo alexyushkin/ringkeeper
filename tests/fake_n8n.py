@@ -57,6 +57,8 @@ class FakeN8n:
             if request.url.params.get("active") is not None:
                 wanted = request.url.params["active"] == "true"
                 items = [w for w in items if w["active"] == wanted]
+            if name := request.url.params.get("name"):  # n8n: the exact name
+                items = [w for w in items if w["name"] == name]
             if tags := request.url.params.get("tags"):  # n8n: any of these tags
                 wanted_tags = set(tags.split(","))
                 items = [w for w in items if wanted_tags & {g["name"] for g in w["tags"]}]

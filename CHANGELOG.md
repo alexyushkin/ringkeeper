@@ -26,11 +26,13 @@ publishes it as the release notes and the app shows it with the update.
   in red), here, in the morning digest and in a client's month report. Each count opens those
   tasks, and the heading says when the window started.
 - **Counts of a part are right.** Asked to count a client's n8n workflows by whose they were, a task
-  said 46 and 13 for 49 and 10: it counted a list by hand. Tasks now count with a filter and
+  got both wrong: it counted a list by hand. Tasks now count with a filter and
   quote the total the tool gives, and a count next to a list must match it. n8n's workflow list
   can be filtered by words in the name, its start and tags, and a long list says how many there
-  are by name prefix and by tag. GitHub's pull requests can be filtered by label too. The
-  self-test has a new scenario for it.
+  are by name prefix and by tag. GitHub's pull requests can be filtered by label too. Asked how
+  many are "named" a client, a task used the exact-name filter and said 0: when no workflow has
+  that exact name, the list now says how many have it in their name. The self-test has a new
+  scenario for it.
 - **Partly done.** A task that did part of the job and couldn't do the rest showed only "Not
   done". Its card and page now say **Partly done**, with what was done and what wasn't. It still
   counts as not done.

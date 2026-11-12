@@ -15,6 +15,8 @@ address too, like `https://n8n.acme.example`. n8n Cloud's free trial has no API.
   or the first dash: "Bayside #12" is Bayside's) and by tag, so a count is n8n's, not a guess.
   A list of runs says how many there are and how many of each status (succeeded, failed,
   running...), counting the newest 1,000 at most.
+  The exact-name filter takes a workflow's full name. When none has it, the list says how many
+  have those words in their name, so "how many are named Bayside" isn't answered 0.
 - **Change:** turn a workflow on or off, replace a workflow, run a past
   execution again, stop a running one.
 

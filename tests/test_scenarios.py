@@ -182,19 +182,19 @@ def test_a_failed_tool_call_doesn_t_count_as_using_the_tool() -> None:
 
 
 def test_two_groups_must_be_counted_right() -> None:
-    """From a real run: "Bayside (46)" and "Mr. Gutter (13)" for 49 and 10."""
+    """From a real run: both counts wrong, from a list counted by hand."""
     counted = next(s for s in SCENARIOS if s.key == "subset-counts")
-    assert counted.counts == (("Bayside", 49), ("Mr. Gutter", 10))
-    assert demo_n8n.COUNTS == {"Bayside": 49, "Mr. Gutter": 10}
+    assert counted.counts == (("Bayside", 37), ("Mr. Gutter", 8))
+    assert demo_n8n.COUNTS == {"Bayside": 37, "Mr. Gutter": 8}
     assert len(demo_n8n.WORKFLOWS) > 50  # more than one page
     names = [w["name"] for w in demo_n8n.WORKFLOWS]
     assert len(names) > len(set(names))  # and duplicate names in it
-    right = "Bayside: 49 workflows. Mr. Gutter: 10 workflows."
+    right = "Bayside: 37 workflows. Mr. Gutter: 8 workflows."
     seen = Evidence(projects=[SHOP], statuses=["succeeded"], tools=["list_workflows"])
     assert judge(counted, replace(seen, replies=right)) == []
-    wrong = judge(counted, replace(seen, replies="Bayside (46) and Mr. Gutter (13)."))
-    assert "the answer doesn't say Bayside: 49" in wrong
-    assert "the answer doesn't say Mr. Gutter: 10" in wrong
+    wrong = judge(counted, replace(seen, replies="Bayside (35) and Mr. Gutter (9)."))
+    assert "the answer doesn't say Bayside: 37" in wrong
+    assert "the answer doesn't say Mr. Gutter: 8" in wrong
 
 
 @pytest.mark.anyio
@@ -209,9 +209,9 @@ async def test_the_demo_n8n_answers_only_its_own_key() -> None:
     try:
         target = Target(N8N, Env.PROD, demo_n8n.URL, Secret("r", demo_n8n.KEY))
         page = await n8n.list_workflows.handler(target, name_starts_with="Bayside")
-        assert page["total"] == 49
+        assert page["total"] == 37
         assert (await n8n.list_workflows.handler(target))["groups"]["by_name"] == {
-            "Bayside": 49, "Mr. Gutter": 10,
+            "Bayside": 37, "Mr. Gutter": 8,
         }  # fmt: skip
     finally:
         n8n.transport = previous
