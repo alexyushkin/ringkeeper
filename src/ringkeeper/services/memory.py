@@ -792,8 +792,13 @@ def remember(caller: Caller, text: str, shared: bool = False, mine: bool = False
     return {"kept": True, "where": where, **({"removed": removed} if removed else {})}
 
 
-def hints(session: Session, project: Project, agent: Agent | None) -> list[str]:
-    """What a worker is told about the owner's memory across clients, if it's set up."""
+def hints(
+    session: Session, project: Project, agent: Agent | None, *, saving: bool = True
+) -> list[str]:
+    """What a worker is told about the owner's memory across clients, if it's set up. Not when
+    it keeps nothing (Check my setup): told to save at the end, it said it saved nothing."""
+    if not saving:
+        return []
     told = [personal_memory.instructions(project, agent)]
     if mine_settings(session) and settings_of(project).get("shared_notes", True):
         told.append(MY_INSTRUCTIONS)

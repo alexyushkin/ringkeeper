@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Answers don't talk about memory unless something was saved.** Check my setup's answers said
+  things like "I also saved no memory notes" and "I didn't change any files or save any
+  memory". Its tasks were still told to save your preferences at the end, though nothing is
+  kept from a check. They're no longer told, and can't save, and every task is told to say
+  nothing about memory unless it saved a note.
 - **Ctrl+K finds every setting.** It knew clients, projects and pages, and found nothing for
   "my setup". Now each section of Settings is there by its title and a few plain words
   ("setup", "test", "memory", "backup", "budget"), and choosing one opens Settings on the
