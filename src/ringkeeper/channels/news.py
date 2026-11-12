@@ -33,15 +33,18 @@ def got_it(body: str, link: str | None = None) -> str:
 RESULT_CHARS = 1500  # fits Slack, Discord (2,000) and Telegram (4,096), with the link
 
 
-def result_text(task: Task, link: str | None, limit: int = RESULT_CHARS) -> str:
+def result_text(
+    task: Task, link: str | None, limit: int = RESULT_CHARS, *, full: bool = True
+) -> str:
     """A task's end, for the chat it was asked from: what it found or did, as its last
-    message said (tables as lines, no code or SQL), then where to read the rest."""
+    message said (tables as lines, no code or SQL), then where to read the rest. Not
+    `full` (the chat's prefs say so): only how it ended, and the link."""
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
     head = f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
     said = (task.summary if task.status is TaskStatus.SUCCEEDED else task.error) or ""
     if task.status is TaskStatus.NOT_DONE and task.offer:
         said += f"\n\n{task.offer['label']}?"
-    if not said.strip():
+    if not full or not said.strip():
         return head + (f"\n{link}" if link else "")
     shown = telegram_text.question(said, limit)
     tail = (

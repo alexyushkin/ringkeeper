@@ -24,6 +24,7 @@ from ringkeeper.channels.cards import NOT_ALLOWED, TEST_ACTION
 from ringkeeper.channels.discord import DiscordApi
 from ringkeeper.channels.news import GOT_IT, LOOKING
 from ringkeeper.channels.outbox import NOT_YOURS, REQUESTS_OFF, Runner
+from ringkeeper.channels.prefs import Prefs
 from ringkeeper.channels.slack import SlackApi
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
@@ -808,6 +809,42 @@ def test_a_dm_s_task_result_comes_with_its_files(
         assert (path, names) == ("channels/701/messages", ["orders.csv"])
         assert b"id,total" in raw
         assert b"SECRET" not in raw
+
+
+@pytest.mark.parametrize("kind", ["slack", "discord"])
+def test_full_results_off_sends_only_how_it_ended(
+    kind: str, slack: FakeSlack, discord: FakeDiscord, tmp_path: Path
+) -> None:
+    ident = add_slack(full_results=False) if kind == "slack" else add_discord(full_results=False)
+    take_requests(ident)
+    rk = runner(ident)
+    me = ME_SLACK if kind == "slack" else ME_DISCORD
+    rk.on_message(me, "Export the orders", f"{kind}:{me}")
+    answer_it(kind)
+    a_finished_task_with_files(kind, tmp_path)
+    rk.send_news()
+    if kind == "slack":
+        said = dm_texts(slack)[-1]
+        assert said.startswith("✔ Acme web: done")
+        assert "Exported 1 order." not in said
+        assert slack.shared() == []
+    else:
+        assert discord.attached == []
+    with session_scope(commit=False) as session:
+        assert channels.get_channel(session, ident).prefs["full_results"] is False
+
+
+def test_full_results_are_on_unless_turned_off() -> None:
+    assert Prefs.load(None).full_results
+    assert Prefs.load({"events": ["approvals"]}).full_results  # saved before the setting
+    off = Prefs.load({"full_results": False})
+    assert not off.full_results
+    assert Prefs.load(off.dump()) == off
+    with session_scope() as session:
+        task = tasks.create_task(session, get_settings(), project="acme-web", prompt="list")
+        task.status, task.summary = TaskStatus.SUCCEEDED, "Three open orders."
+        said = news.result_text(task, "https://rk.example/task?id=1", full=False)
+    assert said == "✔ Acme web: done\nhttps://rk.example/task?id=1"
 
 
 def test_a_long_result_ends_with_a_link() -> None:

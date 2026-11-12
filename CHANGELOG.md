@@ -9,6 +9,10 @@ publishes it as the release notes and the app shows it with the update.
   Markdown, CSV, JSON and pictures. Anything else a task wrote (a web page, a program, a
   script, a file with no type) is shown in its folder instead, so nothing runs by a click.
   Before, only a list of known program types was held back.
+- **Keep a chat's results in the app if you'd rather.** Each Telegram, Slack and Discord
+  channel has **Full results and files for requests from here** (Settings › Notifications,
+  on by default). Turned off, a task you asked for from that chat ends there with only how it
+  ended and a link, and its files aren't sent. The security page now says what a chat gets.
 - **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
   subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
   subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by

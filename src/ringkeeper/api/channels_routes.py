@@ -48,6 +48,7 @@ class PrefsIn(Input):
     quiet: Quiet | None = None
     clients: list[Annotated[str, Field(max_length=63)]] = Field(default_factory=list[str])
     projects: list[Annotated[str, Field(max_length=63)]] = Field(default_factory=list[str])
+    full_results: bool = True  # a request from this chat gets its result and files back
 
     def doc(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True)

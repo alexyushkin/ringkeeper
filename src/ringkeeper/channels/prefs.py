@@ -2,13 +2,16 @@
 
     {"events": ["approvals", "routines", "failures"],
      "quiet": {"from": "22:00", "to": "07:00", "tz": "America/New_York"},
-     "clients": [], "projects": []}
+     "clients": [], "projects": [], "full_results": true}
 
 Events: approvals (anything waiting for you: held calls, plans, questions, "which
 project?"), finished (tasks that succeeded), routines (a routine's run, for
 routines set to send a summary), failures (tasks that failed, timed out or ran
 out of budget). No clients and no projects means all of them; otherwise a
 project counts when it's listed or its client is.
+
+full_results: a task asked for from this chat ends there with its result (as its last message
+said) and its files; off, only how it ended and a link to it in Ringkeeper.
 
 During quiet hours nothing is sent; what came up is sent when they end (an
 approval only if it's still waiting).
@@ -53,6 +56,7 @@ class Prefs:
     tz: str = "UTC"
     clients: frozenset[str] = frozenset()
     projects: frozenset[str] = frozenset()
+    full_results: bool = True  # a request from this chat: its result and files come back
 
     @classmethod
     def load(cls, doc: dict[str, Any] | None) -> "Prefs":
@@ -73,6 +77,7 @@ class Prefs:
             tz=tz,
             clients=frozenset(str(c) for c in cast(list[Any], doc.get("clients") or [])),
             projects=frozenset(str(p) for p in cast(list[Any], doc.get("projects") or [])),
+            full_results=doc.get("full_results") is not False,
         )
 
     def dump(self) -> dict[str, Any]:
@@ -88,6 +93,7 @@ class Prefs:
             "quiet": quiet,
             "clients": sorted(self.clients),
             "projects": sorted(self.projects),
+            "full_results": self.full_results,
         }
 
     def quiet(self, now: datetime) -> bool:

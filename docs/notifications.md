@@ -14,6 +14,9 @@ Ringkeeper.
 - **Quiet hours:** nothing is sent then; what came up is sent when they end (an
   approval only if it's still waiting).
 - **Which clients and projects:** all by default.
+- **Full results and files for requests from here:** on by default. A task you asked
+  for from this chat ends there with its result and files (see below). Off, the chat
+  only hears how it ended ("✔ My Project: done") and a link to read it in Ringkeeper.
 - **Send test** checks it works, and that your button presses count.
 
 ## Telegram
@@ -64,7 +67,8 @@ start one with a request: **new: check Acme's orders**.
   what it found or did, not just "done". Tables read as one line per row, and code or SQL
   stays in the app. A long result shows its first part and a link to the rest. Files the
   task made come with it, when they're small (up to 8 MB each, five at most); a file that
-  looks like a secret, like a `.env` or a key, never does.
+  looks like a secret, like a `.env` or a key, never does. To keep results and files in
+  the app, turn off **Full results and files for requests from here** for that channel.
 - **Approvals come back too.** When a task from a chat waits for your OK, its approval card
   is posted in that chat, with its buttons, even if the channel isn't set to send approvals.
 
