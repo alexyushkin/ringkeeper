@@ -31,7 +31,7 @@ def refresh(name: str) -> JSON:
         target = Target(instance.name, instance.env, None, secret, dict(instance.config or {}))
 
     async def ask() -> JSON:
-        return await asyncio.wait_for(mcp.list_tools.handler(target), TIMEOUT_SECONDS)
+        return await asyncio.wait_for(mcp.tools_of(target), TIMEOUT_SECONDS)
 
     listed = asyncio.run(ask())
     remember(name, listed)

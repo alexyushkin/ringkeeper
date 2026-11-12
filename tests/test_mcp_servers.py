@@ -159,5 +159,49 @@ async def test_the_server_runs_with_its_secrets_and_nothing_else(
     assert report["ringkeeper_env"] == []
     assert Path(report["cwd"]) == data_dir / "mcp" / "notes"
 
-    with pytest.raises(ToolError, match=r"Unknown tool|not found|unknown"):
+    with pytest.raises(ToolError, match=r"Unknown tool|not found|unknown") as unknown:
         await mcp.call_tool.handler(target(), tool="no_such_tool")
+    assert "takes:" not in str(unknown.value)
+
+
+@pytest.mark.usefixtures("data_dir")
+async def test_the_agent_reads_a_line_per_tool_and_asks_for_one_tools_arguments() -> None:
+    """A server can describe hundreds of tools at length (ElevenLabs': 927,000 characters).
+    The agent reads each one's name, help in a line and how it runs; words narrow the list,
+    and one tool's argument schema comes when it's asked for by name."""
+    listed = await mcp.list_tools.handler(target())
+    assert "input_schema" in listed["tools"][0]  # the gateway remembers all of it
+
+    short = mcp.shown(listed)
+    assert short["total"] == 4
+    read_notes = {"name": "read_notes", "description": "List the notes.", "runs": "without asking"}
+    assert read_notes in short["tools"]
+    assert all(set(t) == {"name", "description", "runs"} for t in short["tools"])
+
+    found = mcp.shown(listed, words="NOTE position")
+    assert [t["name"] for t in found["tools"]] == ["delete_note"]
+    assert found["total"] == 4
+    assert [t["name"] for t in mcp.shown(listed, words="tag")["tools"]] == ["remove_tag"]
+
+    one = mcp.shown(listed, tool="delete_note")["tools"]
+    assert one[0]["runs"] == "after the user approves and types the connection's name"
+    assert one[0]["input_schema"]["required"] == ["index"]
+    with pytest.raises(ToolError, match="no tool named 'deleteNote'"):
+        mcp.shown(listed, tool="deleteNote")
+
+
+def test_a_long_help_is_cut_to_its_first_line() -> None:
+    long = {"name": "x", "description": "\n  " + "word " * 100 + "\nMore.", "runs": "waits"}
+    line = mcp.shown({"tools": [long]})["tools"][0]["description"]
+    assert len(line) == mcp.SHORT_HELP_CHARS
+    assert line.endswith("…")
+
+
+@pytest.mark.usefixtures("data_dir")
+async def test_arguments_that_dont_fit_come_back_with_the_tools_schema() -> None:
+    with pytest.raises(ToolError) as missing:
+        await mcp.call_tool.handler(target(), tool="delete_note", arguments={})
+    said = str(missing.value)
+    assert "Missing required argument" in said
+    taken = json.loads(said.split("'delete_note' takes: ", 1)[1])
+    assert taken["properties"]["index"]["type"] == "integer"

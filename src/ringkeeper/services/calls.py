@@ -31,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper import plan_limits, remote, sensitive, signed_links
-from ringkeeper.adapters import ADAPTERS, agent_name, vendor
+from ringkeeper.adapters import ADAPTERS, agent_name, mcp, vendor
 from ringkeeper.adapters.base import (
     IMAGE,
     JSON,
@@ -527,6 +527,8 @@ async def _run_unheld(call: ToolCall, spec: ToolSpec, target: Target, auth: Auth
         # The server's hints decide later calls without starting it first.
         await anyio.to_thread.run_sync(mcp_tools.remember, auth.instance, result)
         result = _limit_listing(result, auth)
+        # What the agent reads: a line per tool, or the one it asked for with its arguments.
+        result = mcp.shown(result, call.args.get("words"), call.args.get("tool"))
     shown = continuations.fit(call.caller, scrub_obj(result))
     return shown if image is None else shown | {IMAGE: image}
 

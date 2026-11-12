@@ -94,7 +94,7 @@ async def _probe(kind: InstanceType, target: Target) -> str:  # noqa: PLR0911, P
         case InstanceType.ORACLE:
             return await oracle.probe(target)
         case InstanceType.MCP:
-            listed = await mcp.list_tools.handler(target)
+            listed = await mcp.tools_of(target)
             mcp_tools.remember(target.name, listed)
             tools = listed["tools"]
             names = ", ".join(t["name"] for t in tools[:8]) + (", ..." if len(tools) > 8 else "")

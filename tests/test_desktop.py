@@ -677,8 +677,15 @@ def test_claude_desktop_servers_are_imported_with_secrets_in_the_vault(
     assert run("read_notes")["structured"] == {"result": ["first note"]}
     assert run("what_i_got")["status"] == "held_for_approval"
     listing = ToolCall(caller, InstanceType.MCP, "list_tools", "notes", {})
-    assert len(asyncio.run(run_call(listing, vault))["tools"]) == 4
+    listed = asyncio.run(run_call(listing, vault))
+    assert len(listed["tools"]) == 4
+    assert "input_schema" not in listed["tools"][0]  # a line per tool; arguments when asked
     assert run("read_notes")["structured"] == {"result": ["first note"]}
+    one = ToolCall(caller, InstanceType.MCP, "list_tools", "notes", {"tool": "delete_note"})
+    assert asyncio.run(run_call(one, vault))["tools"][0]["input_schema"]["required"] == ["index"]
+    # The listing asked for one tool, but the hints of all of them are still kept.
+    with session_scope() as session:
+        assert len(instances.get_instance(session, "notes").config["annotations"]) == 4
 
 
 def test_desktop_json_says_which_version_is_running(desktop: dict[str, Any]) -> None:
