@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Data, ops and general tasks start with a shorter prompt.** Work on a project's code keeps
+  Claude Code's own; anything else gets a short one with the same rules for working
+  unattended. In the self-test, results held and the estimated cost per task fell by about a
+  quarter.
 - **Tasks that can't finish say so in one go.** The note told tasks to call Not done "with
   why", and the tool takes a reason: each not-done task spent a refused call first.
 - **Tasks keep where things are even when the name looks obvious,** such as a table found by
