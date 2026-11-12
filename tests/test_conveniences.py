@@ -198,6 +198,52 @@ def test_the_digest_says_per_client_what_ran_failed_and_waits(
     assert "2 ran, 1 failed, 1 waiting for you" in text
 
 
+def test_the_last_day_leaves_out_checks_and_counts_not_done_apart(
+    owner: TestClient,  # noqa: F811
+    project: Path,
+) -> None:
+    """From Home's card: Check my setup's requests counted as the client's work, and a task
+    that said it couldn't do something counted as failed."""
+    from ringkeeper.models import Thread  # noqa: PLC0415
+    from ringkeeper.services import setup_check  # noqa: PLC0415
+
+    with session_scope() as session:
+        not_done = tasks.create_task(session, get_settings(), project="acme-web", prompt="Mail")
+        not_done.status, not_done.error = TaskStatus.NOT_DONE, "No email connection."
+        broke = tasks.create_task(session, get_settings(), project="acme-web", prompt="Sync")
+        broke.status = TaskStatus.TIMED_OUT
+        place = Thread(title="Check my setup: x", source="web", tag=setup_check.TAG)
+        session.add(place)
+        session.flush()
+        for n in range(3):
+            check = tasks.create_task(session, get_settings(), project="acme-web", prompt=f"c{n}")
+            check.thread_id, check.status = place.id, TaskStatus.FAILED
+    found = owner.get("/digest").json()
+    [acme] = found["clients"]
+    assert (acme["ran"], len(acme["not_done"]), len(acme["failed"])) == (2, 1, 1)
+    assert acme["not_done"] == ["Acme web: No email connection."]
+    assert found["left_out"] == [
+        {
+            "label": "Check my setup ran 3 requests",
+            "href": "/settings#advanced/setup-check",
+            "link": "its report",
+        }
+    ]
+    with session_scope() as session:
+        text = digest.text(digest.build(session))
+    assert "2 ran, 1 not done, 1 failed" in text
+    # Each count is a link to those tasks: the same client, outcome and window.
+    since = found["since"]
+    listed = owner.get("/tasks", params={"client": "acme", "outcome": "broke", "since": since,
+                                         "real": "true"}).json()  # fmt: skip
+    assert [t["status"] for t in listed] == ["timed_out"]
+    listed = owner.get("/tasks", params={"client": "acme", "outcome": "not_done",
+                                         "since": since, "real": "true"}).json()  # fmt: skip
+    assert [t["status"] for t in listed] == ["not_done"]
+    every = owner.get("/tasks", params={"client": "acme", "since": since, "real": "true"})
+    assert len(every.json()) == 2  # not the check's three
+
+
 @pytest.mark.usefixtures("project")
 def test_the_digest_is_sent_once_a_day_after_its_time(monkeypatch: pytest.MonkeyPatch) -> None:
     sent: list[str] = []

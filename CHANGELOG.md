@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Home's last 24 hours tells it straight.** Check my setup's requests and the demo's tasks
+  aren't counted as your clients' work: a line says they ran, with a link to the report. A
+  task that wasn't done is counted apart from one that broke ("1 not done" in amber, "1 failed"
+  in red), here, in the morning digest and in a client's month report. Each count opens those
+  tasks, and the heading says when the window started.
 - **Counts of a part are right.** Asked to count a client's n8n workflows by whose they were, a task
   said 46 and 13 for 49 and 10: it counted a list by hand. Tasks now count with a filter and
   quote the total the tool gives, and a count next to a list must match it. n8n's workflow list

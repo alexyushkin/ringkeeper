@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
@@ -21,12 +21,45 @@ const STATUSES: [string, string][] = [
   ["stopped", "Stopped"],
 ];
 
+/** Home's last-day counts link here: a client, an outcome and a window, the owner's own work. */
+interface Linked {
+  client?: string;
+  outcome?: "broke" | "not_done";
+  since?: string;
+  real?: boolean;
+}
+
+function linkedFrom(search: string): Linked {
+  const params = new URLSearchParams(search);
+  const outcome = params.get("outcome");
+  return {
+    client: params.get("client") ?? undefined,
+    outcome: outcome === "broke" || outcome === "not_done" ? outcome : undefined,
+    since: params.get("since") ?? undefined,
+    real: params.get("real") === "1" || undefined,
+  };
+}
+
+const OUTCOME_WORDS = { broke: "failed", not_done: "not done" } as const;
+
 export default function TasksPage() {
   const scope = useScope();
   const [status, setStatus] = useState("");
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
-  const tasks = usePaged<TaskCard>("tasks", { ...scope.query, status, q: query.trim() || undefined, archived: archived || undefined });
+  const [linked, setLinked] = useState<Linked>({});
+  useEffect(() => setLinked(linkedFrom(window.location.search)), []);
+  const narrowed = Boolean(linked.since || linked.outcome);
+  const tasks = usePaged<TaskCard>("tasks", {
+    ...scope.query,
+    ...(linked.client ? { client: linked.client } : {}),
+    status,
+    q: query.trim() || undefined,
+    archived: archived || undefined,
+    outcome: linked.outcome,
+    since: linked.since,
+    real: linked.real,
+  });
   const old = useApi<{ count: number; days: number }>("cleanup/old-tasks");
   const [tidied, setTidied] = useState<string | null>(null);
   const pick = useSelection();
@@ -48,6 +81,22 @@ export default function TasksPage() {
     <>
       <PageHeader title="Tasks" subtitle="Every piece of work, live." />
       <ScopeNote />
+      {narrowed ? (
+        <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted">
+          Showing {linked.outcome ? OUTCOME_WORDS[linked.outcome] : "every"} task{linked.client ? ` for ${linked.client}` : ""}
+          {linked.since ? ` since ${new Date(linked.since).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""}
+          {linked.real ? ", not counting Check my setup's or the demo's" : ""}.
+          <Button
+            kind="ghost"
+            onClick={() => {
+              setLinked({});
+              window.history.replaceState(null, "", "/tasks");
+            }}
+          >
+            Show all
+          </Button>
+        </p>
+      ) : null}
       <div className="mb-4 grid grid-cols-2 gap-2">
         <Select label="Status" value={status} onChange={setStatus} options={STATUSES} />
       </div>

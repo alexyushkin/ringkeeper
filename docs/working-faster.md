@@ -89,7 +89,11 @@ call under one is in Activity.
 
 ## Morning digest
 
-Home shows the last 24 hours per client: what ran, what failed and what waits for you.
+Home shows the last 24 hours per client: what ran, what wasn't done (amber), what failed
+(red, for tasks that broke) and what waits for you. Each count opens the list of those tasks,
+for that client and that window; hold the pointer on the heading to see when the window
+started. Check my setup's requests and the demo's tasks aren't counted: a line under the card
+says they ran, with a link to the report.
 To get it on Telegram, Slack and Discord too, turn on Settings › Notifications ›
 Morning digest and set the time.
 
