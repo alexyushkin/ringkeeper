@@ -18,11 +18,14 @@ folder; this checks what you've actually set up.
 
 ## What it sends
 
-- For each project, one read-only request per connection linked to it, like the ones Home
-  suggests: "List the tables in Acme web's database", "List the open pull requests in Acme web's
-  GitHub repository". When a project has two connections of a kind (two databases, say), each
-  request names its connection. A connection linked to every project is checked once, from the
-  first.
+- One read-only request per connection, like the ones Home suggests: "List the tables in Acme
+  web's database", "List the open pull requests in Acme web's GitHub repository". It goes in the
+  first project the connection is linked to: a connection linked to several projects, or to all
+  of them, is checked once. When a project has two connections of a kind (two databases, say),
+  each request names its connection.
+- For a project none of those went to (its connections were checked in another project), one
+  request of its own, "Explain what's in Acme shop's folder, in a few lines", to check that its
+  requests reach it.
 - A question about your setup: "Which projects do I have, and which connections does each one
   use?"
 - A web lookup.
@@ -36,8 +39,9 @@ written for. If a task asks a question, it answers "only read". Both are in the 
 
 ## Run it
 
-In the app: **Settings > Advanced > Check my setup**, then **Check my setup**. You can keep
-using Ringkeeper while it runs, and **Stop after this one** sends no more.
+In the app: **Settings > Advanced > Check my setup**, then **Check my setup**. It sends three
+requests at a time, and each one's row shows as soon as it's back. You can keep using Ringkeeper
+while it runs, and **Stop after these** sends no more.
 
 In a terminal, with Ringkeeper running (the requests go to it):
 
