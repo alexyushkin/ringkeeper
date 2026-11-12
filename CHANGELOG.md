@@ -3,6 +3,18 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Synced folders are offered only when they sync.** Settings › Backup offered "OneDrive" on
+  a computer where OneDrive wasn't set up: its folder was there, empty, with no account signed
+  in, so a backup there went nowhere, and the same-disk warning went away too. A synced folder
+  is now offered only when its app has an account signed in on this computer, at the folder
+  that account names. One signed in but not running says it won't upload until it runs. Each
+  is a button, **Use OneDrive**, and after a click the screen shows the full folder path and
+  that OneDrive uploads it. **I back this folder up another way** is a checkbox, and once ticked
+  a quiet line names the folder instead of the warning. With no synced folder, the screen says
+  so and names the two other ways: another drive, or a backup tool that covers the folder.
+
 ## 0.1.0-beta.40 (2026-11-12)
 
 - **Back up to Google Drive.** Settings › Backup can upload each backup, the ones you make and

@@ -4,12 +4,20 @@ A backup on the same disk as Ringkeeper dies with the computer. A synced folder 
 Google Drive, Dropbox, iCloud Drive) leaves it: Ringkeeper only writes the file there, and the
 service's own app uploads it. Another drive works too, and so does a folder the owner backs up
 another way (iDrive, Backblaze, Time Machine): they say so once per folder.
+
+A synced folder is offered only when its app has an account signed in on this computer, at the
+folder that account's own settings name: an empty ~/OneDrive with no account syncs nowhere, and
+offering it would also hide the same-disk warning. An app that's signed in but not running is
+offered with a note that nothing uploads until it runs.
 """
 
 import json
 import os
+import plistlib
+import subprocess
 import sys
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,18 +31,44 @@ SAME_DISK = (
     "This backup is on the same disk as Ringkeeper. If this computer is lost, so is the backup. "
     "Choose a synced folder or another drive."
 )
+# Each app's process as `tasklist` (Windows) or `ps` (macOS, Linux) names it, lowercased.
+PROCESSES = {
+    "win32": {"OneDrive": "onedrive.exe", "Dropbox": "dropbox.exe"},
+    "darwin": {"OneDrive": "onedrive", "Google Drive": "google drive", "Dropbox": "dropbox"},
+    "linux": {"Dropbox": "dropbox"},
+}
+ONEDRIVE_ACCOUNTS = r"Software\Microsoft\OneDrive\Accounts"
 
 
 @dataclass(frozen=True)
 class Place:
     service: str  # "OneDrive", "Google Drive", "Dropbox", "iCloud Drive"
-    label: str  # what the button says: "OneDrive", "OneDrive (Acme Inc)"
+    label: str  # the account: "OneDrive", "OneDrive (Acme Inc)"
     root: str  # the synced folder itself
     folder: str  # where backups go in it
+    note: str | None = None  # "OneDrive isn't running, so this won't upload until it is."
+
+
+def _nothing_running() -> set[str]:
+    return set()
+
+
+@dataclass
+class Machine:
+    """What this computer says about its sync apps. Tests pass made-up ones."""
+
+    home: Path
+    env: dict[str, str]
+    platform: str
+    drives: list[Path] = field(default_factory=list[Path])
+    # OneDrive on Windows: (account key, its UserFolder) from the registry.
+    onedrive: list[tuple[str, Path]] = field(default_factory=list[tuple[str, Path]])
+    running: Callable[[], set[str]] = _nothing_running
 
 
 def _dropbox_roots(info_files: list[Path]) -> list[tuple[str, Path]]:
-    """Dropbox says where its folders are in info.json: personal and business."""
+    """Dropbox writes info.json when an account is linked: where its folders are, personal and
+    business."""
     for info in info_files:
         try:
             data: Any = json.loads(info.read_text(encoding="utf-8"))
@@ -66,26 +100,106 @@ def local_drives() -> list[Path]:
     return [Path(drive) for drive in os.listdrives() if kernel32.GetDriveTypeW(drive) == fixed]
 
 
-def _candidates(
-    home: Path, env: dict[str, str], platform: str, drives: list[Path]
-) -> list[tuple[str, str, Path]]:
-    """(service, label, root) wherever each service keeps its folder on this platform."""
+def onedrive_accounts() -> list[tuple[str, Path]]:
+    """OneDrive's signed-in accounts on Windows: each has a key under Accounts ("Personal",
+    "Business1"...) with the folder it syncs as UserFolder. A key without one isn't signed in."""
+    if sys.platform != "win32":
+        return []
+    import winreg  # noqa: PLC0415 (Windows only)
+
+    found: list[tuple[str, Path]] = []
+    try:
+        accounts = winreg.OpenKey(winreg.HKEY_CURRENT_USER, ONEDRIVE_ACCOUNTS)
+    except OSError:
+        return []
+    with accounts:
+        index = 0
+        while True:
+            try:
+                name = winreg.EnumKey(accounts, index)
+            except OSError:
+                break
+            index += 1
+            try:
+                with winreg.OpenKey(accounts, name) as account:
+                    folder: object = winreg.QueryValueEx(account, "UserFolder")[0]
+            except OSError:
+                continue
+            if isinstance(folder, str) and folder.strip():
+                found.append((name, Path(folder)))
+    return found
+
+
+def running_processes() -> set[str]:
+    """The names of the programs running now, lowercased. Empty if the list can't be read."""
+    windows = sys.platform == "win32"
+    command = ["tasklist", "/FO", "CSV", "/NH"] if windows else ["ps", "-axo", "comm="]
+    try:
+        out = subprocess.run(  # noqa: S603 (a fixed command)
+            command, capture_output=True, text=True, timeout=5, check=False,
+            creationflags=0x08000000 if windows else 0,  # CREATE_NO_WINDOW
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    names: set[str] = set()
+    for line in out.stdout.splitlines():
+        name = line.split('","', 1)[0].strip('"') if windows else Path(line.strip()).name
+        if name:
+            names.add(name.casefold())
+    return names
+
+
+def this_machine() -> Machine:
+    platform = sys.platform
+    return Machine(
+        home=Path.home(), env=dict(os.environ), platform=platform,
+        drives=local_drives() if platform == "win32" else [],
+        onedrive=onedrive_accounts() if platform == "win32" else [],
+        running=running_processes,
+    )  # fmt: skip
+
+
+def _icloud_signed_in(home: Path) -> bool:
+    """macOS: an Apple account signed in with iCloud Drive on (MobileMeAccounts, the list
+    System Settings keeps)."""
+    try:
+        with (home / "Library" / "Preferences" / "MobileMeAccounts.plist").open("rb") as f:
+            data: Any = plistlib.load(f)
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return False
+    accounts = cast(dict[str, Any], data).get("Accounts") if isinstance(data, dict) else None
+    for account in cast(list[Any], accounts or []):
+        services = (
+            cast(dict[str, Any], account).get("Services") if isinstance(account, dict) else None
+        )
+        for service in cast(list[Any], services or []):
+            if not isinstance(service, dict):
+                continue
+            entry = cast(dict[str, Any], service)
+            if entry.get("Name") == "MOBILE_DOCUMENTS" and entry.get("Enabled"):
+                return True
+    return False
+
+
+def _candidates(machine: Machine) -> list[tuple[str, str, Path]]:
+    """(service, label, root) for each signed-in account, at the folder its app names."""
+    home, env, platform = machine.home, machine.env, machine.platform
     found: list[tuple[str, str, Path]] = []
     if platform == "win32":
-        for var in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
-            if env.get(var):
-                root = Path(env[var])
-                found.append(("OneDrive", _onedrive_label(root.name), root))
-        found += [("OneDrive", _onedrive_label(p.name), p) for p in sorted(home.glob("OneDrive*"))]
-        # Google Drive for desktop: a drive of its own (G: by default) holding "My Drive".
-        found += [("Google Drive", "Google Drive", drive / "My Drive") for drive in drives]
-        found.append(("Google Drive", "Google Drive", home / "Google Drive"))  # older app
+        for key, root in machine.onedrive:
+            personal = key.casefold() == "personal"
+            found.append(("OneDrive", "OneDrive" if personal else _onedrive_label(root.name), root))
+        # Google Drive for desktop: while it's signed in and running, a drive of its own (G: by
+        # default) holding "My Drive". Signed out or stopped, the drive isn't there.
+        found += [("Google Drive", "Google Drive", drive / "My Drive") for drive in machine.drives]
         appdata = [Path(env[v]) / "Dropbox" / "info.json" for v in ("APPDATA", "LOCALAPPDATA")
                    if env.get(v)]  # fmt: skip
         found += [("Dropbox", label, root) for label, root in _dropbox_roots(appdata)]
-        found.append(("Dropbox", "Dropbox", home / "Dropbox"))
-        found.append(("iCloud Drive", "iCloud Drive", home / "iCloudDrive"))
+        # iCloud for Windows keeps no settings Ringkeeper can read to tell it's signed in: its
+        # folder isn't offered, and Browse still reaches it.
     elif platform == "darwin":
+        # A signed-in OneDrive or Google Drive is a File Provider folder here; signing out
+        # removes it.
         storage = home / "Library" / "CloudStorage"
         found += [
             ("OneDrive", _onedrive_label(p.name), p) for p in sorted(storage.glob("OneDrive*"))
@@ -98,16 +212,14 @@ def _candidates(
             ("Dropbox", label, root)
             for label, root in _dropbox_roots([home / ".dropbox" / "info.json"])
         ]
-        found += [("Dropbox", "Dropbox", p) for p in sorted(storage.glob("Dropbox*"))]
-        found.append(("Dropbox", "Dropbox", home / "Dropbox"))
-        found.append(("iCloud Drive", "iCloud Drive",
-                      home / "Library" / "Mobile Documents" / "com~apple~CloudDocs"))  # fmt: skip
+        if _icloud_signed_in(home):
+            icloud = home / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+            found.append(("iCloud Drive", "iCloud Drive", icloud))
     else:
         found += [
             ("Dropbox", label, root)
             for label, root in _dropbox_roots([home / ".dropbox" / "info.json"])
         ]
-        found.append(("Dropbox", "Dropbox", home / "Dropbox"))
     return found
 
 
@@ -117,26 +229,26 @@ def _onedrive_label(name: str) -> str:
     return f"OneDrive ({rest})" if rest else "OneDrive"
 
 
-def synced_folders(
-    home: Path | None = None,
-    env: dict[str, str] | None = None,
-    platform: str | None = None,
-    drives: list[Path] | None = None,
-) -> list[Place]:
-    """The synced folders on this computer, each once, with where backups would go in it."""
-    home = home or Path.home()
-    env = dict(os.environ) if env is None else env
-    platform = platform or sys.platform
-    if drives is None:
-        drives = local_drives() if platform == "win32" else []
+def synced_folders(machine: Machine | None = None) -> list[Place]:
+    """The synced folders of the accounts signed in on this computer, each once, with where
+    backups would go in it and, if its app isn't running, a note saying so."""
+    machine = machine or this_machine()
+    processes = PROCESSES.get(machine.platform, {})
+    running: set[str] | None = None
     seen: set[str] = set()
     places: list[Place] = []
-    for service, label, root in _candidates(home, env, platform, drives):
+    for service, label, root in _candidates(machine):
         key = _key(root)
         if key in seen or not root.is_dir():
             continue
         seen.add(key)
-        places.append(Place(service, label, str(root), str(root / FOLDER_NAME)))
+        note = None
+        if service in processes:
+            running = machine.running() if running is None else running
+            # Nothing listed means the list couldn't be read: say nothing rather than wrong.
+            if running and processes[service] not in running:
+                note = f"{service} isn't running, so this won't upload until it is."
+        places.append(Place(service, label, str(root), str(root / FOLDER_NAME), note))
     return places
 
 
@@ -196,6 +308,8 @@ def check(session: Session, folder: str, data_dir: Path, places: list[Place]) ->
     return {
         "folder": folder,
         "synced": synced.label if synced else None,
+        "service": synced.service if synced else None,
+        "note": synced.note if synced else None,
         "same_disk": on_same_disk,
         "backed_up_elsewhere": other_way,
         "warning": SAME_DISK if on_same_disk and not synced and not other_way else None,
