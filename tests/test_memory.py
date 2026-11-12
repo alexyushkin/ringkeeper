@@ -632,6 +632,9 @@ def test_a_worker_is_told_about_my_memory_only_when_its_set_up(notion: FakeNotio
         (said_to,) = memory.hints(session, projects.get_project(session, "acme-web"), None)
     assert "mine set to true" in said_to
     assert "Never put anything about a client" in said_to
+    with session_scope() as session:  # Check my setup keeps nothing: not told to save any
+        found = projects.get_project(session, "acme-web")
+        assert memory.hints(session, found, None, saving=False) == []
 
 
 def test_a_project_can_leave_my_memory_out(notion: FakeNotion) -> None:
