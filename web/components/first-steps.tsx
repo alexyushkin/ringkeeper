@@ -93,7 +93,7 @@ function BackupNudge({ onDismissed }: { onDismissed: () => void }) {
         Your projects, connections and history are only on this computer. A weekly backup into a folder you choose (another drive, or a synced folder) brings them back if this computer is lost or replaced.
       </p>
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/settings#backup" className="text-sm font-medium text-accent">
+        <Link href="/settings#backup/backup-auto/run" className="text-sm font-medium text-accent">
           Turn them on
         </Link>
         <Button kind="ghost" onClick={() => void api("start/backup-nudge", { method: "POST" }).then(onDismissed)}>

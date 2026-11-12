@@ -5,6 +5,16 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Backups that outlive this computer.** Settings › Backup offered only a local folder, and a
+  backup on the same disk is lost with the computer. Now:
+  - The synced folders it finds (OneDrive, Google Drive, Dropbox, iCloud Drive) are one click
+    away, next to Browse, for a backup and for automatic backups. Ringkeeper only writes the
+    file there; the service's own app copies it.
+  - A folder on the same disk that isn't synced gets a warning, with **I back this folder up
+    another way** (iDrive, Backblaze, Time Machine...) to hide it for that folder.
+  - The password fields say it's needed on the new computer and can't be recovered, so keep it
+    in a password manager. The automatic backups' password is stored only on this computer.
+  - Home's **Turn on automatic backups** opens the folder choice first.
 - **Ctrl+K finds every setting.** It knew clients, projects and pages, and found nothing for
   "my setup". Now each section of Settings is there by its title and a few plain words
   ("setup", "test", "memory", "backup", "budget"), and choosing one opens Settings on the
