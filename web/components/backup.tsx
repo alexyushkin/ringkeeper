@@ -2,14 +2,37 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Button, Card, Field, Toggle } from "@/components/ui";
+import { Alert, Button, Card, Field, Toggle, useNamedHere } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { canPickFolder, pickFolder } from "@/lib/client/shell";
+
+/** A synced folder (OneDrive, Google Drive, Dropbox, iCloud Drive): its app uploads what's
+ * written there. Ringkeeper only writes the file. */
+interface Place {
+  service: string;
+  label: string;
+  root: string;
+  folder: string;
+}
 
 interface Info {
   default_folder: string;
   auto: { enabled: boolean; folder: string; keep: number; last: string | null; last_error: string | null };
+  synced: Place[];
 }
+
+/** What a backup folder means for a lost computer (GET desktop/backup/folder). */
+interface Checked {
+  folder: string;
+  synced: string | null;
+  same_disk: boolean;
+  backed_up_elsewhere: boolean;
+  warning: string | null;
+}
+
+const ELSEWHERE = "I back this folder up another way (iDrive, Backblaze, Time Machine...)";
+const MARKED = "rk-backup-elsewhere"; // one card marked a folder: the others check again
+const KEEP_PASSWORD = "You need it on the new computer, and it can't be recovered: keep it in a password manager.";
 
 interface Preview {
   created_at: string;
@@ -38,36 +61,104 @@ export function BackupSettings() {
       <p className="text-sm text-muted">
         A backup is one file with your clients, projects, connections and their keys, agents, routines, settings and history, locked with a password you choose. Project folders aren&apos;t in it: they stay where they are, and a restored project points to the same folder path.
       </p>
-      <Export defaultFolder={info.data.default_folder} />
+      <p className="text-sm text-muted">
+        To restore on a new computer after this one is lost, the backup has to be somewhere else too. Choose a synced folder (OneDrive, Google Drive, Dropbox, iCloud Drive) or another drive. The default folder, <span className="font-mono text-xs break-all">{info.data.default_folder}</span>, is in Documents, so most backup tools already include it.
+      </p>
+      <Export defaultFolder={info.data.default_folder} synced={info.data.synced} />
       <Restore />
       <Automatic info={info.data} onSaved={info.reload} />
     </div>
   );
 }
 
-function FolderField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+/** The backup folder: typed, Browse, or one click for a synced folder; and under it what
+ * that folder means if this computer is lost. */
+function FolderField({ value, onChange, placeholder, synced }: { value: string; onChange: (v: string) => void; placeholder: string; synced: Place[] }) {
   const [browse, setBrowse] = useState(false);
   useEffect(() => setBrowse(canPickFolder()), []);
   return (
-    <div className="flex items-end gap-2">
-      <div className="min-w-0 flex-1">
-        <Field label="Folder" value={value} onChange={onChange} placeholder={placeholder} />
+    <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Field label="Folder" value={value} onChange={onChange} placeholder={placeholder} />
+        </div>
+        {browse ? (
+          <Button
+            onClick={async () => {
+              const picked = await pickFolder("Choose the folder for backups", value || placeholder);
+              if (picked) onChange(picked);
+            }}
+          >
+            Browse…
+          </Button>
+        ) : null}
       </div>
-      {browse ? (
-        <Button
-          onClick={async () => {
-            const picked = await pickFolder("Choose the folder for backups", value || placeholder);
-            if (picked) onChange(picked);
-          }}
-        >
-          Browse…
-        </Button>
+      {synced.length ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted">Synced folders:</span>
+          {synced.map((place) => (
+            <Button key={place.root} kind="ghost" onClick={() => onChange(place.folder)}>
+              {place.label}
+            </Button>
+          ))}
+        </div>
       ) : null}
+      <FolderCheck folder={value.trim() || placeholder} />
     </div>
   );
 }
 
-function Export({ defaultFolder }: { defaultFolder: string }) {
+/** Whether a backup there outlives this computer: the same-disk warning, until the owner
+ * says they back that folder up another way. */
+function FolderCheck({ folder }: { folder: string }) {
+  const [checked, setChecked] = useState<Checked | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [again, setAgain] = useState(0);
+  useEffect(() => {
+    const recheck = () => setAgain((n) => n + 1);
+    window.addEventListener(MARKED, recheck);
+    return () => window.removeEventListener(MARKED, recheck);
+  }, []);
+  useEffect(() => {
+    let current = true;
+    const timer = setTimeout(() => {
+      api<Checked>(`desktop/backup/folder?folder=${encodeURIComponent(folder)}`).then(
+        (found) => {
+          if (current) setChecked(found);
+        },
+        () => {
+          if (current) setChecked(null); // a half-typed path: nothing to say yet
+        },
+      );
+    }, 400);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [folder, again]);
+  if (!checked || checked.folder !== folder) return null;
+  if (checked.synced) return <p className="text-xs text-muted">In {checked.synced}: its app copies it off this computer.</p>;
+  if (!checked.warning) return null;
+  return (
+    <div className="space-y-2">
+      <Alert tone="warn">{checked.warning}</Alert>
+      <Button
+        kind="ghost"
+        onClick={() =>
+          void api("desktop/backup/elsewhere", { method: "PUT", json: { folder, backed_up: true } }).then(
+            () => window.dispatchEvent(new Event(MARKED)),
+            (err: unknown) => setError(message(err)),
+          )
+        }
+      >
+        {ELSEWHERE}
+      </Button>
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+function Export({ defaultFolder, synced }: { defaultFolder: string; synced: Place[] }) {
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
   const [folder, setFolder] = useState("");
@@ -99,10 +190,10 @@ function Export({ defaultFolder }: { defaultFolder: string }) {
     <Card anchor="backup-make" className="space-y-3">
       <h2 className="font-semibold">Make a backup</h2>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 8 characters. Without it, the backup can't be opened, by anyone." />
+        <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint={`At least 8 characters. Without it, the backup can't be opened, by anyone. ${KEEP_PASSWORD}`} />
         <Field label="Password again" type="password" value={again} onChange={setAgain} autoComplete="new-password" />
       </div>
-      <FolderField value={folder} onChange={setFolder} placeholder={defaultFolder} />
+      <FolderField value={folder} onChange={setFolder} placeholder={defaultFolder} synced={synced} />
       <Button kind="primary" busy={busy} disabled={password.length < 8 || !again} onClick={save}>
         Save the backup
       </Button>
@@ -142,7 +233,7 @@ function Restore() {
   return (
     <Card anchor="backup-restore" className="space-y-3">
       <h2 className="font-semibold">Restore a backup</h2>
-      <p className="text-sm text-muted">On a new computer, or to go back. You&apos;ll see what comes in before anything changes.</p>
+      <p className="text-sm text-muted">On a new computer, or to go back: pick the backup file (from your synced folder, or wherever you kept it) and type its password. You&apos;ll see what comes in before anything changes.</p>
       <label className="block text-sm font-medium">
         Backup file
         <input
@@ -207,6 +298,11 @@ function Restore() {
 function Automatic({ info, onSaved }: { info: Info; onSaved: () => void }) {
   const auto = info.auto;
   const [enabled, setEnabled] = useState(auto.enabled);
+  // Home's "Turn on automatic backups" comes here with /run: the folder choice first.
+  const { run } = useNamedHere("backup-auto");
+  useEffect(() => {
+    if (run) setEnabled(true);
+  }, [run]);
   const [folder, setFolder] = useState(auto.folder);
   const [keep, setKeep] = useState(String(auto.keep));
   const [password, setPassword] = useState("");
@@ -221,7 +317,11 @@ function Automatic({ info, onSaved }: { info: Info; onSaved: () => void }) {
     try {
       await api("desktop/backup/auto", { method: "PUT", json: { enabled, folder, keep: Number(keep) || 4, password: password || null } });
       setPassword("");
-      setNotice(enabled ? "Saved. The first one is made in a minute or so, then every week." : "Automatic backups are off.");
+      setNotice(
+        enabled
+          ? "Saved. The first one is made in a minute or so, then every week. Its password is stored only on this computer: keep it in a password manager, since you need it on a new one."
+          : "Automatic backups are off.",
+      );
       onSaved();
     } catch (err) {
       setError(message(err));
@@ -236,10 +336,10 @@ function Automatic({ info, onSaved }: { info: Info; onSaved: () => void }) {
       <Toggle label="Make a backup every week" checked={enabled} onChange={setEnabled} hint="Into a folder you choose, like one your cloud drive copies. Older ones are deleted, keeping the last few." />
       {enabled ? (
         <>
-          <FolderField value={folder} onChange={setFolder} placeholder={info.default_folder} />
+          <FolderField value={folder} onChange={setFolder} placeholder={info.default_folder} synced={info.synced} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Keep the last" type="number" value={keep} onChange={setKeep} hint="Between 1 and 52 backups." />
-            <Field label={auto.enabled ? "New password (leave empty to keep it)" : "Password for these backups"} type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="Kept in Ringkeeper's vault on this computer, so it can lock each backup. Write it down: you need it to restore." />
+            <Field label={auto.enabled ? "New password (leave empty to keep it)" : "Password for these backups"} type="password" value={password} onChange={setPassword} autoComplete="new-password" hint={`Kept in Ringkeeper's vault on this computer only, so it can lock each backup. ${KEEP_PASSWORD}`} />
           </div>
         </>
       ) : null}

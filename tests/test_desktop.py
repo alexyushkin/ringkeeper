@@ -29,7 +29,15 @@ from ringkeeper.db import dispose_engines, session_scope
 from ringkeeper.desktop import server
 from ringkeeper.desktop.update import updates
 from ringkeeper.models import AuthMode, DecisionKind, InstanceType, TaskStatus
-from ringkeeper.services import claude_desktop, claude_work, inbox, instances, subscription, tasks
+from ringkeeper.services import (
+    backup_places,
+    claude_desktop,
+    claude_work,
+    inbox,
+    instances,
+    subscription,
+    tasks,
+)
 from ringkeeper.services.calls import RefusalError, run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
@@ -90,6 +98,20 @@ def shell(info: dict[str, Any]) -> httpx2.Client:
     return httpx2.Client(
         base_url=info["url"], timeout=30, headers={"Authorization": f"Bearer {info['secret']}"}
     )
+
+
+def test_a_backup_folder_says_whether_it_leaves_this_computer(desktop: dict[str, Any]) -> None:
+    """Settings, Backup: the synced folders to choose from, the same-disk warning, and "I back
+    this folder up another way", which stays for that folder."""
+    win = window(desktop)
+    assert isinstance(win.get("/bff/desktop/backup").json()["synced"], list)
+    plain = str(desktop["data_dir"].parent / "Documents" / "Ringkeeper backups")
+    said = win.get("/bff/desktop/backup/folder", params={"folder": plain}).json()
+    assert (said["same_disk"], said["warning"]) == (True, backup_places.SAME_DISK)
+    marked = win.put("/bff/desktop/backup/elsewhere", json={"folder": plain})
+    assert marked.status_code == 200, marked.text
+    assert win.get("/bff/desktop/backup/folder", params={"folder": plain}).json()["warning"] is None
+    assert win.get("/bff/desktop/backup/folder", params={"folder": "relative"}).status_code == 422
 
 
 def test_it_runs_on_localhost_with_sqlite_and_the_keychain(desktop: dict[str, Any]) -> None:

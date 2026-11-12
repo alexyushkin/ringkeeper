@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import Field
 from sqlalchemy import func, select
 
@@ -30,6 +30,7 @@ from ringkeeper.scenarios.self_test import self_test
 from ringkeeper.schemas import Input, ProjectIn, Slug
 from ringkeeper.services import (
     backup,
+    backup_places,
     claude_desktop,
     claude_work,
     downloads,
@@ -469,7 +470,37 @@ def backup_export(data: ExportIn) -> dict[str, Any]:
 @router.get("/backup")
 def backup_info(session: SessionDep) -> dict[str, Any]:
     auto = backup.auto(session)
-    return {"default_folder": str(_backup_folder()), "auto": auto.__dict__}
+    return {
+        "default_folder": str(_backup_folder()),
+        "auto": auto.__dict__,
+        # One-click choices next to Browse: Ringkeeper only writes the file there.
+        "synced": [place.__dict__ for place in backup_places.synced_folders()],
+    }
+
+
+@router.get("/backup/folder")
+def backup_folder_check(
+    session: SessionDep, folder: Annotated[str, Query(max_length=1000)] = ""
+) -> dict[str, Any]:
+    """Whether a backup there outlives this computer: synced, another drive, or backed up
+    another way, or the same disk (the warning)."""
+    chosen = folder.strip() or str(_backup_folder())
+    if not Path(chosen).is_absolute():
+        raise HTTPException(422, detail="Choose a full folder path for the backup, or Browse.")
+    places = backup_places.synced_folders()
+    return backup_places.check(session, chosen, get_settings().data_dir, places)
+
+
+class ElsewhereIn(Input):
+    folder: Annotated[str, Field(min_length=1, max_length=1000)]
+    backed_up: bool = True
+
+
+@router.put("/backup/elsewhere")
+def backup_elsewhere(data: ElsewhereIn, session: WriteSessionDep) -> dict[str, Any]:
+    """'I back this folder up another way': the same-disk warning isn't shown for it."""
+    kept = backup_places.set_elsewhere(session, data.folder.strip(), data.backed_up)
+    return {"folders": kept}
 
 
 async def _upload(request: Request) -> bytes:
