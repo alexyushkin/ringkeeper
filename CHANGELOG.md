@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.40 (2026-11-12)
 
 - **Back up to Google Drive.** Settings › Backup can upload each backup, the ones you make and
   the weekly ones, into a "Ringkeeper backups" folder in your own Google Drive, keeping as many
