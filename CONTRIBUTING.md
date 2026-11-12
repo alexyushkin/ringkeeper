@@ -33,7 +33,11 @@ The desktop shell (`shell/`) has its own: `cargo fmt --check`, `cargo clippy
 --all-targets -- -D warnings` and `cargo test`. Docs on running the desktop app
 from source are in [docs/developers.md](docs/developers.md).
 
-CI runs the same checks plus a gitleaks scan of the full history.
+CI runs the same checks plus a gitleaks scan of the full history, and a check that what a change
+adds doesn't name anyone on the owner's private list (the `PRIVATE_NAMES` secret; a fork's pull
+request passes it with a warning). To run that check on each push from your own clone, keep the
+list in `~/.ringkeeper-private-names.txt`, one name per line, and run
+`python scripts/check_private_names.py --install-hook` once.
 
 ## Ground rules
 
