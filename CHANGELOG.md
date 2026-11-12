@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.37 (2026-11-11)
 
 - **Tasks read files better, wherever they come from.** Gmail, Google, any mailbox, Microsoft
   (attachments, and now OneDrive and SharePoint files too) and file storage all read files the
