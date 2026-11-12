@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 
+import { SaveFile } from "@/components/save-file";
+import { forExcel } from "@/lib/download";
 import { toCsv, toTsv } from "@/lib/markdown-table";
 
-/** Copy a table (to paste into a spreadsheet) or download it as CSV. */
+/** Copy a table (to paste into a spreadsheet) or download it as CSV (in the desktop app,
+ * saved into Downloads). */
 export function TableTools({ head, rows }: { head: string[]; rows: string[][] }) {
   const [copied, setCopied] = useState(false);
-  const csv = `data:text/csv;charset=utf-8,${encodeURIComponent("\uFEFF" + toCsv(head, rows))}`;
   return (
-    <div className="mb-1 flex justify-end gap-3 text-xs">
+    <div className="mb-1 flex flex-wrap justify-end gap-3 text-xs">
       <button
         type="button"
         className="text-muted hover:text-ink"
@@ -22,9 +24,7 @@ export function TableTools({ head, rows }: { head: string[]; rows: string[][] })
       >
         {copied ? "Copied" : "Copy"}
       </button>
-      <a href={csv} download="table.csv" className="text-muted hover:text-ink">
-        Download CSV
-      </a>
+      <SaveFile name="table.csv" text={() => forExcel(toCsv(head, rows))} type="text/csv" label="Download CSV" className="text-muted hover:text-ink" />
     </div>
   );
 }
