@@ -96,7 +96,7 @@ function Export({ defaultFolder }: { defaultFolder: string }) {
   }
 
   return (
-    <Card className="space-y-3">
+    <Card anchor="backup-make" className="space-y-3">
       <h2 className="font-semibold">Make a backup</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 8 characters. Without it, the backup can't be opened, by anyone." />
@@ -140,7 +140,7 @@ function Restore() {
 
   const missing = (preview?.projects ?? []).filter((p) => p.folder && !p.folder_here);
   return (
-    <Card className="space-y-3">
+    <Card anchor="backup-restore" className="space-y-3">
       <h2 className="font-semibold">Restore a backup</h2>
       <p className="text-sm text-muted">On a new computer, or to go back. You&apos;ll see what comes in before anything changes.</p>
       <label className="block text-sm font-medium">
@@ -231,7 +231,7 @@ function Automatic({ info, onSaved }: { info: Info; onSaved: () => void }) {
   }
 
   return (
-    <Card className="space-y-3">
+    <Card anchor="backup-auto" className="space-y-3">
       <h2 className="font-semibold">Automatic backups</h2>
       <Toggle label="Make a backup every week" checked={enabled} onChange={setEnabled} hint="Into a folder you choose, like one your cloud drive copies. Older ones are deleted, keeping the last few." />
       {enabled ? (

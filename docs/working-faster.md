@@ -93,6 +93,15 @@ Home shows the last 24 hours per client: what ran, what failed and what waits fo
 To get it on Telegram, Slack and Discord too, turn on Settings › Notifications ›
 Morning digest and set the time.
 
+## Search with Ctrl+K
+
+Ctrl+K (Cmd+K on a Mac) opens a search over pages, clients, projects, connections and
+every section of Settings. Type a title or a plain word: "setup" finds Check my setup,
+"test" the Self-test, "memory" Notion for every project, "backup" Automatic backups,
+"budget" the spending cap. Choosing a section opens Settings on its tab, with the section
+open and scrolled into view. **Run Check my setup** and **Run the self-test** open theirs
+with the question already asked: nothing starts until you say so.
+
 ## Pins and recents
 
 The client and project switcher, and Ctrl+K, list what you pinned and what you used

@@ -38,7 +38,7 @@ export function AboutCard() {
       .finally(() => setBusy(false));
   };
   return (
-    <Card className="mb-4 space-y-3">
+    <Card anchor="about" className="mb-4 space-y-3">
       <h2 className="font-semibold">About</h2>
       <p className="text-sm">
         Ringkeeper {data.version}

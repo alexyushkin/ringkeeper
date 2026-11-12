@@ -209,7 +209,7 @@ export function VoiceSettings({ language, onLanguage }: { language: string; onLa
   const anyReady = status.choices.some((c) => c.ready);
   const size = (c: VoiceChoice) => (c.ready ? "downloaded" : `${megabytes(c.download)} download`);
   return (
-    <Card className="mb-4 space-y-3">
+    <Card anchor="voice" className="mb-4 space-y-3">
       <h2 className="font-semibold">Voice</h2>
       <p className="text-sm text-muted">Speech becomes text on this computer; recordings never leave it. Only the chosen model is kept.</p>
       <Select

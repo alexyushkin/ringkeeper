@@ -104,7 +104,7 @@ export function ScanSettings() {
   if (!status) return null;
   if (status.needs_macos) {
     return (
-      <Card className="mb-4 space-y-3">
+      <Card anchor="scans" className="mb-4 space-y-3">
         <h2 className="font-semibold">Reading scans</h2>
         <p className="text-sm text-muted">Reading scans needs macOS {status.needs_macos} or later. Tasks can still read PDFs that have text in them.</p>
       </Card>
@@ -112,7 +112,7 @@ export function ScanSettings() {
   }
   if (!status.available) return null;
   return (
-    <Card className="mb-4 space-y-3">
+    <Card anchor="scans" className="mb-4 space-y-3">
       <h2 className="font-semibold">Reading scans</h2>
       <p className="text-sm text-muted">Lets tasks read pictures and scanned PDFs, in English. They&apos;re read on this computer and never leave it.</p>
       {status.state === "downloading" ? (
