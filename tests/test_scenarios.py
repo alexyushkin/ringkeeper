@@ -128,7 +128,7 @@ def test_an_attachment_it_can_t_read_must_end_as_not_done() -> None:
     assert UNREADABLE_SUBJECT in expected.request
     seen = Evidence(
         projects=[SHOP],
-        tools=["mcp__ringkeeper-mcp__call_tool demo-mail read_attachment"],
+        tried=["mcp__ringkeeper-mcp__call_tool demo-mail read_attachment"],
         statuses=["not_done"],
     )
     assert judge(expected, seen) == []
@@ -175,6 +175,25 @@ def test_a_failed_tool_call_doesn_t_count_as_using_the_tool() -> None:
     refused = {"_kind": "ToolResultBlock", "tool_use_id": "2", "is_error": True}
     events = [event("sdk.assistant", used), event("sdk.assistant", missing)]
     assert tool_names([*events, event("sdk.user", refused)]) == ["query"]
+    # ...but it was tried: a file that can't be read always comes back as an error.
+    assert tool_names([*events, event("sdk.user", refused)], errors=True) == ["query", "execute"]
+
+
+def test_a_tool_that_must_be_tried_can_come_back_as_an_error() -> None:
+    unreadable = next(s for s in SCENARIOS if s.key == "unreadable-attachment")
+    assert unreadable.tried == ("read_attachment",)
+    assert unreadable.tools == ()
+    called = ["mcp__ringkeeper-mcp__call_tool demo-mail read_attachment"]
+    assert judge(unreadable, Evidence(projects=[SHOP], statuses=["not_done"], tried=called)) == []
+    wrong = judge(unreadable, Evidence(projects=[SHOP], statuses=["not_done"]))
+    assert "it didn't try read_attachment" in wrong
+
+
+def test_not_done_is_called_with_the_field_it_takes() -> None:
+    """The note named it "why", and tasks called it with `why`: one refused call each."""
+    note = " ".join(HEADLESS_NOTE.split())
+    assert "call the not_done tool with your reason" in note
+    assert "with why" not in note
 
 
 def test_a_generic_call_is_named_by_the_connection_and_tool_it_reached() -> None:

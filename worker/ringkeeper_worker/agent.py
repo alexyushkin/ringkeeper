@@ -29,7 +29,7 @@ Finish all the work before your final message: never leave part of it to a
 background task or agent, and never end saying something is still being fetched.
 Nothing runs after you end. If you can't finish it, call not_done.
 If you couldn't do what was asked (a tool refused it, you lack the access or the
-connection, or it can't be done), call the not_done tool with why before you end.
+connection, or it can't be done), call the not_done tool with your reason before you end.
 Never end as if it were done. The main thing asked for decides: if it isn't in your
 answer (you couldn't read the file, find the numbers, or make the change), call
 not_done, even when you did part of it or offer ways forward. If the work needs the

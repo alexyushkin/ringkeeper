@@ -5,6 +5,13 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Tasks that can't finish say so in one go.** The note told tasks to call Not done "with
+  why", and the tool takes a reason: each not-done task spent a refused call first.
+- **Tasks keep where things are even when the name looks obvious,** such as a table found by
+  listing the database, so the next task doesn't list it again.
+- **Self-test:** the unreadable-attachment scenario passes when the task tried the attachment
+  and ended as Not done. Reading that file always fails, and a failed call didn't count.
+
 - **Only documents open from a task's files.** **Open** works for PDFs, Office files, text,
   Markdown, CSV, JSON and pictures. Anything else a task wrote (a web page, a program, a
   script, a file with no type) is shown in its folder instead, so nothing runs by a click.

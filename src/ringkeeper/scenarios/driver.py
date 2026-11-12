@@ -57,8 +57,9 @@ def _blocks(event: SessionEvent) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], message.get("content") or [])
 
 
-def tool_names(events: list[SessionEvent]) -> list[str]:
-    """The tools that ran. A call that came back as an error doesn't count as using the tool.
+def tool_names(events: list[SessionEvent], *, errors: bool = False) -> list[str]:
+    """The tools that ran. A call that came back as an error doesn't count as using the tool
+    (with errors=True, it does: what was tried).
     A connection added from another app is called through one generic tool, so that call
     is named with the connection and tool it reached ("... call_tool demo-mail list_emails")."""
     called: dict[str, str] = {}
@@ -79,7 +80,7 @@ def tool_names(events: list[SessionEvent]) -> list[str]:
         for block in _blocks(event)
         if block.get("_kind") == "ToolResultBlock" and block.get("is_error")
     }
-    return [name for ident, name in called.items() if ident not in failed]
+    return [name for ident, name in called.items() if errors or ident not in failed]
 
 
 def _short(value: object, limit: int = 400) -> str:
@@ -327,6 +328,7 @@ class Driver:
                     agent = session.get(Agent, task.agent_id)
                     seen.agents.append(agent.name if agent else "?")
             seen.tools = tool_names(events)
+            seen.tried = tool_names(events, errors=True)
             if found:
                 last = {s.id for s in sessions if s.task_id == found[-1].id}
                 seen.last_tools = tool_names([e for e in events if e.session_id in last])
