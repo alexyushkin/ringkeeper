@@ -7,7 +7,7 @@ import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
 import { api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
-import { projectName, useScope } from "@/lib/client/scope";
+import { clientName, projectName, useScope } from "@/lib/client/scope";
 
 const STATUSES: [string, string][] = [
   ["", "Any status"],
@@ -83,7 +83,7 @@ export default function TasksPage() {
       <ScopeNote />
       {narrowed ? (
         <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted">
-          Showing {linked.outcome ? OUTCOME_WORDS[linked.outcome] : "every"} task{linked.client ? ` for ${linked.client}` : ""}
+          Showing {linked.outcome ? `${OUTCOME_WORDS[linked.outcome]} tasks` : "every task"}{linked.client ? ` for ${clientName(linked.client)}` : ""}
           {linked.since ? ` since ${new Date(linked.since).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""}
           {linked.real ? ", not counting Check my setup's or the demo's" : ""}.
           <Button
