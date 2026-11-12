@@ -25,6 +25,11 @@ export function saveVia(desktop: boolean, name: string, text: string, type: stri
   return desktop ? { how: "backend", name, text } : { how: "link", name, href: dataUrl(text, type) };
 }
 
+/** A saved report's name: "Check my setup 2026-11-11.md", or its table's ".csv". */
+export function reportName(title: string, day: string, kind: "md" | "csv"): string {
+  return `${title} ${day}${kind === "csv" ? " table" : ""}.${kind}`;
+}
+
 /** The file's own name, from where it was saved (Windows or not). */
 export function fileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;

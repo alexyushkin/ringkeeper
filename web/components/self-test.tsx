@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { Markdown } from "@/components/markdown";
-import { Alert, Button, ConfirmButton, Details, Section, Spinner } from "@/components/ui";
+import { RunReports } from "@/components/run-reports";
+import { Alert, Button, ConfirmButton, Section, Spinner } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
 type Progress = { done: number; total: number; current: string | null; passed: number; failed: number; cost: number };
@@ -69,9 +69,7 @@ export function SelfTest() {
         {status.data?.failed ? <Alert>The self-test stopped: {status.data.failed}</Alert> : null}
         {error ? <Alert>{error}</Alert> : null}
         {status.data?.report ? (
-          <Details label={`Report from ${day}`}>
-            <Markdown text={status.data.report} className="text-sm" />
-          </Details>
+          <RunReports kind="self-test" title="Self-test" latest={status.data.report} day={day ?? ""} />
         ) : null}
       </div>
     </Section>

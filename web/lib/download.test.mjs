@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { dataUrl, fileName, forExcel, saveVia } from "./download.ts";
+import { dataUrl, fileName, forExcel, reportName, saveVia } from "./download.ts";
 
 const MARK = String.fromCharCode(0xfeff);
 
@@ -21,6 +21,11 @@ test("a browser gets a download link, as before", () => {
 
 test("the desktop app saves through the backend", () => {
   assert.deepEqual(saveVia(true, "table.csv", "a,b", "text/csv"), { how: "backend", name: "table.csv", text: "a,b" });
+});
+
+test("a report saves under its title and day", () => {
+  assert.equal(reportName("Check my setup", "2026-11-11", "md"), "Check my setup 2026-11-11.md");
+  assert.equal(reportName("Self-test", "2026-11-10", "csv"), "Self-test 2026-11-10 table.csv");
 });
 
 test("the saved file's name, from a Windows or Mac path", () => {

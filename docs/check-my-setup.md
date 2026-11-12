@@ -78,6 +78,11 @@ complete: one that says it's only part of what was asked ("the list is partly re
 background agent is still fetching the rest") doesn't count, and the report quotes what it said. The report is kept in the `setup-check` folder
 in your Ringkeeper data folder, by day, and shown in the same section of Settings.
 
+Under it: **Save report** (a Markdown file), **Copy report**, **Save table as CSV**, and, in the
+desktop app, **Show in folder**. In the desktop app a saved file goes in your Downloads folder
+(nothing there is overwritten); in a browser it downloads. **Earlier reports** lists the other
+days kept: pick one to read it again, with the same buttons.
+
 ## Its conversations
 
 Its conversations are titled "Check my setup: ..." and tagged. Archive them all, with their

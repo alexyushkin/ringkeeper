@@ -21,6 +21,9 @@ publishes it as the release notes and the app shows it with the update.
   table is saved in your Downloads folder (`table.csv`, then `table (2).csv`: nothing is
   overwritten), the button says where, and **Show in folder** shows it. In a browser it
   downloads as before.
+- **Keep and share Check my setup and Self-test reports.** Under each report: **Save report**
+  (a Markdown file, into Downloads in the desktop app), **Copy report**, **Save table as CSV**
+  and **Show in folder**. **Earlier reports** lists the other days kept, to read one again.
 - **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
   subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
   subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by
