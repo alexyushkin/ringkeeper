@@ -68,7 +68,6 @@ function ReportTools({ kind, title, day, text }: { kind: Kind; title: string; da
   return (
     <div className="mb-2 space-y-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <SaveFile name={reportName(title, day, "md")} text={() => text} type="text/markdown" label="Save report" className={LINK} />
         <button
           type="button"
           className={LINK}
@@ -81,12 +80,16 @@ function ReportTools({ kind, title, day, text }: { kind: Kind; title: string; da
         >
           {copied ? "Copied" : "Copy report"}
         </button>
-        {table ? <SaveFile name={reportName(title, day, "csv")} text={() => forExcel(toCsv(table.head, table.rows))} type="text/csv" label="Save table as CSV" className={LINK} /> : null}
         {DESKTOP ? (
-          <button type="button" className={LINK} onClick={() => void show()}>
+          <button type="button" className={LINK} title="Where Ringkeeper keeps its reports, one per day" onClick={() => void show()}>
             Show in folder
           </button>
         ) : null}
+      </div>
+      {/* Each saved copy says where it went, with its own Show in folder (Downloads). */}
+      <div className="flex flex-col items-start gap-1">
+        <SaveFile name={reportName(title, day, "md")} text={() => text} type="text/markdown" label="Save report" className={LINK} />
+        {table ? <SaveFile name={reportName(title, day, "csv")} text={() => forExcel(toCsv(table.head, table.rows))} type="text/csv" label="Save table as CSV" className={LINK} /> : null}
       </div>
       {error ? <Alert>{error}</Alert> : null}
     </div>
