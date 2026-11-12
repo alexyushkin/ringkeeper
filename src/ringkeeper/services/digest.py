@@ -20,8 +20,9 @@ from ringkeeper.models import (
     Setting,
     Task,
     TaskStatus,
+    Thread,
 )
-from ringkeeper.services import announce, clients, demo, inbox, tasks, titles
+from ringkeeper.services import announce, clients, inbox, setup_check, tasks, titles
 from ringkeeper.wording import plain
 
 LAST_KEY = "digest.last"
@@ -69,7 +70,8 @@ def build(session: Session, now: datetime | None = None) -> dict[str, Any]:
             one.failed.append(f"{title}: {plain(task.outcome or task.prompt)[:120]}")
     # Left out of the counts, and said in a line: Check my setup's requests and the demo's.
     others = session.scalars(window.where(not_(tasks.real_work()))).all()
-    checked = sum(1 for t in others if t.project != demo.PROJECT)
+    checks = set(session.scalars(select(Thread.id).where(Thread.tag == setup_check.TAG)))
+    checked = sum(1 for t in others if t.thread_id in checks)  # wherever it ran
     demoed = len(others) - checked
     left_out = [
         *([{"label": f"Check my setup ran {checked} request{'s' if checked != 1 else ''}",
