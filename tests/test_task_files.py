@@ -139,17 +139,70 @@ def test_a_program_is_shown_in_its_folder_never_run(
     def startfile(path: Path) -> None:
         ran.append(("open", path))
 
-    def popen(args: list[str], **_: Any) -> None:
+    def popen(args: str, **_: Any) -> None:
         ran.append(("popen", args))
 
     monkeypatch.setattr(task_files.os, "startfile", startfile, raising=False)
     monkeypatch.setattr(task_files.subprocess, "Popen", popen)
+
+    def no_shell(_path: Path) -> bool:
+        return False
+
+    monkeypatch.setattr(task_files, "shell_select", no_shell)  # the fallback
     task_files.show(tmp_path / "run.bat", reveal=False)
     task_files.show(tmp_path / "notes.txt", reveal=False)
     assert ran == [
-        ("popen", ["explorer", f"/select,{tmp_path / 'run.bat'}"]),
+        ("popen", f'explorer /select,"{tmp_path / "run.bat"}"'),
         ("open", tmp_path / "notes.txt"),
     ]
+
+
+def test_the_fallback_quotes_only_the_path() -> None:
+    """Show in folder opened Documents for "Check my setup 2026-11-12.md": as a list,
+    Python quoted the whole "/select,..." argument, which Explorer doesn't read."""
+    path = Path(r"C:\Users\Ana\Down loads, old\Check my setup, 2026-11-12.md")
+    assert subprocess.list2cmdline(["explorer", f"/select,{path}"]) == f'explorer "/select,{path}"'
+    assert task_files.explorer_command(path) == f'explorer /select,"{path}"'
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows shell")
+def test_a_space_and_a_comma_in_the_folder_and_the_name_select_that_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shell gets the path as it is: no command line to read. Windows parses it for
+    real; only the window is left out (it would open on the desktop running the tests)."""
+    if sys.platform != "win32":  # for the type checker on other systems: skipped there
+        return
+    import ctypes  # noqa: PLC0415
+
+    folder = tmp_path / "Check my setup, reports"
+    folder.mkdir()
+    report = folder / "Check my setup, 2026-11-12.md"
+    report.write_text("# report", encoding="utf-8")
+    shell32 = ctypes.windll.shell32
+    shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    selected: list[str] = []
+
+    def opened(pidl: ctypes.c_void_p, children: int, _items: object, _flags: int) -> int:
+        found = ctypes.create_unicode_buffer(1024)
+        assert shell32.SHGetPathFromIDListW(pidl, found)
+        selected.append(found.value)
+        assert children == 0  # the file itself, selected in its folder
+        return 0
+
+    monkeypatch.setattr(shell32, "SHOpenFolderAndSelectItems", opened)
+    ran: list[Any] = []
+
+    def popen(*args: Any, **_: Any) -> None:
+        ran.append(args)
+
+    monkeypatch.setattr(task_files.subprocess, "Popen", popen)
+    task_files.show(report, reveal=True)
+    assert selected == [str(report)]
+    assert ran == []  # no command line at all
+    missing = folder / "gone, now.md"  # a path the shell can't read: the fallback
+    task_files.show(missing, reveal=True)
+    assert ran == [(f'explorer /select,"{missing}"',)]
 
 
 def test_only_documents_open_everything_else_is_shown_in_its_folder() -> None:
