@@ -259,22 +259,27 @@ async def search_mail(
     ] = "",
     limit: Limit = 20,
 ) -> JSON:
-    """Find messages with Gmail's search words, newest first (id, from, to, subject, date)."""
+    """Find messages with Gmail's search words, newest first: id, from, to, subject, date,
+    whether it's unread, and a preview (the start of its own text, without what it quotes).
+    The previews are enough to list or summarize what was found: read_mail only a message
+    you need whole."""
     _need(target, "mail_read")
     listed = await _call(
         target, GMAIL, "GET", "/messages", params={"q": query or None, "maxResults": limit}
     )
     found: list[JSON] = []
     for item in cast(list[JSON], listed.get("messages") or [])[:limit]:
+        # Its text is fetched to make the preview; only the preview goes back.
         message = await _call(
-            target, GMAIL, "GET", f"/messages/{item['id']}",
-            params={"format": "metadata", "metadataHeaders": ["From", "To", "Subject", "Date"]},
-        )  # fmt: skip
-        headers = _headers(cast(JSON, message.get("payload") or {}))
+            target, GMAIL, "GET", f"/messages/{item['id']}", params={"format": "full"}
+        )
+        payload = cast(JSON, message.get("payload") or {})
+        headers = _headers(payload)
         found.append(
             {"id": item["id"], "thread_id": message.get("threadId")}
             | {k: headers.get(k, "") for k in ("from", "to", "subject", "date")}
-            | {"snippet": message.get("snippet", "")}
+            | {"unread": "UNREAD" in cast(list[str], message.get("labelIds") or [])}
+            | {"preview": mail_text.preview(_text(payload)) or str(message.get("snippet", ""))}
         )
     return {"account": target.config.get("email"), "messages": found}
 

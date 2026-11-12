@@ -514,6 +514,48 @@ async def test_a_google_account_reads_a_long_email_and_its_pdf(gmail_api: FakeGm
         await google.read_attachment.handler(target, message_id="m1abcd", attachment_id="7")
 
 
+async def test_a_search_gives_previews_not_whole_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Check my setup's "Summarize the unread emails" cost $0.05 of a $0.09 run: with only a
+    one-line snippet, the task read each message whole. Each now comes with a preview of its
+    own text, enough to summarize a list; the whole message is read_mail's."""
+    long = "Our spring order. " + "Two crates of flour, one of rye. " * 400
+    reply = "Thanks, see you Friday.\n\nOn Mon, Nov 10, 2026 at 9:00 AM Ana wrote:\n> " + (
+        "Old thread line. " * 300
+    )
+    bodies = {"m1abcd": long, "m2abcd": reply}
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        path = request.url.path
+        if path.endswith("/messages"):
+            return httpx2.Response(200, json={"messages": [{"id": m} for m in bodies]})
+        ident = path.rsplit("/", 1)[1]
+        assert request.url.params["format"] == "full"
+        return httpx2.Response(200, json={
+            "id": ident, "threadId": "t1abcd", "labelIds": ["INBOX", "UNREAD"],
+            "snippet": "Gmail's own snippet",
+            "payload": {
+                "mimeType": "text/plain",
+                "headers": [{"name": "Subject", "value": f"About {ident}"},
+                            {"name": "From", "value": "ana@acme.example"}],
+                "body": {"data": b64(bodies[ident].encode())},
+            },
+        })  # fmt: skip
+
+    monkeypatch.setattr(google, "transport", httpx2.MockTransport(handle))
+    found = await google.search_mail.handler(google_target(), query="is:unread")
+    first, second = found["messages"]
+    assert (first["subject"], first["from"], first["unread"]) == (
+        "About m1abcd", "ana@acme.example", True,
+    )  # fmt: skip
+    assert first["preview"].startswith("Our spring order. Two crates of flour")
+    assert len(first["preview"]) <= mail_text.PREVIEW_CHARS
+    assert first["preview"].endswith("…")
+    assert second["preview"] == "Thanks, see you Friday."  # not the thread it quotes
+    assert "body" not in first
+    assert "snippet" not in first
+    assert len(json.dumps(found)) < 1_500  # 30 of these stay small; read_mail has the rest
+
+
 async def test_a_drive_pdf_is_read_too(gmail_api: FakeGmailApi) -> None:
     found = await google.read_file.handler(google_target(), file_id="f1abcd")
     assert "Drive page" in found["text"]

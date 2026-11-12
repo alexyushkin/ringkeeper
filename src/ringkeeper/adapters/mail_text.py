@@ -180,6 +180,18 @@ def split_quoted(text: str) -> tuple[str, str]:
     return (new, quoted) if new else (text.strip(), "")
 
 
+PREVIEW_CHARS = 300
+
+
+def preview(text: str, chars: int = PREVIEW_CHARS) -> str:
+    """The start of a message's own text, on one line, for a list of messages: enough to say
+    what each is about without reading them all (a search for 30 unread emails, summarized,
+    read every one whole)."""
+    new, _quoted = split_quoted(text)
+    flat = " ".join(new.split())
+    return flat if len(flat) <= chars else flat[: chars - 1].rstrip() + "…"
+
+
 def thread_page(ordered: list[JSON], offset: int, limit: int) -> JSON:
     """Some of a conversation's messages, oldest first, saying which."""
     chosen = ordered[offset : offset + limit]
