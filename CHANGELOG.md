@@ -3,64 +3,32 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.38 (2026-11-12)
 
-- **"Read Acme's newest email" no longer asks which project** when only one of Acme's
-  projects has the mail connection. A connection only one of a client's projects has
-  decides it.
-- **Self-test:** memory-reuse asks a question the tables lead to (who has spent the most),
-  so the note a task saves isn't its answer, and it doesn't need the first task to list the
-  tables: describing the ones it needs is fine.
-
-- **Data, ops and general tasks start with a shorter prompt.** Work on a project's code keeps
-  Claude Code's own; anything else gets a short one with the same rules for working
-  unattended. In the self-test, results held and the estimated cost per task fell by about a
-  quarter.
-- **Tasks that can't finish say so in one go.** The note told tasks to call Not done "with
-  why", and the tool takes a reason: each not-done task spent a refused call first.
-- **Tasks keep where things are even when the name looks obvious,** such as a table found by
-  listing the database, so the next task doesn't list it again.
-- **Self-test:** the unreadable-attachment scenario passes when the task tried the attachment
-  and ended as Not done. Reading that file always fails, and a failed call didn't count.
-
-- **Only documents open from a task's files.** **Open** works for PDFs, Office files, text,
-  Markdown, CSV, JSON and pictures. Anything else a task wrote (a web page, a program, a
-  script, a file with no type) is shown in its folder instead, so nothing runs by a click.
-  Before, only a list of known program types was held back.
-- **Keep a chat's results in the app if you'd rather.** Each Telegram, Slack and Discord
-  channel has **Full results and files for requests from here** (Settings › Notifications,
-  on by default). Turned off, a task you asked for from that chat ends there with only how it
-  ended and a link, and its files aren't sent. The security page now says what a chat gets.
-- **Home asks once to turn on automatic backups.** After your first real task, if automatic
-  backups are off, Home shows **Turn on automatic backups** with a link to Settings › Backup.
-  Check my setup and the demo don't count. **Not now** hides it for good, and so does turning
-  them on.
-- **Download CSV works in the desktop app.** It did nothing there, on every table. Now the
-  table is saved in your Downloads folder (`table.csv`, then `table (2).csv`: nothing is
-  overwritten), the button says where, and **Show in folder** shows it. In a browser it
-  downloads as before.
-- **Keep and share Check my setup and Self-test reports.** Under each report: **Save report**
-  (a Markdown file, into Downloads in the desktop app), **Copy report**, **Save table as CSV**
-  and **Show in folder**. **Earlier reports** lists the other days kept, to read one again.
-- **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
-  subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
-  subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by
-  default), counted from the estimated cost, and asks whether to go on, with a Continue button.
-  A subscription still isn't billed per task: this is what the estimate says.
-- **A task finishes its work before it answers.** A task could hand part of its work to a
-  background agent and answer while that was still fetching, and the answer counted as done. A
-  task's background shells and agents are now off, and it's told to finish everything before
-  its final message, or end as Not done.
-- **Add-on tools with many tools no longer fill a task.** Listing an MCP server's tools gives each
-  tool's name, what it does in a line and whether it runs straight away or waits for you, not
-  every tool's full arguments: ElevenLabs' list was about 927,000 characters. A task can look
-  for tools by words, and asks for one tool's arguments before calling it. A call with arguments
-  the tool doesn't take comes back with what it does take, so the next try is right.
-- **Counts you can trust.** Lists from n8n, Airtable, GitHub and databases say how many there
-  are in all, not only on the page shown, so a task no longer counts by hand: the same n8n
-  was once reported with 197 workflows, then 184. n8n also says how many workflows are on, and
-  GitHub how many issues and pull requests are open. Airtable counts records up to 2,000 and
-  says when there are more.
+- **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
+  like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
+  Memory said Notion.
+  - **Settings › Memory › Notion for every project** (also on the connection's card): pick one
+    root page. Ringkeeper makes a page per client under it and a database per project under its
+    client's page, so one client's page never holds another's notes. Projects already in Notion
+    keep their place, and new projects follow.
+  - The Notion memory connection isn't a project's tool any more: it isn't linked to projects,
+    tasks can't call it, and it's left out of Check my setup and Home's requests to try. Its Test
+    button still works. Existing links are removed.
+  - Each project's About says where its notes go, with a link to its Notion database.
+- **Tasks save what they find, and start from it.** Before, a task was told about memory only by
+  its memory tool, so tasks ended with "nothing needed saving" and kept nothing.
+  - Every task now starts with its project's latest notes, and before it finishes it saves what
+    a later run would otherwise have to find again: where things live, your decisions and
+    corrections, how the client wants things done, and gotchas. One to three short notes, never
+    the result or secrets.
+  - An answer mentions memory only when something was saved. **Saved to memory** shows each note
+    under the result, on the task's page and in the conversation.
+  - Add a note yourself: **Add a note** on a project's Memory, **Remember this** under a result
+    or a reply, or say "remember that …" in a conversation. With a clear project it's saved
+    straight away, with no task, and the reply says what was saved and where.
+  - A new self-test scenario: a fact one task found is saved, and the next task, in a new
+    conversation, uses it without searching again.
 - **Check my setup checks each connection once, three at a time.** A connection linked to
   several projects gets one request, in the first of them, where it used to get one per project.
   A project whose connections were all checked elsewhere still gets a request of its own, so
@@ -86,30 +54,60 @@ publishes it as the release notes and the app shows it with the update.
   where it used to count as worked though it never ran.
 - **Tasks give their answer once.** They check it before they reply, instead of saying "4 are
   active" and correcting it to three further down the same message.
-- **Notion memory is one switch now.** Linking the Notion memory connection to a project looked
-  like it turned Notion memory on, and it didn't: notes stayed here unless the project's own
-  Memory said Notion.
-  - **Settings › Memory › Notion for every project** (also on the connection's card): pick one
-    root page. Ringkeeper makes a page per client under it and a database per project under its
-    client's page, so one client's page never holds another's notes. Projects already in Notion
-    keep their place, and new projects follow.
-  - The Notion memory connection isn't a project's tool any more: it isn't linked to projects,
-    tasks can't call it, and it's left out of Check my setup and Home's requests to try. Its Test
-    button still works. Existing links are removed.
-  - Each project's About says where its notes go, with a link to its Notion database.
-- **Tasks save what they find, and start from it.** Before, a task was told about memory only by
-  its memory tool, so tasks ended with "nothing needed saving" and kept nothing.
-  - Every task now starts with its project's latest notes, and before it finishes it saves what
-    a later run would otherwise have to find again: where things live, your decisions and
-    corrections, how the client wants things done, and gotchas. One to three short notes, never
-    the result or secrets.
-  - An answer mentions memory only when something was saved. **Saved to memory** shows each note
-    under the result, on the task's page and in the conversation.
-  - Add a note yourself: **Add a note** on a project's Memory, **Remember this** under a result
-    or a reply, or say "remember that …" in a conversation. With a clear project it's saved
-    straight away, with no task, and the reply says what was saved and where.
-  - A new self-test scenario: a fact one task found is saved, and the next task, in a new
-    conversation, uses it without searching again.
+- **Add-on tools with many tools no longer fill a task.** Listing an MCP server's tools gives each
+  tool's name, what it does in a line and whether it runs straight away or waits for you, not
+  every tool's full arguments: ElevenLabs' list was about 927,000 characters. A task can look
+  for tools by words, and asks for one tool's arguments before calling it. A call with arguments
+  the tool doesn't take comes back with what it does take, so the next try is right.
+- **A task finishes its work before it answers.** A task could hand part of its work to a
+  background agent and answer while that was still fetching, and the answer counted as done. A
+  task's background shells and agents are now off, and it's told to finish everything before
+  its final message, or end as Not done.
+- **Counts you can trust.** Lists from n8n, Airtable, GitHub and databases say how many there
+  are in all, not only on the page shown, so a task no longer counts by hand: the same n8n
+  was once reported with 197 workflows, then 184. n8n also says how many workflows are on, and
+  GitHub how many issues and pull requests are open. Airtable counts records up to 2,000 and
+  says when there are more.
+- **A spending cap on a Claude subscription too.** Only an API key had a per-task cap, so on a
+  subscription a task could run on: one conversation reached an estimated $1.53. Now a task on a
+  subscription pauses at the same cap (Settings › Advanced › Spending cap per task, $1 by
+  default), counted from the estimated cost, and asks whether to go on, with a Continue button.
+  A subscription still isn't billed per task: this is what the estimate says.
+- **Data, ops and general tasks start with a shorter prompt.** Work on a project's code keeps
+  Claude Code's own; anything else gets a short one with the same rules for working
+  unattended. In the self-test, results held and the estimated cost per task fell by about a
+  quarter.
+- **Only documents open from a task's files.** **Open** works for PDFs, Office files, text,
+  Markdown, CSV, JSON and pictures. Anything else a task wrote (a web page, a program, a
+  script, a file with no type) is shown in its folder instead, so nothing runs by a click.
+  Before, only a list of known program types was held back.
+- **Keep a chat's results in the app if you'd rather.** Each Telegram, Slack and Discord
+  channel has **Full results and files for requests from here** (Settings › Notifications,
+  on by default). Turned off, a task you asked for from that chat ends there with only how it
+  ended and a link, and its files aren't sent. The security page now says what a chat gets.
+- **Home asks once to turn on automatic backups.** After your first real task, if automatic
+  backups are off, Home shows **Turn on automatic backups** with a link to Settings › Backup.
+  Check my setup and the demo don't count. **Not now** hides it for good, and so does turning
+  them on.
+- **Download CSV works in the desktop app.** It did nothing there, on every table. Now the
+  table is saved in your Downloads folder (`table.csv`, then `table (2).csv`: nothing is
+  overwritten), the button says where, and **Show in folder** shows it. In a browser it
+  downloads as before.
+- **Keep and share Check my setup and Self-test reports.** Under each report: **Save report**
+  (a Markdown file, into Downloads in the desktop app), **Copy report**, **Save table as CSV**
+  and **Show in folder**. **Earlier reports** lists the other days kept, to read one again.
+- **"Read Acme's newest email" no longer asks which project** when only one of Acme's
+  projects has the mail connection. A connection only one of a client's projects has
+  decides it.
+- **Tasks that can't finish say so in one go.** The note told tasks to call Not done "with
+  why", and the tool takes a reason: each not-done task spent a refused call first.
+- **Tasks keep where things are even when the name looks obvious,** such as a table found by
+  listing the database, so the next task doesn't list it again.
+- **Self-test:** the unreadable-attachment scenario passes when the task tried the attachment
+  and ended as Not done. Reading that file always fails, and a failed call didn't count.
+- **Self-test:** memory-reuse asks a question the tables lead to (who has spent the most),
+  so the note a task saves isn't its answer, and it doesn't need the first task to list the
+  tables: describing the ones it needs is fine.
 
 ## 0.1.0-beta.37 (2026-11-11)
 
