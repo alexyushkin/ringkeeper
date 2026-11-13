@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import email
 import email.policy
+import email.utils
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -47,11 +48,15 @@ class DraftServer(FakeImap):
 
     def uid(self, command: str, *args: Any) -> tuple[str, list[Any]]:
         if command == "SEARCH" and args[:2] == ("HEADER", "Message-ID"):
-            wanted = args[2].strip('"')
+            # Like a real server (RFC 3501): the header contains the string, any case. Not
+            # equality: a long Message-ID is folded onto its own line, and some Pythons
+            # (3.12.3) read it back with the fold's leading space.
+            wanted = args[2].strip('"').lower()
             found = [
                 str(n).encode() for n, (_, _, raw) in enumerate(self.appended, 1)
-                if email.message_from_bytes(raw, policy=email.policy.default)["Message-ID"]
-                == wanted
+                if wanted in str(
+                    email.message_from_bytes(raw, policy=email.policy.default)["Message-ID"]
+                ).lower()
             ]  # fmt: skip
             return "OK", [b" ".join(found)]
         if command == "STORE":
@@ -135,6 +140,29 @@ async def test_taking_a_draft_back_deletes_it(vault: Vault, server: DraftServer)
     result = await mailbox.create_draft.handler(target, **DRAFT)
     await undo.after(target, DRAFT, kept, result)
     assert undo.describe(kept) == "Deletes the draft it saved (Your invoice)."
+    assert await undo.restore(target, kept) == {"deleted": 1}
+    assert server.deleted == 1
+
+
+@pytest.mark.anyio
+async def test_a_draft_with_a_long_message_id_is_still_taken_back(
+    vault: Vault, server: DraftServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A Message-ID ends in the machine's name, so on some CI runners it's long enough that the
+    # header folds onto its own line (67 to 77 characters). The test above then failed now
+    # and then: Python 3.12.3 reads the folded header back with a leading space.
+    def long_id(idstring: str | None = None, domain: str | None = None) -> str:
+        return "<179458932693.31564.16526816417289208534@ip-10-20-30-40.ci.example>"
+
+    monkeypatch.setattr(email.utils, "make_msgid", long_id)
+    target = Target("acme", Env.PROD, None, Secret("file://acme/acme-mail", MAILBOX_SECRET))
+    undo = mailbox.create_draft.undo
+    assert undo is not None
+    kept = await undo.before(target, DRAFT)
+    result = await mailbox.create_draft.handler(target, **DRAFT)
+    await undo.after(target, DRAFT, kept, result)
+    [(_folder, _flags, raw)] = server.appended
+    assert b"\nMessage-ID:\n <" in raw  # folded
     assert await undo.restore(target, kept) == {"deleted": 1}
     assert server.deleted == 1
 
