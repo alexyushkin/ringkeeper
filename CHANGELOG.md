@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.42 (2026-11-13)
 
 - **Share agents' notes with a team.** Several people, each with their own Ringkeeper and Notion
   connection, can keep their notes under one Notion root page. **Notion for every project** now
