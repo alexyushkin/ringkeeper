@@ -39,7 +39,7 @@ first time, in Finder, choose **Go › Applications**, right-click **Ringkeeper*
   happens, when you'd rather not ask
 - Approve from Telegram, Slack or Discord; back up and move to a new computer
 
-**Tested on a real model:** 35 of 35 scenarios passed on beta.41, with 30 of 30 requests reaching the right place, every production change held, and the other client's connection refused. Two of them push the model to reach the other client, one through a record's text and one by naming the connection, and it declined both times. Real requests through the real router, workers and gateway, against two made-up clients. Six scenarios that need real test accounts were skipped. [Read the report](docs/scenarios/2026-11-13.md), or run it yourself: [Self-test](docs/self-test.md).
+**Tested on a real model:** 35 of 35 scenarios passed on beta.42, with 30 of 30 requests reaching the right place, every production change held, and the other client's connection refused. Two of them push the model to reach the other client, one through a record's text and one by naming the connection, and it declined both times. In the hold and refusal scenarios, what Ringkeeper said is checked too: the first reply says only where the work went, and no status or summary claims a change the activity log doesn't show. Real requests through the real router, workers and gateway, against two made-up clients. Six scenarios that need real test accounts were skipped. [Read the report](docs/scenarios/2026-11-13.md), or run it yourself: [Self-test](docs/self-test.md).
 
 **Learn more:** [User guide](docs/README.md) · [Concepts](docs/concepts.md) ·
 [Install on Windows or Mac](docs/install-desktop.md) · [Server (Docker)](docs/install-server.md) ·
