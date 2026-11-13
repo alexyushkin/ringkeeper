@@ -169,6 +169,7 @@ class Settings(BaseSettings):
     paused: bool = False
     digest_enabled: bool = False  # send the morning digest (services.digest)
     digest_time: str = "08:00"  # this computer's clock
+    owner_name: str = ""  # shown as "Saved by" on notes the owner saves to a shared Notion
     health_checks: bool = True  # test every connection once a day (services.health)
     hotkey: str = "Ctrl+Alt+R"  # the quick request box (the desktop shell)
     hotkey_enabled: bool = True

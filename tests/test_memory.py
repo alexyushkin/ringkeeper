@@ -51,8 +51,25 @@ class FakeNotion:
         self.calls: list[tuple[str, str]] = []
         self.kinds: dict[str, str] = {}  # a row's Kind
         self.added_columns: list[dict[str, Any]] = []  # what PATCH /data_sources added
+        self.database_of: dict[str, str] = {}  # data source -> its database
+        self.saved_by: dict[str, str] = {}  # a row's Saved by
+        self.read_only: set[str] = set()  # data sources this token can read but not write
         self.down = False
         self.clock = 0
+
+    def page_under(self, parent: str, title: str) -> str:
+        """A page someone else made: by hand, or another install."""
+        ident = str(uuid.uuid4())
+        self.shared.add(ident)
+        self.titles[ident], self.parents[ident] = title, parent
+        return ident
+
+    def database_under(self, parent: str, title: str) -> str:
+        """A database another install made: its data source."""
+        source, database = str(uuid.uuid4()), str(uuid.uuid4())
+        self.databases[source], self.database_of[source] = {}, database
+        self.titles[source], self.parents[source] = title, parent
+        return source
 
     def stamp(self) -> str:
         self.clock += 1
@@ -102,6 +119,7 @@ class FakeNotion:
                 return httpx2.Response(404, json={"message": "not shared"})
             source, database = str(uuid.uuid4()), str(uuid.uuid4())
             self.databases[source] = {}
+            self.database_of[source] = database
             self.parents[source] = parent
             self.titles[source] = body["title"][0]["text"]["content"]
             return httpx2.Response(200, json={
@@ -124,6 +142,26 @@ class FakeNotion:
         if path.startswith("/data_sources/") and request.method == "PATCH":
             self.added_columns.append(body["properties"])
             return httpx2.Response(200, json={"object": "data_source"})
+        if path.startswith("/data_sources/") and path.split("/")[2] in self.database_of:
+            source = path.split("/")[2]
+            rich = {"type": "rich_text"}
+            return httpx2.Response(200, json={
+                "object": "data_source", "url": f"https://notion.so/{source}",
+                "title": [{"plain_text": self.titles[source]}],
+                "parent": {"type": "database_id", "database_id": self.database_of[source]},
+                "properties": {
+                    "Note": {"type": "title"}, "Kind": {"type": "select"}, "Agent": rich,
+                    "Date": {"type": "date"}, "Source task": rich, "Saved by": rich,
+                },
+            })  # fmt: skip
+        if path.startswith("/databases/") and request.method == "GET":
+            database = path.split("/")[2]
+            sources = [s for s, d in self.database_of.items() if d == database]
+            if not sources:
+                return httpx2.Response(404, json={"message": "not shared"})
+            return httpx2.Response(200, json={
+                "object": "database", "id": database, "data_sources": [{"id": sources[0]}],
+            })  # fmt: skip
         if path.startswith("/data_sources/"):
             return httpx2.Response(200, json={
                 "object": "data_source", "url": "https://notion.so/ds",
@@ -150,6 +188,8 @@ class FakeNotion:
             source = body["parent"]["data_source_id"]
             if source not in self.databases:
                 return httpx2.Response(404, json={"message": "not shared"})
+            if source in self.read_only:
+                return httpx2.Response(403, json={"message": "Insufficient permissions."})
             props = cast(dict[str, Any], body["properties"])
             ident = self.row(
                 source, props["Note"]["title"][0]["text"]["content"],
@@ -162,6 +202,8 @@ class FakeNotion:
                 )
             if "Kind" in props:
                 self.kinds[ident] = props["Kind"]["select"]["name"]
+            if "Saved by" in props:
+                self.saved_by[ident] = self.value(props, "Saved by")
             return httpx2.Response(200, json=self.page(ident, self.databases[source][ident]))
         if path.startswith("/pages/") and request.method == "PATCH":
             ident = path.split("/")[2]
@@ -169,6 +211,17 @@ class FakeNotion:
                 if ident in rows_of:
                     rows_of[ident]["in_trash"] = body["in_trash"]
             return httpx2.Response(200, json={"id": ident})
+        if path.startswith("/blocks/") and (
+            kids := [i for i, parent in self.parents.items() if parent == path.split("/")[2]]
+        ):
+            blocks = [
+                {"type": "child_database", "id": self.database_of[i],
+                 "child_database": {"title": self.titles[i]}}
+                if i in self.databases
+                else {"type": "child_page", "id": i, "child_page": {"title": self.titles[i]}}
+                for i in kids
+            ]  # fmt: skip
+            return httpx2.Response(200, json={"results": blocks, "has_more": False})
         if path.startswith("/blocks/"):
             text = self.bodies.get(path.split("/")[2], "")
             blocks = [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": text}]}}]
@@ -420,12 +473,13 @@ def test_a_row_typed_by_hand_with_only_a_title_still_reads(notion: FakeNotion) -
     assert said(memory.recall(worker("acme-web"))) == ["Invoices are approved by Dana"]
 
 
-def test_an_older_database_gets_the_kind_column_and_keeps_its_rows(notion: FakeNotion) -> None:
+def test_an_older_database_gets_the_new_columns_and_keeps_its_rows(notion: FakeNotion) -> None:
     place = notion_api.use_place("ntn_fake", "older-source")
-    assert notion.added_columns == [{"Kind": {"select": {"options": [
-        {"name": k} for k in notion_api.KINDS
-    ]}}}]  # fmt: skip
-    assert place.columns["kind"] == "Kind"
+    assert notion.added_columns == [
+        {"Kind": {"select": {"options": [{"name": k} for k in notion_api.KINDS]}}},
+        {"Saved by": {"rich_text": {}}},
+    ]
+    assert (place.columns["kind"], place.columns["saved_by"]) == ("Kind", "Saved by")
     assert not any(method == "PATCH" and path.startswith("/pages/")
                    for method, path in notion.calls)  # fmt: skip
 

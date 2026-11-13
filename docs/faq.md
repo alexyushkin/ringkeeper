@@ -81,6 +81,8 @@ then Help › Report a problem in the app.
 
 - **Isolation without Docker on the desktop:** tasks can't reach your own files only when they run in Docker (Settings > Security). Without Docker Desktop there's no separate account for tasks yet.
 - **Team accounts:** Ringkeeper is for one person; there are no teammates, shared logins or roles.
+  A team can share agents' notes, each person with their own Ringkeeper:
+  [Sharing memory with a team](team-memory.md).
 - **A phone app:** there's no iPhone or Android app. Approve from Telegram, Slack or Discord; a server install also works in a phone's browser.
 - **Other languages:** the app is in English only, with no translations such as French or Spanish. Voice input understands other languages.
 - **Billing:** no invoices or time tracking. A client's month shows what their tasks cost and gives a report to send them ([A client's month](client-month.md)), but billing them is up to you.

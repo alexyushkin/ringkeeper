@@ -62,6 +62,7 @@ interface Settings {
     start_at_login: boolean;
     stt_language: string | null;
     send_key: string;
+    owner_name: string;
   };
   overridden: string[];
   services: Record<string, { running: boolean; error: string | null }>;
@@ -285,6 +286,12 @@ export default function SettingsPage() {
           <p className="text-sm text-muted">Each project keeps its own memory: here, or in Notion. Choose it for every project below, or in a project&apos;s Settings. The rest are yours, across clients.</p>
           <Section id="every-project" title="Notion for every project" defaultOpen>
             <EveryProject />
+          </Section>
+          <Section id="your-name" title="Your name" summary={v.owner_name || "not set"} defaultOpen={false}>
+            <div className="space-y-2">
+              <TextSetting label="Your name, shown on notes you save" value={v.owner_name} onSave={(text) => change({ owner_name: text })} />
+              <p className="text-xs text-muted">Notes you and your tasks save to Notion get it in their Saved by column, so a team sharing one Notion page sees whose notes are whose. Rows people type in Notion stay as they are.</p>
+            </div>
           </Section>
           <MyMemory />
           <PersonalMemory />

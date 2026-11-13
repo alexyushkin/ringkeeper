@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Alert, Button, ConfirmButton, Empty, Field, Loading, Section, Select, TextArea, Toggle, timeAgo } from "@/components/ui";
 import { LoadMore, ListTotal } from "@/components/tidy";
@@ -23,6 +23,8 @@ interface Status {
   shared_available: boolean;
   notes: number;
   follows: boolean;
+  cant_write: string | null; // Notion won't let the connection write there
+  waiting: number; // notes kept here until it does
   connections: { name: string; title: string }[];
 }
 
@@ -32,6 +34,7 @@ interface Note {
   agent: string | null;
   task: string | null;
   backend: string;
+  waiting?: boolean; // Notion wouldn't take it yet: it goes there once it can
   created_at: string;
 }
 
@@ -47,12 +50,14 @@ const BACKENDS: [string, string][] = [
   ["notion", "Notion"],
 ];
 
-/** A Notion connection, and the page or database it was given. */
-function NotionPicker({ connections, connection, onConnection, place, onPlace, pagesOnly = false }: { connections: { name: string; title: string }[]; connection: string; onConnection: (v: string) => void; place: string; onPlace: (v: string) => void; pagesOnly?: boolean }) {
+/** A Notion connection, and the page or database it was given. `only`: pages (to make something
+ * under) or databases (to use as they are); both when not given. */
+function NotionPicker({ connections, connection, onConnection, place, onPlace, only }: { connections: { name: string; title: string }[]; connection: string; onConnection: (v: string) => void; place: string; onPlace: (v: string) => void; only?: "page" | "data_source" }) {
   const [words, setWords] = useState("");
   const pages = useApi<Found[]>(connection ? `notion/${connection}/pages` : null, { q: words.trim() || undefined });
-  const found = (pages.data ?? []).filter((p) => !pagesOnly || p.kind === "page");
-  const options: [string, string][] = found.map((p) => [`${p.kind}:${p.id}`, pagesOnly ? p.title : p.kind === "page" ? `${p.title} (make a database under this page)` : `${p.title} (use this database)`]);
+  const found = (pages.data ?? []).filter((p) => !only || p.kind === only);
+  const options: [string, string][] = found.map((p) => [`${p.kind}:${p.id}`, only ? p.title : p.kind === "page" ? `${p.title} (make a database under this page)` : `${p.title} (use this database)`]);
+  const label = only === "data_source" ? "Database" : only === "page" ? "Page" : "Parent page";
   return (
     <div className="space-y-2">
       {connections.length ? (
@@ -62,10 +67,10 @@ function NotionPicker({ connections, connection, onConnection, place, onPlace, p
       )}
       {connection ? (
         <>
-          <Field label="Find a page" value={words} onChange={setWords} placeholder="Words from its title" />
+          <Field label={only === "data_source" ? "Find a database" : "Find a page"} value={words} onChange={setWords} placeholder="Words from its title" />
           {pages.error ? <Alert>{pages.error}</Alert> : null}
-          {pages.data && !found.length ? <Alert tone="warn">Notion shows nothing yet. In Notion, open the page, choose ••• › Connections, and add this connection.</Alert> : null}
-          {found.length ? <Select label={pagesOnly ? "Root page" : "Parent page"} value={place} onChange={onPlace} options={[["", "Choose one"], ...options]} /> : null}
+          {pages.data && !found.length ? <Alert tone="warn">{only === "data_source" ? "Notion shows no database yet. In Notion, open the database, choose ••• › Connections, and add this connection." : "Notion shows nothing yet. In Notion, open the page, choose ••• › Connections, and add this connection."}</Alert> : null}
+          {found.length ? <Select label={label} value={place} onChange={onPlace} options={[["", "Choose one"], ...options]} /> : null}
         </>
       ) : null}
     </div>
@@ -135,9 +140,9 @@ function NoteList({ project, status, onChange }: { project: string; status: Stat
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
               <span>{note.agent ?? "A person"}</span>
               <span>{timeAgo(note.created_at)}</span>
-              <span>{note.backend === "notion" ? "in Notion" : "in Ringkeeper"}</span>
+              <span>{note.waiting ? "waiting to go to Notion" : note.backend === "notion" ? "in Notion" : "in Ringkeeper"}</span>
               <span className="ml-auto" />
-              <ConfirmButton question={note.backend === "notion" ? "Delete this note? It goes to Notion's trash." : "Delete this note? This can't be undone."} confirm="Delete note" onConfirm={() => forget(note.id)}>
+              <ConfirmButton question={note.backend === "notion" && !note.waiting ? "Delete this note? It goes to Notion's trash." : "Delete this note? This can't be undone."} confirm="Delete note" onConfirm={() => forget(note.id)}>
                 Delete
               </ConfirmButton>
             </div>
@@ -155,6 +160,7 @@ export function ProjectMemory({ project }: { project: string }) {
   const [backend, setBackend] = useState("local");
   const [connection, setConnection] = useState("");
   const [place, setPlace] = useState("");
+  const [how, setHow] = useState<"page" | "data_source">("page");
   const [shared, setShared] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -203,10 +209,25 @@ export function ProjectMemory({ project }: { project: string }) {
               </p>
             ) : data.follows ? (
               <p className="text-sm text-muted">Notion is on for every project: this one gets its database under its client&apos;s page when its first task starts.</p>
+            ) : null}
+            {data.notion && data.cant_write ? (
+              <Alert tone="warn">
+                Notion won&apos;t let this connection write there: {data.cant_write} {data.waiting === 1 ? "1 note waits here in Ringkeeper, and goes" : `${data.waiting} notes wait here in Ringkeeper, and go`} to Notion once it can.
+              </Alert>
+            ) : null}
+            <PlaceChoice
+              value={how}
+              onChange={(next) => {
+                setHow(next);
+                setPlace("");
+              }}
+            />
+            {how === "page" ? (
+              <p className="text-sm text-muted">Ringkeeper makes a database called “{data.title}” under the page you choose, with one row per note: the agent, the date, the task it came from and who saved it.</p>
             ) : (
-              <p className="text-sm text-muted">Ringkeeper makes a database called “{data.title}”, with one row per note: the agent, the date and the task it came from.</p>
+              <p className="text-sm text-muted">Notes go into a database that&apos;s already there. Someone else&apos;s Ringkeeper may write to it too. Columns it doesn&apos;t have are added when Notion allows. Another client&apos;s database, or anyone&apos;s My memory, can&apos;t be used.</p>
             )}
-            <NotionPicker connections={data.connections} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} />
+            <NotionPicker connections={data.connections} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} only={how} />
             <p className="text-xs text-muted">Notes you or other tools add there are picked up on the next run. Edits in Notion win, and deleted rows are forgotten.</p>
           </>
         ) : null}
@@ -218,6 +239,31 @@ export function ProjectMemory({ project }: { project: string }) {
         <NoteList project={project} status={data} onChange={status.reload} />
       </div>
     </Section>
+  );
+}
+
+/** Where a project's notes go in Notion: a database made now, or one that's already there. */
+function PlaceChoice({ value, onChange }: { value: "page" | "data_source"; onChange: (v: "page" | "data_source") => void }) {
+  const id = useId();
+  const choices: ["page" | "data_source", string, string][] = [
+    ["page", "Create a new one", "A database made for this project, under a page you choose."],
+    ["data_source", "Use a database that's already in Notion", "One your team set up, or another Ringkeeper made."],
+  ];
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">Notion database</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {choices.map(([key, label, hint]) => (
+          <label key={key} className={`flex cursor-pointer gap-2 rounded-xl border p-3 text-sm ${value === key ? "border-accent bg-accent-soft" : "border-line bg-surface hover:border-accent"}`}>
+            <input type="radio" name={id} value={key} checked={value === key} onChange={() => onChange(key)} className="mt-0.5 size-4 accent-[var(--color-accent)]" />
+            <span>
+              <span className="block font-medium">{label}</span>
+              <span className="block text-xs text-muted">{hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -269,7 +315,8 @@ export function MyMemory() {
             Open in Notion
           </a>
         ) : null}
-        {data.connections.length ? <NotionPicker connections={data.connections} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} /> : null}
+        {data.connections.length ? <NotionPicker connections={data.connections} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} only="page" /> : null}
+        {data.connections.length ? <p className="text-xs text-muted">Ringkeeper makes it under the page you choose. A My memory database that&apos;s already in Notion may be someone else&apos;s, so it&apos;s never offered.</p> : null}
         {error ? <Alert>{error}</Alert> : null}
         <div className="flex flex-wrap gap-2">
           <Button kind="primary" disabled={!connection || !place} onClick={() => void save()}>
@@ -418,7 +465,35 @@ export function NotesWhere({ project }: { project: string }) {
   return <span>{data.follows ? "Here in Ringkeeper until its first task, then in Notion" : "Here in Ringkeeper"}</span>;
 }
 
+interface Ask {
+  key: string;
+  what: "page" | "database";
+  label: string;
+  wanted: string;
+  options: { id: string; title: string; url: string }[];
+}
+
+interface Done {
+  set_up: string[];
+  failed: Record<string, string>;
+  joined: string[];
+  created: string[];
+  ask: Ask[];
+}
+
+/** What setting up joined, made and still asks about, in a sentence or two. */
+function doneWords(done: Done): string {
+  const failed = Object.keys(done.failed);
+  const parts = [`${done.set_up.length} project${done.set_up.length === 1 ? "" : "s"} set up now.`];
+  if (done.joined.length) parts.push(`Joined what was already in Notion: ${done.joined.join(", ")}.`);
+  if (done.created.length) parts.push(`Made: ${done.created.join(", ")}.`);
+  if (done.ask.length) parts.push(`${done.ask.length === 1 ? "One needs" : `${done.ask.length} need`} you to choose, below.`);
+  if (failed.length) parts.push(`Notion refused ${failed.join(", ")}: they're tried again when a task starts.`);
+  return parts.join(" ");
+}
+
 interface Every {
+  asks: Ask[];
   every: { connection: string; root: string; title: string; url: string } | null;
   connections: { name: string; title: string }[];
   projects: { name: string; title: string; where: "local" | "notion"; url: string | null }[];
@@ -445,15 +520,26 @@ export function EveryProject({ connection: fixed }: { connection?: string }) {
     setError(null);
     setSaid(null);
     try {
-      const done = await api<{ set_up: string[]; failed: Record<string, string> }>("memory/every", { method: "PUT", json: { connection, root } });
-      const failed = Object.keys(done.failed);
-      setSaid(`On. ${done.set_up.length} project${done.set_up.length === 1 ? "" : "s"} set up now.${failed.length ? ` Notion refused ${failed.join(", ")}: they're tried again when a task starts.` : ""}`);
+      const done = await api<Done>("memory/every", { method: "PUT", json: { connection, root } });
+      setSaid(`On. ${doneWords(done)}`);
       setPlace("");
       status.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function pick(key: string, choice: string) {
+    setError(null);
+    setSaid(null);
+    try {
+      const done = await api<Done>("memory/every/choose", { method: "PUT", json: { key, choice } });
+      setSaid(doneWords(done));
+      status.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -465,7 +551,7 @@ export function EveryProject({ connection: fixed }: { connection?: string }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">One Notion page for every client&apos;s notes. Ringkeeper makes a page per client under it and a database per project under its client&apos;s page, so one client&apos;s page never holds another&apos;s notes. Projects already in Notion keep their place. New projects follow.</p>
+      <p className="text-sm text-muted">One Notion page for every client&apos;s notes. Ringkeeper makes a page per client under it and a database per project under its client&apos;s page, so one client&apos;s page never holds another&apos;s notes. Pages and databases already there with those titles, from your team&apos;s Ringkeeper, are joined, not made again. Projects already in Notion keep their place. New projects follow.</p>
       {data.every ? (
         <p className="text-sm">
           On, under{" "}
@@ -476,10 +562,30 @@ export function EveryProject({ connection: fixed }: { connection?: string }) {
         </p>
       ) : null}
       {usable.length ? (
-        <NotionPicker connections={usable} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} pagesOnly />
+        <NotionPicker connections={usable} connection={connection} onConnection={setConnection} place={place} onPlace={setPlace} only="page" />
       ) : (
         <Alert tone="warn">This needs a Notion memory connection that&apos;s your own tool, since it holds every client&apos;s notes. A client&apos;s connection holds only that client&apos;s notes: choose it in each of their projects&apos; Memory.</Alert>
       )}
+      {data.asks.map((ask) => (
+        <div key={ask.key} className="space-y-2 rounded-xl border border-warn p-3 text-sm">
+          <p>
+            Which Notion {ask.what} is {ask.what === "page" ? `${ask.label}'s` : `for ${ask.label}`}? {ask.options.length > 1 ? `${ask.options.length} are there` : "One is there"} with a title like “{ask.wanted}”. Ringkeeper doesn&apos;t guess: choose one, or make a new one.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ask.options.map((option) => (
+              <span key={option.id} className="flex items-center gap-1">
+                <Button onClick={() => void pick(ask.key, option.id)}>Use “{option.title}”</Button>
+                <a href={option.url} target="_blank" rel="noreferrer" className="text-xs text-accent">
+                  open
+                </a>
+              </span>
+            ))}
+            <Button kind="ghost" onClick={() => void pick(ask.key, "new")}>
+              Make a new one
+            </Button>
+          </div>
+        </div>
+      ))}
       {error ? <Alert>{error}</Alert> : null}
       {said ? <Alert tone="good">{said}</Alert> : null}
       <div className="flex flex-wrap gap-2">

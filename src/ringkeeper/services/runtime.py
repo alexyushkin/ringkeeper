@@ -86,6 +86,7 @@ class RuntimeIn(Input):
     start_at_login: bool | None = None  # desktop mode only
     check_updates: bool | None = None  # desktop mode only
     stt_language: SpokenLanguage | None = None  # Whisper codes ("en,ru"), or "auto"
+    owner_name: Annotated[str, Field(max_length=80)] | None = None  # "Saved by" on notes
 
 
 EDITABLE = tuple(RuntimeIn.model_fields)

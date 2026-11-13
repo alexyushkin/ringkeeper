@@ -30,6 +30,8 @@ def _note(note: MemoryNote) -> dict[str, Any]:
     return {
         "id": str(note.id), "note": note.body, "agent": note.agent, "task": note.source_task,
         "backend": note.backend, "created_at": note.created_at,
+        # Notion wouldn't take it yet (memory.send_waiting): it goes there once it can.
+        "waiting": note.backend == memory.NOTION and note.external_id is None,
     }  # fmt: skip
 
 
@@ -46,6 +48,13 @@ def memory_status(name: str, session: SessionDep) -> dict[str, Any]:
     kept = session.scalar(
         select(func.count()).select_from(MemoryNote).where(MemoryNote.project_id == project.id)
     )
+    waiting = session.scalar(
+        select(func.count()).select_from(MemoryNote).where(
+            MemoryNote.project_id == project.id, MemoryNote.backend == memory.NOTION,
+            MemoryNote.external_id.is_(None),
+        )
+    )  # fmt: skip
+    notion = cast(dict[str, Any], saved.get("notion") or {})
     return {
         "backend": saved.get("backend") or memory.LOCAL,
         "notion": _where(saved.get("notion") or {}),
@@ -53,6 +62,9 @@ def memory_status(name: str, session: SessionDep) -> dict[str, Any]:
         "shared_notes": saved.get("shared_notes", True),
         "shared_available": bool(memory.shared_settings(session) or memory.mine_settings(session)),
         "notes": int(kept or 0),
+        # Notion won't let the connection write there: notes wait here until it does.
+        "cant_write": notion.get("cant_write"),
+        "waiting": int(waiting or 0),
         # Notion for every project is on, and this one follows when its first task starts.
         "follows": bool(every) and not saved.get("notion"),
         "connections": [
@@ -181,6 +193,8 @@ def every_status(session: SessionDep) -> dict[str, Any]:
     return {
         "every": {k: every.get(k) for k in ("connection", "root", "title", "url")} if every
         else None,
+        # Pages or databases already in Notion that the owner says which of (or makes new).
+        "asks": list(cast(dict[str, Any], every.get("asks") or {}).values()),
         "connections": [
             {"name": i.name, "title": i.title or i.name}
             for i in memory.connections_for(session, None)
@@ -204,6 +218,23 @@ def set_every(data: EveryIn, session: WriteSessionDep) -> dict[str, Any]:
         session, "memory.every", "kept every project's notes in Notion", by=OWNER,
         instance=data.connection,
     )  # fmt: skip
+    return {**every_status(session), **done}
+
+
+class ChoiceIn(Input):
+    key: Annotated[str, Field(min_length=3, max_length=200)]
+    choice: Literal["new"] | NotionId
+
+
+@router.put("/memory/every/choose")
+def choose_every(data: ChoiceIn, session: WriteSessionDep) -> dict[str, Any]:
+    """Which page or database that's already in Notion to join, or make a new one."""
+    try:
+        done = memory.choose_found(session, data.key, data.choice)
+    except notion_api.NotionError as error:
+        raise HTTPException(409, detail=str(error)) from None
+    said = "made a new one" if data.choice == memory.NEW else "joined one already in Notion"
+    admin_audit.record(session, "memory.every", f"{said} for {data.key}", by=OWNER)
     return {**every_status(session), **done}
 
 
