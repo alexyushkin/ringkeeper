@@ -77,6 +77,7 @@ from ringkeeper.services import (
     inbox,
     memory,
     mentions,
+    needs,
     tasks,
     threads,
     titles,
@@ -98,6 +99,8 @@ class Routed:
     reply: str = ""
     error: str | None = None
     notes: list[str] = field(default_factory=list[str])  # why something didn't start
+    # Tasks not started: their project has no connection of the kind they need (needs).
+    missing: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
 
 def _retry_prompt(prompt: str, previous: str, error: str) -> str:
@@ -132,7 +135,19 @@ def _task_fields(task: RoutedTask) -> dict[str, Any]:
         "complexity": task.complexity.value,
         "outcome": task.outcome,
         "agent": task.agent,
+        "needs": list(task.needs),
     }
+
+
+CODE_KINDS = frozenset({TaskKind.FEATURE, TaskKind.FIX})
+
+
+def by_what_it_touches(task: RoutedTask) -> RoutedTask:
+    """Work in an outside account (it needs a connection: ads, mail, records) is ops, even in a
+    project with a code folder: feature and fix are only for changes to the project's code."""
+    if task.needs and task.kind in CODE_KINDS:
+        return task.model_copy(update={"kind": TaskKind.OPS})
+    return task
 
 
 def _why_asking(session: Session, task: RoutedTask) -> str:
@@ -485,7 +500,11 @@ def _reply(session: Session, message: Message, routed: Routed, output: RouterOut
             lines.append(str(payload["reason"]))
         else:
             lines.append(threads.ASKS_PROJECT)
-    if output.reply and not routed.decisions and not routed.tasks:
+    alone = len(routed.missing) == 1 and not routed.tasks and not routed.decisions
+    for lacking in routed.missing:
+        said = str(lacking["says"])
+        lines.append(said if alone else said.replace("This project", str(lacking["title"]), 1))
+    if output.reply and not routed.decisions and not routed.tasks and not routed.missing:
         lines.insert(0, output.reply)
     return "\n".join(lines) or "Nothing to do."
 
@@ -500,7 +519,7 @@ def _route_tasks(
     """Start each task, or ask first (which project, or a go-ahead on production)."""
     routed = Routed()
     threshold = settings.router_confidence_threshold
-    for found in output.tasks:
+    for found in (by_what_it_touches(t) for t in output.tasks):
         task = kept_in_conversation(session, message, found, owners)
         if task is None:
             task = settle_project(
@@ -514,6 +533,10 @@ def _route_tasks(
             routed.notes.append(
                 f"Already working on that: [{titles.of(session, same.project)}]({link})"
             )
+        elif (lacks := needs.missing(session, task.project, task.needs)) is not None:
+            routed.missing.append(
+                needs.entry(session, message.id, task.project, _task_fields(task), lacks)
+            )
         elif (live := production_connection(session, task)) is not None:
             routed.decisions.append(_ask(session, settings, message, task, live))
         elif no_web(session, task):
@@ -521,7 +544,7 @@ def _route_tasks(
         else:
             routed.tasks.append(_dispatch(session, settings, message, task))
     said = _reply(session, message, routed, output)
-    nothing = not routed.tasks and not routed.decisions
+    nothing = not routed.tasks and not routed.decisions and not routed.missing
     lines = routed.notes if nothing and routed.notes else [*routed.notes, said]
     routed.reply = chr(10).join(lines)
     return routed
@@ -710,10 +733,15 @@ def apply(session: Session, settings: Settings, message: Message, thought: Thoug
         "tasks": [str(t.id) for t in routed.tasks],
         "decisions": [str(d.id) for d in routed.decisions],
     }
+    if routed.missing:  # run once the connection is added (needs.run_waiting)
+        meta["missing"] = routed.missing
     if not routed.tasks and not routed.decisions:  # an answer: what the thread shows
         meta |= _answer_meta(routed, output)
     threads.mark_routed(session, message, meta)
-    threads.add_reply(session, message.thread_id, routed.reply)
+    shown = [{k: v for k, v in m.items() if k != "task"} for m in routed.missing]
+    threads.add_reply(
+        session, message.thread_id, routed.reply, routing={"missing": shown} if shown else None
+    )
     return routed
 
 

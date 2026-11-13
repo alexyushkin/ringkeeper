@@ -9,6 +9,7 @@ import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
 import { type Decision } from "@/components/decision-card";
 import { Markdown, plainText } from "@/components/markdown";
+import { AddConnection, type Missing } from "@/components/missing-connection";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { RememberThis, SavedToMemory } from "@/components/memory";
@@ -17,6 +18,7 @@ import { Waiting } from "@/components/waiting";
 import { CancelButton } from "@/components/scheduled";
 import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
+import { threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 import { routingLine } from "@/lib/routing-wait";
 
@@ -27,7 +29,7 @@ interface Message {
   source: string;
   input: string;
   body: string;
-  routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] }; help?: HelpAnswer; retry?: string; claimed_at?: string; retry_after?: string; waiting?: string } | null;
+  routing: { output?: { tasks?: { project: string; kind: string; confidence: number; outcome: string }[] }; help?: HelpAnswer; missing?: Missing[]; ran?: boolean; retry?: string; claimed_at?: string; retry_after?: string; waiting?: string } | null;
   route_error: string | null;
   run_at?: string | null;
   canceled_at?: string | null;
@@ -98,9 +100,12 @@ export function ThreadView({ id }: { id: string }) {
               <Card>
                 <p className="text-xs font-medium text-muted">Ringkeeper</p>
                 <Markdown text={message.body} className="mt-1 text-sm" />
-              {message.role === "router" ? <RememberThis text={message.body} projects={[...new Set((tasks.data ?? []).map((t) => t.project))]} /> : null}
+              {message.role === "router" && !message.routing?.missing?.length && !message.routing?.ran ? <RememberThis text={message.body} projects={[...new Set((tasks.data ?? []).map((t) => t.project))]} /> : null}
               {message.routing?.help ? <HelpExtras help={message.routing.help} /> : null}
               {message.routing?.retry ? <TryAgain id={message.routing.retry} onDone={thread.reload} /> : null}
+              {(message.routing?.missing ?? []).map((missing) => (
+                <AddConnection key={`${missing.project}:${missing.need}`} missing={missing} back={threadHref(id)} run={missing.message ?? ""} onRan={() => { thread.reload(); tasks.reload(); }} />
+              ))}
               </Card>
             )}
             {message.role === "user" && message.routing?.output?.tasks?.length ? (

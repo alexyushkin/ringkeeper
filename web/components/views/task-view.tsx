@@ -11,6 +11,7 @@ import { TaskAgain } from "@/components/conveniences";
 import { type Decision } from "@/components/decision-card";
 import { Waiting } from "@/components/waiting";
 import { Markdown } from "@/components/markdown";
+import { AddConnection } from "@/components/missing-connection";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { RememberThis, SavedToMemory } from "@/components/memory";
@@ -45,7 +46,7 @@ interface Task {
   summary: string | null;
   error: string | null;
   plan_limit?: string | null;
-  offer?: { label: string; instance?: string; recommend?: string; href?: string } | null;
+  offer?: { label: string; instance?: string; recommend?: string; add?: string; href?: string } | null;
   partly_done?: string | null; // not done, but this part was
   ended?: string | null; // how it ended: done, answered, nothing_changed, refused_other_client
   prompt: string;
@@ -257,6 +258,9 @@ export function TaskView({ id }: { id: string }) {
               add it
             </Link>
           </p>
+        ) : null}
+        {t.offer?.add && t.offer.href ? (
+          <AddConnection missing={{ project: t.project, title: "", need: t.offer.add, label: t.offer.label, href: t.offer.href }} back={taskHref(id)} run={`task:${id}`} onRan={() => task.reload()} />
         ) : null}
         {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">

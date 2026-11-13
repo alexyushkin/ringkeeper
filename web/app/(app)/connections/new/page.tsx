@@ -5,6 +5,7 @@ import { Suspense, useState } from "react";
 
 import { Catalog } from "@/components/catalog";
 import { ConnectionAdded } from "@/components/connection-added";
+import { RunWaiting } from "@/components/missing-connection";
 import { GoogleConnect } from "@/components/google";
 import { SHARED_OWNER, type Kind } from "@/components/shared-tools";
 import { Button, Card, Field, PageHeader, Select } from "@/components/ui";
@@ -39,7 +40,9 @@ function ClaudeNote() {
  * Browse connectors. Adding one starts with what it is: a client's account, or your
  * own tool that any client's projects can share. Only a client's account asks whose
  * it is. `?kind=shared` (or `client`) and `?client=<slug>` skip those questions;
- * `?google=1` opens the Google account form.
+ * `?google=1` opens the Google account form. From a request held for a missing connection:
+ * `?link=` links what's added to that project, and `?run=` (with `?back=`) offers to run
+ * the request once it's there.
  */
 function NewConnection() {
   const router = useRouter();
@@ -53,6 +56,8 @@ function NewConnection() {
   const [typed, setTyped] = useState("");
   const [client, setClient] = useState<string | null>(search.get("client"));
   const [added, setAdded] = useState<string | null>(null);
+  // Kept from the first render: the client and project picker rewrites the address.
+  const [{ project, run, back }] = useState(() => ({ project: search.get("link") ?? undefined, run: search.get("run") ?? "", back: search.get("back") ?? "" }));
   const chosen = picked === NEW ? typed.trim() : picked; // a new client, named as typed
 
   if (kind === null) {
@@ -101,6 +106,7 @@ function NewConnection() {
     return (
       <>
         <PageHeader title={title} />
+        {run ? <RunWaiting run={run} back={back} onBack={(to) => router.push(to)} /> : null}
         <ConnectionAdded
           name={added}
           onAnother={() => setAdded(null)}
@@ -125,7 +131,7 @@ function NewConnection() {
             <GoogleConnect owner={shared ? undefined : owner} shared={shared} onAdded={done} />
           </>
         ) : (
-          <Catalog client={owner} kind={kind} onAdded={done} start={search.get("service") ?? undefined} startScope={search.get("base") ? { base: search.get("base") ?? "" } : undefined} />
+          <Catalog client={owner} kind={kind} project={project} onAdded={done} start={search.get("service") ?? undefined} startScope={search.get("base") ? { base: search.get("base") ?? "" } : undefined} />
         )}
         <Button kind="ghost" onClick={() => (shared ? setKind(null) : setClient(null))}>
           {shared ? "‹ Back" : "‹ Another client"}

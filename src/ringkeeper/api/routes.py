@@ -38,6 +38,7 @@ from ringkeeper.services import (
     inbox,
     instances,
     mentions,
+    needs,
     projects,
     tasks,
     threads,
@@ -132,6 +133,13 @@ def list_scheduled(session: SessionDep) -> list[dict[str, Any]]:
 def retry_message(message_id: uuid.UUID, session: WriteSessionDep) -> MessageOut:
     """A request whose routing failed, routed again."""
     return MessageOut.model_validate(threads.retry_routing(session, str(message_id)))
+
+
+@router.post("/messages/{message_id}/run-now", status_code=201)
+def run_waiting(message_id: uuid.UUID, session: WriteSessionDep) -> dict[str, Any]:
+    """A request held back for a missing connection, run now that its project has one."""
+    started = needs.run_waiting(session, get_settings(), str(message_id))
+    return {"tasks": [str(t.id) for t in started]}
 
 
 @router.get("/claude-status")

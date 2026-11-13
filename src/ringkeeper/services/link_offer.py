@@ -1,6 +1,10 @@
-"""A task that wasn't done for want of a connection its client has, but its project
-isn't linked to: offered as one click, "Link General Informatics' Google to Website and
-retry", in the app and as a chat button."""
+"""A task that wasn't done for want of a connection: offered as one click.
+
+- The client has one its project isn't linked to: "Link Harbor Bakery's Google to
+  Website and retry", in the app and as a chat button.
+- It has none: "Add a Meta Ads connection to Website", which opens the add form for that
+  client and links what's added to the project (services.needs).
+"""
 
 from typing import Any
 
@@ -11,25 +15,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Instance, InstanceType, Project, Task
 from ringkeeper.schemas import BindingIn
-from ringkeeper.services import bindings, clients, tasks, titles
-
-# What a worker can say it lacked, and the kinds of connection that give it.
-KINDS: dict[str, tuple[InstanceType, ...]] = {
-    "email": (
-        InstanceType.GOOGLE,
-        InstanceType.GMAIL,
-        InstanceType.MAILBOX,
-        InstanceType.SMTP,
-        InstanceType.RESEND,
-    ),
-    "google": (InstanceType.GOOGLE,),
-    "database": (InstanceType.SUPABASE, InstanceType.NEON, InstanceType.ORACLE),
-    "airtable": (InstanceType.AIRTABLE,),
-    "n8n": (InstanceType.N8N,),
-    "github": (InstanceType.GITHUB,),
-    "vercel": (InstanceType.VERCEL,),
-}
-
+from ringkeeper.services import bindings, clients, needs, tasks, titles
 
 # A built-in connection that can't do something the service's own server can (remote.py),
 # when the client hasn't added that server: a lookup, not a model call. What the worker said
@@ -43,7 +29,7 @@ RECOMMENDED: dict[str, tuple[InstanceType, tuple[str, ...], str]] = {
 }
 
 
-def recommend(session: Session, task: Task, needs: str) -> dict[str, Any] | None:
+def recommend(session: Session, task: Task, lacked: str) -> dict[str, Any] | None:
     """One line, with a link to add the service's own server, when that's what was missing."""
     project = session.scalar(
         select(Project).options(selectinload(Project.bindings)).where(Project.name == task.project)
@@ -55,7 +41,7 @@ def recommend(session: Session, task: Task, needs: str) -> dict[str, Any] | None
     owned = session.scalars(select(Instance).where(Instance.owner == project.owner)).all()
     for remote, (built_in, words, says) in RECOMMENDED.items():
         # The project has the built-in connection, and it lacked what only the server has.
-        pointed = built_in in kinds and (needs == remote or any(w in why for w in words))
+        pointed = built_in in kinds and (lacked == remote or any(w in why for w in words))
         has_server = any(
             i.type is InstanceType.MCP and (i.config or {}).get("remote") == remote for i in owned
         )
@@ -68,30 +54,36 @@ def recommend(session: Session, task: Task, needs: str) -> dict[str, Any] | None
     return None
 
 
-def _fits(instance: Instance, needs: str) -> bool:
-    if instance.type in KINDS.get(needs, ()):
-        return True
-    named = f"{instance.name} {instance.title or ''} {instance.config.get('vendor', '')}"
-    return needs == "slack" and "slack" in named.lower()
+def add_offer(session: Session, task: Task, lacked: str, owner: str) -> dict[str, Any] | None:
+    """The add form for a kind of connection the client has none of: once it's added, the
+    task can run again."""
+    if needs.need(lacked) is None:
+        return None
+    return {
+        "add": lacked,
+        "label": needs.add_label(lacked, titles.of(session, task.project)),
+        "href": needs.add_href(lacked, owner, task.project, run=f"task:{task.id}"),
+    }
 
 
-def find(session: Session, task: Task, needs: str) -> dict[str, Any] | None:
-    """The client's connection of that kind that the task's project isn't linked to."""
-    needs = needs.strip().lower()
+def find(session: Session, task: Task, lacked: str) -> dict[str, Any] | None:
+    """The client's connection of that kind that the task's project isn't linked to, or the
+    form to add one."""
+    lacked = lacked.strip().lower()
     project = session.scalar(
         select(Project).options(selectinload(Project.bindings)).where(Project.name == task.project)
     )
     if project is None:
         return None
-    if not needs:
-        return recommend(session, task, needs)
+    if not lacked:
+        return recommend(session, task, lacked)
     linked = {b.instance_id for b in project.bindings}
     owned = session.scalars(
         select(Instance).where(Instance.owner == project.owner).order_by(Instance.name)
     ).all()
-    found = next((i for i in owned if i.id not in linked and _fits(i, needs)), None)
+    found = next((i for i in owned if i.id not in linked and needs.fits(i, lacked)), None)
     if found is None:
-        return recommend(session, task, needs)
+        return recommend(session, task, lacked) or add_offer(session, task, lacked, project.owner)
     return {
         "instance": found.name,
         "project": project.name,
@@ -114,6 +106,24 @@ def take(session: Session, settings: Settings, task_id: str) -> Task:
     bindings.set_binding(
         session, BindingIn(project=str(offer["project"]), instance=str(offer["instance"]))
     )
+    task.offer = None
+    return tasks.create_task(
+        session, settings, project=task.project, prompt=task.prompt, kind=task.kind,
+        risk=task.risk, complexity=task.complexity, outcome=task.outcome,
+        thread_id=task.thread_id, message_id=task.message_id, agent_id=task.agent_id,
+    )  # fmt: skip
+
+
+def run_again(session: Session, settings: Settings, task_id: str) -> Task:
+    """A task not done for want of a kind of connection, run again now its project has one."""
+    task = session.get(Task, task_id)
+    if task is None or not task.offer or "add" not in task.offer:
+        raise RuleViolationError("There's nothing waiting for a connection here any more.")
+    lacked = str(task.offer["add"])
+    if needs.missing(session, task.project, [lacked]) is not None:
+        title = titles.of(session, task.project)
+        said = needs.no_connection(lacked).replace("This project", title, 1)
+        raise RuleViolationError(said.replace(" connection.", " connection yet."))
     task.offer = None
     return tasks.create_task(
         session, settings, project=task.project, prompt=task.prompt, kind=task.kind,

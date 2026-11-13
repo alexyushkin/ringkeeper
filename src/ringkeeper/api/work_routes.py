@@ -406,6 +406,12 @@ def link_and_retry(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
     return _task_card(link_offer.take(session, current_settings(), task_id))
 
 
+@router.post("/tasks/{task_id}/run-again", status_code=201)
+def run_again(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
+    """A task not done for want of a connection, run again once one is added and linked."""
+    return _task_card(link_offer.run_again(session, current_settings(), task_id))
+
+
 @router.post("/tasks/{task_id}/resume-interrupted")
 def resume_interrupted(task_id: str, session: WriteSessionDep) -> dict[str, Any]:
     interrupted.resume(session, current_settings(), task_id)

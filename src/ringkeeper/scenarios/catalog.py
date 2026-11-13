@@ -231,6 +231,13 @@ SCENARIOS: tuple[Scenario, ...] = (
         routine=ROUTINE, project=SHOP, agent=AGENT_ID, tools=("query",), never_held=True,
     ),
     Scenario(
+        "no-ads-connection", "Ads work in a project with no ads connection", "routing",
+        request="Set up a Meta ad campaign for Demo Co's marketing site's spring sale",
+        no_work=True, reply_has=("no Meta Ads connection",), cost_ceiling=0.25,
+        notes="The site has a code folder and no ads connection: it's said at once, with a "
+        "button to add one, instead of a feature task that reads the code and ends Not done.",
+    ),
+    Scenario(
         "help", "Help answered by the real model", "routing",
         request="How do I undo a change in Ringkeeper?",
         no_work=True, by_help=True, reply_has=("undo",), cost_ceiling=0.25,

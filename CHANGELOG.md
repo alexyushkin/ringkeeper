@@ -3,6 +3,21 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **A request for a connection the project doesn't have is answered at once.** Asking to set
+  up Meta ad campaigns in a project with no ads connection used to start a feature task that
+  planned, read the code and ended Not done. Now the reply says "This project has no Meta Ads
+  connection", with a button that opens the add form for that client and links what you add
+  to the project, then **Run it now** starts the request. It covers ads, email, calendars,
+  databases and payments, decided in the same routing call.
+- **Work in an outside account is ops.** Creating campaigns, sending mail and changing records
+  run as ops, even in a project with a code folder; feature is only for changes to its code.
+- **Not done for a missing connection shows the add button.** When the client has no
+  connection of that kind, the task's page offers **Add a ... connection**, and **Run it
+  now** once it's there.
+- The self-test has a new routing scenario: ads work in a project with no ads connection.
+
 ## 0.1.0-beta.43 (2026-11-13)
 
 - **"Handle it" that changed nothing says Nothing changed.** Asked to read a record and handle

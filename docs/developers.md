@@ -481,6 +481,13 @@ outcome and the worker prompt. The answer is validated (one retry on invalid
 output), and a task is never given to projects with different owners: it must
 be split.
 
+Each task can also say the kinds of connection it can't be done without (`needs`: `ads`,
+`meta_ads`, `google_ads`, `email`, `calendar`, `database`, `payments`). `services.needs` looks
+them up against the project's linked connections; a project with none of a kind gets "This
+project has no ... connection" and an add button instead of a task, and the task's fields wait
+on the message for `POST /messages/{id}/run-now`. A task with `needs` is never a `feature` or
+`fix`: it runs as `ops`.
+
 A task that touches one project with a confidence of at least 0.8
 (`RINGKEEPER_ROUTER_CONFIDENCE_THRESHOLD`) is dispatched. Anything else becomes
 a **route decision** with the top two candidates. Your answer is saved as a
