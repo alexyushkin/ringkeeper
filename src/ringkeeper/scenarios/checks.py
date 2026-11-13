@@ -23,10 +23,11 @@ FIRST_REPLY = tuple(
         r"Already working on that: .+",
     )
 )
-# A change claimed in the worker's own words ("I updated", "I've marked"...).
+# A change claimed in the worker's own words ("I updated", "I've marked"...), not one denied
+# ("I changed nothing").
 CLAIM = re.compile(
     r"\bI(?:'ve| have)? (?:updated|changed|added|deleted|removed|created|sent|marked|moved|"
-    r"wrote|saved|cancelled|canceled|shipped|set)\b",
+    r"wrote|saved|cancelled|canceled|shipped|set)\b(?!\s+(?:nothing|no|none|anything)\b)",
     re.IGNORECASE,
 )
 

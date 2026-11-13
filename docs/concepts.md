@@ -68,8 +68,9 @@ A task's status says what happened, from what the gateway recorded, never from w
 
 When work starts, the conversation says only where it went: "Working on it in Website." What the
 task will read or change is for the task to report, since it may decline. A request that names
-another client's connection or the client itself also gets, up front, "This went to Bayside's
-project. Tasks there can't reach Acme's connections."
+another client's connection, one of its projects, or the client itself also gets, up front,
+"This went to Bayside's project. Tasks there can't reach Acme's connections." Split between two
+clients' projects, it says that for each.
 
 A connection is reached only through its own tools. When they can't do something, the task
 stops there and says so, instead of trying the same connection another way.

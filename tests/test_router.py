@@ -119,9 +119,12 @@ def test_a_message_is_split_into_one_task_per_project() -> None:
     assert model_id == "claude-haiku-5-5"
     roles = [role for role, _ in thread_bodies(thread_id)]
     assert roles == [MessageRole.USER, MessageRole.ROUTER]
-    # Where each went and that it started: not the model's line, nor what each will do.
+    # Where each went and that it started: not the model's line, nor what each will do. Each
+    # client's part can't reach the other's connections, and says so.
     reply = thread_bodies(thread_id)[1][1]
     assert reply.splitlines() == [
+        "This went to acme's project. Tasks there can't reach globex's connections.",
+        "This went to globex's project. Tasks there can't reach acme's connections.",
         "Working on it in Acme web. I'll show you a plan first.",
         "Working on it in Globex portal.",
     ]

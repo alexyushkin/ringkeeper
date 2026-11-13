@@ -1,10 +1,11 @@
 """A request that names another client's data, said up front in the first reply: the work went
 to one client's project, and tasks there can't reach the other client's connections.
 
-Named means a connection of the other client (its name or title) or the client itself, written
-in the request. Project titles aren't matched: "Website" is too plain a word. A shared tool is
-no client's. A client that also got a task from this request isn't "other": the request was
-split between them."""
+Named means a connection of the other client (its name or title), the client itself, or one of
+its projects by name ("@demo-shop", or "demo-shop" with its hyphen). Project titles and one-word
+names without the @ aren't matched: "Website" is too plain a word. A shared tool is no client's.
+A request split between two clients' projects says it for each: the Demo Co task can't read
+what the Acme task reads, so it can't put it in a summary either."""
 
 import re
 
@@ -21,13 +22,16 @@ def _says(body: str, name: str | None) -> bool:
 
 
 def _named_clients(session: Session, body: str) -> set[str]:
-    """The clients (slugs) whose connections or own name the request writes."""
+    """The clients (slugs) whose connections, projects or own name the request writes."""
     text = body.casefold()
     found: set[str] = set()
     for name, title, owner in session.execute(
         select(Instance.name, Instance.title, Instance.owner).where(Instance.shared.is_(False))
     ).all():
         if _says(text, name) or _says(text, title):
+            found.add(owner)
+    for name, owner in session.execute(select(Project.name, Project.owner)).all():
+        if owner and (_says(text, f"@{name}") or ("-" in name and _says(text, name))):
             found.add(owner)
     for client, shown in session.execute(select(Client.slug, Client.name)).all():
         if _says(text, shown) or _says(text, client):
@@ -48,16 +52,16 @@ def lines(session: Session, body: str, started: list[Task]) -> list[str]:
         .all()
     )
     went = [o for o in dict.fromkeys(owners.get(t.project) for t in started) if o]
-    if not went:
-        return []
-    others = sorted(_named_clients(session, body) - set(went))
-    if not others:
-        return []
+    named: set[str] = _named_clients(session, body) if went else set()
     shown = dict(session.execute(select(Client.slug, Client.name)).tuples().all())
-    names = [shown.get(o, o) for o in others]
-    them = names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" or {names[-1]}"
-    return [
-        f"This went to {shown.get(client, client)}'s project. Tasks there can't reach "
-        f"{them}'s connections."
-        for client in went
-    ]
+    said: list[str] = []
+    for client in went:
+        names = [shown.get(o, o) for o in sorted(named - {client})]
+        if not names:
+            continue
+        them = names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" or {names[-1]}"
+        said.append(
+            f"This went to {shown.get(client, client)}'s project. Tasks there can't reach "
+            f"{them}'s connections."
+        )
+    return said
