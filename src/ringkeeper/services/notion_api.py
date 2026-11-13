@@ -27,6 +27,8 @@ transport: httpx2.BaseTransport | None = None
 
 JSON = dict[str, Any]
 NOTE, AGENT, DATE, TASK, KIND = "Note", "Agent", "Date", "Source task", "Kind"
+SAVED_BY = "Saved by"  # the owner's name, from Settings: who saved it, on a page people share
+MINE = "my memory"  # a My memory database's title, as compared
 TEXT_BLOCKS = (
     "paragraph", "bulleted_list_item", "numbered_list_item", "to_do", "quote", "callout",
     "heading_1", "heading_2", "heading_3", "toggle",
@@ -34,7 +36,17 @@ TEXT_BLOCKS = (
 
 
 class NotionError(RingkeeperError):
-    """Notion refused, or didn't answer. The message is for the user."""
+    """Notion refused, or didn't answer. The message is for the user. `status` is Notion's
+    answer (None: it didn't answer)."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+    @property
+    def refused(self) -> bool:
+        """Notion answered, and won't let this connection do it (not: it's down or busy)."""
+        return self.status in (401, 403, 404)
 
 
 @dataclass(frozen=True)
@@ -44,7 +56,8 @@ class Place:
     database: str
     data_source: str
     url: str
-    columns: dict[str, str]  # what each column is called there: note, agent, date, task, kind
+    columns: dict[str, str]  # what each column is called: note, agent, date, task, kind, saved_by
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -90,7 +103,7 @@ def call(
             except ValueError:
                 found = {}
             if answer.status_code >= 400:
-                raise NotionError(_why(answer.status_code, found))
+                raise NotionError(_why(answer.status_code, found), answer.status_code)
             return found
     raise NotionError("Notion is busy. Try again in a moment.")
 
@@ -124,7 +137,53 @@ def find(token: str, words: str = "") -> list[JSON]:
          "url": r.get("url")}
         for r in results
         if r.get("object") in ("page", "data_source") and r.get("url")  # not a partial answer
+        # Someone's My memory is theirs alone: never offered to keep anything in.
+        and not (r.get("object") == "data_source" and _title(r).strip().casefold() == MINE)
     ]  # fmt: skip
+
+
+@dataclass(frozen=True)
+class Child:
+    """A page or database right under a page."""
+
+    id: str
+    kind: str  # "page" or "database"
+    title: str
+
+    @property
+    def url(self) -> str:
+        return f"https://www.notion.so/{self.id.replace('-', '')}"
+
+
+def children(token: str, page: str) -> list[Child]:
+    """The pages and databases right under `page`, as Notion lists them (not ones in the
+    trash)."""
+    found: list[Child] = []
+    cursor: str | None = None
+    while True:
+        params: JSON = {"page_size": PAGE}
+        if cursor:
+            params["start_cursor"] = cursor
+        answer = call(token, "GET", f"/blocks/{page}/children", params=params)
+        for block in cast(list[JSON], answer.get("results") or []):
+            kind = str(block.get("type"))
+            if block.get("in_trash") or block.get("archived"):
+                continue
+            if kind in ("child_page", "child_database"):
+                title = str(cast(JSON, block.get(kind) or {}).get("title") or "")
+                found.append(Child(str(block["id"]), kind.removeprefix("child_"), title))
+        if not answer.get("has_more"):
+            return found
+        cursor = cast(str | None, answer.get("next_cursor"))
+
+
+def source_of(token: str, database: str) -> str:
+    """The data source of a database Ringkeeper made (it has one), to keep notes in."""
+    found = call(token, "GET", f"/databases/{database}")
+    sources = cast(list[JSON], found.get("data_sources") or [])
+    if not sources:
+        raise NotionError("That Notion database has nothing Ringkeeper can keep notes in.")
+    return str(sources[0]["id"])
 
 
 def _text(content: str) -> list[JSON]:
@@ -135,6 +194,7 @@ TITLE_CHARS = 80
 # What kind of note it is, a column of its own.
 KINDS = ("Where things live", "How we do it", "Gotcha", "Decision")
 _KIND_COLUMN: JSON = {"select": {"options": [{"name": k} for k in KINDS]}}
+_SAVED_BY: JSON = {"rich_text": {}}
 _TASK_ID = re.compile(r"\(([0-9a-fA-F-]{8,36})\)\s*$")
 
 
@@ -197,14 +257,16 @@ def create_place(token: str, parent: str, title: str) -> Place:
         "title": _text(title),
         "initial_data_source": {"properties": {
             NOTE: {"title": {}}, KIND: _KIND_COLUMN, AGENT: {"rich_text": {}},
-            DATE: {"date": {}}, TASK: {"rich_text": {}},
+            DATE: {"date": {}}, TASK: {"rich_text": {}}, SAVED_BY: _SAVED_BY,
         }},
     })  # fmt: skip
     sources = cast(list[JSON], made.get("data_sources") or [])
     if not sources:
         raise NotionError("Notion made the database but didn't say how to reach it.")
-    columns = {"note": NOTE, "kind": KIND, "agent": AGENT, "date": DATE, "task": TASK}
-    return Place(str(made["id"]), str(sources[0]["id"]), str(made.get("url") or ""), columns)
+    columns = {"note": NOTE, "kind": KIND, "agent": AGENT, "date": DATE, "task": TASK,
+               "saved_by": SAVED_BY}  # fmt: skip
+    return Place(str(made["id"]), str(sources[0]["id"]), str(made.get("url") or ""), columns,
+                 title)  # fmt: skip
 
 
 def use_place(token: str, data_source: str) -> Place:
@@ -216,21 +278,22 @@ def use_place(token: str, data_source: str) -> Place:
         raise NotionError("That isn't a Notion database Ringkeeper can keep notes in.")
     columns = {"note": title}
     for key, name, kind in (("agent", AGENT, "rich_text"), ("date", DATE, "date"),
-                            ("task", TASK, "rich_text"), ("kind", KIND, "select")):  # fmt: skip
+                            ("task", TASK, "rich_text"), ("kind", KIND, "select"),
+                            ("saved_by", SAVED_BY, "rich_text")):  # fmt: skip
         if (props.get(name) or {}).get("type") == kind:
             columns[key] = name
-    if "kind" not in columns and KIND not in props:
-        # A database from before: the Kind column is added; its rows aren't touched.
+    # A database from before: each column it lacks is added; its rows aren't touched.
+    for key, name, column in (("kind", KIND, _KIND_COLUMN), ("saved_by", SAVED_BY, _SAVED_BY)):
+        if key in columns or name in props:
+            continue
         try:
-            call(
-                token, "PATCH", f"/data_sources/{data_source}", {"properties": {KIND: _KIND_COLUMN}}
-            )
-            columns["kind"] = KIND
+            call(token, "PATCH", f"/data_sources/{data_source}", {"properties": {name: column}})
+            columns[key] = name
         except NotionError:
-            pass  # not allowed to change it: notes go in without a kind
+            pass  # not allowed to change it: notes go in without it
     parent = cast(JSON, found.get("parent") or {})
     return Place(str(parent.get("database_id") or ""), data_source, str(found.get("url") or ""),
-                 columns)  # fmt: skip
+                 columns, _plain(found.get("title")))  # fmt: skip
 
 
 def _row(found: JSON, columns: dict[str, str]) -> Row:
@@ -297,6 +360,7 @@ def add(
     *,
     kind: str | None = None,
     request: str | None = None,
+    saved_by: str | None = None,
 ) -> tuple[str, str]:
     """A new row: its id and edit time. A short title, and the whole note in the page."""
     columns = place.columns
@@ -310,6 +374,8 @@ def add(
         props[columns["date"]] = {"date": {"start": day}}
     if "task" in columns and task:
         props[columns["task"]] = {"rich_text": _text(task_label(task, request))}
+    if "saved_by" in columns and saved_by:
+        props[columns["saved_by"]] = {"rich_text": _text(saved_by)}
     body: JSON = {
         "parent": {"type": "data_source_id", "data_source_id": place.data_source},
         "properties": props,

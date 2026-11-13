@@ -31,13 +31,17 @@ share with it, so Notion itself keeps agents' notes where you put them.
    - **For one project:** in the project's **Settings**, open **Memory**, choose **Notion**, pick
      the connection and the page, and save.
 
-For one project, Ringkeeper makes a database under that page called
-`<Client> › <Project> › Ringkeeper memory`, with one row per note: the note, the agent, the date
-and the task it came from. You can pick a database that's already there instead.
+For one project, choose **Create a new one** and a page: Ringkeeper makes a database under it
+called `<Client> › <Project> › Ringkeeper memory`, with one row per note: the note, the agent, the
+date, the task it came from and who saved it. Or choose **Use a database that's already in
+Notion** and pick it. A database whose title says it's another client's, or anyone's My memory,
+can't be used.
 
 For every project, it makes a page per client under the root page (`<Client> › Ringkeeper`) and
 each project's database under its client's page, so one client's page never holds another
-client's notes. A project already in Notion keeps its place. A new project gets its database when
+client's notes. A page or database already there with that title, made by someone else's
+Ringkeeper, is joined instead of made again; when two could be the one, or a title is close but
+not the same, it asks which. See [Sharing memory with a team](../team-memory.md). A project already in Notion keeps its place. A new project gets its database when
 its first task starts; if Notion doesn't answer then, its notes stay here that time, and it's
 tried again on the next task. **Stop for new projects** keeps every project where it is now.
 
@@ -73,9 +77,11 @@ Each note is a row in the project's database:
 - **Agent**: the agent that saved it, or Ringkeeper when no named agent ran. Empty for a note you
   added yourself.
 - **Source task**: the first words of the request, then the task's ID.
+- **Saved by**: your name from **Settings › Memory › Your name**, on notes you and your tasks save.
+  Empty when it isn't set, and on rows people type in Notion.
 
-A database made before the Kind column existed gets it added the next time a task uses it; its rows
-aren't changed. A row you type with only a title still counts as a note.
+A database made before the Kind or Saved by column existed gets it added the next time a task uses
+it, when Notion allows; its rows aren't changed. A row you type with only a title still counts as a note.
 
 You can add notes yourself, with the same rules and in the same place:
 
@@ -98,6 +104,11 @@ You can add notes yourself, with the same rules and in the same place:
 
 If Notion doesn't answer, nothing is forgotten. Agents read the last copy and are told it may be
 out of date.
+
+If Notion answers but won't let the connection write to the database (it was shared with it
+read-only, or not at all), the project's **Memory** says so. Notes are kept in Ringkeeper
+meanwhile, agents still read them, and they go to Notion, oldest first, once a write goes
+through.
 
 ## What's held
 

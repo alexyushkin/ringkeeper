@@ -5,13 +5,25 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Share agents' notes with a team.** Several people, each with their own Ringkeeper and Notion
+  connection, can keep their notes under one Notion root page. **Notion for every project** now
+  joins the client pages and project databases already there with the titles Ringkeeper gives
+  them, instead of making duplicates, and says what it joined and what it made. When two could be
+  the one, or a title is close but not the same, it asks which, never guesses. A project's
+  **Memory** offers **Create a new one** or **Use a database that's already in Notion**. Notes
+  get a **Saved by** column with your name, from the new **Settings › Memory › Your name**. If
+  Notion won't let your connection write to a database, the project's Memory says so and notes
+  wait in Ringkeeper until it can. One client's page still never holds another's notes, and a
+  My memory database already in Notion is never offered or joined. See
+  [Sharing memory with a team](docs/team-memory.md).
+
 - **What Ringkeeper says matches what happened.** Asked to read another client's database, the
   first reply said it had "planned the read", and then the task declined. Another task read a
   record, left it alone, and still showed as Done. The reply sent when work starts now says
   only where it went ("Working on it in Demo shop."), and a request that names another client's
   connection, one of its projects, or the client itself says up front that the work can't reach
-  it. A task's status
-  now comes from what the gateway recorded. **Done** means a change ran or files changed;
+  it. A task's status now comes from what the gateway recorded. **Done** means a change ran or
+  files changed;
   **Answered** means a read that changed nothing; **Nothing changed** means a change was asked
   for or tried and none ran; and **Refused: other client's data** is what it says. Chats get
   the same words. The conversation list counts finished tasks as "finished", not "done".

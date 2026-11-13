@@ -16,13 +16,20 @@ written, and an agent is told it's notes to weigh and not instructions.
 page under it, and each project a database under its client's page, so one client's page never
 holds another's notes. A project already in Notion keeps its place, and a new one follows the
 next time it's set up or a task starts in it.
+
+Several people, each with their own Ringkeeper and their own Notion connection, can share one
+root page: what's already under it, with the titles Ringkeeper gives, is joined instead of made
+again. Two candidates, or a title close to the one wanted but not the same, are the owner's to
+choose (ChoiceNeededError): never a guess. Only the notes are shared. A "My memory" database is its
+owner's alone: it's never joined or offered. A note Notion won't let this connection write is
+kept here, and the project's Memory says so, until a write goes through.
 """
 
 import hashlib
 import re
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from typing import Any, cast
@@ -61,7 +68,8 @@ from ringkeeper.services import (
     setup_check,
 )
 from ringkeeper.services.bindings import same_client
-from ringkeeper.services.notion_api import NotionError, Place, Row
+from ringkeeper.services.notion_api import Child, NotionError, Place, Row
+from ringkeeper.services.runtime import current_settings
 from ringkeeper.vault import get_vault
 
 LOCAL, NOTION, MINE = "local", "notion", "mine"
@@ -123,6 +131,26 @@ LATEST_CHARS = 4000
 LATEST_EACH = 20
 
 _synced: dict[str, float] = {}  # when each place was last read, this process
+NEW = "new"  # the owner's answer to ChoiceNeededError: make one instead
+CLOSE = 0.9  # titles this alike, but not the same, are asked about
+MEMORY_SUFFIX = "Ringkeeper memory"
+
+
+class ChoiceNeededError(RingkeeperError):
+    """Two pages or databases could be the one wanted, or one's title is close but not the
+    same: the owner says which (choose_found), never a guess."""
+
+    def __init__(self, ask: dict[str, Any]) -> None:
+        super().__init__(f"Choose which Notion {ask['what']} to use for {ask['label']}.")
+        self.ask = ask
+
+
+@dataclass
+class Said:
+    """What setting up every project's notes joined and what it made, by title."""
+
+    joined: list[str] = field(default_factory=list[str])
+    created: list[str] = field(default_factory=list[str])
 
 
 @dataclass(frozen=True)
@@ -240,6 +268,7 @@ def attach(
     token = _token(session, connection)
     if data_source:
         place = notion_api.use_place(token, data_source)
+        _check_found(session, project, place)
     elif parent:
         place = notion_api.create_place(token, parent, title_of(session, project))
     else:
@@ -252,6 +281,35 @@ def attach(
     return where
 
 
+def _norm(title: str) -> str:
+    return " ".join(title.replace("\u203a", ">").casefold().split())
+
+
+def _is_mine(title: str) -> bool:
+    return _norm(title) == _norm(MY_MEMORY)
+
+
+def _check_found(session: Session, project: Project, place: Place) -> None:
+    """A database that's already in Notion: never someone's My memory, and never one whose
+    title says it's another client's ("Acme > Website > Ringkeeper memory")."""
+    if _is_mine(place.title):
+        raise RuleViolationError(
+            "That's a My memory database: it stays its owner's own. Choose another database, or "
+            "make a new one."
+        )
+    parts = [p.strip() for p in place.title.split("\u203a")]
+    if len(parts) < 3 or _norm(parts[-1]) != _norm(MEMORY_SUFFIX):
+        return
+    names = clients.names(session)
+    ours = _norm(names.get(project.owner, project.owner))
+    for slug, name in names.items():
+        if _norm(name) == _norm(parts[0]) and _norm(name) != ours:
+            raise RuleViolationError(
+                f"That database holds memory for {names.get(slug, slug)}. A client's memory "
+                "can't be attached to another client's project."
+            )
+
+
 # --- Notion for every project ---
 
 
@@ -259,20 +317,119 @@ def every_settings(session: Session) -> dict[str, Any]:
     return _own(session, EVERY_KEY)
 
 
-def _client_page(session: Session, token: str, every: dict[str, Any], owner: str) -> str:
-    """The client's page under the root, made the first time."""
+def _one(
+    every: dict[str, Any],
+    key: str,
+    ask: dict[str, Any],
+    found: list[Child],
+    used: set[str],
+    others: set[str],
+) -> Child | None:
+    """The page or database to join: the one titled as Ringkeeper titles it. None: make one.
+    Two with that title, or none and one close to it, is the owner's to choose. `used`: ids
+    another client or project here has; `others`: the titles theirs have, so "Acme web" isn't
+    taken for a close "Acme blog"."""
+    chosen = cast(dict[str, str], every.get("chosen") or {}).get(key)
+    if chosen == NEW:
+        return None
+    mine = [c for c in found if c.id not in used and c.title not in others]
+    if picked := [c for c in mine if c.id == chosen]:
+        return picked[0]
+    wanted = str(ask["wanted"])
+    same = [c for c in mine if c.title == wanted]
+    close = [
+        c for c in mine
+        if c.title != wanted and (
+            _norm(c.title) == _norm(wanted)
+            or SequenceMatcher(None, _norm(c.title), _norm(wanted)).ratio() >= CLOSE
+        )
+    ]  # fmt: skip
+    if len(same) == 1:
+        return same[0]
+    if not same and not close:
+        return None
+    options = [{"id": c.id, "title": c.title, "url": c.url} for c in [*same, *close]]
+    raise ChoiceNeededError({**ask, "key": key, "options": options})
+
+
+def _client_page(
+    session: Session, token: str, every: dict[str, Any], owner: str, said: Said
+) -> str:
+    """The client's page under the root: the one already there with its title, or made now."""
     pages = cast(dict[str, str], every.setdefault("clients", {}))
     key = clients.key(owner)
     if key not in pages:
         name = clients.names(session).get(owner, owner)
         title = f"{name} › Ringkeeper"  # noqa: RUF001 (the user's own)
-        pages[key] = notion_api.create_page(token, str(every["root"]), title)[0]
+        used = {page for client, page in pages.items() if client != key}  # another client's
+        names = clients.names(session)
+        every_client = {*names, *session.scalars(select(Project.owner).distinct())}
+        others = {
+            f"{names.get(slug, slug)} › Ringkeeper"  # noqa: RUF001 (the user's own)
+            for slug in every_client if clients.key(slug) != key
+        }  # fmt: skip
+        found = [c for c in notion_api.children(token, str(every["root"])) if c.kind == "page"]
+        ask = {"what": "page", "label": name, "wanted": title}
+        there = _one(every, f"client:{key}", ask, found, used, others)
+        if there is None:
+            pages[key] = notion_api.create_page(token, str(every["root"]), title)[0]
+            said.created.append(title)
+        else:
+            pages[key] = there.id
+            said.joined.append(there.title)
     return pages[key]
 
 
-def follow(session: Session, project: Project) -> bool:
+def _project_place(
+    session: Session, token: str, every: dict[str, Any], project: Project, page: str, said: Said
+) -> None:
+    """The project's database under its client's page: the one already there with its title,
+    or made now."""
+    title = title_of(session, project)
+    rest = list(session.scalars(select(Project).where(Project.id != project.id)))
+    used = {
+        str(cast(dict[str, Any], settings_of(p).get("notion") or {}).get("database") or "")
+        for p in rest
+    }
+    others = {title_of(session, p) for p in rest}
+    found = [c for c in notion_api.children(token, page) if c.kind == "database"]
+    client = clients.names(session).get(project.owner, project.owner)
+    label = f"{client} › {project.title or project.name}"  # noqa: RUF001 (the user's own)
+    ask = {"what": "database", "label": label, "wanted": title}
+    there = _one(every, f"project:{project.name}", ask, found, used, others)
+    connection = str(every["connection"])
+    if there is None:
+        attach(session, project.name, connection, parent=page)
+        said.created.append(title)
+    else:
+        source = notion_api.source_of(token, there.id)
+        attach(session, project.name, connection, parent=page, data_source=source)
+        said.joined.append(there.title)
+
+
+def _asked(session: Session, ask: dict[str, Any]) -> None:
+    """Kept until the owner chooses, for the Notion for every project screen."""
+    every = every_settings(session)
+    if every:
+        _store_own(session, EVERY_KEY, {**every, "asks": {
+            **cast(dict[str, Any], every.get("asks") or {}), str(ask["key"]): ask,
+        }})  # fmt: skip
+
+
+def _settled(session: Session, *keys: str) -> None:
+    every = every_settings(session)
+    asks = {k: v for k, v in cast(dict[str, Any], every.get("asks") or {}).items()
+            if k not in keys}  # fmt: skip
+    chosen = {k: v for k, v in cast(dict[str, str], every.get("chosen") or {}).items()
+              if k not in keys}  # fmt: skip
+    if every and (asks != every.get("asks", {}) or chosen != every.get("chosen", {})):
+        _store_own(session, EVERY_KEY, {**every, "asks": asks, "chosen": chosen})
+
+
+def follow(session: Session, project: Project, said: Said | None = None) -> bool:
     """Put a project's notes in Notion if every project's are. True: it was set up now. A
-    project already in Notion keeps its place, and uses it."""
+    project already in Notion keeps its place, and uses it. Raises ChoiceNeededError (kept for the
+    owner) when what's there must be chosen."""
     every = every_settings(session)
     if not every:
         return False
@@ -281,45 +438,88 @@ def follow(session: Session, project: Project) -> bool:
         if saved.get("backend") != NOTION:
             project.memory = {**saved, "backend": NOTION}
         return False
+    said = said if said is not None else Said()
     every = {**every, "clients": dict(every.get("clients") or {})}
-    page = _client_page(session, _token(session, str(every["connection"])), every, project.owner)
-    _store_own(session, EVERY_KEY, every)
-    attach(session, project.name, str(every["connection"]), parent=page)
+    token = _token(session, str(every["connection"]))
+    try:
+        page = _client_page(session, token, every, project.owner, said)
+        _store_own(session, EVERY_KEY, every)
+        _project_place(session, token, every, project, page, said)
+    except ChoiceNeededError as asking:
+        _asked(session, asking.ask)
+        raise
+    _settled(session, f"client:{clients.key(project.owner)}", f"project:{project.name}")
     choose(session, project.name, NOTION)
     return True
 
 
 def follow_new(name: str) -> None:
-    """Best effort, before a task starts: if Notion doesn't answer, notes stay here this time."""
+    """Best effort, before a task starts: if Notion doesn't answer, or what's there must be
+    chosen first, notes stay here this time."""
     try:
         with session_scope() as session:
             if every_settings(session):
                 follow(session, projects.get_project(session, name))
+    except ChoiceNeededError as asking:
+        with session_scope() as session:
+            _asked(session, asking.ask)
     except RingkeeperError:
         return
 
 
+def _follow_all(session: Session, these: list[Project]) -> dict[str, Any]:
+    said = Said()
+    done: list[str] = []
+    failed: dict[str, str] = {}
+    asks: dict[str, Any] = {}
+    for project in these:
+        try:
+            if follow(session, project, said):
+                done.append(project.name)
+        except ChoiceNeededError as asking:
+            asks[str(asking.ask["key"])] = asking.ask
+        except RingkeeperError as error:
+            failed[project.name] = str(error)
+    return {"set_up": done, "failed": failed, "joined": said.joined, "created": said.created,
+            "ask": list(asks.values())}  # fmt: skip
+
+
+def choose_found(session: Session, key: str, choice: str) -> dict[str, Any]:
+    """The owner's answer to a ChoiceNeededError: one of the pages or databases offered, or NEW. The
+    projects waiting on it are set up now."""
+    every = every_settings(session)
+    ask = cast(dict[str, Any], every.get("asks") or {}).get(key)
+    if not ask:
+        raise RuleViolationError("There's nothing to choose there now.")
+    if choice != NEW and choice not in {str(o["id"]) for o in ask["options"]}:
+        raise RuleViolationError("Choose one of the ones offered, or make a new one.")
+    _store_own(session, EVERY_KEY, {
+        **every, "chosen": {**cast(dict[str, str], every.get("chosen") or {}), key: choice},
+    })  # fmt: skip
+    kind, _, name = key.partition(":")
+    waiting = [
+        p for p in session.scalars(select(Project).order_by(Project.title))
+        if not settings_of(p).get("notion")
+        and (p.name == name if kind == "project" else clients.key(p.owner) == name)
+    ]  # fmt: skip
+    return _follow_all(session, waiting)
+
+
 def use_everywhere(session: Session, connection: str, root: str) -> dict[str, Any]:
-    """Every project's notes in Notion, under `root`. Returns what was set up, and what Notion
-    refused (those are tried again when a task starts)."""
+    """Every project's notes in Notion, under `root`. Returns what was set up, what was joined
+    and what was made (by title), what's for the owner to choose, and what Notion refused (those
+    are tried again when a task starts)."""
     _usable(session, None, connection)
     token = _token(session, connection)
     before = every_settings(session)
     same = before.get("connection") == connection and before.get("root") == root
     title, url = notion_api.page_of(token, root)
+    keep = ("clients", "asks", "chosen") if same else ()
     _store_own(session, EVERY_KEY, {
         "connection": connection, "root": root, "title": title, "url": url,
-        "clients": dict(before.get("clients") or {}) if same else {},
+        **{k: dict(before.get(k) or {}) for k in keep},
     })  # fmt: skip
-    done: list[str] = []
-    failed: dict[str, str] = {}
-    for project in session.scalars(select(Project).order_by(Project.title)):
-        try:
-            if follow(session, project):
-                done.append(project.name)
-        except RingkeeperError as error:
-            failed[project.name] = str(error)
-    return {"set_up": done, "failed": failed}
+    return _follow_all(session, list(session.scalars(select(Project).order_by(Project.title))))
 
 
 def stop_everywhere(session: Session) -> None:
@@ -374,9 +574,16 @@ def _attach_own(
         (parent and parent == saved.get("parent")) or data_source == saved.get("data_source")
     ):
         return saved
+    if data_source and key == MINE_KEY:
+        raise RuleViolationError(
+            "My memory is made new for you: choose a page to make it under. A My memory "
+            "database that's already in Notion may be someone else's."
+        )
     token = _token(session, connection)
     if data_source:
         place = notion_api.use_place(token, data_source)
+        if _is_mine(place.title):
+            raise RuleViolationError("That's a My memory database: it stays its owner's own.")
     elif parent:
         place = notion_api.create_place(token, parent, title)
     else:
@@ -488,7 +695,11 @@ def _write_rows(
             note.body, note.agent, note.source_task = clean(text), row.agent, row.task
             note.external_seen = _seen(row)
     there = {r.id for r in rows}
-    gone = [n for n in held if n.external_id not in there and n.created_at < started]
+    gone = [
+        n
+        for n in held
+        if n.external_id is not None and n.external_id not in there and n.created_at < started
+    ]  # notes still waiting to go to Notion stay
     for note in gone:
         session.delete(note)
     return Pulled(added, changed, len(gone))
@@ -521,7 +732,70 @@ def sync(name: str) -> Pulled:
         ident = project.id
     if not saved:
         raise RuleViolationError("This project's notes aren't in Notion.")
+    send_waiting(ident)
     return _pull(ident, str(saved["connection"]), _place(saved))
+
+
+def _owner_name() -> str | None:
+    return current_settings().owner_name.strip() or None
+
+
+def _can_write(session: Session, ident: uuid.UUID, refused: str | None) -> None:
+    """What the project's Memory says when Notion won't let its connection write: set while a
+    note waits here, gone once one goes through."""
+    project = session.get(Project, ident)
+    if project is None:
+        return
+    saved = settings_of(project)
+    where = dict(cast(dict[str, Any], saved.get("notion") or {}))
+    if not where or where.get("cant_write") == refused:
+        return
+    if refused:
+        where["cant_write"] = refused
+    else:
+        where.pop("cant_write", None)
+    project.memory = {**saved, "notion": where}
+
+
+def send_waiting(ident: uuid.UUID) -> int:
+    """Notes kept here because Notion refused them, sent now, oldest first. Stops at the first
+    refusal: they wait for the next try."""
+    with session_scope(commit=False) as session:
+        project = session.get(Project, ident)
+        saved = cast(dict[str, Any], settings_of(project).get("notion") or {}) if project else {}
+        if not saved or (project and backend_of(project, None) != NOTION):
+            return 0
+        token = _token(session, str(saved["connection"]))
+        waiting = [
+            (n.id, n.body, n.agent, n.source_task, n.created_at.date().isoformat())
+            for n in session.scalars(
+                select(MemoryNote).where(
+                    MemoryNote.project_id == ident, MemoryNote.backend == NOTION,
+                    MemoryNote.external_id.is_(None),
+                ).order_by(MemoryNote.created_at, MemoryNote.id)
+            )
+        ]  # fmt: skip
+    if not waiting:
+        return 0
+    by = _owner_name()
+    sent = 0
+    for note_id, body, agent, task, day in waiting:
+        try:
+            external = notion_api.add(token, _place(saved), body, agent, day, task, saved_by=by)
+        except NotionError as error:
+            with session_scope() as session:
+                _can_write(session, ident, str(error) if error.refused else saved.get("cant_write"))
+            return sent
+        with session_scope() as session:
+            note = session.get(MemoryNote, note_id)
+            if note is not None:
+                note.external_id = external[0]
+                note.external_seen = _seen(
+                    Row(external[0], external[1], notion_api.short_title(body), None, None, None)
+                )
+            _can_write(session, ident, None)
+        sent += 1
+    return sent
 
 
 def sync_shared() -> Pulled:
@@ -546,6 +820,8 @@ def _fresh(project: uuid.UUID | None, saved: dict[str, Any], backend: str = NOTI
     if last is not None and time.monotonic() - last < FRESH_SECONDS:
         return True
     try:
+        if project is not None:
+            send_waiting(project)
         _pull(project, str(saved["connection"]), _place(saved), backend)
     except RingkeeperError:
         return False
@@ -778,14 +1054,48 @@ def keep(name: str, text: str, task: str | None = None) -> dict[str, Any]:
         _refuse_copy(text, _same_place(session, ident, NOTION if notion else LOCAL))
         request = _request_of(session, _as_id(task))
     day = datetime.now(UTC).date().isoformat()
-    external = (
-        notion_api.add(token, _place(saved), text, None, day, task, request=request)
-        if token else None
-    )  # fmt: skip
-    backend = NOTION if external else LOCAL
+    external, refused = _write(token, saved, text, None, day, task, request=request)
+    backend = NOTION if external or refused else LOCAL
     with session_scope() as session:
         session.add(_note_row(ident, backend, None, text, task, external))
-    return {"kept": True, "where": place_words(title, backend), "note": text}
+        if token:
+            _can_write(session, ident, refused)
+    if external:
+        send_waiting(ident)
+    return {"kept": True, "where": _where_words(title, backend, refused), "note": text}
+
+
+def _write(
+    token: str | None,
+    saved: dict[str, Any],
+    text: str,
+    agent: str | None,
+    day: str,
+    task: str | None,
+    *,
+    kind: str | None = None,
+    request: str | None = None,
+) -> tuple[tuple[str, str] | None, str | None]:
+    """A project's note into Notion: (its row, None), or (None, why) when Notion won't let this
+    connection write there, and the note waits here. Notion down or busy still raises."""
+    if not token:
+        return None, None
+    try:
+        external = notion_api.add(
+            token, _place(saved), text, agent, day, task, kind=kind, request=request,
+            saved_by=_owner_name(),
+        )  # fmt: skip
+    except NotionError as error:
+        if not error.refused:
+            raise
+        return None, str(error)
+    return external, None
+
+
+def _where_words(title: str | None, backend: str, refused: str | None) -> str:
+    if refused:
+        return f"{place_words(title, LOCAL)}, until Notion lets this connection write there"
+    return place_words(title, backend)
 
 
 def saved_by(session: Session, task: uuid.UUID) -> list[dict[str, str]]:
@@ -870,14 +1180,22 @@ def remember(
     task = str(who.task) if who.task else None
     agent = who.agent or "Ringkeeper"  # no named agent ran: Ringkeeper's own worker
     external: tuple[str, str] | None = None
-    if token is not None:
+    refused: str | None = None
+    if token is not None and across:
         external = notion_api.add(
-            token, _place(saved), text, agent, day, task, kind=kind, request=request
-        )
-    backend = MINE if mine else (NOTION if external else LOCAL)
+            token, _place(saved), text, agent, day, task, kind=kind, request=request,
+            saved_by=_owner_name(),
+        )  # fmt: skip
+    elif token is not None:
+        external, refused = _write(token, saved, text, agent, day, task, kind=kind, request=request)
+    backend = MINE if mine else (NOTION if external or refused else LOCAL)
     with session_scope() as session:
         session.add(_note_row(place, backend, agent, text, task, external))
-    where = place_words(None if across else title, backend)
+        if token is not None and not across:
+            _can_write(session, who.project, refused)
+    if external and not across:
+        send_waiting(who.project)
+    where = _where_words(None if across else title, backend, refused)
     _record(caller, "remember", AuditOutcome.EXECUTED, f"kept a note in {where}")
     return {"kept": True, "where": where, **({"removed": removed} if removed else {})}
 

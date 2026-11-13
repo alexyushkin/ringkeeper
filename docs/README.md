@@ -18,6 +18,7 @@
   Ctrl+Enter, @-mentions, files, shortcuts, trust for an hour, the digest
 - [Notifications](notifications.md): Telegram, Slack, Discord
 - [Backup and moving computers](backup.md)
+- [Sharing memory with a team](team-memory.md): one Notion page, each person's own Ringkeeper
 
 **When you need it**
 
