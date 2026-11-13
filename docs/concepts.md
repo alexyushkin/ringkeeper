@@ -62,7 +62,9 @@ A task's status says what happened, from what the gateway recorded, never from w
   changed files.
 - **Answered:** it read and reported, and changed nothing, as asked.
 - **Nothing changed:** a change was asked for or tried, and none ran (it was denied, or the task
-  left things as they were).
+  left things as they were). A request that says to do something ("handle it", "mark",
+  "update") asked for a change, even if the task only read. A task that couldn't do the change
+  and changed nothing says this too, with why under it.
 - **Refused: other client's data:** it reached for another client's connection and the gateway
   refused.
 

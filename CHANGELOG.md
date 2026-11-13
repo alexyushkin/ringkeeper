@@ -3,6 +3,18 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **"Handle it" that changed nothing says Nothing changed.** Asked to read a record and handle
+  it, a task that left it alone showed **Answered**, because the request was taken for a read.
+  A request that says to do something ("handle", "mark", "update", "add"...), not only to
+  look, now counts as asking for a change, so a task that changed nothing says **Nothing
+  changed**. So does one that said it couldn't do the change and changed nothing, with its
+  reason under it, even when it lists what it read; one where part of the change ran still
+  says **Partly done**. A question ("how do I
+  update...?") is still a read. The self-test's pushed-by-record scenario fails on any other
+  status.
+
 ## 0.1.0-beta.42 (2026-11-13)
 
 - **Share agents' notes with a team.** Several people, each with their own Ringkeeper and Notion

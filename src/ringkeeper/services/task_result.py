@@ -6,11 +6,17 @@ record and left it alone isn't "Done" because the request said "handle it".
 - Refused: other client's data: the gateway refused a call on another client's connection,
   and nothing was executed.
 - Nothing changed: a change was asked for, or tried (held, refused, failed), and none ran.
+  Asked for: the router called it a change, or the request itself says to do something
+  ("handle it", "mark", "update"), not only to look. "Read the newest request and handle it"
+  is a change asked for, even when the router took it for a read.
 - Answered: a read that changed nothing, as asked.
 
 A task that didn't succeed keeps its own status (Not done, Failed...), unless the other
-client's data was refused.
+client's data was refused, or it was asked for a change, said it couldn't, and changed nothing:
+then it's Nothing changed, with its reason under it (and what it read, if it says).
 """
+
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,6 +25,7 @@ from ringkeeper.models import (
     AuditEvent,
     AuditOutcome,
     Instance,
+    Message,
     Project,
     Task,
     TaskRisk,
@@ -39,6 +46,19 @@ LABELS = {
 }
 TRIED = frozenset({AuditOutcome.HELD, AuditOutcome.REFUSED, AuditOutcome.FAILED})
 CHANGES = frozenset({TaskRisk.WRITE, TaskRisk.PROD_WRITE})
+# A request that says to do something, not only to look: its own words, as the owner wrote them.
+DOING = re.compile(
+    r"\b(?:handle|update|change|mark|set|add|create|delete|remove|cancel|send|move|fix|"
+    r"process|resolve|archive|rename|assign|refund|publish|post|book|schedule|deal with|"
+    r"take care of|act on)\b",
+    re.IGNORECASE,
+)
+# A question asks to look, whatever its verbs: "how do I update X?", "list what changed".
+ASKS = re.compile(
+    r"^\s*(?:how|what|which|who|where|when|list|show|tell|do|does|are|is|did|can|could)\b"
+    r"|\?\s*$",
+    re.IGNORECASE,
+)
 
 
 def _other_client(session: Session, project: str, names: set[str]) -> bool:
@@ -80,12 +100,27 @@ def ended(session: Session, task: Task) -> str | None:
     refused = {e.instance for e in events if e.outcome is AuditOutcome.REFUSED and e.instance}
     if not ran and _other_client(session, task.project, refused):
         return REFUSED_OTHER
-    if task.status is not TaskStatus.SUCCEEDED:
-        return None
-    if ran or task.changed_files:
-        return DONE
+    changed = ran or bool(task.changed_files)
     tried = any(e.outcome in TRIED and e.instance for e in events)
-    return NOTHING_CHANGED if tried or task.risk in CHANGES else ANSWERED
+    if task.status is not TaskStatus.SUCCEEDED:
+        # Couldn't do it: a change it was asked for, with nothing changed, says so (the reason
+        # is under it), even when it lists what it read: that's no part of the change. Part of
+        # the change done, or a read it couldn't do, keeps its own status.
+        if changed or not (tried or asked_for_change(session, task)):
+            return None
+        return NOTHING_CHANGED
+    if changed:
+        return DONE
+    return NOTHING_CHANGED if tried or asked_for_change(session, task) else ANSWERED
+
+
+def asked_for_change(session: Session, task: Task) -> bool:
+    """The router called it a change, or the request it came from says to do something."""
+    if task.risk in CHANGES:
+        return True
+    said = session.get(Message, task.message_id) if task.message_id else None
+    text = (said.body if said is not None else "").strip()
+    return bool(text) and not ASKS.search(text) and DOING.search(text) is not None
 
 
 def words(session: Session | None, task: Task) -> str:
