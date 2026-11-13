@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.41 (2026-11-12)
 
 - **Synced folders are offered only when they sync.** Settings › Backup offered "OneDrive" on
   a computer where OneDrive wasn't set up: its folder was there, empty, with no account signed
