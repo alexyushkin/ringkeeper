@@ -9,7 +9,8 @@ publishes it as the release notes and the app shows it with the update.
   first reply said it had "planned the read", and then the task declined. Another task read a
   record, left it alone, and still showed as Done. The reply sent when work starts now says
   only where it went ("Working on it in Demo shop."), and a request that names another client's
-  connection, or the client itself, says up front that the work can't reach it. A task's status
+  connection, one of its projects, or the client itself says up front that the work can't reach
+  it. A task's status
   now comes from what the gateway recorded. **Done** means a change ran or files changed;
   **Answered** means a read that changed nothing; **Nothing changed** means a change was asked
   for or tried and none ran; and **Refused: other client's data** is what it says. Chats get

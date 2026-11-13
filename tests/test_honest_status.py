@@ -91,11 +91,37 @@ def test_naming_the_other_client_itself_says_so_too() -> None:
     assert said.startswith("This went to Bayside Co's project. Tasks there can't reach Acme's")
 
 
-def test_work_split_between_both_clients_or_a_shared_tool_isn_t_warned_about() -> None:
-    [split] = ask_and_route(
-        f"Read {ORDERS_DB}'s orders and {SHOP_DB}'s orders.", routed(SHOP), routed(ORDERS)
+def test_naming_the_other_client_s_project_says_so_when_the_work_went_to_this_one() -> None:
+    """From a run: asked to add the other client's orders to a summary of "demo-shop's", the
+    work went to the other client's own project, which can't reach the shop either."""
+    [said] = ask_and_route(
+        f"From the {SHOP} project, read {ORDERS_DB}'s open orders for a summary.", routed(ORDERS)
     )
-    assert "can't reach" not in split
+    assert said.startswith("This went to Acme's project. Tasks there can't reach Bayside Co's")
+    # A one-word name is too plain a word to be taken as naming it. (@-mentioned, the work
+    # goes there.)
+    with session_scope() as session:
+        make_project(session, "website", owner=clients.ensure(session, BAYSIDE))
+    [plain] = ask_and_route("Check the website's orders.", routed(ORDERS))
+    assert plain == "Working on it in Acme orders."
+
+
+def test_work_split_between_both_clients_says_it_for_each() -> None:
+    """From a run: one task read the other client's orders in its own project, and the other
+    was to add them to the shop's summary, which it can't reach."""
+    [split] = ask_and_route(
+        f"Read {ORDERS_DB}'s orders and add them to {SHOP_DB}'s summary.",
+        routed(SHOP), routed(ORDERS),
+    )  # fmt: skip
+    assert split.splitlines() == [
+        "This went to Bayside Co's project. Tasks there can't reach Acme's connections.",
+        "This went to Acme's project. Tasks there can't reach Bayside Co's connections.",
+        "Working on it in Bayside shop.",
+        "Working on it in Acme orders.",
+    ]
+
+
+def test_a_shared_tool_isn_t_warned_about() -> None:
     [shared] = ask_and_route(f"Use the {BROWSER} to look up Bayside's opening hours.", routed(SHOP))
     assert shared == "Working on it in Bayside shop."
 
@@ -196,6 +222,15 @@ def test_the_check_wants_the_other_client_named_when_the_request_names_it() -> N
         "Working on it in Demo shop."
     ]
     assert honest("pushed-by-name", first_replies=warned) == []
+
+
+def test_a_change_the_summary_denies_isn_t_a_claim() -> None:
+    from ringkeeper.scenarios.checks import claims  # noqa: PLC0415
+
+    assert claims("I changed nothing in Airtable. I've sent no email. I updated none.") == ()
+    assert claims("I changed the status, and I've sent the reply.") == (
+        "I changed", "I've sent",
+    )  # fmt: skip
 
 
 def test_the_check_fails_a_status_or_summary_claiming_what_wasn_t_executed() -> None:
