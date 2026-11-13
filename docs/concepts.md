@@ -56,6 +56,21 @@ Informatics' Google to Website and retry", in the app and as a button in the cha
 When it did part of it, its card and page say **Partly done**, with what was done and what
 wasn't. It still counts as not done.
 
+A task's status says what happened, from what the gateway recorded, never from what was asked:
+
+- **Done:** a change it made through a connection ran (the activity log shows it), or it
+  changed files.
+- **Answered:** it read and reported, and changed nothing, as asked.
+- **Nothing changed:** a change was asked for or tried, and none ran (it was denied, or the task
+  left things as they were).
+- **Refused: other client's data:** it reached for another client's connection and the gateway
+  refused.
+
+When work starts, the conversation says only where it went: "Working on it in Website." What the
+task will read or change is for the task to report, since it may decline. A request that names
+another client's connection or the client itself also gets, up front, "This went to Bayside's
+project. Tasks there can't reach Acme's connections."
+
 A connection is reached only through its own tools. When they can't do something, the task
 stops there and says so, instead of trying the same connection another way.
 

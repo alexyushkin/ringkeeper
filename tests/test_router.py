@@ -119,10 +119,12 @@ def test_a_message_is_split_into_one_task_per_project() -> None:
     assert model_id == "claude-haiku-5-5"
     roles = [role for role, _ in thread_bodies(thread_id)]
     assert roles == [MessageRole.USER, MessageRole.ROUTER]
+    # Where each went and that it started: not the model's line, nor what each will do.
     reply = thread_bodies(thread_id)[1][1]
-    assert "Two tasks." in reply
-    assert "acme-web" in reply
-    assert "globex-portal" in reply
+    assert reply.splitlines() == [
+        "Working on it in Acme web. I'll show you a plan first.",
+        "Working on it in Globex portal.",
+    ]
 
 
 def test_a_small_clear_feature_skips_the_architect() -> None:
@@ -498,7 +500,7 @@ def test_answering_which_project_says_what_started() -> None:
     bodies = [body for _, body in thread_bodies(thread_id)]
     assert bodies[-2:] == [
         threads.ASKS_PROJECT,
-        "Working on it in Acme reports: Done.",
+        "Working on it in Acme reports.",
     ]  # the question isn't the thread's last word once the work runs
 
 

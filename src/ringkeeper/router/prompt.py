@@ -115,7 +115,8 @@ Rules:
 - `unplaced`: true only when the message asks for work but you can't tell which project it
   is for at all, so you return no tasks; say so in `reply`. A greeting, thanks or a question
   you answered is never unplaced.
-- `reply` is one short line for the operator.
+- `reply` is one short line for the operator, shown only when you start no tasks: the
+  operator sees where each task went from Ringkeeper itself.
 
 Answer with one JSON object and nothing else, matching this JSON schema:
 """

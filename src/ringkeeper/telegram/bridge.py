@@ -64,14 +64,14 @@ from ringkeeper.models import (
     VoiceConfirmation,
 )
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, plan_cost, task_files, threads, titles
+from ringkeeper.services import inbox, plan_cost, task_files, task_result, threads, titles
 from ringkeeper.services.decisions import DECISIONS_CHANNEL
 from ringkeeper.storage.sql import insert
 from ringkeeper.telegram import text as telegram_text
 from ringkeeper.telegram.api import BotApi, TelegramError
 from ringkeeper.voice import VoiceError, VoiceNote, vocabulary
 from ringkeeper.voice import transcribe as transcribe_voice
-from ringkeeper.wording import decision_status, person, plain, task_status
+from ringkeeper.wording import decision_status, person, plain
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +181,9 @@ def routine_text(routine: Routine, task: Task, limit: int = 600) -> str:
     summary = plain(task.summary or task.error or "").strip()
     if len(summary) > limit:
         summary = summary[: limit - 1] + "…"
-    title = titles.of(object_session(task), task.project)
-    head = f"{mark} Routine {routine.name} · {title}: {task_status(task.status)}"
+    session = object_session(task)
+    title = titles.of(session, task.project)
+    head = f"{mark} Routine {routine.name} · {title}: {task_result.words(session, task)}"
     return f"{head}\n{summary}" if summary else head
 
 

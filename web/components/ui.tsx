@@ -45,9 +45,20 @@ const STATUS: Record<string, [Tone, string]> = {
   not_done: ["bad", "Not done"],
 };
 
-/** `partly`: a Not done task that did finish part of it (what it finished). */
-export function StatusBadge({ status, partly }: { status: string; partly?: string | null }) {
-  const [tone, label] = status === "not_done" && partly ? (["warn", "Partly done"] as [Tone, string]) : (STATUS[status] ?? ["neutral", "Other"]);
+/** How a finished task ended, from what the gateway ran or refused (services/task_result.py):
+ * "Done" only when something it did was recorded as executed. */
+const ENDED: Record<string, [Tone, string]> = {
+  done: ["good", "Done"],
+  answered: ["good", "Answered"],
+  nothing_changed: ["neutral", "Nothing changed"],
+  refused_other_client: ["warn", "Refused: other client's data"],
+};
+
+/** `partly`: a Not done task that did finish part of it (what it finished). `ended`: how it
+ * ended, when the server could tell. */
+export function StatusBadge({ status, partly, ended }: { status: string; partly?: string | null; ended?: string | null }) {
+  const [tone, label] =
+    ended && ENDED[ended] ? ENDED[ended] : status === "not_done" && partly ? (["warn", "Partly done"] as [Tone, string]) : (STATUS[status] ?? ["neutral", "Other"]);
   return <Badge tone={tone}>{label}</Badge>;
 }
 

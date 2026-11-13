@@ -14,9 +14,8 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import Message, Task, TaskStatus
 from ringkeeper.router.self_answer import is_question
-from ringkeeper.services import link_offer, titles
+from ringkeeper.services import link_offer, task_result, titles
 from ringkeeper.telegram import text as telegram_text
-from ringkeeper.wording import task_status
 
 GOT_IT = "Got it. Working out which project it's for…"
 LOOKING = "Got it. Looking into it…"
@@ -40,7 +39,8 @@ def result_text(
     message said (tables as lines, no code or SQL), then where to read the rest. Not
     `full` (the chat's prefs say so): only how it ended, and the link."""
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
-    head = f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
+    session = object_session(task)
+    head = f"{mark} {titles.of(session, task.project)}: {task_result.words(session, task)}"
     said = (task.summary if task.status is TaskStatus.SUCCEEDED else task.error) or ""
     if task.status is TaskStatus.NOT_DONE and task.offer:
         # A link and retry asks; a recommendation (the service's own server) just says so.
@@ -109,4 +109,5 @@ def take_offer(settings: Settings, ident: str) -> str:
 
 def finished_text(task: Task) -> str:
     mark = "✔" if task.status is TaskStatus.SUCCEEDED else "✖"
-    return f"{mark} {titles.of(object_session(task), task.project)}: {task_status(task.status)}"
+    session = object_session(task)
+    return f"{mark} {titles.of(session, task.project)}: {task_result.words(session, task)}"

@@ -72,8 +72,8 @@ def test_ask_waits_for_the_router_and_prints_its_reply(monkeypatch: pytest.Monke
     stdout = invoke("ask", "count the customers in acme web")
     worker.join()
     assert stdout.startswith("thread ")
-    assert "On it." in stdout
-    assert "Working on it in Acme web" in stdout
+    assert "Working on it in Acme web." in stdout
+    assert "On it." not in stdout  # the model's own line isn't shown once work starts
 
 
 def test_ask_without_a_router_times_out_but_keeps_the_message(

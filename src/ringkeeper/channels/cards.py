@@ -23,10 +23,10 @@ from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.models import Decision, DecisionKind, DecisionStatus, Routine, Task, TaskStatus
 from ringkeeper.scrub import scrub
-from ringkeeper.services import inbox, plan_cost, titles
+from ringkeeper.services import inbox, plan_cost, task_result, titles
 from ringkeeper.telegram import text as shown_text
 from ringkeeper.telegram.api import defang
-from ringkeeper.wording import decision_status, person, plain, task_status
+from ringkeeper.wording import decision_status, person, plain
 
 PREFIX = "rk"
 TEST_ACTION = "rk:test"
@@ -176,7 +176,7 @@ def closed_card(decision: Decision, open_url: str | None) -> Card:
 
 def task_card(task: Task, open_url: str | None) -> Card:
     mark = "✖" if task.status in FAILED else "✔"
-    head = f"{mark} {_title(task)}: {task_status(task.status)}"
+    head = f"{mark} {_title(task)}: {task_result.words(object_session(task), task)}"
     said = (task.error if task.status in FAILED else task.summary) or ""
     summary, cut = _clip(said, TASK_CHARS)
     lines = [head] + ([summary] if summary else []) + ([SHORTENED] if cut else [])
@@ -185,7 +185,8 @@ def task_card(task: Task, open_url: str | None) -> Card:
 
 def routine_card(routine: Routine, task: Task, open_url: str | None) -> Card:
     mark = "✖" if task.status in FAILED else "✔"
-    head = f"{mark} Routine {routine.name} · {_title(task)}: {task_status(task.status)}"
+    status = task_result.words(object_session(task), task)
+    head = f"{mark} Routine {routine.name} · {_title(task)}: {status}"
     summary, cut = _clip(task.summary or task.error or "", TASK_CHARS)
     lines = [head] + ([summary] if summary else []) + ([SHORTENED] if cut else [])
     return Card(_clean("\n".join(lines)), _open(open_url))

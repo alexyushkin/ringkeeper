@@ -60,7 +60,7 @@ from ringkeeper.models import (
     TaskStatus,
 )
 from ringkeeper.names import slug
-from ringkeeper.router import follow_up, remember_now, self_answer
+from ringkeeper.router import follow_up, other_client, remember_now, self_answer
 from ringkeeper.router.model import ClaudeUnavailableError, RouterModel
 from ringkeeper.router.prompt import build_context, system_prompt
 from ringkeeper.router.schema import (
@@ -467,14 +467,16 @@ def _apply_example(session: Session, message: Message, output: RouterOutput) -> 
     return output.model_copy(update={"tasks": [settled]})
 
 
-def _reply(session: Session, routed: Routed, output: RouterOutput) -> str:
-    """Plain words: what started, and what Ringkeeper needs from the operator (the
-    question itself is shown under the reply, with its buttons).
+def _reply(session: Session, message: Message, routed: Routed, output: RouterOutput) -> str:
+    """Plain words: where the work went and that it started, and what Ringkeeper needs from
+    the operator (the question itself is shown under the reply, with its buttons).
 
-    The model's own line is kept only when everything it proposed started: it's written
-    as if the work were starting ("I'll read the request..."), which isn't true of a task
-    that waits for an answer."""
-    lines = [threads.working_on(session, task) for task in routed.tasks]
+    Nothing about what the work will read or change: only the work can tell, and it may
+    decline. So the model's own line is shown only when nothing started or was asked (an
+    answer, a greeting, why it can't place the request). A request that names another
+    client's data says up front that the work can't reach it."""
+    lines = other_client.lines(session, message.body, routed.tasks)
+    lines += [threads.working_on(session, task) for task in routed.tasks]
     for decision in routed.decisions:
         payload = decision.payload or {}
         if payload.get("production"):
@@ -483,7 +485,7 @@ def _reply(session: Session, routed: Routed, output: RouterOutput) -> str:
             lines.append(str(payload["reason"]))
         else:
             lines.append(threads.ASKS_PROJECT)
-    if output.reply and not routed.decisions:
+    if output.reply and not routed.decisions and not routed.tasks:
         lines.insert(0, output.reply)
     return "\n".join(lines) or "Nothing to do."
 
@@ -518,7 +520,7 @@ def _route_tasks(
             routed.decisions.append(_ask_web(session, settings, message, task))
         else:
             routed.tasks.append(_dispatch(session, settings, message, task))
-    said = _reply(session, routed, output)
+    said = _reply(session, message, routed, output)
     nothing = not routed.tasks and not routed.decisions
     lines = routed.notes if nothing and routed.notes else [*routed.notes, said]
     routed.reply = chr(10).join(lines)
