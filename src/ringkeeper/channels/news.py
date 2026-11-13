@@ -44,7 +44,8 @@ def result_text(
     said = (task.summary if task.status is TaskStatus.SUCCEEDED else task.error) or ""
     if task.status is TaskStatus.NOT_DONE and task.offer:
         # A link and retry asks; a recommendation (the service's own server) just says so.
-        ending = " (in Ringkeeper, under Connectors)." if "recommend" in task.offer else "?"
+        added = "recommend" in task.offer or "add" in task.offer  # done in the app
+        ending = " (in Ringkeeper, under Connectors)." if added else "?"
         said += f"\n\n{task.offer['label']}{ending}"
     if not full or not said.strip():
         return head + (f"\n{link}" if link else "")

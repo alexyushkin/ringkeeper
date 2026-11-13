@@ -52,9 +52,18 @@ Rules:
   look like one for it: an agent is limited to its own connections on purpose, and
   a task without it could reach more than the operator chose. If it can't do the
   job, it will say so.
-- kind: feature (new behaviour in code), fix (broken code), data (read or
-  change data in the project's instances), content (copy, docs), ops
-  (workflows, deploys, configuration).
+- kind: by what the work touches. feature (new behaviour in the project's own code), fix
+  (broken code in it), data (read, count or report data in the project's connections),
+  content (copy, docs), ops (work done in an outside account: creating or changing ad
+  campaigns, sending mail, booking, charging, changing records; workflows, deploys,
+  configuration). Creating campaigns, sending mail and changing records are ops even when
+  the project has a code folder: feature and fix are only for changes to its code.
+- needs: the kinds of connection the work can't be done without, when it's work in an
+  outside account that no code change can do: ads (an ad platform the message doesn't
+  name), meta_ads (Facebook or Instagram ads), google_ads, email (sending or reading mail),
+  calendar, database (its data, not its code), payments. Name the platform when the message
+  does. Leave it empty for work on the project's code, for writing or research, and when
+  you're not sure. Ringkeeper checks the project has one before starting.
 - risk: read (only looks), write (changes non-prod things or code on a
   branch), prod-write (changes production data or workflows).
 - complexity: low (a lookup, or a small, clear change: one file or a few

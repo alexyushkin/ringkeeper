@@ -6,7 +6,7 @@ per task) by `check`, against the projects the router was shown.
 
 import json
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -14,6 +14,8 @@ from ringkeeper.models import Complexity, TaskKind, TaskRisk
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 Confidence = Annotated[float, Field(ge=0, le=1)]
+# The kinds of connection a task can't be done without (services.needs.ROUTED).
+NeedKind = Literal["ads", "meta_ads", "google_ads", "email", "calendar", "database", "payments"]
 
 
 class _Strict(BaseModel):
@@ -49,6 +51,9 @@ class RoutedTask(_Strict):
     # in the chosen project, or the operator's own client's default project.
     general: bool = False
     needs_web: bool = False  # it has to look something up on the web
+    # Work in an outside account that no code change can do: the kind of connection it
+    # can't be done without. A project with none of them is told so instead of starting.
+    needs: list[NeedKind] = Field(default_factory=list[NeedKind])
 
 
 class RouterOutput(_Strict):

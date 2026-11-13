@@ -48,10 +48,23 @@ Nothing happens until you approve it, and everything is logged.
 5. The task goes on with the result and reports back in the conversation. Most
    data changes can be undone for 7 days ([what can and can't](undo.md)).
 
+A request that clearly needs a kind of connection the project doesn't have (ads, email, a
+calendar, a database, payments) doesn't start a task at all. The reply says so at once, "This
+project has no Meta Ads connection", with a button that opens the add form for that client
+and links what you add to the project. Once it's there, **Run it now** (or **Run the request
+now** on the add form) starts the request as you sent it. Ringkeeper decides this from the
+same routing call, by looking up the project's connections: no second model call.
+
+Work done in an outside account (creating ad campaigns, sending mail, changing records) runs
+as **ops**, even in a project with a code folder. Only changes to the project's own code are
+a feature, with a plan first.
+
 A task that couldn't do what you asked ends as **Not done**, never Done, and says why: on its
 card, on its page, and in the chat you asked from. When what it lacked is a connection the
-client has but the project isn't linked to, it offers one click, like "Link General
-Informatics' Google to Website and retry", in the app and as a button in the chat.
+client has but the project isn't linked to, it offers one click, like "Link Harbor Bakery's
+Google to Website and retry", in the app and as a button in the chat. When the client has
+none of that kind, its page shows the same **Add a ... connection** button, and **Run it now**
+once it's added.
 
 When it did part of it, its card and page say **Partly done**, with what was done and what
 wasn't. It still counts as not done.

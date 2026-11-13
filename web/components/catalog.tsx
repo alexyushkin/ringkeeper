@@ -323,14 +323,19 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
   const services = useApi<RemoteService[]>("remote-services");
   const vendors = useApi<VendorInfo[]>("vendors");
   const [opened, setOpened] = useState<Opened | null>(null);
-  // A link to one service's own server (?service=airtable): its form, once the list is in.
+  // A link to one service's own server (?service=airtable), a business system (google_ads) or
+  // a built-in kind (gmail): its form, once the lists are in.
   const [started, setStarted] = useState(false);
   useEffect(() => {
-    if (!start || started || !services.data) return;
+    if (!start || started || !services.data || !vendors.data) return;
     const service = services.data.find((s) => s.key === start);
+    const vendor = vendors.data.find((v) => v.key === start);
+    const tile = BUILT_IN.find((t) => t.key === start);
     if (service) setOpened({ service });
+    else if (vendor) setOpened({ vendor });
+    else if (tile) setOpened({ tile });
     setStarted(true);
-  }, [start, started, services.data]);
+  }, [start, started, services.data, vendors.data]);
   const [searching, setSearching] = useState(false);
   const shared = target.kind === "shared";
   const signIn = (services.data ?? []).filter((s) => !NOT_SIGN_IN.has(s.key));

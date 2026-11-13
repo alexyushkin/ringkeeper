@@ -38,6 +38,7 @@ from ringkeeper.models import (
     Env,
     Instance,
     InstanceType,
+    Message,
     Project,
     RoutineRun,
     SessionRole,
@@ -53,6 +54,7 @@ from ringkeeper.services import (
     client_month,
     decisions,
     examples,
+    needs,
     paging,
     projects,
     tasks,
@@ -557,6 +559,8 @@ def _answer_route(
         if decision.thread_id is not None:
             threads.add_reply(session, decision.thread_id, str(ask["reason"]))
         return None
+    if (lacks := needs.missing(session, choice, routed.get("needs") or [])) is not None:
+        return _held_for_connection(session, decision, choice, routed, lacks)
     kind = TaskKind(routed["kind"]) if routed.get("kind") else None
     message = payload.get("message")
     if message:
@@ -588,6 +592,22 @@ def _answer_route(
     if decision.thread_id is not None:  # the thread's last word was the question
         threads.add_reply(session, decision.thread_id, threads.working_on(session, task))
     return task
+
+
+def _held_for_connection(
+    session: Session, decision: Decision, project: str, routed: dict[str, Any], lacks: str
+) -> None:
+    """The project picked has no connection of the kind the work needs: say so, with the add
+    form, and keep the task to run once it's added (needs.run_waiting)."""
+    if decision.message_id is None or decision.thread_id is None:
+        return None
+    held = needs.entry(session, decision.message_id, project, routed, lacks)
+    message = session.get(Message, decision.message_id)
+    if message is not None:
+        message.routing = {**(message.routing or {}), "missing": [held]}
+    shown = {k: v for k, v in held.items() if k != "task"}
+    threads.add_reply(session, decision.thread_id, str(held["says"]), routing={"missing": [shown]})
+    return None
 
 
 NOT_STARTED = "OK, I haven't started anything for that."

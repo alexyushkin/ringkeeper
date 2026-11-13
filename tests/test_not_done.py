@@ -68,11 +68,15 @@ def test_the_client_s_connection_is_offered_and_one_click_links_and_retries() ->
         assert session.scalars(select(ProjectInstance)).one().instance.name == "gi-google"
 
 
-def test_no_offer_for_what_the_client_doesn_t_have() -> None:
+def test_what_the_client_doesn_t_have_is_offered_to_add() -> None:
     with session_scope() as session:
         task = tasks.create_task(session, get_settings(), project="gi-site", prompt="x")
-        assert link_offer.find(session, task, "airtable") is None
+        offer = link_offer.find(session, task, "airtable")
+        assert offer is not None
+        assert offer["add"] == "airtable"
+        assert "instance" not in offer  # nothing to link: it's added in the app
         assert link_offer.find(session, task, "") is None
+        assert link_offer.find(session, task, "a fax machine") is None
 
 
 def test_the_chat_gets_the_reason_and_the_button() -> None:
