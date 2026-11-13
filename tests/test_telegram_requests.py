@@ -168,7 +168,7 @@ def test_notices_say_what_the_router_did_and_when_tasks_end(
             update(Task).values(status=TaskStatus.SUCCEEDED, finished_at=datetime.now(UTC))
         )
     assert bridge.send_notices() == 1
-    assert telegram.sent[-1]["text"] == "✔ Acme web: answered"
+    assert telegram.sent[-1]["text"] == "✔ Acme web: nothing changed"  # asked to add: none ran
     assert bridge.send_notices() == 0
 
 
