@@ -764,7 +764,7 @@ def test_a_dm_s_task_ends_with_its_result(slack: FakeSlack) -> None:
         )  # fmt: skip
     rk.send_news()
     said = dm_texts(slack)[-1]
-    assert said.startswith("✔ Acme web: done\nThree open orders:")
+    assert said.startswith("✔ Acme web: answered\nThree open orders:")
     assert "1007 · Ana · $40" in said  # a table reads as lines
     assert "|" not in said
     assert "---" not in said
@@ -844,7 +844,7 @@ def test_full_results_are_on_unless_turned_off() -> None:
         task = tasks.create_task(session, get_settings(), project="acme-web", prompt="list")
         task.status, task.summary = TaskStatus.SUCCEEDED, "Three open orders."
         said = news.result_text(task, "https://rk.example/task?id=1", full=False)
-    assert said == "✔ Acme web: done\nhttps://rk.example/task?id=1"
+    assert said == "✔ Acme web: answered\nhttps://rk.example/task?id=1"
 
 
 def test_a_long_result_ends_with_a_link() -> None:

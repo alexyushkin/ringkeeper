@@ -3,6 +3,21 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **What Ringkeeper says matches what happened.** Asked to read another client's database, the
+  first reply said it had "planned the read", and then the task declined. Another task read a
+  record, left it alone, and still showed as Done. The reply sent when work starts now says
+  only where it went ("Working on it in Demo shop."), and a request that names another client's
+  connection, or the client itself, says up front that the work can't reach it. A task's status
+  now comes from what the gateway recorded. **Done** means a change ran or files changed;
+  **Answered** means a read that changed nothing; **Nothing changed** means a change was asked
+  for or tried and none ran; and **Refused: other client's data** is what it says. Chats get
+  the same words. The conversation list counts finished tasks as "finished", not "done".
+- **Self-test:** the hold, refusal and pushed scenarios also fail when the first reply describes
+  what will be done, or when a status or summary claims a change that the activity log doesn't
+  show as executed.
+
 ## 0.1.0-beta.41 (2026-11-12)
 
 - **Synced folders are offered only when they sync.** Settings › Backup offered "OneDrive" on

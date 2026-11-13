@@ -45,6 +45,7 @@ from ringkeeper.services import (
     paging,
     projects,
     task_files,
+    task_result,
     tasks,
     titles,
     undo,
@@ -211,6 +212,8 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
         "phase": task.phase.value if task.phase else None, "outcome": task.outcome,
         "summary": _preview(task.summary), "error": task.error, "plan_limit": task.plan_limit,
         "offer": task.offer, "partly_done": task.partly_done,
+        # How it ended, from what the gateway ran or refused (services.task_result).
+        "ended": task_result.ended(session, task) if session is not None else None,
         # Queued behind another task working in the same project folder.
         "waiting_for_folder": bool(session and tasks.waits_for_folder(session, task)),
         "thread_id": task.thread_id,

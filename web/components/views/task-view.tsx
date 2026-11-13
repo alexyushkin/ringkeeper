@@ -47,6 +47,7 @@ interface Task {
   plan_limit?: string | null;
   offer?: { label: string; instance?: string; recommend?: string; href?: string } | null;
   partly_done?: string | null; // not done, but this part was
+  ended?: string | null; // how it ended: done, answered, nothing_changed, refused_other_client
   prompt: string;
   thread_id: string | null;
   branch: string | null;
@@ -236,7 +237,7 @@ export function TaskView({ id }: { id: string }) {
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold">{projectName(t.project)}</h1>
-          <StatusBadge status={t.status} partly={t.partly_done} />
+          <StatusBadge status={t.status} partly={t.partly_done} ended={t.ended} />
           {t.kind ? <Badge>{t.kind}</Badge> : null}
           {t.archived ? <Badge>archived</Badge> : null}
           <span className="ml-auto" />

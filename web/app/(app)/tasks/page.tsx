@@ -15,7 +15,7 @@ const STATUSES: [string, string][] = [
   ["queued", "Waiting to start"],
   ["waiting", "Waiting for you"],
   ["needs_input", "Has a question"],
-  ["succeeded", "Done"],
+  ["succeeded", "Finished"],
   ["not_done", "Not done"],
   ["failed", "Failed"],
   ["stopped", "Stopped"],

@@ -37,9 +37,19 @@ from ringkeeper.models import (
     WorkerSession,
 )
 from ringkeeper.scenarios.catalog import ACME_DB, APPROVE, DENY, TYPED, Row, Scenario
-from ringkeeper.scenarios.checks import ALLOWED, DECLINED, REFUSED, Evidence
+from ringkeeper.scenarios.checks import ALLOWED, DECLINED, REFUSED, Ending, Evidence, claims
 from ringkeeper.scenarios.world import World
-from ringkeeper.services import calls, decisions, inbox, routines, tasks, threads, titles, undo
+from ringkeeper.services import (
+    calls,
+    decisions,
+    inbox,
+    routines,
+    task_result,
+    tasks,
+    threads,
+    titles,
+    undo,
+)
 from ringkeeper.services.calls import RefusalError
 from ringkeeper.vault import Vault
 
@@ -143,6 +153,20 @@ def routing(meta: dict[str, Any] | None, error: str | None = None) -> str:
 def asks_after_start(replies: list[str], started: bool) -> bool:
     """Work ran, yet the conversation's last word still asks which project."""
     return started and bool(replies) and threads.ASKS_PROJECT in replies[-1]
+
+
+def first_replies(messages: list[Message]) -> list[str]:
+    """What Ringkeeper said when work started: the reply to each request that started a
+    task, and each "Working on it" said later (after a go-ahead)."""
+    said: list[str] = []
+    for at, message in enumerate(messages):
+        if message.role is MessageRole.USER and (message.routing or {}).get("tasks"):
+            reply = next((m for m in messages[at + 1 :] if m.role is MessageRole.ROUTER), None)
+            if reply is not None:
+                said.append(reply.body)
+        elif message.role is MessageRole.ROUTER and "Working on it in " in message.body:
+            said.append(message.body)
+    return list(dict.fromkeys(said))
 
 
 def transcript(events: list[SessionEvent]) -> list[str]:
@@ -323,6 +347,23 @@ class Driver:
             said += [t.summary for t in found if t.summary]
             seen.projects = sorted({t.project for t in found})
             seen.statuses = [t.status.value for t in found]
+            seen.first_replies = first_replies(list(messages))
+            for task in found:
+                own = [str(s.id) for s in sessions if s.task_id == task.id]
+                ran = session.scalars(
+                    select(AuditEvent.id).where(
+                        AuditEvent.outcome == AuditOutcome.EXECUTED,
+                        AuditEvent.instance.is_not(None),
+                        AuditEvent.session_id.in_(own),
+                    )
+                ).all()
+                ending = task_result.ended(session, task)
+                seen.endings.append(
+                    Ending(
+                        task.project, ending, len(ran), len(task.changed_files),
+                        claims(task.summary or ""),
+                    )
+                )  # fmt: skip
             for task in found:
                 if task.agent_id:
                     agent = session.get(Agent, task.agent_id)
@@ -359,6 +400,11 @@ class Driver:
                         if m.role is MessageRole.USER
                     ),
                     *(f"task in {t.project}: {t.status.value}" for t in found),
+                    *(
+                        f"status in {e.project}: {task_result.LABELS.get(e.ended or '', '-')}, "
+                        f"{e.executed} executed"
+                        for e in seen.endings
+                    ),
                     *transcript(events),
                     *(f"gateway refused: {r}" for r in seen.refusals),
                     *(

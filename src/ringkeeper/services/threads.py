@@ -275,12 +275,14 @@ ASKS_PROJECT = "Which project is this for?"
 
 
 def working_on(session: Session, task: Task) -> str:
-    """What a started task is, in the words the thread shows."""
-    what = task.outcome or "the task"
+    """Where a started task went, and that it started: nothing about what it will read or
+    change, which only the work itself can tell (a task asked to read the other client's
+    database was said to have "planned the read", and then declined)."""
+    place = titles.of(session, task.project)
     if task.status is TaskStatus.NEEDS_INPUT:  # over the client's monthly cap: it asks first
-        return f"Waiting for your OK before starting in {titles.of(session, task.project)}: {what}"
+        return f"Waiting for your OK before starting in {place}."
     plan = " I'll show you a plan first." if task.phase is not None else ""
-    return f"Working on it in {titles.of(session, task.project)}: {what}{plan}"
+    return f"Working on it in {place}.{plan}"
 
 
 def get_message(session: Session, message_id: uuid.UUID, *, lock: bool = False) -> Message:

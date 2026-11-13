@@ -20,6 +20,7 @@ export interface TaskCard {
   summary: string | null;
   error: string | null;
   partly_done?: string | null; // not done, but this part was
+  ended?: string | null; // done, answered, nothing_changed, refused_other_client
   thread_id: string | null;
   created_at: string;
   finished_at: string | null;
@@ -42,7 +43,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
     <Link href={taskHref(task.id)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{place(task.client, task.project)}</span>
-        <StatusBadge status={task.status} partly={task.partly_done} />
+        <StatusBadge status={task.status} partly={task.partly_done} ended={task.ended} />
         {task.archived ? <span className="text-xs text-muted">archived</span> : null}
         {task.phase && task.status !== "succeeded" ? <span className="text-xs text-muted">{PHASE[task.phase] ?? task.phase}</span> : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(task.finished_at ?? task.created_at)}</span>

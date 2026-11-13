@@ -82,7 +82,7 @@ export default function Home() {
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {thread.pending_approvals ? <Badge tone="warn">{thread.pending_approvals} waiting for you</Badge> : null}
                   {running ? <Badge tone="accent">{running} working</Badge> : null}
-                  {done ? <Badge tone="good">{done} done</Badge> : null}
+                  {done ? <Badge tone="good">{done} finished</Badge> : null}
                   {failed ? <Badge tone="bad">{failed} failed</Badge> : null}
                   {notDone ? <Badge tone="bad">{notDone} not done</Badge> : null}
                   <Badge>from {SOURCE[thread.source] ?? "another app"}</Badge>
