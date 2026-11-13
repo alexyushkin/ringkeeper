@@ -20,6 +20,7 @@ One page per kind of connection: where to get its key, what it can do, what wait
 - [Developer apps: your own registered apps](developer-apps.md)
 - [Bluesky](bluesky.md)
 - [Facebook Pages, Instagram and Threads](meta.md)
+- [Meta Ads (Meta's own ads server)](meta-ads.md)
 - [Google Ads](google-ads.md)
 - [Clerk (users, sessions, organizations)](clerk.md)
 - [Microsoft account (mail, calendar, files)](microsoft.md)

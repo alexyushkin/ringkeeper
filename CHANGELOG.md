@@ -17,6 +17,17 @@ publishes it as the release notes and the app shows it with the update.
   connection of that kind, the task's page offers **Add a ... connection**, and **Run it
   now** once it's there.
 - The self-test has a new routing scenario: ads work in a project with no ads connection.
+- **Meta Ads, through Meta's own server.** The Recommended shelf has **Meta Ads**, Meta's own
+  ads MCP server (free), ahead of **Meta Ads (Pipeboard)**, a third party with a free tier of 30
+  calls a week; both now sit under Ads. It signs in through your Meta app (Settings › Developer
+  apps), with Facebook Login for Business and the use case Create & manage ads with ads MCP
+  server; the connect form shows the exact address to paste into the app. A pasted user access
+  token works too, with a warning that it expires. Your own ad accounts work straight away;
+  other businesses' ads need Advanced Access on ads_mcp_management, which means Meta's app
+  review. Reads run. Creating or activating campaigns, ad sets and ads, and changing budgets,
+  bids or status, need the connection's name typed; other changes wait for approval. A
+  project's link can be held to one ad account. A sign-in lasts about 60 days, and the
+  connection shows the day it ends. See [Meta Ads](docs/services/meta-ads.md).
 
 ## 0.1.0-beta.43 (2026-11-13)
 

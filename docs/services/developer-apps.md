@@ -42,6 +42,9 @@ and Threads account work with no review from Meta, as long as you have a role on
 client's need Meta's review first: see [Facebook Pages, Instagram and Threads](meta.md). Change
 **Client accounts** on the app here once Meta has approved it.
 
+Meta Ads signs in through the same Meta app, with the use case Create & manage ads with ads
+MCP server added. See [Meta Ads](meta-ads.md).
+
 Google Ads uses your Google app, so it isn't a separate card. See [Google Ads](google-ads.md).
 
 ## Good to know

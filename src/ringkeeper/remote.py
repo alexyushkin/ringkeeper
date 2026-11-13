@@ -41,10 +41,19 @@ class ScopeField:
     # filled in only when there's just one.
     many: bool = False
     plural: str = ""  # its label for several ("repositories"); empty: the label and an s
+    # A prefix that doesn't change which one it is: Meta's act_123 and 123 are one ad account.
+    ignore_prefix: str = ""
 
     @property
     def several(self) -> str:
         return self.plural or f"{self.label.lower()}s"
+
+    def bare(self, value: str) -> str:
+        """The value without `ignore_prefix`, for comparing."""
+        text = value.strip()
+        if self.ignore_prefix and text.lower().startswith(self.ignore_prefix.lower()):
+            return text[len(self.ignore_prefix) :]
+        return text
 
 
 def values(value: str) -> list[str]:
@@ -63,6 +72,14 @@ class Guard:
     unless: frozenset[str] = frozenset()
     why: str = "needs the name typed on this kind of service"
     never_trusted: bool = False  # nothing here runs by itself, even after an approval
+    # Word sets that need the name typed only together: create and campaign, not create alone.
+    final_all: tuple[frozenset[str], ...] = ()
+
+    def needs_name(self, words: set[str]) -> bool:
+        """Whether a tool named with these words needs the connection's name typed."""
+        if words & self.unless:
+            return False
+        return bool(words & self.final) or any(both <= words for both in self.final_all)
 
 
 GUARDS: dict[str, Guard] = {
@@ -155,6 +172,36 @@ GUARDS: dict[str, Guard] = {
         unless=frozenset({"link"}),
     ),
     "ads": Guard(frozenset({"budget", "delete", "remove", "publish", "activate", "launch"})),
+    # Meta's own server: anything that spends money or goes live. It makes campaigns, ad sets and
+    # ads paused, but one activation starts them all, so making them needs the name typed too.
+    # update_entity can change a budget, a bid or a status, and its name can't say which.
+    "meta_ads": Guard(
+        frozenset(
+            {
+                "budget",
+                "budgets",
+                "bid",
+                "bids",
+                "activate",
+                "launch",
+                "publish",
+                "boost",
+                "enable",
+                "delete",
+                "remove",
+            }
+        ),
+        why="spends money or puts ads live",
+        final_all=(
+            frozenset({"create", "campaign"}),
+            frozenset({"create", "ad"}),
+            frozenset({"create", "adset"}),
+            frozenset({"update", "entity"}),
+            frozenset({"update", "campaign"}),
+            frozenset({"update", "adset"}),
+            frozenset({"update", "ad"}),
+        ),
+    ),
     "cloud": Guard(
         frozenset(
             {
@@ -210,6 +257,7 @@ class Remote:
     paste: str | None  # the token to paste instead of signing in (None: sign-in only)
     paste_url: str = ""  # where to make one
     paste_steps: str = ""
+    paste_warning: str = ""  # shown above the field: a pasted token that ends, say
     auth_scheme: str = "Bearer"  # Authorization: <scheme> <token>
     scope: tuple[ScopeField, ...] = ()
     # Tools that are fine on a scoped link though they take no scope argument.
@@ -256,7 +304,23 @@ class Remote:
     # On the Recommended shelf. Off: kept only for connections made before (GitHub is now
     # its own connection type, with GitHub Enterprise Server and pushes).
     shelf: bool = True
+    # Signs in through your own app of this kind (Settings > Developer apps,
+    # services.developer_apps), not the server's own sign-in, and asks for these permissions.
+    provider: str = ""
+    provider_scopes: tuple[str, ...] = ()
+    # Shown above the sign-in: what the app needs, besides the address to paste.
+    provider_steps: str = ""
 
+
+META_ADS_URL = "https://mcp.facebook.com/ads"
+# What Meta's ads MCP server asks for: ads_mcp_management with ads_read or ads_management is the
+# least; the rest add tools (catalogs, businesses, Pages, Instagram).
+META_ADS_SCOPES = (
+    "ads_mcp_management", "ads_read", "ads_management", "catalog_management",
+    "business_management", "pages_show_list", "instagram_basic",
+)  # fmt: skip
+# Meta doesn't document its tools' argument names, so each of these counts as the ad account.
+META_ADS_ACCOUNT_ARGS = ("ad_account_id", "account_id", "adAccountId", "act_id")
 
 CATALOG: tuple[Remote, ...] = (
     Remote(
@@ -591,10 +655,39 @@ CATALOG: tuple[Remote, ...] = (
         note="Each search uses Tavily credits.",
     ),
     Remote(
+        "meta_ads", "Meta Ads", META_ADS_URL, signin=True,
+        paste="Meta user access token",
+        paste_url="https://developers.facebook.com/tools/explorer/",
+        paste_steps="In the Graph API Explorer, pick your app, add the permissions "
+        f"{', '.join(META_ADS_SCOPES)}, and click Generate Access Token.",
+        paste_warning="This token expires: one from the Graph API Explorer lasts about an hour. "
+        "Signing in gives one that lasts about 60 days.",
+        category="Other", guard="meta_ads", provider="meta", provider_scopes=META_ADS_SCOPES,
+        provider_steps="Your Meta app needs the use case Create & manage ads with ads MCP "
+        "server. Your own ad accounts work straight away. Managing other businesses' ads needs "
+        "Advanced Access on ads_mcp_management, which means Meta's app review.",
+        scope=(
+            ScopeField("account", "Ad account", META_ADS_ACCOUNT_ARGS,
+                       "The ad account's ID: act_ followed by the number, like act_1234567890.",
+                       ignore_prefix="act_"),
+        ),
+        open_tools=frozenset({"ads_get_help_article", "ads_library_search",
+                              "ads_get_field_context"}),
+        read_tools=frozenset({
+            "ads_insights_advertiser_context", "ads_insights_anomaly_signal",
+            "ads_insights_auction_ranking_benchmarks", "ads_insights_industry_benchmark",
+            "ads_insights_performance_trend", "ads_experiment_check_eligibility",
+            "ads_get_errors", "ads_get_help_article", "ads_library_search",
+        }),
+        note="Meta's own server, free. Reads run. Anything that spends money or goes live "
+        "(campaigns, ad sets and ads, budgets, bids, activating) needs the name typed; other "
+        "changes wait for approval. Each project can be held to one ad account.",
+    ),
+    Remote(
         "pipeboard", "Meta Ads (Pipeboard)", "https://mcp.pipeboard.co/meta-ads-mcp",
         signin=True, paste=None, category="Other", guard="ads",
-        note="Pipeboard is a third party, not Meta. Budgets and launching ads need the name "
-        "typed.",
+        note="Pipeboard is a third party, not Meta, with a free tier of 30 calls a week. "
+        "Budgets and launching ads need the name typed.",
     ),
     Remote(
         "calcom", "Cal.com", "https://mcp.cal.com/mcp", signin=True, paste=None,
@@ -820,9 +913,9 @@ def _check_given(
     if f.prefix:
         fits = under(wanted, said)
     elif f.many:
-        fits = said.casefold() in {v.casefold() for v in allowed}
+        fits = f.bare(said).casefold() in {f.bare(v).casefold() for v in allowed}
     else:
-        fits = said == wanted
+        fits = f.bare(said) == f.bare(wanted)
     if fits:
         return
     limited = (

@@ -191,13 +191,19 @@ def _shown(new: NewConnection) -> str | None:
 
 
 def create(
-    session: Session, settings: Settings, new: NewConnection, secret: str, *, how: str
+    session: Session,
+    settings: Settings,
+    new: NewConnection,
+    secret: str,
+    *,
+    how: str,
+    extra: dict[str, Any] | None = None,
 ) -> Instance:
     """Store the secret, add the connection (and its link). `how`: signin, token, headers or
-    open (nothing needed)."""
+    open (nothing needed). `extra`: more for its config (who signed in, when it ends)."""
     new = check(session, new)
     ref = secrets_in.store_connection(session, settings, new.name, InstanceType.MCP, secret)
-    config: dict[str, Any] = {"source": how, "preview": _shown(new)}
+    config: dict[str, Any] = {**(extra or {}), "source": how, "preview": _shown(new)}
     if new.remote:
         config["remote"] = new.remote
         label = service(new.remote).name
@@ -244,10 +250,13 @@ def catalog_shelf() -> list[dict[str, Any]]:
     return [
         {
             "key": r.key, "name": r.name, "url": r.url, "signin": r.signin, "paste": r.paste,
-            "paste_url": r.paste_url, "paste_steps": r.paste_steps, "note": r.note,
+            "paste_url": r.paste_url, "paste_steps": r.paste_steps,
+            "paste_warning": r.paste_warning, "note": r.note,
             "scope": [{"key": f.key, "label": f.label, "hint": f.hint} for f in r.scope],
             "sql": bool(r.sql_tools), "category": r.category, "url_label": r.url_label,
             "url_hint": r.url_hint, "local": bool(r.local), "needs": r.needs,
+            "provider": r.provider, "provider_steps": r.provider_steps,
+            "provider_scopes": list(r.provider_scopes),
         }
         for r in remote.CATALOG
         if r.shelf
