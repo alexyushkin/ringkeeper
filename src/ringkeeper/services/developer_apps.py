@@ -42,6 +42,7 @@ from urllib.parse import urlencode, urlsplit
 import httpx2
 from sqlalchemy.orm import Session
 
+from ringkeeper import remote
 from ringkeeper.adapters import vendor as vendors
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
@@ -55,6 +56,7 @@ from ringkeeper.services import (
     instances,
     mcp_oauth,
     projects,
+    remote_connections,
     secrets_in,
 )
 from ringkeeper.vault import Secret, Vault, get_vault
@@ -577,6 +579,9 @@ class Pending:
     connection: JSON  # what to create (or `replace`), as the start asked
     app: str
     created: float = field(default_factory=time.monotonic)
+    # A Recommended MCP server that signs in through this app (ringkeeper.remote, `provider`):
+    # the account becomes an `mcp` connection, not a `vendor` one.
+    remote: str = ""
 
 
 @dataclass
@@ -872,6 +877,32 @@ def start(
         )
     redirect = redirect_for(settings, found)
     scopes = scopes_for(found, vendor_key, list(access or []))
+    return _begin(found, app, redirect, scopes, vendor_key, connection)
+
+
+def start_remote(
+    settings: Settings, remote_key: str, connection: JSON, app_id: str | None = None
+) -> tuple[str, str]:
+    """(the consent page, its state) for a Recommended MCP server that signs in through your
+    own app, like Meta's ads server: the token it gives goes to the server as Bearer."""
+    service = remote.BY_KEY.get(remote_key)
+    if service is None or not service.provider:
+        raise RuleViolationError("That service doesn't sign in through a developer app.")
+    found = provider(service.provider)
+    app = _app(settings, found.key, app_id)
+    redirect = redirect_for(settings, found)
+    return _begin(found, app, redirect, list(service.provider_scopes), "", connection, remote_key)
+
+
+def _begin(
+    found: Provider,
+    app: App,
+    redirect: str,
+    scopes: list[str],
+    vendor_key: str,
+    connection: JSON,
+    remote_key: str = "",
+) -> tuple[str, str]:
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
     state = secrets.token_urlsafe(32)
@@ -889,8 +920,9 @@ def start(
     with _lock:
         _forget_old()
         _pending[state] = Pending(
-            found.key, vendor_key, redirect, verifier, scopes, connection, app.id
-        )
+            found.key, vendor_key, redirect, verifier, scopes, connection, app.id,
+            remote=remote_key,
+        )  # fmt: skip
         _outcomes[state] = Outcome("waiting")
     return f"{_filled(found.authorize, app)}?{urlencode(params)}", state
 
@@ -1039,6 +1071,10 @@ def finish(
             "grant_type": "authorization_code", "code": code,
             "redirect_uri": found.redirect_uri, "code_verifier": found.verifier,
         })  # fmt: skip
+        if found.remote:
+            name = _finish_remote(session, settings, found, app, tokens)
+            _ended(state, Outcome("done", name=name))
+            return name
         refresh = str(tokens.get("refresh_token") or "")
         if not refresh and not wanted.no_refresh_token:
             raise SignInError(f"{wanted.name} didn't give a lasting sign-in. Start it again.")
@@ -1052,6 +1088,34 @@ def finish(
         raise
     _ended(state, Outcome("done", name=name))
     return name
+
+
+def _finish_remote(
+    session: Session, settings: Settings, found: Pending, app: App, tokens: JSON
+) -> str:
+    """A Meta sign-in for an MCP server: a long-lived user token (about 60 days; Meta gives no
+    refresh token) sent to the server as Bearer, and the day it ends on the connection."""
+    service = remote.BY_KEY[found.remote]
+    lasting = _graph(f"{GRAPH}/oauth/access_token", {
+        "grant_type": "fb_exchange_token", "client_id": app.client_id,
+        "client_secret": app.client_secret, "fb_exchange_token": tokens["access_token"],
+    }, "Meta")  # fmt: skip
+    token = str(lasting.get("access_token") or "")
+    if not token:
+        raise SignInError("Meta didn't give a lasting sign-in. Start it again.")
+    who = _graph(f"{GRAPH}/me", {"fields": "id,name", "access_token": token}, "Meta")
+    account = str(who.get("name") or who.get("id") or "")
+    ends = _ends(lasting)
+    secret = json.dumps({
+        "url": service.url, "headers": {"Authorization": f"Bearer {token}"}, "expires_at": ends,
+    })  # fmt: skip
+    new = remote_connections.NewConnection.from_dict(found.connection)
+    day = time.strftime("%Y-%m-%d", time.gmtime(ends))
+    instance = remote_connections.create(
+        session, settings, new, secret, how="signin",
+        extra={"account": account, "app": found.app, "expires_at": day},
+    )  # fmt: skip
+    return instance.name
 
 
 def refused(state: str, error: str) -> None:

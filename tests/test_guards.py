@@ -60,6 +60,10 @@ def level(key: str, tool: str, **fields: object) -> str:
         ("apify", "call_actor", mcp.APPROVE),
         ("upwork", "send_message", mcp.APPROVE),
         ("pipeboard", "update_campaign_budget", mcp.CONFIRM),
+        ("meta_ads", "ads_create_campaign", mcp.CONFIRM),
+        ("meta_ads", "ads_activate_entity", mcp.CONFIRM),
+        ("meta_ads", "ads_create_creative", mcp.APPROVE),
+        ("meta_ads", "ads_get_ad_entities", mcp.READ),
     ],
 )
 def test_what_each_kind_of_service_needs(service: str, tool: str, needs: str) -> None:

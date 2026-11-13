@@ -253,7 +253,7 @@ def floor(service: remote.Remote | None, tool: str) -> Rule | None:
     if service is None or guard is None:
         return None
     words = set(name_words(tool))
-    if tool in service.opaque_tools or (words & guard.final and not words & guard.unless):
+    if tool in service.opaque_tools or guard.needs_name(words):
         return Rule(CONFIRM, BY_GUARD)
     if tool in service.credit_tools:
         return Rule(APPROVE, BY_GUARD)

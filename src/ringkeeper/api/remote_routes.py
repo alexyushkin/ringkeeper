@@ -122,8 +122,19 @@ def redirect_uri(request: Request, settings: Settings) -> str:
 
 @router.get("/remote-services")
 def list_remote_services() -> list[dict[str, Any]]:
-    """The Recommended shelf: services with built-in rules."""
-    return remote_connections.catalog_shelf()
+    """The Recommended shelf: services with built-in rules. One that signs in through your own
+    app also says the address to paste into that app."""
+    settings = get_settings()
+    shelf = remote_connections.catalog_shelf()
+    for service in shelf:
+        if service["provider"]:
+            found = developer_apps.provider(str(service["provider"]))
+            try:
+                service["redirect"] = developer_apps.redirect_for(settings, found)
+            except developer_apps.SignInError as error:
+                service["redirect"], service["redirect_error"] = "", str(error)
+            service["apps"] = len(developer_apps.list_apps(settings, found.key))
+    return shelf
 
 
 @router.get("/vendors")
@@ -166,7 +177,10 @@ def probe_url(data: ProbeIn) -> dict[str, Any]:
         NewConnection(name="probe", owner="probe", env=Env.DEV, url=data.url)
     )
     known = remote_connections.service(new.remote) if new.remote else None
-    signin = catalog.probe(new.url or "") if known is None or known.signin else False
+    if known is not None and known.provider:
+        signin = True  # through your own app, not the server's sign-in
+    else:
+        signin = catalog.probe(new.url or "") if known is None or known.signin else False
     open_ = known is None and mcp_oauth.needs_nothing(new.url or "")
     return {"url": new.url, "recommended": new.remote, "signin": signin, "open": open_}
 
@@ -177,6 +191,13 @@ def start_signin(data: RemoteConnectionIn, request: Request, session: SessionDep
     new = remote_connections.check(session, data.new())
     remote_connections.can_sign_in(new)
     settings = get_settings()
+    if new.remote and remote_connections.service(new.remote).provider:
+        # Through your own app (Settings > Developer apps), like Meta's ads server.
+        try:
+            url, state = developer_apps.start_remote(settings, new.remote, new.as_dict())
+        except developer_apps.SignInError as error:
+            raise HTTPException(409, detail=str(error)) from None
+        return {"url": url, "state": state}
     try:
         url = mcp_oauth.start(
             new.url or "", redirect_uri(request, settings), new.as_dict(),
@@ -444,6 +465,9 @@ def _finish_developer_app(state: str, code: str, error: str, realm: str) -> HTML
             )
     except (developer_apps.SignInError, RuleViolationError) as failed:
         return _page("Not connected", str(failed), False)
+    if found.remote:  # an MCP server: its tools as they are for this account
+        with contextlib.suppress(ToolError, RingkeeperError, TimeoutError):
+            mcp_tools.refresh(name)
     return _page(
         "Connected",
         f"Ringkeeper is connected as '{name}'. You can close this tab and go back to Ringkeeper.",

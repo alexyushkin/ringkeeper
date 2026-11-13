@@ -208,6 +208,12 @@ const NOT_SIGN_IN = new Set(["retell", "github"]);
 // What a service's own server is for, when the built-in tile is there too.
 const SIGN_IN_SUB: Record<string, string> = {
   airtable: "Automations and interfaces: Airtable's own server",
+  meta_ads: "Meta's own server, free",
+  pipeboard: "A third party, with a free tier of 30 calls a week",
+};
+// Not the service's own server: said instead of "Official".
+const SIGN_IN_BADGE: Record<string, string> = {
+  pipeboard: "Third party",
 };
 // Where the services you sign in to belong.
 const SIGN_IN_CATEGORY: Record<string, Category> = {
@@ -217,12 +223,16 @@ const SIGN_IN_CATEGORY: Record<string, Category> = {
   sentry: "Dev tools",
   linear: "Dev tools",
   atlassian: "Dev tools",
+  meta_ads: "Ads",
+  pipeboard: "Ads",
 };
 
 // What else a search for a service you sign in to might say.
 const SIGN_IN_WORDS: Record<string, string[]> = {
   calcom: ["calendar", "booking", "bookings", "scheduling", "schedule", "meetings", "appointments"],
   airtable: ["automations", "automation", "interfaces", "interface"],
+  meta_ads: ["facebook", "instagram", "advertising", "campaigns", "campaign"],
+  pipeboard: ["facebook", "instagram", "advertising", "campaigns", "campaign"],
 };
 
 // Services with no logo in lib/client/logos or public/logos: their initials on their color.
@@ -392,7 +402,7 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
       label: service.name,
       sub: SIGN_IN_SUB[service.key] ?? (service.needs || (service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token")),
       category: SIGN_IN_CATEGORY[service.key] ?? ((service.category || "Other") as Category),
-      badge: "Official",
+      badge: SIGN_IN_BADGE[service.key] ?? "Official",
       words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/), ...(SIGN_IN_WORDS[service.key] ?? [])],
       open: () => setOpened({ service }),
     })),

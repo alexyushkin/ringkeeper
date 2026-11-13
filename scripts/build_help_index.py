@@ -33,6 +33,7 @@ PAGES = (
     "services/bill", "services/shopify", "services/ghost", "services/square",
     "services/helcim", "services/lemonsqueezy", "services/clover", "services/braintree",
     "services/plaid", "services/oracle", "services/cloud", "services/bluesky", "services/meta",
+    "services/meta-ads",
     "services/google-ads", "services/notion", "services/leadfeeder", "services/calcom",
     "services/pagespeed",
 )  # fmt: skip

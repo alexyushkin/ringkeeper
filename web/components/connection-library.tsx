@@ -48,6 +48,8 @@ export interface RemoteService {
   paste: string | null;
   paste_url: string;
   paste_steps: string;
+  /** Shown above the field: a pasted token that ends, say. */
+  paste_warning?: string;
   note: string;
   scope: ScopeField[];
   category?: string;
@@ -55,6 +57,15 @@ export interface RemoteService {
   url_hint?: string;
   local?: boolean;
   needs?: string;
+  /** Signs in through your own app of this kind (Settings › Developer apps), like Meta. */
+  provider?: string;
+  provider_steps?: string;
+  provider_scopes?: string[];
+  /** The address to paste into that app, or why there isn't one here. */
+  redirect?: string;
+  redirect_error?: string;
+  /** How many apps of that kind you've added. */
+  apps?: number;
 }
 
 /** Which service's mark a connection shows. */
@@ -601,6 +612,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   const [url, setUrl] = useState("");
   const [pasting, setPasting] = useState(!service.signin);
   const [waiting, setWaiting] = useState<string | null>(null); // the name sent, until it's there
+  const [signin, setSignin] = useState<string | null>(null); // a sign-in through your own app
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const taken = useTakenNames();
@@ -623,16 +635,28 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
           } else if (Date.now() > deadline) setWaiting(null);
         })
         .catch(() => undefined);
+      // Through your own app, a sign-in that failed says why.
+      if (signin) {
+        api<{ state: string; error: string | null }>(`developer-apps/signin/${encodeURIComponent(signin)}`)
+          .then((found) => {
+            if (found.state === "failed") {
+              setWaiting(null);
+              setError(found.error ?? "The sign-in didn't finish. Try again.");
+            }
+          })
+          .catch(() => undefined);
+      }
     }, 2000);
     return () => clearInterval(timer);
-  }, [waiting, onAdded]);
+  }, [waiting, signin, onAdded]);
 
   async function signIn() {
     setBusy(true);
     setError(null);
     try {
-      const { url } = await api<{ url: string }>("connections/signin", { json: body });
+      const { url, state } = await api<{ url: string; state?: string }>("connections/signin", { json: body });
       window.open(url, "_blank", "noopener");
+      setSignin(state ?? null);
       setWaiting(name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -672,10 +696,11 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
       {project ? <ScopeInputs fields={service.scope} value={scope} onChange={setScope} /> : null}
       {waiting ? <Alert tone="good">Finish signing in on {service.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
+      {service.provider && !pasting ? <ThroughYourApp service={service} /> : null}
       {service.signin && !pasting ? (
         <div className="flex flex-wrap gap-2">
-          <Button kind="primary" busy={busy} disabled={!title.trim() || !env || needsUrl} onClick={signIn}>
-            Sign in with {service.name}
+          <Button kind="primary" busy={busy} disabled={!title.trim() || !env || needsUrl || (Boolean(service.provider) && !service.apps)} onClick={signIn}>
+            Sign in with {service.provider === "meta" ? "Meta" : service.name}
           </Button>
           {service.paste ? (
             <Button kind="ghost" onClick={() => setPasting(true)}>
@@ -699,6 +724,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
               </a>
             ) : null}
           </p>
+          {service.paste_warning ? <Alert>{service.paste_warning}</Alert> : null}
           <Field label={service.paste} type="password" value={token} onChange={setToken} />
           <div className="flex flex-wrap gap-2">
             <Button kind="primary" busy={busy} disabled={!title.trim() || !env || !token.trim() || needsUrl} onClick={paste}>
@@ -711,6 +737,35 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
             ) : null}
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A server that signs in through your own app (Meta's ads server): what the app needs, and the
+ * exact address to paste into it. */
+function ThroughYourApp({ service }: { service: RemoteService }) {
+  const meta = service.provider === "meta";
+  return (
+    <div className="space-y-2 rounded-xl bg-accent-soft p-3 text-sm">
+      {service.provider_steps ? <p>{service.provider_steps}</p> : null}
+      {service.redirect ? (
+        <div className="space-y-1">
+          <p>{meta ? "In the app's Facebook Login for Business settings, paste this as a Valid OAuth Redirect URI:" : "Paste this into your app as its redirect address:"}</p>
+          <code className="block select-all break-all rounded-lg border border-line bg-surface px-2 py-1">{service.redirect}</code>
+        </div>
+      ) : service.redirect_error ? (
+        <Alert>{service.redirect_error}</Alert>
+      ) : null}
+      {service.provider_scopes?.length ? <p className="text-muted">It asks for: {service.provider_scopes.join(", ")}.</p> : null}
+      {!service.apps ? (
+        <Alert>
+          Add your {meta ? "Meta" : ""} app first, in{" "}
+          <a href="/settings#developer-apps" className="underline">
+            Settings › Developer apps
+          </a>
+          .
+        </Alert>
       ) : null}
     </div>
   );
