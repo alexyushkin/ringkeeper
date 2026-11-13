@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.43 (2026-11-13)
 
 - **"Handle it" that changed nothing says Nothing changed.** Asked to read a record and handle
   it, a task that left it alone showed **Answered**, because the request was taken for a read.
