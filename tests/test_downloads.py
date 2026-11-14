@@ -27,6 +27,7 @@ def test_a_plain_name_of_a_known_kind() -> None:
     assert downloads.safe_name('a<b>:"c|?*.csv') == "abc.csv"
     assert downloads.safe_name("CON.csv") == "CON-file.csv"
     assert downloads.safe_name(" .csv") == "download.csv"
+    assert downloads.safe_name("seaside-ads tools.json") == "seaside-ads tools.json"
     for name in ["run.bat", "page.html", "table", "a.csv.exe"]:
         with pytest.raises(RuleViolationError):
             downloads.safe_name(name)

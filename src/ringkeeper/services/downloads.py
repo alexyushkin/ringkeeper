@@ -14,7 +14,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import NotFoundError, RuleViolationError
 from ringkeeper.services import task_files
 
-KINDS = frozenset([".csv", ".md", ".txt"])
+KINDS = frozenset([".csv", ".md", ".txt", ".json"])  # .json: a connection's tool list
 MAX_NAME = 120
 MOST_COPIES = 999
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -27,11 +27,11 @@ def folder(settings: Settings) -> Path:
 
 def safe_name(name: str) -> str:
     """A plain file name: the last part of what was given, without characters a file name
-    can't have. Refused if it isn't a kind the app saves (CSV, Markdown, text)."""
+    can't have. Refused if it isn't a kind the app saves (CSV, Markdown, text, JSON)."""
     plain = _UNSAFE.sub("", re.split(r"[\\/]", name)[-1]).strip()
     stem, dot, suffix = plain.rpartition(".")
     if not dot or f".{suffix.lower()}" not in KINDS:
-        raise RuleViolationError("Only CSV, Markdown and text files are saved here.")
+        raise RuleViolationError("Only CSV, Markdown, text and JSON files are saved here.")
     stem = stem.strip(" .")[: MAX_NAME - len(suffix) - 1] or "download"
     if _RESERVED.match(stem):
         stem = f"{stem}-file"

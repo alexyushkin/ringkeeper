@@ -13,6 +13,9 @@ keys, tokens, passwords and email addresses, and shows you exactly what's in it
 (you can edit it) before you open a GitHub issue or save it as a zip. Nothing
 is sent by Ringkeeper itself.
 
+For one connection, open its card's **Details** and use **Copy details for support** or
+**Copy tool list** (see [Connections](connections.md#copy-what-a-connection-offers)).
+
 ## Windows says "Windows protected your PC"
 
 The beta isn't signed yet. Click **More info › Run anyway**. The installer comes

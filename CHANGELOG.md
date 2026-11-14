@@ -3,6 +3,17 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Copy a connection's tool list, or its details for support, in one click.** Every
+  connection's card has **Copy tool list**, **Save tool list** and **Copy details for support**
+  under **Details**, and Ctrl+K has them too. The tool list gives each tool's name, the server's
+  read-only and destructive flags, the rule Ringkeeper applies, its argument names, which are
+  required, and the first line of its help. Saving puts it in Downloads, with **Show in folder**.
+  The details say what kind of connection it is, how it signs in, when that ends, its last test,
+  its tool count and the app's version. Neither holds a token, a key or a client's data. See
+  [Connections](docs/connections.md#copy-what-a-connection-offers).
+
 ## 0.1.0-beta.44 (2026-11-14)
 
 - **A request for a connection the project doesn't have is answered at once.** Asking to set

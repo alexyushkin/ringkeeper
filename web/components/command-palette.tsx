@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fillRequest } from "@/components/composer";
+import { EXPORT_ACTIONS, EXPORT_LABELS, askCard } from "@/components/connection-exports";
 import { startTour } from "@/components/tour";
 import { useApi } from "@/lib/client/api";
 import { DESKTOP, connectionHref, projectHref } from "@/lib/client/routes";
@@ -174,6 +175,17 @@ function Palette({ onClose }: { onClose: () => void }) {
         hint: c.shared ? "shared tool" : "connection",
         run: go(connectionHref(c)),
       })),
+      // Its tool list and its details for support: the card opens and does it.
+      ...(connections.data ?? []).flatMap((c) =>
+        EXPORT_ACTIONS.map((action): Command => ({
+          label: `${EXPORT_LABELS[action]}: ${c.shared ? (c.title || c.name) : `${place(c.owner, null)} › ${c.title || c.name}`}`,
+          group: "Connection",
+          hint: action === "support" ? "no secrets, no client data" : "no tokens or keys",
+          run: () => {
+            if (!askCard(c.name, action)) router.push(`${connectionHref(c)}/${action}`);
+          },
+        })),
+      ),
     ];
     return all;
   }, [router, scope, projects.data, connections.data, prefs.pins, prefs.recents]);
@@ -181,7 +193,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   const shown = useMemo(() => {
     // Before anything's typed: no single connections or Settings sections (there are
     // dozens), so the clients and projects to switch to stay in view.
-    if (!query.trim()) return commands.filter((c) => c.group !== "Open" && c.group !== "Settings").slice(0, 40);
+    if (!query.trim()) return commands.filter((c) => c.group !== "Open" && c.group !== "Settings" && c.group !== "Connection").slice(0, 40);
     return commands
       .map((command) => ({ command, score: score(query, command.label, command.hint, command.words) }))
       .filter((m): m is { command: Command; score: number } => m.score !== null)
