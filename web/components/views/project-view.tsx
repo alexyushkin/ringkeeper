@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/link";
+import { BackLink } from "@/components/history-arrows";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -344,9 +345,7 @@ export function ProjectView({ name }: { name: string }) {
 
   return (
     <>
-      <Link href="/projects" className="text-sm text-accent">
-        ‹ Clients & projects
-      </Link>
+      <BackLink href="/projects">‹ Clients & projects</BackLink>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{title}</h1>
       <p className="mb-4 text-sm text-muted">
         {clientName(about.owner)}&apos;s project · {instances.length} connection{instances.length === 1 ? "" : "s"}

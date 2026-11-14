@@ -3,6 +3,7 @@
 import Link from "@/components/link";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
+import { useOpenHere } from "@/lib/client/app-history";
 import type { SendKeys } from "@/lib/client/use-send-keys";
 import { namedInHash } from "@/lib/settings-sections";
 
@@ -345,9 +346,10 @@ export function Toggle({ label, checked, onChange, hint }: { label: string; chec
 
 /** Technical detail stays out of the way until asked for. */
 export function Details({ children, label = "Show details", defaultOpen = false }: { children: ReactNode; label?: string; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+  // Back to this page shows it open or folded as it was.
+  const [open, setOpen, ref] = useOpenHere(label, defaultOpen);
   return (
-    <div>
+    <div ref={ref} data-details={label}>
       <button type="button" onClick={() => setOpen(!open)} className="text-sm text-accent" aria-expanded={open}>
         {open && label === "Show details" ? "Hide details" : label}
       </button>
@@ -439,23 +441,39 @@ export function Tabs({ id, tabs }: { id: string; tabs: Tab[] }) {
   const [stored, setStored] = useRemembered(`rk-tab:${id}`, tabs[0]?.key ?? "");
   const [hash, setHash] = useState<string | null>(null);
   useEffect(() => {
-    // The URL names a tab to open: on arrival, or when the app is sent to
-    // another tab of the page it's on (the tray's Check for updates).
-    // #connections/acme-info: the tab, and something in it (see connectionHref).
+    // The URL names a tab to open: on arrival, on Back or Forward (each tab is a step in
+    // history), or when the app is sent to another tab of the page it's on (the tray's Check
+    // for updates). #connections/acme-info: the tab, and something in it (connectionHref).
     const follow = () => {
       const fromUrl = window.location.hash.slice(1).split("/")[0] ?? "";
       if (tabs.some((t) => t.key === fromUrl)) setHash(fromUrl);
     };
     follow();
     window.addEventListener("hashchange", follow);
-    return () => window.removeEventListener("hashchange", follow);
+    window.addEventListener("popstate", follow);
+    return () => {
+      window.removeEventListener("hashchange", follow);
+      window.removeEventListener("popstate", follow);
+    };
   }, []);
   const active = tabs.find((t) => t.key === (hash ?? stored)) ?? tabs[0];
+  useEffect(() => {
+    // The tab it opened on is in the address too, so Back to it opens it again.
+    if (!active || window.location.hash.slice(1).split("/")[0] === active.key) return;
+    if (window.location.hash) return; // something else in the address: leave it
+    try {
+      window.history.replaceState(window.history.state, "", `#${active.key}`);
+    } catch {
+      // nothing to do
+    }
+  }, [active?.key]);
   function open(key: string) {
-    setHash(null);
+    if (key === active?.key) return;
+    setHash(key);
     setStored(key);
     try {
-      window.history.replaceState(null, "", `#${key}`);
+      // A step in history, with Next's own state, so Back returns to the tab before.
+      window.history.pushState(window.history.state, "", `#${key}`);
     } catch {
       // nothing to do
     }

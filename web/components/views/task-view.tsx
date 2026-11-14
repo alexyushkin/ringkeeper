@@ -2,6 +2,7 @@
 
 import { toolLabel } from "@/components/connection-form";
 import Link from "@/components/link";
+import { BackLink } from "@/components/history-arrows";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
@@ -246,9 +247,7 @@ export function TaskView({ id }: { id: string }) {
 
   return (
     <>
-      <Link href={t.thread_id ? threadHref(t.thread_id) : "/tasks"} className="text-sm text-accent">
-        ‹ Back
-      </Link>
+      <BackLink href={t.thread_id ? threadHref(t.thread_id) : "/tasks"}>‹ Back</BackLink>
       <Changes task={id} />
       <Card className="mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-2">

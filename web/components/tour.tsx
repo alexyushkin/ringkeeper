@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { useBackCloses } from "@/lib/client/app-history";
+
 import { Button } from "@/components/ui";
 import { api } from "@/lib/client/api";
 
@@ -87,6 +89,7 @@ export function Tour({ auto, onSeen }: { auto: boolean; onSeen: () => void }) {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [step, finish]);
+  useBackCloses(step !== null, finish);
 
   const current = step === null ? undefined : STEPS[step];
   if (step === null || !current) return null;

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useBackCloses } from "@/lib/client/app-history";
+
 import { Alert, Button, Field } from "@/components/ui";
 import { ApiError, api, setConfirmHandler } from "@/lib/client/api";
 
@@ -31,6 +33,7 @@ export function ConfirmPassword() {
     return () => setConfirmHandler(null);
   }, []);
 
+  useBackCloses(open, () => finish(false));
   useEffect(() => {
     if (open) dialog.current?.showModal();
     else dialog.current?.close();

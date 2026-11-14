@@ -1,7 +1,7 @@
 "use client";
 
 import { HelpExtras, type HelpAnswer } from "@/components/help-answer";
-import Link from "@/components/link";
+import { BackLink } from "@/components/history-arrows";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -128,9 +128,7 @@ export function ThreadView({ id }: { id: string }) {
 
   return (
     <>
-      <Link href="/" className="text-sm text-accent">
-        ‹ All conversations
-      </Link>
+      <BackLink href="/">‹ All conversations</BackLink>
       <div className="mt-2 mb-4 flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold">{thread.data.title}</h1>
         {thread.data.archived ? <Badge>archived</Badge> : null}
