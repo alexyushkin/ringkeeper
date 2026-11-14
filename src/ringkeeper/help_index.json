@@ -79,6 +79,12 @@
 },
 {
 "doc": "connections",
+"anchor": "copy-what-a-connection-offers",
+"title": "Copy what a connection offers",
+"text": "Open a connection's card and click **Details**. Three buttons give you what someone helping you needs, in one click: - **Copy tool list** puts every tool the connection offers on the clipboard, as JSON: each tool's name, the server's own read-only and destructive flags (for an MCP server), the rule Ringkeeper applies (runs without asking, waits for your approval, or needs the name typed), its argument names, which of them are required, and the first line of its help. An MCP server is asked for its tools right then, so it can take a few seconds. - **Save tool list** saves the same list as a file. In the desktop app it goes to Downloads, with **Show in folder**; in a browser it's a normal download. - **Copy details for support** copies what kind of connection it is, how it signs in, when the sign-in ends, whether its last test worked and when, how many tools it has, and the app's version. None of them holds a token, a key or a password. The details for support leave out the connection's name, its client, the account it signed in as and what its last test said, so they hold no client data. The same three are in **Ctrl+K**: type the connection's name, or \"tool list\", or \"support\"."
+},
+{
+"doc": "connections",
 "anchor": "where-the-key-goes",
 "title": "Where the key goes",
 "text": "Into Ringkeeper's vault, encrypted with a key kept in Windows' credential store (or your server's key file). Keys never go to the AI, never appear in logs, and aren't shown again after you save them. To change one, paste the new key. Every service has its own page: services (where to get the token, what's held for approval, how to narrow it, what can be undone)."
@@ -621,7 +627,7 @@
 "doc": "troubleshooting",
 "anchor": "a-connection-says-plan-limit",
 "title": "A connection says Plan limit",
-"text": "The service answered that your plan with it doesn't include this. The key and the connection are fine, so another try won't help: Ringkeeper doesn't repeat the call for an hour, and that call doesn't count against the task. Anything else that fails in the task still does. Upgrade with the service, then press **Test** on the connection. If something here doesn't fix it, use **Help › Report a problem** in the app (or Ctrl+K, \"report\"). It gathers the version and the end of the logs, removes keys, tokens, passwords and email addresses, and shows you exactly what's in it (you can edit it) before you open a GitHub issue or save it as a zip. Nothing is sent by Ringkeeper itself."
+"text": "The service answered that your plan with it doesn't include this. The key and the connection are fine, so another try won't help: Ringkeeper doesn't repeat the call for an hour, and that call doesn't count against the task. Anything else that fails in the task still does. Upgrade with the service, then press **Test** on the connection. If something here doesn't fix it, use **Help › Report a problem** in the app (or Ctrl+K, \"report\"). It gathers the version and the end of the logs, removes keys, tokens, passwords and email addresses, and shows you exactly what's in it (you can edit it) before you open a GitHub issue or save it as a zip. Nothing is sent by Ringkeeper itself. For one connection, open its card's **Details** and use **Copy details for support** or **Copy tool list** (see Connections)."
 },
 {
 "doc": "troubleshooting",

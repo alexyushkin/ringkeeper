@@ -64,6 +64,7 @@ from ringkeeper.services import (
     claude_place,
     client_month,
     clients,
+    connection_export,
     google_oauth,
     instances,
     local_servers,
@@ -901,6 +902,22 @@ def connection_tools(name: str, session: SessionDep) -> dict[str, Any]:
         return mcp_tools.refresh(name)
     except (ToolError, TimeoutError) as error:
         raise HTTPException(502, detail=scrub(str(error))) from None
+
+
+@router.get("/connections/{name}/tool-list")
+def connection_tool_list(name: str) -> dict[str, Any]:
+    """Every tool the connection offers, to copy or save: no token, key or client data. An MCP
+    server is asked now, so it may take a while to start."""
+    try:
+        return connection_export.tool_list(name)
+    except (ToolError, TimeoutError) as error:
+        raise HTTPException(502, detail=scrub(str(error))) from None
+
+
+@router.get("/connections/{name}/support")
+def connection_support(name: str, session: SessionDep) -> dict[str, Any]:
+    """What support needs to know about a connection, with no secret and no client data."""
+    return connection_export.support_details(session, name)
 
 
 class ToolRulesIn(Input):

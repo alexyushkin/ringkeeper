@@ -7,6 +7,7 @@ import { LocalUpdate, ServiceMark } from "@/components/catalog";
 import { connectionTitle, defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { GoogleAccount } from "@/components/google";
+import { ConnectionExports, EXPORT_ACTIONS, useAsked, type ExportAction, type ExportStart } from "@/components/connection-exports";
 import { McpTools } from "@/components/mcp-tools";
 import { EveryProject } from "@/components/memory";
 import { Alert, Badge, Button, ConfirmButton, Details, EnvBadge, Field, LinkButton, Select, Toggle, timeAgo } from "@/components/ui";
@@ -399,7 +400,22 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
   }, [targeted, connection.name]);
   // ...and with /link, opens its Link to project… right away.
   const [linking, setLinking] = useState(() => typeof window !== "undefined" && window.location.hash === `#connections/${encodeURIComponent(connection.name)}/link`);
+  // ...and with /copy-tools, /save-tools or /support (from Ctrl+K), runs that once.
+  const [start, setStart] = useState<ExportStart | null>(() => {
+    if (typeof window === "undefined") return null;
+    const asked = window.location.hash.slice(`#connections/${encodeURIComponent(connection.name)}/`.length);
+    return targeted && (EXPORT_ACTIONS as string[]).includes(asked) ? { action: asked as ExportAction, n: 1 } : null;
+  });
+  useEffect(() => {
+    if (start?.n === 1) window.history.replaceState(null, "", `#connections/${encodeURIComponent(connection.name)}`);
+  }, [start, connection.name]);
   const [open, setOpen] = useState(targeted && !linking);
+  // Ctrl+K while this card is on screen.
+  useAsked(connection.name, (action) => {
+    setOpen(true);
+    setStart((before) => ({ action, n: (before?.n ?? 1) + 1 }));
+    document.getElementById(`connection-${connection.name}`)?.scrollIntoView({ block: "center" });
+  });
   const [title, setTitle] = useState(connectionTitle(connection));
   const [expiry, setExpiry] = useState(typeof connection.config.expires_at === "string" ? connection.config.expires_at : "");
   const [secret, setSecret] = useState("");
@@ -531,6 +547,7 @@ export function LibraryCard({ connection, projects, services, onChange }: { conn
           {connection.config.package ? <LocalUpdate connection={connection.name} client={connection.owner} onDone={onChange} /> : null}
           <TestButton name={connection.name} onDone={() => onChange()} />
           {connection.type === "mcp" ? <McpTools name={connection.name} onChange={onChange} /> : null}
+          <ConnectionExports name={connection.name} start={start} />
           {connection.type === "google" ? <GoogleAccount name={connection.name} onChange={onChange} /> : null}
           {savesDrafts(connection) ? (
             <Toggle

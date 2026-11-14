@@ -112,6 +112,27 @@ Ringkeeper then checks the scope on every call that project's tasks make:
 A link without a scope reaches the whole service, so narrow every client's link. Refusals
 are in Activity like any other.
 
+## Copy what a connection offers
+
+Open a connection's card and click **Details**. Three buttons give you what someone helping you
+needs, in one click:
+
+- **Copy tool list** puts every tool the connection offers on the clipboard, as JSON: each
+  tool's name, the server's own read-only and destructive flags (for an MCP server), the rule
+  Ringkeeper applies (runs without asking, waits for your approval, or needs the name typed),
+  its argument names, which of them are required, and the first line of its help. An MCP server
+  is asked for its tools right then, so it can take a few seconds.
+- **Save tool list** saves the same list as a file. In the desktop app it goes to Downloads, with
+  **Show in folder**; in a browser it's a normal download.
+- **Copy details for support** copies what kind of connection it is, how it signs in, when the
+  sign-in ends, whether its last test worked and when, how many tools it has, and the app's
+  version.
+
+None of them holds a token, a key or a password. The details for support leave out the
+connection's name, its client, the account it signed in as and what its last test said, so they
+hold no client data. The same three are in **Ctrl+K**: type the connection's name, or "tool
+list", or "support".
+
 ## Where the key goes
 
 Into Ringkeeper's vault, encrypted with a key kept in Windows' credential store
