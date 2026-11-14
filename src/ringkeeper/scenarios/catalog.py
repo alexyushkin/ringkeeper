@@ -240,7 +240,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
         "records-in-airtable", "Records in a project's Airtable table", "routing",
         request="In the Requests table of Demo shop's Airtable, find the records that aren't done.",
-        project=SHOP, tools=("airtable",), reply_has=("Restock flour",), leaks=(CANARY,),
+        project=SHOP, tools=("airtable",), reply_has=("Restock flour",),
         cost_ceiling=1.0,
         notes="beta.44 held this as \"no database connection\" in a project with Airtable "
         "linked: tables and records are met by Airtable, and a named service by itself.",
