@@ -32,6 +32,14 @@ publishes it as the release notes and the app shows it with the update.
 - **Copy details for support on a task's page.** It copies how the task ran: its sessions, why
   each started, how each ended, its held calls and the app's version, with no request, result
   or client data. See [How a task ran](docs/troubleshooting.md#how-a-task-ran).
+- **Ringkeeper's own tools take the names a model guesses.** A worker that called `recall`
+  with `query` was refused, since the argument was `words`. Now it's `query`, and `words`, `q`,
+  `search` and `text` work too; `remember` takes `text` or `content` for its note. Across the
+  gateway, `query` works for a search or an SQL statement, `id` for the one thing a tool reads,
+  `limit` for how many and `name` for a title.
+- **A refused call says what the tool takes.** Every gateway tool now answers a wrong argument
+  with each argument it takes, its type and whether it's needed ("It takes: query (text)"), so
+  the next call is right. Before, only calls passed through to an MCP server did.
 
 
 ## 0.1.0-beta.45 (2026-11-14)

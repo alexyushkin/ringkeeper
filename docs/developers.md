@@ -213,6 +213,16 @@ There is one MCP endpoint per service type, served over Streamable HTTP on
 | `/mcp/github` | `list_repos`, `get_repo`, `list_issues`, `get_issue`, `list_pulls`, `get_pull`, `get_file`, `list_branches`, `list_commits`, `list_check_runs` | `create_issue`, `comment`, `update_issue`, `create_pull`, `merge_pull` (name typed), `push_branch` (all always held) |
 | `/mcp/mcp` | `list_tools` | `call_tool` (held unless the tool is read-only, by its annotations or your choice) |
 
+A call's arguments are checked in one place, `gateway.arguments`, for every endpoint (the
+memory, pass and architect tools too). The name a model would guess is taken alongside a
+tool's own: `query` for its search words (`recall` takes `query`, and `words`, `q`, `search`
+or `text`), `query` for `sql`, `id` for the one thing it reads (`record_id`, `workflow_id`,
+`uid`...), `limit` for `max_rows` or `page_size`, `name` for `title`, and `text` or `content`
+for `remember`'s `note`. A guess is used only when the tool doesn't take that name itself and
+the call doesn't give the real one. A call that still doesn't fit is refused with what the tool
+takes, from its schema: "recall wasn't run: `topic` isn't something this tool takes. It takes:
+query (text)."
+
 A worker only gets the endpoints of the services its project is connected to, and each
 endpoint lists only the tools its connections can use: a tool their links don't allow, or one a
 Google account wasn't given access for, isn't listed (`gateway.listing`).
