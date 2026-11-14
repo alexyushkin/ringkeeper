@@ -11,11 +11,11 @@ from sqlalchemy.orm import Session
 from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Task, TaskStatus, WorkerSession
-from ringkeeper.services import tasks
+from ringkeeper.services import goes_on, tasks
 
 SAID = "Ringkeeper restarted during this task."
 ERROR = f"{SAID} Resume it from Home, or send a follow-up to continue."
-RESUME = "Ringkeeper restarted while you were working on this. Pick up where you left off."
+RESUME = goes_on.RESUMED
 LISTED_FOR = timedelta(days=3)
 MOST = 50
 

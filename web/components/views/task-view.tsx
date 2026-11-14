@@ -15,6 +15,7 @@ import { AddConnection } from "@/components/missing-connection";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { RememberThis, SavedToMemory } from "@/components/memory";
+import { TaskSupport } from "@/components/task-support";
 import { TaskFiles } from "@/components/task-files";
 import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
 import { taskHref, threadHref } from "@/lib/client/routes";
@@ -355,6 +356,8 @@ export function TaskView({ id }: { id: string }) {
 
       {/* Under the latest result, where the reader is. */}
       <Waiting decisions={waiting} onDone={pending.reload} />
+
+      <TaskSupport id={id} />
     </>
   );
 }

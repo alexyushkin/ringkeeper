@@ -47,6 +47,7 @@ from ringkeeper.services import (
     cleanup,
     connection_note,
     drafts,
+    goes_on,
     holds,
     inbox,
     interrupted,
@@ -172,7 +173,7 @@ class Collected:
 
 REPORT = "Try again; if it happens again, use Report a problem on the Help page."
 # What a task is told when it's run again after Claude's side failed.
-CONTINUE = "Claude's side failed for a moment. Continue where you left off."
+CONTINUE = goes_on.CONTINUE
 NO_RESULT = "The task stopped without finishing. Send a follow-up to continue, or try again."
 
 
@@ -760,10 +761,13 @@ class Manager:
                 # Held calls first: the session is resumed once the user decides them.
                 waiting = holds.session_ended(session, self.settings, row, status)
                 # What it said at the end is the task's result (a feature's comes from
-                # the architect), shown on its card, its routine run and in channels.
+                # the architect), shown on its card, its routine run and in channels. Kept
+                # while held calls wait too: it's the answer, and what the session that goes
+                # on after them says goes below it (services.goes_on).
                 said = result.get("result")
-                if not job.feature and not waiting and isinstance(said, str) and said.strip():
+                if not job.feature and isinstance(said, str) and said.strip():
                     kept = kept_result(said, links.task_page(self.settings, task.id))
+                    kept = goes_on.result(task.summary, kept, row)
                     task.summary = drafts.linked(session, task, kept)  # where its drafts are
                 if status is TaskStatus.NOT_DONE:
                     task.offer = link_offer.find(session, task, collected.needs)

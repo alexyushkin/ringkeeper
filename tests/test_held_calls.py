@@ -160,6 +160,36 @@ def test_a_denied_hold_resumes_with_the_refusal() -> None:
     assert decision.status is DecisionStatus.DENIED
 
 
+ANSWER = "Three emails from the flour supplier, the last on Tuesday."
+EXTRA = "I can't write a tailored reply without more detail."
+
+
+class Answers(Worker):
+    """Answers the request, with a call held; once that's decided, says something else."""
+
+    def script(self, spec: WorkerSpec) -> Script:
+        done = super().script(spec)
+        said = EXTRA if json.loads(spec.env["RINGKEEPER_TASK"])["session_ordinal"] > 1 else ANSWER
+        return Script(before=done.before, after=[result_line(text=said), workspace_line([])])
+
+
+@pytest.mark.usefixtures("connections")
+@pytest.mark.parametrize("choice", ["approve", "deny"])
+def test_the_answer_stays_the_result_after_held_calls_are_decided(choice: str) -> None:
+    # Real use: a task answered the request with a call held; the one-turn session after the
+    # decision said something else, and that replaced the answer.
+    worker = Answers("service")
+    m, _ = manager(worker.script)
+    task_id = run_task()
+    m.tick()
+    m.wait_idle()
+    assert task(task_id).summary == ANSWER  # shown while the call waits too
+    [decision] = held(task_id)
+    decide(str(decision.id), choice)
+    drive(m, lambda: task(task_id).status is TaskStatus.SUCCEEDED)
+    assert task(task_id).summary == ANSWER + "\n\n" + EXTRA  # what it said after goes below
+
+
 @pytest.mark.usefixtures("connections")
 def test_a_question_about_a_held_call_is_not_asked_twice() -> None:
     worker = Worker("service", also_asks=True)

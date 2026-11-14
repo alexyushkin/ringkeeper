@@ -54,6 +54,7 @@ from ringkeeper.services import (
     client_month,
     decisions,
     examples,
+    goes_on,
     needs,
     paging,
     projects,
@@ -525,7 +526,7 @@ def _answer_cap(
     if sdk_session is None:
         raise RuleViolationError(CANT_CONTINUE)
     prompt = (
-        f"You were paused at the spending cap; the user allowed ${payload['budget']:.2f} more. "
+        f"{goes_on.RAISED} the user allowed ${payload['budget']:.2f} more. "
         "Continue the task from where you were, and keep it lean."
     )
     tasks.add_session(session, settings, task, prompt, role, sdk_session_id=sdk_session)

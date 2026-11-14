@@ -20,6 +20,7 @@ def result_line(
     turns: int = 3,
     cost: float | None = 0.0123,
     session_id: str = "sdk-1",
+    text: str = "All done.",
 ) -> str:
     return line(
         "sdk.result",
@@ -27,7 +28,7 @@ def result_line(
             "_kind": "ResultMessage",
             "subtype": subtype,
             "is_error": subtype != "success",
-            "result": "All done." if subtype == "success" else "",
+            "result": text if subtype == "success" else "",
             "num_turns": turns,
             "session_id": session_id,
             "total_cost_usd": cost,

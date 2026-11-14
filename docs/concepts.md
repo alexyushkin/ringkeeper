@@ -48,6 +48,10 @@ Nothing happens until you approve it, and everything is logged.
 5. The task goes on with the result and reports back in the conversation. Most
    data changes can be undone for 7 days ([what can and can't](undo.md)).
 
+A task's result answers your request as you asked it. When the task goes on by itself (after
+you decide a held change, after Claude's side failed for a moment, after a restart or a raised
+spending cap), what it says then goes below that answer, never in its place.
+
 A request that clearly needs a kind of connection the project doesn't have (ads, email, a
 calendar, tables and records, a spreadsheet, files, payments) doesn't start a task at all. The
 reply says so at once, with what it looked for and what the project has: "This project has no
