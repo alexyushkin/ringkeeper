@@ -82,6 +82,12 @@ DISALLOWED_TOOLS = {
     Autonomy.STANDARD: [],
     Autonomy.RELAXED: [],
 }
+# Claude Code's own tools no worker uses: each one's definition is in every request, and
+# together with the list of Claude Code's bundled skills (it goes with Skill) they were more
+# than half of a data task's first request (docs/developers.md, "A worker's first request").
+UNUSED_TOOLS = ["Workflow", "ScheduleWakeup", "ReportFindings", "Skill", "ListAgents"]
+# Subagents help with work on code; anywhere else they're one more definition to send.
+SUBAGENT_TOOLS = ["Agent", "Task"]
 MAX_EVENT_BYTES = 64 * 1024
 REVOKED_BY = "session-manager"
 VOLUME_SWEEP_SECONDS = 3600
@@ -591,10 +597,12 @@ class Manager:
                 else {f"ringkeeper-{name}": f"{base}/mcp/{name}" for name in endpoints}
             ),
             "disallowed_tools": (
-                architect.DISALLOWED_TOOLS
+                [*architect.DISALLOWED_TOOLS, *UNUSED_TOOLS]
                 if architect_role
                 else [
                     *DISALLOWED_TOOLS[autonomy],
+                    *UNUSED_TOOLS,
+                    *([] if uses_git else SUBAGENT_TOOLS),
                     *([] if web else web_access.TOOLS),
                     *(setup_check.READ_ONLY_TOOLS if read_only else ()),
                 ]
