@@ -559,7 +559,7 @@ def _answer_route(
         if decision.thread_id is not None:
             threads.add_reply(session, decision.thread_id, str(ask["reason"]))
         return None
-    if (lacks := needs.missing(session, choice, routed.get("needs") or [])) is not None:
+    if (lacks := needs.missing(session, choice, routed)) is not None:
         return _held_for_connection(session, decision, choice, routed, lacks)
     kind = TaskKind(routed["kind"]) if routed.get("kind") else None
     message = payload.get("message")

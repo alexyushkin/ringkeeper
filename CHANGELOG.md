@@ -5,6 +5,14 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A project that can do the work isn't told it has no connection.** "In the Leads table of
+  Airtable, find..." in a project with Airtable linked was answered "This project has no
+  database connection". Now a connection the routing call picks for the work, or one its
+  instructions name, settles it; tables and records are met by Airtable, a database, Notion, a
+  spreadsheet or a CRM; a service the request names is met only by that service; and when it
+  isn't sure, the task starts. When it does hold a request, the reply says what it looked for
+  and what the project has: "It has Airtable, Google and n8n, and none of them can do
+  payments."
 - **Copy a connection's tool list, or its details for support, in one click.** Every
   connection's card has **Copy tool list**, **Save tool list** and **Copy details for support**
   under **Details**, and Ctrl+K has them too. The tool list gives each tool's name, the server's

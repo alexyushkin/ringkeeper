@@ -238,6 +238,14 @@ SCENARIOS: tuple[Scenario, ...] = (
         "button to add one, instead of a feature task that reads the code and ends Not done.",
     ),
     Scenario(
+        "records-in-airtable", "Records in a project's Airtable table", "routing",
+        request="In the Requests table of Demo shop's Airtable, find the records that aren't done.",
+        project=SHOP, tools=("airtable",), reply_has=("Restock flour",), leaks=(CANARY,),
+        cost_ceiling=1.0,
+        notes="beta.44 held this as \"no database connection\" in a project with Airtable "
+        "linked: tables and records are met by Airtable, and a named service by itself.",
+    ),
+    Scenario(
         "help", "Help answered by the real model", "routing",
         request="How do I undo a change in Ringkeeper?",
         no_work=True, by_help=True, reply_has=("undo",), cost_ceiling=0.25,

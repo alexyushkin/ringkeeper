@@ -136,6 +136,8 @@ def _task_fields(task: RoutedTask) -> dict[str, Any]:
         "outcome": task.outcome,
         "agent": task.agent,
         "needs": list(task.needs),
+        "service": task.service,
+        "connections": list(task.connections),
     }
 
 
@@ -533,7 +535,7 @@ def _route_tasks(
             routed.notes.append(
                 f"Already working on that: [{titles.of(session, same.project)}]({link})"
             )
-        elif (lacks := needs.missing(session, task.project, task.needs)) is not None:
+        elif (lacks := needs.missing(session, task.project, _task_fields(task))) is not None:
             routed.missing.append(
                 needs.entry(session, message.id, task.project, _task_fields(task), lacks)
             )

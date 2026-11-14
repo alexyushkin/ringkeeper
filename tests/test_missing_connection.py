@@ -93,7 +93,10 @@ def test_a_request_for_ads_in_a_project_without_them_starts_nothing_and_says_so(
     assert all_tasks() == []  # no planner, no worker, no reading the repository
     asked, reply = messages(thread_id)[-2:]
     assert reply.role is MessageRole.ROUTER
-    assert reply.body == "This project has no Meta Ads connection."
+    # What it looked for, and what the project has.
+    assert reply.body == (
+        "This project has no Meta Ads connection, and no connections linked at all."
+    )
     assert reply.routing is not None
     [shown] = reply.routing["missing"]
     assert shown["label"] == "Add a Meta Ads connection to Bakery site"
@@ -155,7 +158,7 @@ def test_two_projects_say_which_one_lacks_it() -> None:
     route(output(ads_task("hb-site"), ads_task("hb-shop")))
     assert [t.project for t in all_tasks()] == ["hb-shop"]
     body = messages(thread_id)[-1].body
-    assert "Bakery site has no Meta Ads connection." in body
+    assert "Bakery site has no Meta Ads connection" in body
     assert "Working on it in Bakery shop." in body
 
 
@@ -164,12 +167,15 @@ def test_two_projects_say_which_one_lacks_it() -> None:
     [
         ("meta_ads", {"type": InstanceType.MCP, "config": {"remote": "pipeboard"}}, True),
         ("meta_ads", {"type": InstanceType.MCP, "config": {"remote": "notion"}}, False),
-        # A server Ringkeeper can't tell the kind of counts by its name.
+        # A server Ringkeeper can't tell the kind of counts by its name...
         ("database", {"type": InstanceType.MCP, "config": {}, "title": "Bakery Postgres"}, True),
         ("payments", {"type": InstanceType.HTTP, "config": {}, "title": "Stripe API"}, True),
+        ("records", {"type": InstanceType.MCP, "config": {}, "title": "Stripe tools"}, False),
+        # ... and one whose name says nothing might do it: unsure, so it counts.
+        ("records", {"type": InstanceType.MCP, "config": {}, "title": "Bakery tools"}, True),
         # A Recommended service is what its key says, whatever it's called.
-        ("database", {"type": InstanceType.MCP, "config": {"remote": "notion"},
-                      "title": "Database notes"}, False),
+        ("payments", {"type": InstanceType.MCP, "config": {"remote": "notion"},
+                      "title": "Payment notes"}, False),
         ("email", {"type": InstanceType.MAILBOX, "config": {}}, True),
         ("calendar", {"type": InstanceType.VENDOR, "config": {"vendor": "microsoft"}}, True),
         ("google_ads", {"type": InstanceType.VENDOR, "config": {"vendor": "google_ads"}}, True),
@@ -198,7 +204,7 @@ def test_answering_which_project_holds_it_too() -> None:
         assert answered.task is None
     assert all_tasks() == []
     reply = messages(thread_id)[-1]
-    assert reply.body == "This project has no Meta Ads connection."
+    assert reply.body.startswith("This project has no Meta Ads connection")
     assert reply.routing is not None
     assert reply.routing["missing"][0]["project"] == "hb-site"
 
@@ -250,3 +256,111 @@ def test_the_task_page_and_the_conversation_can_run_it(owner: TestClient) -> Non
     assert card["offer"]["add"] == "meta_ads"
     again = owner.post(f"/tasks/{ident}/run-again")
     assert again.status_code == 201
+
+
+# Real use (beta.44): "In the Leads table of Airtable, find records that are not leads..." in
+# a project with Airtable linked was held as "no database connection".
+LEADS_REQUEST = "In the Leads table of Airtable, find records that are not leads for the bakery"
+
+
+def link(name: str, project: str = "hb-shop", **connection: Any) -> None:
+    connection.setdefault("type", InstanceType.MCP)
+    with session_scope() as session:
+        make_instance(session, name, owner=CLIENT, **connection)
+    bind(project, name)
+
+
+def link_the_shops_connections() -> None:
+    link("hb-airtable", type=InstanceType.AIRTABLE, title="Airtable · Harbor Bakery")
+    link("hb-google", type=InstanceType.GOOGLE, title="Google · Harbor Bakery")
+    link("hb-n8n", type=InstanceType.N8N, title="n8n · Harbor Bakery")
+
+
+def records_task(**extra: Any) -> dict[str, Any]:
+    fields: dict[str, Any] = {"kind": "data", "prompt": LEADS_REQUEST, **extra}
+    return routed("hb-shop", 0.95, **fields)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        # As the router answered then: "database", and its prompt named the connection.
+        {"needs": ["database"], "prompt": f"Use hb-airtable. {LEADS_REQUEST}"},
+        # The connection the routing call picked.
+        {"needs": ["records"], "connections": ["hb-airtable"]},
+        # The service the message names.
+        {"needs": ["records"], "service": "Airtable"},
+        # Only the kind: Airtable is a table of records.
+        {"needs": ["database"]},
+    ],
+)
+def test_a_project_that_has_airtable_runs_the_airtable_request(said: dict[str, Any]) -> None:
+    link_the_shops_connections()
+    thread_id = ask(LEADS_REQUEST)
+    route(output(records_task(**said)))
+    [task] = all_tasks()
+    assert task.project == "hb-shop"
+    assert "no database connection" not in messages(thread_id)[-1].body
+
+
+def test_a_named_service_only_that_service_does() -> None:
+    link("hb-db", type=InstanceType.SUPABASE, title="Supabase · Harbor Bakery")
+    link("hb-google", type=InstanceType.GOOGLE, title="Google · Harbor Bakery")
+    thread_id = ask(LEADS_REQUEST)
+    route(output(records_task(needs=["records"], service="Airtable")))
+    assert all_tasks() == []  # a database has records, but the message asked for Airtable
+    assert messages(thread_id)[-1].body == (
+        "This project has no Airtable connection. It has Google and Supabase, and none of them "
+        "is Airtable."
+    )
+
+
+def test_the_reply_says_what_it_looked_for_and_what_the_project_has() -> None:
+    link_the_shops_connections()
+    thread_id = ask("Charge the deposit for the wedding cake order")
+    route(output(routed("hb-shop", 0.95, kind="ops", needs=["payments"])))
+    assert all_tasks() == []
+    assert messages(thread_id)[-1].body == (
+        "This project has no payments connection. It has Airtable, Google and n8n, and none of "
+        "them can do payments."
+    )
+
+
+# A word that maps to several kinds of connection: any one of them linked will do.
+@pytest.mark.parametrize(
+    ("word", "kind", "connection"),
+    [
+        ("table", "records", {"type": InstanceType.AIRTABLE}),
+        ("table", "records", {"type": InstanceType.SUPABASE}),
+        ("records", "records", {"config": {"remote": "notion"}}),
+        ("records", "records", {"type": InstanceType.VENDOR, "config": {"vendor": "hubspot"}}),
+        ("records", "records", {"type": InstanceType.GOOGLE}),
+        ("sheet", "spreadsheet", {"type": InstanceType.GOOGLE}),
+        ("sheet", "spreadsheet", {"type": InstanceType.AIRTABLE}),
+        ("sheet", "spreadsheet", {"type": InstanceType.VENDOR, "config": {"vendor": "microsoft"}}),
+        ("mail", "email", {"type": InstanceType.GOOGLE}),
+        ("mail", "email", {"type": InstanceType.MAILBOX}),
+        ("mail", "email", {"type": InstanceType.VENDOR, "config": {"vendor": "microsoft"}}),
+        ("calendar", "calendar", {"type": InstanceType.GOOGLE}),
+        ("calendar", "calendar", {"config": {"remote": "calcom"}}),
+        ("calendar", "calendar", {"type": InstanceType.VENDOR, "config": {"vendor": "microsoft"}}),
+        ("files", "files", {"type": InstanceType.GOOGLE}),
+        ("files", "files", {"type": InstanceType.S3}),
+        ("files", "files", {"type": InstanceType.VENDOR, "config": {"vendor": "microsoft"}}),
+    ],
+)  # fmt: skip
+def test_any_fitting_connection_meets_the_word(
+    word: str, kind: str, connection: dict[str, Any]
+) -> None:
+    link("hb-thing", **connection)
+    ask(f"Do something with the {word} for the spring sale")
+    route(output(routed("hb-shop", 0.95, kind="data", needs=[kind])))
+    assert [t.project for t in all_tasks()] == ["hb-shop"], (word, connection)
+
+
+@pytest.mark.parametrize("kind", ["records", "spreadsheet", "email", "calendar", "files"])
+def test_with_nothing_of_that_kind_linked_it_is_held(kind: str) -> None:
+    link("hb-pay", config={"remote": "stripe"}, title="Stripe · Harbor Bakery")
+    ask("Do something for the spring sale")
+    route(output(routed("hb-shop", 0.95, kind="data", needs=[kind])))
+    assert all_tasks() == []

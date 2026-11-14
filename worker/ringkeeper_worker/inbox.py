@@ -71,8 +71,9 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
         "the main thing asked for isn't in your answer, even if you did part of it or offer "
         "ways forward. The task then ends as not done, with "
         "your reason, instead of done. `needs`: the kind of connection that was missing, if "
-        "that's why: one of email, calendar, payments, ads, meta_ads, google_ads, google, slack, "
-        "database, airtable, n8n, github, vercel, or empty. `done`: what you did finish, when "
+        "that's why: one of email, calendar, records, spreadsheet, files, payments, ads, meta_ads, "
+        "google_ads, google, microsoft, slack, airtable, notion, stripe, n8n, github, vercel, or "
+        "empty. `done`: what you did finish, when "
         "part of it is done (it then shows as partly done); leave it out when nothing is. Still "
         "end your turn with a short note for the operator.",
         {

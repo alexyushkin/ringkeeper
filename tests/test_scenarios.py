@@ -72,7 +72,7 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
     } <= keys  # fmt: skip
     assert {s.needs for s in SCENARIOS} >= set(world.SANDBOXES)
     # A full run stays a few dollars at most: routing scenarios are short and cheap.
-    assert 20 <= len([s for s in SCENARIOS if not s.needs]) <= 36
+    assert 20 <= len([s for s in SCENARIOS if not s.needs]) <= 37
 
 
 @pytest.mark.parametrize(
