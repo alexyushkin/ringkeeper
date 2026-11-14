@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.45 (2026-11-14)
 
 - **Copy a connection's tool list, or its details for support, in one click.** Every
   connection's card has **Copy tool list**, **Save tool list** and **Copy details for support**
