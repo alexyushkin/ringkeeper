@@ -712,6 +712,8 @@ class WorkerSession(Base):
     token_jti: Mapped[str | None] = mapped_column(Text)
     exit_code: Mapped[int | None] = mapped_column(Integer)
     turns: Mapped[int | None] = mapped_column(Integer)
+    # Its tool calls so far, counted as they happen: the task's Steps.
+    tool_calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # The SDK's own estimate from list prices; not billing data.
     cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6, asdecimal=False))
     usage: Mapped[dict[str, Any] | None] = mapped_column(Doc)

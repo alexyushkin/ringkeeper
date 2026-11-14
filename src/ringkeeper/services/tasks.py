@@ -565,6 +565,15 @@ def add_event(
     session.flush()
 
 
+def count_tool_calls(session: Session, session_id: uuid.UUID, called: int) -> None:
+    """A session's tool calls so far: its task's Steps, as they happen."""
+    session.execute(
+        update(WorkerSession)
+        .where(WorkerSession.id == session_id)
+        .values(tool_calls=WorkerSession.tool_calls + called)
+    )
+
+
 def events(
     session: Session, session_ids: Sequence[uuid.UUID], *, after_id: int = 0, limit: int = 500
 ) -> Sequence[SessionEvent]:

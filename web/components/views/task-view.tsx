@@ -2,7 +2,7 @@
 
 import { toolLabel } from "@/components/connection-form";
 import Link from "@/components/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -18,6 +18,7 @@ import { RememberThis, SavedToMemory } from "@/components/memory";
 import { TaskSupport } from "@/components/task-support";
 import { TaskFiles } from "@/components/task-files";
 import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
+import { throttle } from "@/lib/throttle";
 import { taskHref, threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 import { useSendKeys } from "@/lib/client/use-send-keys";
@@ -29,6 +30,7 @@ interface Session {
   model: string | null;
   status: string;
   turns: number | null;
+  steps: number;
   cost_usd: number | null;
   prompt: string;
   checks: { passed?: boolean; results?: { command: string; passed: boolean; exit_code: number; output: string }[] } | null;
@@ -59,6 +61,7 @@ interface Task {
   changed_files: string[];
   diff: string | null;
   turns: number;
+  steps: number; // tool calls, counted as they happen
   cost_usd: number | null;
   tokens?: { input: number; output: number; cache_read: number; cache_write: number; requests: number };
   created_at: string;
@@ -204,6 +207,8 @@ export function TaskView({ id }: { id: string }) {
   useEffect(() => {
     void more();
   }, [more]);
+  // Steps go up with each tool call: a burst of transcript lines reloads the task a little.
+  const recount = useMemo(() => throttle(task.reload, 1_500), [task.reload]);
   useLive((event) => {
     if (event.type === RESYNC) {
       task.reload();
@@ -213,7 +218,10 @@ export function TaskView({ id }: { id: string }) {
     }
     if (event.type === "approval") pending.reload();
     if (event.task_id !== id) return;
-    if (event.type === "session_event") void more();
+    if (event.type === "session_event") {
+      void more();
+      recount();
+    }
     if (event.type === "task") task.reload();
   });
 
@@ -273,7 +281,7 @@ export function TaskView({ id }: { id: string }) {
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-xs text-muted">Steps</dt>
-            <dd>{t.turns}</dd>
+            <dd>{t.steps}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted">Cost (estimate)</dt>
@@ -302,7 +310,7 @@ export function TaskView({ id }: { id: string }) {
           <ul className="space-y-1 text-xs">
             {t.session_list.map((s) => (
               <li key={s.id}>
-                #{s.ordinal} {s.role} · {s.model ?? "default model"} · {s.status} · {s.turns ?? 0} steps · {money(s.cost_usd)}
+                #{s.ordinal} {s.role} · {s.model ?? "default model"} · {s.status} · {s.steps} step{s.steps === 1 ? "" : "s"} · {money(s.cost_usd)}
               </li>
             ))}
           </ul>

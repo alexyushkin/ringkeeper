@@ -220,6 +220,7 @@ def _task_card(task: Task, owners: dict[str, str] | None = None) -> dict[str, An
         "thread_id": task.thread_id,
         "created_at": task.created_at, "started_at": task.started_at,
         "finished_at": task.finished_at, "turns": sum(s.turns or 0 for s in rows),
+        "steps": sum(s.tool_calls for s in rows),  # tool calls, counted as they happen
         "cost_usd": _cost(rows), "sessions": len(rows),
         "archived": task.archived_at is not None,
         "files": len(task.changed_files),  # files it made or changed (GET .../files)
@@ -298,7 +299,8 @@ def get_task(task_id: str, session: SessionDep) -> dict[str, Any]:
         "session_list": [
             {
                 "id": str(s.id), "ordinal": s.ordinal, "role": s.role.value, "model": s.model,
-                "status": s.status.value, "turns": s.turns, "cost_usd": s.cost_usd,
+                "status": s.status.value, "turns": s.turns, "steps": s.tool_calls,
+                "cost_usd": s.cost_usd,
                 "prompt": s.prompt, "checks": s.checks, "action": s.action,
                 "result": s.result_subtype, "error": s.error, "created_at": s.created_at,
             }
