@@ -135,6 +135,12 @@ def retry_message(message_id: uuid.UUID, session: WriteSessionDep) -> MessageOut
     return MessageOut.model_validate(threads.retry_routing(session, str(message_id)))
 
 
+@router.post("/messages/{message_id}/nudge")
+def nudge_message(message_id: uuid.UUID, session: WriteSessionDep) -> MessageOut:
+    """A request with no reply yet: wake the router (the conversation's Retry)."""
+    return MessageOut.model_validate(threads.nudge(session, str(message_id)))
+
+
 @router.post("/messages/{message_id}/run-now", status_code=201)
 def run_waiting(message_id: uuid.UUID, session: WriteSessionDep) -> dict[str, Any]:
     """A request held back for a missing connection, run now that its project has one."""

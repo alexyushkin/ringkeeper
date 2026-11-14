@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
-import { api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { RESYNC, api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
 import { clientName, projectName, useScope } from "@/lib/client/scope";
 
@@ -64,7 +64,7 @@ export default function TasksPage() {
   const [tidied, setTidied] = useState<string | null>(null);
   const pick = useSelection();
   useLive((event) => {
-    if (event.type === "task") {
+    if (event.type === "task" || event.type === RESYNC) {
       tasks.reload();
       old.reload();
     }

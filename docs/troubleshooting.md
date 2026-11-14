@@ -51,10 +51,11 @@ Only Claude's own signals count: a task that fails while talking about another s
   The conversation says so once, and again when Claude is back. After 12 hours it stops
   trying and offers **Try again**.
 - **Claude takes too long to work out where a request goes.** Under a request, the
-  conversation says "Finding the right project…", and after 20 seconds "Still working out
-  where this goes…". Working out where it goes stops after 90 seconds and starts over at
-  once. If that's slow too, the request waits and is tried again like the rest above, and
-  the conversation says so once.
+  conversation says "Routing…" at once, and after 10 seconds with no reply "No reply after 10
+  seconds." with **Retry**, which looks again and wakes the router (it never sends the request
+  twice). Working out where it goes stops after 90 seconds and starts over at once. If that's
+  slow too, the request waits and is tried again like the rest above, and the conversation
+  says so once.
 - **The sign-in to Claude is missing or expired.** Sign in again in Settings › Claude, then
   send the request again or use **Run again** on the task.
 

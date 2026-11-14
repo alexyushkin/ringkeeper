@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { createLive, type LiveEvent, type Live } from "./live";
+
 /** Calls go to the app's own server (/bff), never straight to Ringkeeper's API. */
 
 export class ApiError extends Error {
@@ -280,49 +282,31 @@ export function usePaged<T>(path: string | null, query?: Options["query"], size:
   return { items, total, more: next !== null, error, loading, loadingMore, reload, loadMore };
 }
 
-export interface LiveEvent {
-  type: string;
-  task_id?: string;
-  thread_id?: string;
-  decision_id?: string;
-  session_id?: string;
-  status?: string;
-  kind?: string;
-  project?: string;
-  message_id?: string;
-}
+export type { LiveEvent } from "./live";
+export { RESYNC } from "./live";
 
-const LIVE_TYPES = ["task", "session_event", "approval", "message", "message_routed"];
+// One stream per window (see live.ts). Created on first use, in the browser only.
+let live: Live | null = null;
 
-// One stream per window, shared by every component that listens: each stream
-// holds a connection open, and a browser allows only six per site.
-type Listener = (event: LiveEvent) => void;
-const listeners = new Set<Listener>();
-let source: EventSource | null = null;
-
-function dispatch(message: MessageEvent<string>): void {
-  let event: LiveEvent;
-  try {
-    event = JSON.parse(message.data) as LiveEvent;
-  } catch {
-    return; // a malformed line
-  }
-  for (const listener of [...listeners]) listener(event);
-}
-
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  if (source === null) {
-    source = new EventSource("/bff/events");
-    for (const type of LIVE_TYPES) source.addEventListener(type, dispatch as EventListener);
-  }
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0 && source !== null) {
-      source.close();
-      source = null;
-    }
-  };
+function theLive(): Live {
+  if (live !== null) return live;
+  const made = createLive({
+    open: (url) => new EventSource(url),
+    later: (run, ms) => window.setTimeout(run, ms),
+    cancel: (handle) => window.clearTimeout(handle as number),
+  });
+  live = made;
+  // Times events may have been missed: fetch again.
+  let hiddenAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt > 2_000) made.resync();
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) made.reopen(); // back from the back-forward cache: its stream is gone
+  });
+  window.addEventListener("online", () => made.resync());
+  return made;
 }
 
 /** Live updates (server-sent events) from the app's server; reconnects by itself. */
@@ -331,6 +315,6 @@ export function useLive(onEvent: (event: LiveEvent) => void, enabled = true): vo
   handler.current = onEvent;
   useEffect(() => {
     if (!enabled) return;
-    return subscribe((event) => handler.current(event));
+    return theLive().subscribe((event) => handler.current(event));
   }, [enabled]);
 }

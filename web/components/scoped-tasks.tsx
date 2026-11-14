@@ -4,7 +4,7 @@ import Link from "@/components/link";
 
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Empty, Loading } from "@/components/ui";
-import { useLive, usePaged } from "@/lib/client/api";
+import { RESYNC, useLive, usePaged } from "@/lib/client/api";
 
 const SHOWN = 20;
 
@@ -12,7 +12,7 @@ const SHOWN = 20;
 export function ScopedTasks({ client, project }: { client?: string; project?: string }) {
   const tasks = usePaged<TaskCard>("tasks", { client, project }, SHOWN);
   useLive((event) => {
-    if (event.type === "task") tasks.reload();
+    if (event.type === "task" || event.type === RESYNC) tasks.reload();
   });
   const all = tasks.items ?? [];
   const total = tasks.total ?? all.length;
