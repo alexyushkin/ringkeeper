@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.44 (2026-11-14)
 
 - **A request for a connection the project doesn't have is answered at once.** Asking to set
   up Meta ad campaigns in a project with no ads connection used to start a feature task that
@@ -27,7 +27,8 @@ publishes it as the release notes and the app shows it with the update.
   review. Reads run. Creating or activating campaigns, ad sets and ads, and changing budgets,
   bids or status, need the connection's name typed; other changes wait for approval. A
   project's link can be held to one ad account. A sign-in lasts about 60 days, and the
-  connection shows the day it ends. See [Meta Ads](docs/services/meta-ads.md).
+  connection shows the day it ends. Not yet tried against Meta's real server. See
+  [Meta Ads](docs/services/meta-ads.md).
 
 ## 0.1.0-beta.43 (2026-11-13)
 
