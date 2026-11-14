@@ -22,6 +22,17 @@ publishes it as the release notes and the app shows it with the update.
 - **A request is never met with silence.** Under a request, the conversation says "Routing…"
   at once; with no reply after 10 seconds it says so, with **Retry**, which looks again and
   wakes the router without sending the request twice.
+- **A task's result answers the request as asked.** A task that found a supplier's emails,
+  with a call held for approval, lost that answer: its text wasn't kept while the call waited,
+  and the one-turn session that went on after the decision ("I can't write a tailored
+  reply...") became the result. Now the answer is kept, and when a task goes on by itself
+  (after a held change, Claude failing for a moment, a restart or a raised spending cap), what
+  it says goes below the answer, never in its place. Workers also start their final message
+  with the answer, and offer anything else after it.
+- **Copy details for support on a task's page.** It copies how the task ran: its sessions, why
+  each started, how each ended, its held calls and the app's version, with no request, result
+  or client data. See [How a task ran](docs/troubleshooting.md#how-a-task-ran).
+
 
 ## 0.1.0-beta.45 (2026-11-14)
 

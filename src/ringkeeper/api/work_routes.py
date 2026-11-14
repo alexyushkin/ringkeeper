@@ -46,6 +46,7 @@ from ringkeeper.services import (
     projects,
     task_files,
     task_result,
+    task_support,
     tasks,
     titles,
     undo,
@@ -610,3 +611,9 @@ async def revert_change(change_id: str) -> dict[str, str]:
     """Ask to put a change back: it waits for approval like any held action."""
     decision = await calls.request_revert(change_id, get_vault())
     return {"decision_id": str(decision.id)}
+
+
+@router.get("/tasks/{task_id}/support")
+def task_support_details(task_id: str, session: SessionDep) -> dict[str, Any]:
+    """How a task ran, for support: no prompt, result, project or client (services.task_support)."""
+    return task_support.support_details(session, task_id)

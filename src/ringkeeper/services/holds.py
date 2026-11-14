@@ -21,7 +21,7 @@ from ringkeeper.models import (
     TaskStatus,
     WorkerSession,
 )
-from ringkeeper.services import decisions, tasks
+from ringkeeper.services import decisions, goes_on, tasks
 
 RESULT_CHARS = 4000
 
@@ -61,8 +61,7 @@ def _outcome(decision: Decision) -> str:
 def report(held: list[Decision]) -> str:
     lines = "\n".join(f"- {_outcome(d)}" for d in held)
     return (
-        f"The calls that were waiting for the user's approval are decided:\n{lines}\n\n"
-        "Don't repeat a call that ran. Continue the task from here."
+        f"{goes_on.DECIDED}\n{lines}\n\nDon't repeat a call that ran. Continue the task from here."
     )
 
 
