@@ -2,6 +2,7 @@
 part of it, the same request isn't started twice, work on one of a client's projects is
 asked about however sure the model is, and declining to cross clients passes."""
 
+import uuid
 from typing import Any
 
 import pytest
@@ -161,9 +162,12 @@ def test_naming_a_connection_decides_without_asking() -> None:
 def test_naming_the_project_or_choosing_it_doesn_t_ask() -> None:
     ask("Add a file called notes.txt saying hi to Demo site's folder.")
     route(output(routed("demo-site", 0.95)))
-    ask(ADD + " ")  # a client named, but the project chosen at the top
+    thread = ask(ADD + " ")  # a client named, but the project chosen at the top
     with session_scope() as session:
-        newest = session.scalars(select(Message).order_by(Message.created_at.desc())).first()
+        # By its own conversation: two messages a moment apart can share a timestamp.
+        newest = session.scalars(
+            select(Message).where(Message.thread_id == uuid.UUID(thread))
+        ).first()
         assert newest is not None
         newest.target_project = "demo-shop"
     route(output(routed("demo-shop", 0.95)))
