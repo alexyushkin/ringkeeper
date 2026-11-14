@@ -49,11 +49,25 @@ Nothing happens until you approve it, and everything is logged.
    data changes can be undone for 7 days ([what can and can't](undo.md)).
 
 A request that clearly needs a kind of connection the project doesn't have (ads, email, a
-calendar, a database, payments) doesn't start a task at all. The reply says so at once, "This
-project has no Meta Ads connection", with a button that opens the add form for that client
-and links what you add to the project. Once it's there, **Run it now** (or **Run the request
-now** on the add form) starts the request as you sent it. Ringkeeper decides this from the
-same routing call, by looking up the project's connections: no second model call.
+calendar, tables and records, a spreadsheet, files, payments) doesn't start a task at all. The
+reply says so at once, with what it looked for and what the project has: "This project has no
+Meta Ads connection. It has Airtable, Google and n8n, and none of them can do Meta Ads." A
+button opens the add form for that client and links what you add to the project. Once it's
+there, **Run it now** (or **Run the request now** on the add form) starts the request as you
+sent it. Ringkeeper decides this from the same routing call, by looking up the project's
+connections: no second model call.
+
+It holds a request only when nothing linked could do it, since a task that ends Not done is
+better than one held for nothing:
+
+- A connection the routing call picked for the work, or one its instructions name, settles
+  it.
+- A kind of work is met by any connection that can do it: tables and records by Airtable, a
+  database, Notion, a spreadsheet or a CRM; mail by Google, a mailbox or Microsoft 365.
+- A service the request names is met only by that service: "the Leads table in Airtable"
+  needs Airtable, not just any database.
+- A server Ringkeeper can't tell the kind of (any MCP server or HTTP API) counts, unless its
+  name says it's something else.
 
 Work done in an outside account (creating ad campaigns, sending mail, changing records) runs
 as **ops**, even in a project with a code folder. Only changes to the project's own code are

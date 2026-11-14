@@ -18,8 +18,10 @@ from ringkeeper.models import (
     Agent,
     Decision,
     DecisionStatus,
+    Instance,
     Message,
     Project,
+    ProjectInstance,
     Task,
 )
 from ringkeeper.router.schema import json_schema
@@ -61,9 +63,13 @@ Rules:
 - needs: the kinds of connection the work can't be done without, when it's work in an
   outside account that no code change can do: ads (an ad platform the message doesn't
   name), meta_ads (Facebook or Instagram ads), google_ads, email (sending or reading mail),
-  calendar, database (its data, not its code), payments. Name the platform when the message
-  does. Leave it empty for work on the project's code, for writing or research, and when
-  you're not sure. Ringkeeper checks the project has one before starting.
+  calendar, records (tables and records: Airtable, a database, Notion, a CRM), spreadsheet,
+  files, payments. Leave it empty for work on the project's code, for writing or research,
+  and when you're not sure. Ringkeeper checks the project has one before starting.
+- service: the service the message names for the work, as it says it ("Airtable", "Gmail",
+  "Stripe"). Empty when it names none.
+- connections: the project's own instances (names exactly as listed) the work will use. Put
+  every one that fits; empty when none does.
 - risk: read (only looks), write (changes non-prod things or code on a
   branch), prod-write (changes production data or workflows).
 - complexity: low (a lookup, or a small, clear change: one file or a few
@@ -143,6 +149,20 @@ def _snippet(text: str, limit: int = SNIPPET_CHARS) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
+def _by_name(binding: ProjectInstance) -> str:
+    return binding.instance.name
+
+
+def _instance_card(instance: Instance) -> dict[str, Any]:
+    card = {"name": instance.name, "type": instance.type.value, "env": instance.env.value}
+    config = instance.config or {}
+    # What an MCP server or a business system is ("airtable", "hubspot"): its type alone
+    # doesn't say.
+    if service := config.get("remote") or config.get("vendor"):
+        card["service"] = str(service)
+    return card
+
+
 def _project_card(
     project: Project, agents: dict[str, list[Agent]], owners: dict[str, str]
 ) -> dict[str, Any]:
@@ -152,10 +172,7 @@ def _project_card(
         "owner": owners.get(project.owner, project.owner),  # the client as people read it
         "description": project.description,
         "aliases": project.aliases,
-        "instances": [
-            {"name": b.instance.name, "type": b.instance.type.value, "env": b.instance.env.value}
-            for b in sorted(project.bindings, key=lambda b: b.instance.name)
-        ],
+        "instances": [_instance_card(b.instance) for b in sorted(project.bindings, key=_by_name)],
         "agents": [
             {"name": a.name, "does": _snippet(a.instructions, 200)}
             for a in agents.get(project.name, [])

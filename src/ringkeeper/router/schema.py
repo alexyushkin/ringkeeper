@@ -15,7 +15,10 @@ from ringkeeper.models import Complexity, TaskKind, TaskRisk
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 Confidence = Annotated[float, Field(ge=0, le=1)]
 # The kinds of connection a task can't be done without (services.needs.ROUTED).
-NeedKind = Literal["ads", "meta_ads", "google_ads", "email", "calendar", "database", "payments"]
+NeedKind = Literal[
+    "ads", "meta_ads", "google_ads", "email", "calendar", "records", "spreadsheet", "files",
+    "database", "payments",
+]  # fmt: skip
 
 
 class _Strict(BaseModel):
@@ -54,6 +57,11 @@ class RoutedTask(_Strict):
     # Work in an outside account that no code change can do: the kind of connection it
     # can't be done without. A project with none of them is told so instead of starting.
     needs: list[NeedKind] = Field(default_factory=list[NeedKind])
+    # The service the message names for the work ("Airtable", "Gmail"): only that one will do.
+    service: str = ""
+    # The project's own connections (instance names as listed) the work will use. One of them
+    # linked to the project means nothing is missing.
+    connections: list[str] = Field(default_factory=list[str])
 
 
 class RouterOutput(_Strict):

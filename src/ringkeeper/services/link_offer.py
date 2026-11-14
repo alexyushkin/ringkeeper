@@ -120,7 +120,7 @@ def run_again(session: Session, settings: Settings, task_id: str) -> Task:
     if task is None or not task.offer or "add" not in task.offer:
         raise RuleViolationError("There's nothing waiting for a connection here any more.")
     lacked = str(task.offer["add"])
-    if needs.missing(session, task.project, [lacked]) is not None:
+    if needs.still_missing(session, task.project, lacked):
         title = titles.of(session, task.project)
         said = needs.no_connection(lacked).replace("This project", title, 1)
         raise RuleViolationError(said.replace(" connection.", " connection yet."))

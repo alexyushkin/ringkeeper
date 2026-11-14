@@ -482,10 +482,15 @@ output), and a task is never given to projects with different owners: it must
 be split.
 
 Each task can also say the kinds of connection it can't be done without (`needs`: `ads`,
-`meta_ads`, `google_ads`, `email`, `calendar`, `database`, `payments`). `services.needs` looks
-them up against the project's linked connections; a project with none of a kind gets "This
-project has no ... connection" and an add button instead of a task, and the task's fields wait
-on the message for `POST /messages/{id}/run-now`. A task with `needs` is never a `feature` or
+`meta_ads`, `google_ads`, `email`, `calendar`, `records`, `spreadsheet`, `files`, `payments`;
+`database` from older routes means `records`), the service the message names (`service`:
+"Airtable") and the project's instances the work will use (`connections`). `services.needs`
+looks them up against the project's linked connections: a picked or named linked instance
+settles it, a named service needs that service, and a kind is met by any connection that can
+do it, including an MCP or HTTP connection whose name doesn't say it's something else. A
+project with none gets "This project has no ... connection. It has ..." and an add button
+instead of a task, and the task's fields wait on the message for
+`POST /messages/{id}/run-now`. A task with `needs` is never a `feature` or
 `fix`: it runs as `ops`.
 
 A task that touches one project with a confidence of at least 0.8
