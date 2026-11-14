@@ -5,6 +5,7 @@ import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
 from sqlalchemy import select
@@ -25,13 +26,14 @@ from ringkeeper.models import (
     SessionEvent,
     SessionRole,
     Task,
+    TaskKind,
     TaskStatus,
     TokenRevocation,
     WorkerSession,
 )
 from ringkeeper.services import inbox, interrupted, revocations, runtime, tasks
 from ringkeeper.vault import get_vault
-from ringkeeper.workers.manager import Manager, resolve_workspace
+from ringkeeper.workers.manager import SUBAGENT_TOOLS, UNUSED_TOOLS, Manager, resolve_workspace
 from ringkeeper.workers.runtime import WorkerSpec, daemon_path
 from tests.conftest import CLAUDE_API_KEY as API_KEY
 from tests.conftest import CLAUDE_OAUTH_TOKEN
@@ -153,7 +155,9 @@ def test_worker_gets_the_session_config() -> None:
     assert config["max_turns"] == 9
     assert config["branch"] == f"ringkeeper/{task_id}"
     assert config["resume"] is None
-    assert config["disallowed_tools"] == ["WebFetch", "WebSearch"]  # a client's: no web
+    # Claude Code's tools no worker uses, and a client's: no web. Work on the code keeps its
+    # subagents.
+    assert config["disallowed_tools"] == [*UNUSED_TOOLS, "WebFetch", "WebSearch"]
     # Only the services the project is connected to.
     assert config["mcp_servers"] == {
         "ringkeeper-database": "http://gateway:8100/mcp/database",
@@ -169,6 +173,21 @@ def test_worker_gets_the_session_config() -> None:
 
 
 # --- Exactly one Claude credential ---
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_work_off_the_code_has_no_subagents() -> None:
+    # A data task's first request was more than half Claude Code's own tool definitions.
+    m, runtime = manager()
+    task_id = run_task()
+    with session_scope() as session:
+        session.get_one(Task, uuid.UUID(task_id)).kind = TaskKind.DATA
+    m.tick()
+    m.wait_idle()
+    config = task_env(runtime.started[0])
+    assert config["git"] is False
+    denied = cast(list[str], config["disallowed_tools"])
+    assert set(UNUSED_TOOLS) | set(SUBAGENT_TOOLS) <= set(denied)
 
 
 @pytest.mark.usefixtures("task_registry")

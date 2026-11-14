@@ -429,6 +429,36 @@ mounts the Docker socket, which makes it root-equivalent on the host: guard
 the api like root. Build the worker image once with
 `docker compose --profile worker build worker`.
 
+### A worker's first request
+
+What a worker sends the model before it has done anything, measured on the self-test's
+`read-tables` (a data task in Demo shop, which has a database, Airtable, n8n and an MCP
+server linked; Claude Code 2.1.310, Haiku). Tokens are the request's measured total, shared
+out by each part's length.
+
+| Part | Before | After |
+|---|---|---|
+| Claude Code's tool definitions | 11,800 (63%) | 4,600 |
+| ...of which Workflow, ScheduleWakeup, Agent, ReportFindings, Skill, ListAgents | 7,400 | 0 |
+| Claude Code's environment block: working folder, platform, date | 1,500 | 1,500 |
+| ...the list of Claude Code's own skills, which comes with Skill | 2,200 | 0 |
+| ...each gateway's MCP server instructions (database, Airtable, n8n, MCP, memory) | 400 | 400 |
+| Ringkeeper's system prompt (`SHORT_PROMPT`, `HEADLESS_NOTE`) | 1,400 | 1,400 |
+| Claude Code's reminder about crediting commits | 200 | 200 |
+| The task, as the router wrote it | 40 | 40 |
+| Its connection note (`connection_note`) | 240 | 240 |
+| The project's notes and how to keep them (`memory.project_block`) | 600 | 600 |
+| The gateways' tool definitions | under 100 | under 100 |
+| **Total** | **18,721** | **8,864** |
+
+The gateways' own tools cost almost nothing: Claude Code's tool search defers MCP tool
+definitions and loads one only when the worker asks for it, so a gateway the task doesn't
+use is a name in a list. It needs the model proxy to pass the `anthropic-beta` header and the
+request body through unchanged, which it does. Claude Code's built-in tools aren't deferred,
+so the ones no worker uses are turned off (`workers.manager.UNUSED_TOOLS`), and subagents
+(`Agent`) only stay for work on a project's code. A task on code also gets Claude Code's own
+system prompt, which is bigger than `SHORT_PROMPT`.
+
 ### Known risks (not solved yet)
 
 - **The worker holds the Claude credential in its environment** (the agent

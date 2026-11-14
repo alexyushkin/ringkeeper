@@ -51,6 +51,13 @@ publishes it as the release notes and the app shows it with the update.
   and with the same details open. A dialog adds no step, and Back with one open closes it. A
   page's **‹ Back** link goes back in history when you came from inside the app. See
   [Back and Forward](docs/working-faster.md#back-and-forward).
+- **A worker's first request is half the size.** On a data task it was 18,700 tokens before
+  any work, more than half of it Claude Code's own tools no worker uses (Workflow,
+  ScheduleWakeup, ReportFindings, Skill and the list of its skills, ListAgents) and subagents.
+  Those are off now, and subagents stay only for work on a project's code: the same task's
+  first request is 8,900 tokens. The gateways' tool definitions were already loaded only when
+  a worker uses them. What each part costs is in the developer docs ("A worker's first
+  request").
 
 
 ## 0.1.0-beta.45 (2026-11-14)
