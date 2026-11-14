@@ -109,7 +109,7 @@ async def test_what_cant_be_understood_is_refused_in_plain_words(
     assert result.is_error
     assert said.startswith("call_operation wasn't run:")
     assert "`nonsense` isn't something this tool takes" in said
-    assert "It takes: operation, path, query, body, account, instance." in said
+    assert "It takes: operation (text, needed), path (object), query (object), body (" in said
     assert "pydantic" not in said
     assert "a-value-not-to-repeat" not in said
     assert not api.requests
