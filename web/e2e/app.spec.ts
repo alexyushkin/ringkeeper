@@ -210,6 +210,19 @@ with session_scope() as session:
     await expect(page.getByText("Two emails from the egg farm, both this week.")).toBeVisible();
   });
 
+  await test.step("Back follows the app's history: a page's tabs are steps in it", async () => {
+    await page.goto("/settings");
+    const tab = page.getByRole("tab", { name: "Notifications" });
+    await tab.click();
+    await expect(page).toHaveURL(/#notifications$/);
+    await page.goBack();
+    await expect(tab).toHaveAttribute("aria-selected", "false");
+    await page.goForward();
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+    // The arrows are the desktop app's: a browser has its own.
+    await expect(page.locator("[data-history-arrows]")).toHaveCount(0);
+  });
+
   await test.step("a voice request through the real speech service", async () => {
     await page.goto("/");
     const mic = page.getByRole("button", { name: "Hold to talk" });

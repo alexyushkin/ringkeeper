@@ -97,6 +97,18 @@ says they ran, with a link to the report.
 To get it on Telegram, Slack and Discord too, turn on Settings › Notifications ›
 Morning digest and set the time.
 
+## Back and Forward
+
+In the desktop app, the two arrows at the window's top left go back and forward through where
+you've been: pages, a page's tabs (Settings, a project), and the conversations and tasks you
+opened. They're greyed out when there's nowhere to go. Alt+Left and Alt+Right do the same
+(Cmd+[ and Cmd+] on a Mac), and so do a mouse's back and forward buttons. Going back puts the
+page where you left it: scrolled to the same place, with the same details open.
+
+A dialog doesn't add a step: Back with one open closes it. A page's own **‹ Back** link goes
+back the same way when you came from inside the app, and to the page above it when you opened
+the page directly. In a browser the arrows are hidden: the browser has its own.
+
 ## Search with Ctrl+K
 
 Ctrl+K (Cmd+K on a Mac) opens a search over pages, clients, projects, connections and

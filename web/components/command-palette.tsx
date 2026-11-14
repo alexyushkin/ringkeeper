@@ -4,6 +4,8 @@ import { usePrefs } from "@/lib/client/prefs";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useBackCloses } from "@/lib/client/app-history";
+
 import { fillRequest } from "@/components/composer";
 import { EXPORT_ACTIONS, EXPORT_LABELS, askCard } from "@/components/connection-exports";
 import { startTour } from "@/components/tour";
@@ -93,6 +95,7 @@ export function CommandPalette() {
 }
 
 function Palette({ onClose }: { onClose: () => void }) {
+  useBackCloses(true, onClose); // Back closes it; it adds no step to history
   const router = useRouter();
   const scope = useScope();
   const projects = useApi<{ name: string; owner: string }[]>("projects");

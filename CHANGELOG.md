@@ -44,6 +44,13 @@ publishes it as the release notes and the app shows it with the update.
   since its steps were only known once a session ended. Now each tool call counts as it's
   made, on the task's page and its card in the conversation. Tasks from before keep the
   number they had.
+- **Back and Forward in the desktop app.** Two arrows at the window's top left go back and
+  forward through pages, a page's tabs and the conversations and tasks you opened, greyed out
+  when there's nowhere to go; Alt+Left and Alt+Right (Cmd+[ and Cmd+] on a Mac) and a mouse's
+  back and forward buttons do the same. Going back puts the page where you left it, scrolled
+  and with the same details open. A dialog adds no step, and Back with one open closes it. A
+  page's **‹ Back** link goes back in history when you came from inside the app. See
+  [Back and Forward](docs/working-faster.md#back-and-forward).
 
 
 ## 0.1.0-beta.45 (2026-11-14)

@@ -11,6 +11,8 @@ import { ScanOffer } from "@/components/scans";
 import { UpdateBanner } from "@/components/update-banner";
 import { Loading, Logo } from "@/components/ui";
 import { RESYNC, api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { appHistory, useBackCloses } from "@/lib/client/app-history";
+import { HistoryArrows } from "@/components/history-arrows";
 import { DESKTOP } from "@/lib/client/routes";
 import { ScopeProvider } from "@/lib/client/scope";
 
@@ -79,6 +81,11 @@ export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
   const [narrow, setNarrow] = useNarrowSidebar();
+  // The app's history starts here, before any step in it (lib/client/app-history).
+  useEffect(() => {
+    appHistory();
+  }, []);
+  useBackCloses(moreOpen, () => setMoreOpen(false));
   // The desktop app opens on first run until it's finished (server installs get
   // there through sign-in instead).
   const [ready, setReady] = useState(!DESKTOP);
@@ -113,9 +120,10 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <ScopeProvider>
+    <HistoryArrows />
     <div className="md:flex">
       <aside
-        className={`sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-surface md:flex ${narrow ? "w-16 items-center px-2 py-4" : "w-60 p-4"}`}
+        className={`sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-surface md:flex ${narrow ? "w-16 items-center px-2 py-4" : "w-60 p-4"} ${DESKTOP ? "pt-12" : ""}`}
       >
         <Link href="/" className={`mb-4 flex items-center gap-2 text-lg font-semibold ${narrow ? "justify-center" : "px-2"}`} title={narrow ? "Ringkeeper" : undefined}>
           <Logo />
@@ -169,7 +177,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </button>
       </aside>
 
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${DESKTOP ? "pt-10 md:pt-0" : ""}`}>
         {paused ? (
           <div className="flex items-center justify-between gap-3 bg-bad px-4 py-2 text-sm text-white">
             <span>Everything is stopped. Nothing new starts until you resume.</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/link";
+import { BackLink } from "@/components/history-arrows";
 import { useState } from "react";
 
 import { LibraryCard, NoProjects, useLibrary } from "@/components/connection-library";
@@ -152,9 +153,7 @@ export function ClientView({ name }: { name: string }) {
 
   return (
     <>
-      <Link href="/projects" className="text-sm text-accent">
-        ‹ Clients & projects
-      </Link>
+      <BackLink href="/projects">‹ Clients & projects</BackLink>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{display}</h1>
       <p className="mb-4 text-sm text-muted">
         {library.projects.length} project{library.projects.length === 1 ? "" : "s"} · {everything.length} connection{everything.length === 1 ? "" : "s"}

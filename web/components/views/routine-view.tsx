@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/link";
+import { BackLink } from "@/components/history-arrows";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -50,9 +51,7 @@ export function RoutineView({ id }: { id: string }) {
 
   return (
     <>
-      <Link href={projectHref(r.project) + "#routines"} className="text-sm text-accent">
-        ‹ {place(r.client, r.project)}
-      </Link>
+      <BackLink href={projectHref(r.project) + "#routines"}>‹ {place(r.client, r.project)}</BackLink>
       <div className="mt-2 mb-1 flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold">{r.name}</h1>
         {r.paused ? <Badge>paused</Badge> : r.project_paused ? <Badge tone="warn">project paused</Badge> : <Badge tone="good">on</Badge>}

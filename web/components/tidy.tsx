@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { useBackCloses } from "@/lib/client/app-history";
+
 import { Alert, Button, Field, Toggle } from "@/components/ui";
 import { ApiError, api, type PagedList } from "@/lib/client/api";
 
@@ -131,6 +133,7 @@ interface Branch {
  * A running task can't be deleted: it offers Stop and delete instead.
  */
 export function DeleteDialog({ kind, ids, onClose, onDone, status }: { kind: Kind; ids: string[]; onClose: () => void; onDone: () => void; status?: string }) {
+  useBackCloses(true, onClose); // Back closes it; it adds no step to history
   const single = kind === "task" && ids.length === 1 ? ids[0] : null;
   const [branch, setBranch] = useState<Branch | null | undefined>(single ? undefined : null);
   const [branches, setBranches] = useState(!single);
