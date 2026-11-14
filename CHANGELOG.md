@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.46 (2026-11-14)
 
 - **A project that can do the work isn't told it has no connection.** "In the Leads table of
   Airtable, find..." in a project with Airtable linked was answered "This project has no
