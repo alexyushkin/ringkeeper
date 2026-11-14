@@ -103,7 +103,7 @@ test("the whole app on a fresh stack", async ({ page }) => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page).toHaveURL(/\/threads\//);
     await expect(page.getByRole("heading", { name: "How many customers does Acme have on the pro plan?" })).toBeVisible();
-    await expect(page.getByText("Finding the right project…")).toBeVisible();
+    await expect(page.getByText("Routing…")).toBeVisible();
   });
 
   await test.step("approving a held prod write, then one that deletes data", async () => {
@@ -159,6 +159,55 @@ with session_scope() as session:
     await expect(page.getByText('"new_string": "voice works"')).toBeVisible();
     await page.getByRole("button", { name: /Changes/ }).click();
     await expect(page.getByText("+voice works")).toBeVisible();
+  });
+
+  await test.step("a conversation shows a task's result and a new reply after a visit to the task", async () => {
+    // Real use: a task finished while its page was open; back in the conversation, a second
+    // request's reply came 4 seconds later, and the conversation showed neither.
+    const [threadId, taskId] = python(`
+from datetime import UTC, datetime
+from ringkeeper.config import get_settings
+from ringkeeper.db import session_scope
+from ringkeeper.models import TaskStatus
+from ringkeeper.services import tasks, threads
+with session_scope() as session:
+    asked = threads.post_message(session, "Find the emails from the flour supplier", author="owner", source="web", target_project="acme-web")
+    asked.routing, asked.routed_at = {"tasks": []}, datetime.now(UTC)  # placed already: the router leaves it
+    threads.add_reply(session, asked.thread_id, "Working on it in Acme web.")
+    task = tasks.create_task(session, get_settings(), project="acme-web", prompt="Find the emails from the flour supplier", thread_id=asked.thread_id, message_id=asked.id)
+    task.status = task.sessions[0].status = TaskStatus.NEEDS_INPUT  # nothing runs it meanwhile
+    print(asked.thread_id, task.id)
+`).split(" ");
+    await page.goto(`/threads/${threadId}`);
+    await expect(page.getByText("Working on it in Acme web.")).toBeVisible();
+    await page.locator(`a[href$="/tasks/${taskId}"]`).first().click();
+    await expect(page).toHaveURL(new RegExp(`/tasks/${taskId}$`));
+    python(`
+import uuid
+from datetime import UTC, datetime
+from ringkeeper.db import session_scope
+from ringkeeper.models import Task, TaskStatus
+with session_scope() as session:
+    task = session.get_one(Task, uuid.UUID("${taskId}"))
+    task.status = task.sessions[0].status = TaskStatus.SUCCEEDED
+    task.finished_at = datetime.now(UTC)
+    task.summary = "Three emails from the flour supplier, the last on Tuesday."
+`);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/threads/${threadId}$`));
+    await page.getByLabel("Request").fill("And the ones from the egg farm?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("And the ones from the egg farm?")).toBeVisible();
+    // Ringkeeper's reply to it, written as the router writes one: from another process.
+    python(`
+import uuid
+from ringkeeper.db import session_scope
+from ringkeeper.services import threads
+with session_scope() as session:
+    threads.add_reply(session, uuid.UUID("${threadId}"), "Two emails from the egg farm, both this week.")
+`);
+    await expect(page.getByText("Three emails from the flour supplier, the last on Tuesday.")).toBeVisible();
+    await expect(page.getByText("Two emails from the egg farm, both this week.")).toBeVisible();
   });
 
   await test.step("a voice request through the real speech service", async () => {

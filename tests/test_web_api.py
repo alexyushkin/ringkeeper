@@ -445,14 +445,24 @@ def test_a_weak_database_password_is_warned_about(caplog: pytest.LogCaptureFixtu
     assert caplog.text == ""
 
 
-def test_too_many_live_streams_are_refused(owner: TestClient) -> None:
+def test_a_new_live_stream_ends_the_oldest_and_is_never_refused() -> None:
+    # A browser's EventSource gives up for good on an error answer, which can leave a window
+    # with no live updates at all: past the limit, the oldest stream (most likely a window
+    # that went away without saying so) is told to end instead.
     from ringkeeper.api import live_routes  # noqa: PLC0415
 
-    live_routes._streams["open"] = live_routes.MAX_STREAMS  # pyright: ignore[reportPrivateUsage]
+    join, leave = live_routes._join, live_routes._leave  # pyright: ignore[reportPrivateUsage]
+    joined = [join() for _ in range(live_routes.MAX_STREAMS)]
     try:
-        assert owner.get("/events").status_code == 429
+        assert not any(stop.is_set() for stop in joined)
+        newest = join()
+        joined.append(newest)
+        assert joined[0].is_set()
+        assert not any(stop.is_set() for stop in joined[1:])
     finally:
-        live_routes._streams["open"] = 0  # pyright: ignore[reportPrivateUsage]
+        for stop in joined:
+            leave(stop)
+    assert live_routes._streams == []  # pyright: ignore[reportPrivateUsage]
 
 
 # --- Settings ---

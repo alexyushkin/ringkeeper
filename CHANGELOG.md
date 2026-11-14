@@ -3,6 +3,18 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **An open conversation shows what arrives.** A conversation could miss a finished task's
+  result and the reply to a new request, showing only what you sent, while a newly opened
+  one showed both. Now the window's live updates start again by themselves if they ever stop,
+  every view fetches again after a gap (the stream came back, the window was hidden, the
+  network returned, or a page came back from the browser's history), and while a reply or a
+  task is on its way the conversation also checks every few seconds.
+- **A request is never met with silence.** Under a request, the conversation says "Routing…"
+  at once; with no reply after 10 seconds it says so, with **Retry**, which looks again and
+  wakes the router without sending the request twice.
+
 ## 0.1.0-beta.45 (2026-11-14)
 
 - **A project that can do the work isn't told it has no connection.** "In the Leads table of

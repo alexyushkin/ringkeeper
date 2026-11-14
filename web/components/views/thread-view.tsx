@@ -17,7 +17,7 @@ import { TaskFiles } from "@/components/task-files";
 import { Waiting } from "@/components/waiting";
 import { CancelButton } from "@/components/scheduled";
 import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
 import { threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 import { routingLine } from "@/lib/routing-wait";
@@ -43,29 +43,78 @@ interface Thread {
   archived?: boolean;
 }
 
-/** "Finding the right project…", and after 20 seconds "Still working out where this goes…". */
-function RoutingLine({ sentAt }: { sentAt: string }) {
+/** "Routing…" at once; after 10 seconds with no reply, "No reply after 10 seconds." and Retry,
+ * which fetches the conversation again and wakes the router. Never silence. */
+function RoutingLine({ id, sentAt, onRetry }: { id: string; sentAt: string; onRetry: () => void }) {
   const [now, setNow] = useState(() => Date.now());
+  const [busy, setBusy] = useState(false);
   const line = routingLine(sentAt, now);
   useEffect(() => {
     if (line.changesIn === null) return;
     const timer = setTimeout(() => setNow(Date.now()), line.changesIn);
     return () => clearTimeout(timer);
   }, [line.changesIn]);
-  return <p className="mt-1 ml-8 text-xs text-muted">{line.text}</p>;
+  async function retry() {
+    setBusy(true);
+    try {
+      await api(`messages/${id}/nudge`, { method: "POST" });
+    } catch {
+      // The conversation is fetched again either way.
+    } finally {
+      onRetry();
+      setBusy(false);
+    }
+  }
+  return (
+    <p data-routing className="mt-1 ml-8 flex flex-wrap items-center gap-2 text-xs text-muted">
+      {line.text}
+      {line.retry ? (
+        <Button busy={busy} onClick={() => void retry()}>
+          Retry
+        </Button>
+      ) : null}
+    </p>
+  );
 }
+
+/** A request still waiting for its reply (not one sent for later, or canceled, or failed). */
+function awaitingReply(message: Message): boolean {
+  if (message.role !== "user" || message.canceled_at || message.route_error) return false;
+  if (message.run_at && new Date(message.run_at).getTime() > Date.now()) return false;
+  return !message.routing || Boolean(message.routing.claimed_at);
+}
+
+const POLL_MS = 5_000;
 
 export function ThreadView({ id }: { id: string }) {
   const router = useRouter();
   const thread = useApi<Thread>(`threads/${id}`);
   const tasks = useApi<TaskCard[]>(`threads/${id}/tasks`);
   const pending = useApi<Decision[]>("decisions", { status: "pending", thread: id, limit: 500 });
+  const reloadAll = () => {
+    thread.reload();
+    tasks.reload();
+    pending.reload();
+  };
   useLive((event) => {
+    if (event.type === RESYNC) return reloadAll(); // events may have been missed
     if (event.thread_id !== id) return;
     if (event.type === "message" || event.type === "message_routed") thread.reload();
     if (event.type === "task" || event.type === "message_routed") tasks.reload();
     if (event.type === "approval" || event.type === "message_routed") pending.reload();
   });
+  // While a reply or a task is on its way, fetch it every few seconds too: what it shows
+  // never depends on one live event arriving.
+  const inFlight =
+    (thread.data?.messages ?? []).some(awaitingReply) || (tasks.data ?? []).some((t) => ["queued", "running"].includes(t.status));
+  useEffect(() => {
+    if (!inFlight) return;
+    const timer = setInterval(() => {
+      thread.reload();
+      tasks.reload();
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [inFlight, thread.reload, tasks.reload]);
   // This conversation's questions, and the holds of its tasks.
   const mine = new Set((tasks.data ?? []).map((t) => t.id));
   const waiting = pending.data?.filter((d) => d.thread_id === id || (d.task_id !== null && mine.has(d.task_id))) ?? [];
@@ -134,7 +183,7 @@ export function ThreadView({ id }: { id: string }) {
                 <CancelButton id={message.id} onDone={thread.reload} />
               </p>
             ) : message.role === "user" && (!message.routing || message.routing.claimed_at) && !message.route_error ? (
-              <RoutingLine sentAt={message.created_at} />
+              <RoutingLine id={message.id} sentAt={message.created_at} onRetry={reloadAll} />
             ) : null}
           </li>
         ))}
@@ -171,7 +220,7 @@ export function ThreadView({ id }: { id: string }) {
       <Changes thread={id} />
 
       <div className="mt-6">
-        <Composer threadId={id} onSent={() => thread.reload()} />
+        <Composer threadId={id} onSent={reloadAll} />
       </div>
     </>
   );

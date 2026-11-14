@@ -10,7 +10,7 @@ import { startTour, Tour } from "@/components/tour";
 import { ScanOffer } from "@/components/scans";
 import { UpdateBanner } from "@/components/update-banner";
 import { Loading, Logo } from "@/components/ui";
-import { api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { RESYNC, api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
 import { ScopeProvider } from "@/lib/client/scope";
 
@@ -97,7 +97,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const settings = useApi<{ values: { paused: boolean } }>("settings");
   const start = useApi<{ tour_seen: boolean }>(ready ? "start" : null);
   useLive((event) => {
-    if (event.type === "approval") approvals.reload();
+    if (event.type === "approval" || event.type === RESYNC) approvals.reload();
   });
   const count = approvals.total ?? 0;
   const paused = settings.data?.values.paused ?? false;

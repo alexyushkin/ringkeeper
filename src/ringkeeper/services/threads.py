@@ -388,6 +388,17 @@ def retry_routing(session: Session, ident: str) -> Message:
     return message
 
 
+def nudge(session: Session, ident: str) -> Message:
+    """The conversation's Retry under a request with no reply yet: wake the router. Nothing
+    about the message changes, so a request already being routed isn't routed twice."""
+    message = session.get(Message, uuid.UUID(ident))
+    if message is None or message.role is not MessageRole.USER:
+        raise NotFoundError("That message isn't here any more.")
+    if message.routed_at is None and message.route_error is None and message.canceled_at is None:
+        notify_router(session)
+    return message
+
+
 def claim(session: Session, message: Message) -> None:
     """Taken by a router, which asks the model outside this transaction. What it knows
     about waiting for Claude stays, so a retry doesn't tell the conversation again."""

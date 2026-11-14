@@ -16,7 +16,7 @@ import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
 import { RememberThis, SavedToMemory } from "@/components/memory";
 import { TaskFiles } from "@/components/task-files";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
 import { taskHref, threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 import { useSendKeys } from "@/lib/client/use-send-keys";
@@ -204,6 +204,12 @@ export function TaskView({ id }: { id: string }) {
     void more();
   }, [more]);
   useLive((event) => {
+    if (event.type === RESYNC) {
+      task.reload();
+      pending.reload();
+      void more();
+      return;
+    }
     if (event.type === "approval") pending.reload();
     if (event.task_id !== id) return;
     if (event.type === "session_event") void more();

@@ -8,11 +8,14 @@
   approvals and routed messages (ids only; the app fetches the rest). They
   come from database triggers (storage.events), so every writer is covered. The
   session is checked again at every heartbeat (a stream ends soon after
-  sign-out), and only a few streams may be open at once.
+  sign-out). Only a few streams stay open at once: a new one ends the oldest
+  (most likely a window that went away without saying so), never refused, since
+  a browser's EventSource gives up for good on an error answer.
 """
 
 import asyncio
 import json
+import threading
 import time
 from collections.abc import AsyncIterator
 from typing import Annotated
@@ -35,7 +38,8 @@ router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 EVENTS_CHANNEL = "ringkeeper_events"
 HEARTBEAT_SECONDS = 15.0
 MAX_STREAMS = 10  # one per open tab; each holds a database connection and a thread
-_streams = {"open": 0}
+_streams: list[threading.Event] = []  # open streams, oldest first: each one's "stop"
+_streams_lock = threading.Lock()
 AUDIO_TYPES = ("audio/", "video/webm", "video/mp4", "application/octet-stream")
 
 
@@ -87,6 +91,22 @@ def _next_payloads(subscription: storage_events.Subscription) -> list[str]:
     return [payload for _, payload in subscription.get(timeout=HEARTBEAT_SECONDS)]
 
 
+def _join() -> threading.Event:
+    """A new stream's stop flag; past the limit, the oldest stream is told to end."""
+    stop = threading.Event()
+    with _streams_lock:
+        _streams.append(stop)
+        while len(_streams) > MAX_STREAMS:
+            _streams.pop(0).set()
+    return stop
+
+
+def _leave(stop: threading.Event) -> None:
+    with _streams_lock:
+        if stop in _streams:
+            _streams.remove(stop)
+
+
 def _still_signed_in(token: str) -> bool:
     if token == DESKTOP_OWNER:
         return True  # the desktop window stays "signed in" while the app runs
@@ -103,13 +123,13 @@ async def _notifications(request: Request, token: str) -> AsyncIterator[str]:
     # can't use the Windows event loop, and one stream per signed-in browser is
     # a handful of threads at most.
     url = get_settings().database_url
-    _streams["open"] += 1
+    stop = _join()
     try:
         subscription = await asyncio.to_thread(storage_events.subscribe, url, [EVENTS_CHANNEL])
         try:
             yield "retry: 3000\n\n"
             checked = time.monotonic()
-            while not await request.is_disconnected():
+            while not stop.is_set() and not await request.is_disconnected():
                 payloads = await asyncio.to_thread(_next_payloads, subscription)
                 if time.monotonic() - checked >= HEARTBEAT_SECONDS:
                     if not await asyncio.to_thread(_still_signed_in, token):
@@ -126,17 +146,15 @@ async def _notifications(request: Request, token: str) -> AsyncIterator[str]:
                         continue
                     yield f"event: {kind}\ndata: {payload}\n\n"
         finally:
-            await asyncio.to_thread(subscription.close)
+            # Not awaited: a stream whose browser went away is canceled, and an await here
+            # would be canceled too, leaving the subscription open.
+            subscription.close()
     finally:
-        _streams["open"] -= 1
+        _leave(stop)
 
 
 @router.get("/events")
 async def events(request: Request, token: OwnerToken) -> StreamingResponse:
-    if _streams["open"] >= MAX_STREAMS:
-        raise HTTPException(
-            429, detail="too many open live views; close some tabs", headers={"Retry-After": "30"}
-        )
     return StreamingResponse(
         _notifications(request, token),
         media_type="text/event-stream",
