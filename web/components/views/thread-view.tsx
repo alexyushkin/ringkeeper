@@ -3,7 +3,7 @@
 import { HelpExtras, type HelpAnswer } from "@/components/help-answer";
 import Link from "@/components/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Composer } from "@/components/composer";
 import { Changes } from "@/components/changes";
@@ -21,6 +21,7 @@ import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
 import { threadHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 import { routingLine } from "@/lib/routing-wait";
+import { throttle } from "@/lib/throttle";
 
 interface Message {
   id: string;
@@ -96,8 +97,11 @@ export function ThreadView({ id }: { id: string }) {
     tasks.reload();
     pending.reload();
   };
+  // A task's steps go up with each tool call: its transcript lines reload the cards a little.
+  const recount = useMemo(() => throttle(tasks.reload, 1_500), [tasks.reload]);
   useLive((event) => {
     if (event.type === RESYNC) return reloadAll(); // events may have been missed
+    if (event.type === "session_event" && (tasks.data ?? []).some((t) => t.id === event.task_id)) return recount();
     if (event.thread_id !== id) return;
     if (event.type === "message" || event.type === "message_routed") thread.reload();
     if (event.type === "task" || event.type === "message_routed") tasks.reload();

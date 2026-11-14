@@ -95,6 +95,14 @@ RESULT_EVENT_BYTES = 2 * 1024 * 1024
 CUT_HERE = "Cut here. The full result is in the transcript"
 
 
+def tool_calls(message: dict[str, Any]) -> int:
+    """How many tools an assistant message calls."""
+    content = message.get("content")
+    blocks = cast(list[Any], content) if isinstance(content, list) else []
+    kinds = [cast(dict[str, Any], b).get("_kind") for b in blocks if isinstance(b, dict)]
+    return kinds.count("ToolUseBlock")
+
+
 def kept_result(said: str, link: str) -> str:
     """The whole result; a runaway one cut at a line break, saying where the rest is."""
     said = said.strip()
@@ -631,11 +639,13 @@ class Manager:
             )
             event = cast(dict[str, Any], scrub.scrub_obj(event))
             event_type = str(event.get("type", "worker.raw"))
+            called = 0
             if event_type == "sdk.result" and isinstance(event.get("message"), dict):
                 collected.result = cast(dict[str, Any], event["message"])
             elif event_type == "sdk.assistant" and isinstance(event.get("message"), dict):
                 said = cast(dict[str, Any], event["message"]).get("error")
                 collected.claude_error = str(said) if said else collected.claude_error
+                called = tool_calls(cast(dict[str, Any], event["message"]))
             elif event_type == "ringkeeper.workspace":
                 collected.workspace = event
             elif event_type == "ringkeeper.checks":
@@ -656,6 +666,8 @@ class Manager:
             seq += 1
             with session_scope() as session:
                 tasks.add_event(session, job.session_id, seq, event_type, _cap(event))
+                if called:  # the task's Steps, as they happen
+                    tasks.count_tool_calls(session, job.session_id, called)
 
     def _pause_at_cap(
         self, session: Session, job: Job, row: WorkerSession, task: Task

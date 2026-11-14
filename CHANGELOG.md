@@ -40,6 +40,10 @@ publishes it as the release notes and the app shows it with the update.
 - **A refused call says what the tool takes.** Every gateway tool now answers a wrong argument
   with each argument it takes, its type and whether it's needed ("It takes: query (text)"), so
   the next call is right. Before, only calls passed through to an MCP server did.
+- **Steps count tool calls as they happen.** A task's page showed "Steps 0" while it ran,
+  since its steps were only known once a session ended. Now each tool call counts as it's
+  made, on the task's page and its card in the conversation. Tasks from before keep the
+  number they had.
 
 
 ## 0.1.0-beta.45 (2026-11-14)

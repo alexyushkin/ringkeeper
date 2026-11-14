@@ -25,6 +25,7 @@ export interface TaskCard {
   created_at: string;
   finished_at: string | null;
   turns: number;
+  steps: number; // tool calls, counted as they happen
   cost_usd: number | null;
   archived?: boolean;
   waiting_for_folder?: boolean;
@@ -53,7 +54,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
       {task.partly_done && task.status === "not_done" ? <p className="mt-1 line-clamp-2 text-sm text-good [overflow-wrap:anywhere]">Done: {task.partly_done}</p> : null}
       {task.error && task.status !== "succeeded" ? <p className={`mt-1 line-clamp-3 text-sm [overflow-wrap:anywhere] ${task.partly_done ? "text-warn" : "text-bad"}`}>{task.partly_done ? `Not done: ${task.error}` : task.error}</p> : null}
       <p className="mt-2 text-xs text-muted">
-        {task.turns} steps · {money(task.cost_usd)} · open the transcript ›
+        {task.steps} step{task.steps === 1 ? "" : "s"} · {money(task.cost_usd)} · open the transcript ›
       </p>
     </Link>
   );
