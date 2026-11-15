@@ -182,12 +182,16 @@ test("Approvals: a write held while the page is open", async ({ page }) => {
 });
 
 test("The menu's Approvals count", async ({ page }) => {
+  // The count the sidebar loaded, not what it shows yet: the badge appears only once that
+  // answer is in, so reading the badge first could miss an approval held a moment ago.
+  const counted = page.waitForResponse((r) => r.url().includes("/decisions?") && r.url().includes("category=approval"));
   await page.goto("/tasks");
+  const before = Number((await counted).headers()["x-total-count"] ?? 0);
   // The sidebar's link at this width ("Main" is the phone's bottom bar).
   const link = page.locator("aside").getByRole("link", { name: /^Approvals/ });
   await expect(link).toBeVisible();
   const badge = link.getByLabel(/waiting$/);
-  const before = (await badge.count()) ? Number(await badge.textContent()) : 0;
+  if (before) await expect(badge).toHaveText(String(before), SHOWN);
   held(`UPDATE customers SET plan = 'pro' WHERE name = '${unique("live-badge").replace(/\W/g, "_")}'`);
   await expect(badge).toHaveText(String(before + 1), SHOWN);
 });
