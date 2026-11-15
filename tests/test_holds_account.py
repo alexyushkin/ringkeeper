@@ -43,6 +43,11 @@ def test_a_cloud_login_holds_one_with_no_key_stored() -> None:
     assert holds_account(InstanceType.MCP, BROWSER, {"source": "open"}) is False
 
 
+def test_the_browser_counts_its_logins() -> None:
+    """Browser (Playwright) keeps the logins made in it: it starts in no project."""
+    assert holds_account(InstanceType.MCP, BROWSER, {"source": "browser"}) is True
+
+
 def test_every_other_kind_of_connection_holds_one() -> None:
     for kind in InstanceType:
         if kind is not InstanceType.MCP:

@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper import netpolicy, remote
+from ringkeeper import browser, netpolicy, remote
 from ringkeeper.adapters import mcp, vendor
 from ringkeeper.adapters.base import HOLD_DRAFTS, ToolError
 from ringkeeper.api.auth import AdminDep
@@ -107,8 +107,10 @@ def holds_account(
     """Whether a connection has an account behind it: it signs in or holds a key (a
     database, a mailbox, a cloud, CRM or payments account). An MCP server counts when it
     runs as a cloud login on this computer, or its settings carry a key (an env value, a
-    header, a sign-in, a key in its args); a browser or files on this computer hold none."""
-    if kind is not InstanceType.MCP or (config or {}).get("source") == "login":
+    header, a sign-in, a key in its args). Browser (Playwright) counts too: its profile keeps
+    the logins made in it (services.browser). Files on this computer hold none."""
+    source = (config or {}).get("source")
+    if kind is not InstanceType.MCP or source in ("login", browser.SOURCE):
         return True
     return secret is not None and bool(mcp.secret_fragments(secret))
 

@@ -41,7 +41,7 @@ from fastmcp import Client
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
 from pydantic import Field
 
-from ringkeeper import cloud_rules, leadfeeder, plan_limits, remote
+from ringkeeper import browser, cloud_rules, leadfeeder, plan_limits, remote
 from ringkeeper.adapters.base import (
     JSON,
     Adapter,
@@ -183,6 +183,7 @@ BY_SQL = "sql"  # a remote service's SQL tool: the statement decides (ringkeeper
 BY_SERVICE = "service"  # what Ringkeeper knows of a Recommended service's tools (ringkeeper.remote)
 BY_MEMORY = "memory"  # the owner's own Notion memory (services.personal_memory)
 BY_GUARD = "guard"  # the rules for this kind of service: the per-tool setting can't lower them
+BY_BROWSER = "browser"  # the browser: going and reading run; forms, sends, downloads wait
 # An API endpoint that only reads, by its name (getAgent, list_calls, retrieve_phone_number).
 READ_ENDPOINT = re.compile(r"^(get|list|retrieve|search|fetch)([_A-Z]|$)")
 PLAN_REFUSAL_CHARS = 1000
@@ -321,6 +322,9 @@ def call_rule(  # noqa: PLR0911 (one per way a call is decided)
     """What this call needs: the tool's rule, or, for a tool that calls any endpoint of the
     service's API, the endpoint's (unless the user chose a rule for the tool)."""
     found = rule(config, tool)
+    if browser.is_browser(config) and found.source != BY_USER:
+        # A client's project waits for these; your own runs them (services.calls).
+        return Rule(READ if browser.reads(tool, arguments) else APPROVE, BY_BROWSER)
     if config.get("personal_memory") and memory_call(config, tool, arguments):
         # They run; `_screen` has already refused what mustn't. The owner can only be stricter.
         return found if found.source == BY_USER else Rule(READ, BY_MEMORY)

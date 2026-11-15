@@ -168,6 +168,9 @@ NEEDS: dict[str, Need] = {
     "vercel": Need("Vercel", types=(InstanceType.VERCEL,), words=("vercel",), add=("vercel",)),
     "slack": Need("Slack", words=("slack",)),
     "stripe": Need("Stripe", remotes=("stripe",), words=("stripe",), add=("stripe",)),
+    # A page that needs clicking, a form or a login: the browser (services.browser), a tool of
+    # your own, not a client's connection.
+    "browser": Need("browser", words=("browser", "playwright", "puppeteer", "selenium")),
     "microsoft": Need(
         "Microsoft 365", vendors=("microsoft",),
         words=("microsoft", "outlook", "office", "onedrive", "sharepoint", "teams"),
@@ -232,6 +235,9 @@ def fits(instance: Instance, key: str) -> bool:
     found = need(key)
     if found is None:
         return False
+    if key.strip().lower() == BROWSER:  # only a browser: never a tool whose name says nothing
+        named = _named(instance)
+        return instance.type in UNTOLD and any(word in named for word in found.words)
     service = _service_of(instance)
     known = (
         instance.type in found.types
@@ -340,6 +346,7 @@ def add_target(key: str) -> str:
 
 
 BUILT_IN = frozenset(t.value for t in InstanceType)
+BROWSER = "browser"
 
 
 def add_href(key: str, client: str, project: str, back: str = "", run: str = "") -> str:
@@ -347,6 +354,8 @@ def add_href(key: str, client: str, project: str, back: str = "", run: str = "")
     return, `run`: the message to run once it's added."""
     # `link`, not `project`: the app's own client and project picker owns those two.
     params = {"client": client, "link": project, "need": key}
+    if key == BROWSER:  # your own tool, for any client's projects: its one-click tile
+        params = {"kind": "shared", "service": BROWSER, "link": project, "need": key}
     if target := add_target(key):
         params["service"] = target
     if back:
@@ -408,6 +417,8 @@ def what_it_has(session: Session, project: str, key: str) -> str:
 
 
 def add_label(key: str, project_title: str) -> str:
+    if key == BROWSER:
+        return f"Add a browser to {project_title}"
     what = label(key)
     article = "an" if what[:1].lower() in "aeiou" else "a"
     return f"Add {article} {what} connection to {project_title}"

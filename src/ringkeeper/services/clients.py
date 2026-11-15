@@ -135,6 +135,15 @@ def own_client(session: Session) -> str | None:
     return session.scalar(select(Client.slug).where(Client.own.is_(True)).limit(1))
 
 
+def owns_project(session: Session, project: str | None) -> bool:
+    """Whether a project is the operator's own client's (not a client's)."""
+    own = own_client(session)
+    if own is None or not project:
+        return False
+    owner = session.scalar(select(Project.owner).where(Project.name == project))
+    return owner is not None and owner.strip().lower() == own.strip().lower()
+
+
 def set_own(session: Session, text: str, own: bool) -> Client:
     """Mark (or unmark) the operator's own client; only one is."""
     client = get(session, text)

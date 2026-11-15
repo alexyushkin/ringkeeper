@@ -21,7 +21,7 @@ publishes it as the release notes and the app shows it with the update.
   database, a mailbox, a cloud, CRM or payments account, or a tool given a key or a
   sign-in, no project is ticked and **Choose projects** is the main button: "This
   connection has an account behind it. Pick the projects that should be able to use it."
-  A browser or files on this computer still start in every project.
+  Files on this computer still start in every project.
 - **Back up to Google Drive shows what it's doing.** After a backup at 10:29:57 was uploaded
   at 10:30:00, the section still said "Nothing uploaded yet" a minute later. Now it shows
   "Uploading..." while an upload runs and updates by itself when it ends: when, which file,
@@ -41,6 +41,13 @@ publishes it as the release notes and the app shows it with the update.
   "App not active", "URL blocked" and "Invalid Scopes" with the fix for each, and each other
   service has its own list. If the sign-in hasn't finished after 2 minutes, it stops waiting,
   says so, opens that list and offers **Try again**.
+- **A browser is one click.** **Add your own tool** starts with **Browser (Playwright)**:
+  one click installs and connects it, with a browser profile of its own, never your
+  everyday one. It's for clicking, forms and pages that need a login, which web search and
+  page reading can't do. It's linked to no project until you pick. Going to pages and
+  reading them runs; typing into forms, sending them and downloads wait for your approval
+  in a client's project. A task that ended Not done because a page needed it offers **Add a
+  browser**, like a missing connection.
 
 ## 0.1.0-beta.47 (2026-11-15)
 
