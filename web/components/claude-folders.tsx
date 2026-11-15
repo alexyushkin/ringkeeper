@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { CheckList, type CheckItem } from "@/components/check-list";
 import { Alert, Button, Card, Details, Field } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { DESKTOP } from "@/lib/client/routes";
@@ -85,7 +86,6 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
   // offer key -> client, when ticked
   const [clients, setClients] = useState<Record<string, string>>({});
   const [lastClient, setLastClient] = useState("");
-  const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -114,17 +114,16 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
   }, [count]);
   if (!offers.length) return null;
 
-  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = (o: Offer) => !words.length || words.every((w) => `${o.title} ${o.folder?.folder ?? ""} ${o.project?.description ?? ""} ${o.client}`.toLowerCase().includes(w));
-  const shown = offers.filter(matches);
-  const holders = shown.filter((o) => (o.folder?.holds ?? 0) > 0);
-  const work = shown.filter((o) => !((o.folder?.holds ?? 0) > 0));
-  const groups = [...new Set(work.map((o) => o.client))].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1));
+  const holders = offers.filter((o) => (o.folder?.holds ?? 0) > 0);
+  const work = offers.filter((o) => !((o.folder?.holds ?? 0) > 0));
+  const several = new Set(work.map((o) => o.client)).size > 1;
+  // Likely clients first, by name; the unsure ones last.
+  const byClient = [...work].sort((a, b) => (a.client ? (b.client ? a.client.localeCompare(b.client) : -1) : b.client ? 1 : 0));
   const ticked = Object.entries(clients);
   const ready = ticked.length > 0 && ticked.every(([, client]) => client.trim());
 
-  function tick(offer: Offer, on: boolean) {
-    setClients(({ [offer.key]: _, ...rest }) => (on ? { ...rest, [offer.key]: offer.client || lastClient } : rest));
+  function setTicked(next: string[]) {
+    setClients((all) => Object.fromEntries(next.map((key) => [key, all[key] ?? (offers.find((o) => o.key === key)?.client || lastClient)])));
   }
 
   function setClient(key: string, client: string) {
@@ -168,29 +167,25 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
   const brings = (p: ClaudeProject) =>
     [p.instructions ? "its instructions (as CLAUDE.md)" : "", p.files ? `${p.files} file${p.files === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
 
-  const row = (offer: Offer) => {
+  const item = (offer: Offer, group?: string): CheckItem => {
     const on = offer.key in clients;
     const source = [offer.folder?.from.join(", "), offer.project ? (offer.folder ? "also a Claude project" : "Claude project (Chat and Cowork)") : "", when(offer.usedAt)].filter(Boolean).join(" · ");
-    return (
-      <li key={offer.key} className="rounded-xl border border-line p-3">
-        <label className="flex items-start gap-3">
-          <input type="checkbox" checked={on} onChange={(e) => tick(offer, e.target.checked)} className="mt-1 size-5 accent-[var(--color-accent)]" />
-          <span className="min-w-0">
-            <span className="block font-medium">{offer.title}</span>
-            {offer.folder ? <span className="block font-mono text-xs break-all text-muted">{offer.folder.folder}</span> : null}
-            {offer.project?.description ? <span className="block text-sm text-muted">{offer.project.description}</span> : null}
-            <span className="block text-xs text-muted">{source}</span>
-            {offer.project && !offer.folder ? <span className="block text-xs text-muted">Gets a new folder with {brings(offer.project) || "its name and description"}; its conversations stay in Claude.</span> : null}
-            {offer.folder?.holds ? <span className="block text-xs text-muted">Holds {offer.folder.holds} other project folder{offer.folder.holds === 1 ? "" : "s"}.</span> : null}
-          </span>
-        </label>
-        {on ? (
-          <div className="mt-2 pl-8">
-            <Field label="Client" value={clients[offer.key] ?? ""} onChange={(v) => setClient(offer.key, v)} placeholder="General Informatics LLC" required />
-          </div>
-        ) : null}
-      </li>
-    );
+    return {
+      key: offer.key,
+      text: `${offer.title} ${offer.folder?.folder ?? ""} ${offer.project?.description ?? ""} ${offer.client}`,
+      group,
+      label: (
+        <span className="min-w-0">
+          <span className="block font-medium">{offer.title}</span>
+          {offer.folder ? <span className="block font-mono text-xs break-all text-muted">{offer.folder.folder}</span> : null}
+          {offer.project?.description ? <span className="block text-sm text-muted">{offer.project.description}</span> : null}
+          <span className="block text-xs text-muted">{source}</span>
+          {offer.project && !offer.folder ? <span className="block text-xs text-muted">Gets a new folder with {brings(offer.project) || "its name and description"}; its conversations stay in Claude.</span> : null}
+          {offer.folder?.holds ? <span className="block text-xs text-muted">Holds {offer.folder.holds} other project folder{offer.folder.holds === 1 ? "" : "s"}.</span> : null}
+        </span>
+      ),
+      detail: on ? <Field label="Client" value={clients[offer.key] ?? ""} onChange={(v) => setClient(offer.key, v)} placeholder="General Informatics LLC" required /> : undefined,
+    };
   };
 
   return (
@@ -199,20 +194,22 @@ export function ClaudeCodeFolders({ onAdded, className = "" }: { onAdded: (names
         From Claude
       </h2>
       <p className="text-sm text-muted">What you&apos;ve worked on with Claude, most recent first. Tick the ones that are client work and say whose each one is. A folder stays as it is; a Claude project gets a new folder with its instructions and files.</p>
-      {offers.length > 6 ? <Field label="Search" value={search} onChange={setSearch} placeholder="a folder, project or client" /> : null}
-      {groups.map((group) => (
-        <section key={group || "unsure"} className="space-y-2">
-          <h3 className="text-sm font-medium">{group ? `Likely ${group}` : groups.length > 1 ? "Not sure whose" : "Your work with Claude"}</h3>
-          <ul className="space-y-2">{work.filter((o) => o.client === group).map(row)}</ul>
-        </section>
-      ))}
+      {work.length ? (
+        <CheckList
+          items={byClient.map((o) => item(o, o.client ? `Likely ${o.client}` : several ? "Not sure whose" : "Your work with Claude"))}
+          selected={Object.keys(clients)}
+          onChange={setTicked}
+          groups="always"
+          align="start"
+          boxed
+        />
+      ) : null}
       {holders.length ? (
         <Details label={`Folders that hold other projects (${holders.length})`}>
           <p className="mb-2 text-xs text-muted">Usually a folder of projects rather than one. Add it only if it&apos;s one piece of client work.</p>
-          <ul className="space-y-2">{holders.map(row)}</ul>
+          <CheckList items={holders.map((o) => item(o))} selected={Object.keys(clients)} onChange={setTicked} align="start" boxed />
         </Details>
       ) : null}
-      {words.length && !shown.length ? <p className="text-sm text-muted">Nothing matches.</p> : null}
       {error ? <Alert>{error}</Alert> : null}
       <Button kind="primary" busy={busy} disabled={!ready} onClick={add}>
         {ticked.length > 1 ? `Add ${ticked.length} projects` : "Add project"}

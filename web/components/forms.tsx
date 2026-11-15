@@ -177,6 +177,7 @@ export interface ConnectionData {
   base_url: string | null;
   config: { preview?: string; [key: string]: unknown };
   secret_stored: boolean;
+  holds_account?: boolean; // it signs in to an account or holds a key
   projects: string[];
   last_test_at: string | null;
   last_test_ok: boolean | null;

@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
 import { defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
+import { CheckList } from "@/components/check-list";
 import { Alert, Button, Field, Select, Toggle } from "@/components/ui";
 import { SHARED_OWNER } from "@/components/shared-tools";
 import { api, useApi } from "@/lib/client/api";
@@ -176,7 +177,6 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
     }
   }
 
-  const toggle = (key: string, on: boolean) => setAccess((now) => (on ? [...now, key] : now.filter((k) => k !== key)));
   const chosen = provider.apps.find((a) => a.id === appId) ?? provider.apps[0];
   const needsReview = provider.client_review && !shared && chosen?.options.client_accounts !== "approved";
   if (needsReview) {
@@ -194,15 +194,7 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
     <>
       {provider.apps.length > 1 ? <Select label="Sign in through" value={appId || (provider.apps[0]?.id ?? "")} onChange={setAppId} options={provider.apps.map((a): [string, string] => [a.id, a.name])} hint={`Which of your ${provider.name} apps.`} /> : null}
       {provider.access.length && vendor.key === provider.key ? (
-        <fieldset className="space-y-1">
-          <legend className="text-sm font-medium">What may it be used for?</legend>
-          {provider.access.map((a) => (
-            <label key={a.key} className="flex items-start gap-2 text-sm">
-              <input type="checkbox" checked={access.includes(a.key)} onChange={(e) => toggle(a.key, e.target.checked)} className="mt-0.5 size-4 accent-[var(--color-accent)]" />
-              <span>{a.label}</span>
-            </label>
-          ))}
-        </fieldset>
+        <CheckList legend="What may it be used for?" align="start" items={provider.access.map((a) => ({ key: a.key, text: a.label, label: <span>{a.label}</span> }))} selected={access} onChange={setAccess} />
       ) : null}
       <EnvChoice value={env} onChange={setEnv} />
       {shared ? <Toggle label="Use in all projects" checked={everywhere} onChange={setEverywhere} hint="Every client's projects, new ones too." /> : null}

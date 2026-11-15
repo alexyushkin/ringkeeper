@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { CheckList } from "@/components/check-list";
 import { NoProjects } from "@/components/connection-library";
 import Link from "@/components/link";
 import { Alert, Badge, Button, CompactRow, ConfirmButton, Empty, Field, Loading, Select, TextArea } from "@/components/ui";
@@ -226,30 +227,38 @@ function AgentForm({ project, linked, existing, onSaved, onCancel }: { project: 
     await api(`projects/${project}/agents/${existing.name}`, { method: "DELETE" });
     onSaved();
   }
-  const toggle = (connection: string, on: boolean) => setChosen((now) => (on ? [...now, connection] : now.filter((c) => c !== connection)));
 
   return (
     <div className="space-y-3">
       <Field label="Name" value={name} onChange={setName} placeholder="follow-up" hint="Short, like follow-up or weekly-report." required />
       <TextArea label="Instructions" value={instructions} onChange={setInstructions} rows={5} hint="What it always does and how: tone, what to check, what never to touch. Every task it runs starts with these." />
-      <fieldset className="space-y-1">
-        <legend className="text-sm font-medium">Connections it may use</legend>
-        {linked.length ? (
-          linked.map((connection) => (
-            <label key={connection.name} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={chosen.includes(connection.name)} onChange={(e) => toggle(connection.name, e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
-              <span>{connection.title || connection.name}</span>
-              <span className="text-xs text-muted">
-                {connection.type}
-                {connection.shared ? " · shared tool" : ""}
-              </span>
-            </label>
-          ))
-        ) : (
+      {linked.length ? (
+        <CheckList
+          legend="Connections it may use"
+          items={linked.map((connection) => ({
+            key: connection.name,
+            text: `${connection.title || connection.name} ${connection.type}`,
+            group: connection.shared ? "Your tools" : undefined,
+            label: (
+              <>
+                <span>{connection.title || connection.name}</span>
+                <span className="text-xs text-muted">
+                  {connection.type}
+                  {connection.shared ? " · shared tool" : ""}
+                </span>
+              </>
+            ),
+          }))}
+          selected={chosen}
+          onChange={setChosen}
+        />
+      ) : (
+        <fieldset className="space-y-1">
+          <legend className="text-sm font-medium">Connections it may use</legend>
           <p className="text-sm text-muted">Link connections on the project&apos;s Connections tab first; then give some to the agent.</p>
-        )}
-        <p className="text-xs text-muted">Only these: Ringkeeper blocks this agent from the project&apos;s other connections. Shared tools only when ticked.</p>
-      </fieldset>
+        </fieldset>
+      )}
+      <p className="text-xs text-muted">Only these: Ringkeeper blocks this agent from the project&apos;s other connections. Shared tools only when ticked.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Model (optional)" value={model} onChange={setModel} placeholder="The project's default" />
         <Select label="Effort" value={effort} onChange={setEffort} options={EFFORTS} />

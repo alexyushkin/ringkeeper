@@ -11,7 +11,7 @@ import { InterruptedList } from "@/components/interrupted";
 import { WatchLine } from "@/components/watch-line";
 import { ScheduledList } from "@/components/scheduled";
 import { ScopeNote } from "@/components/scope-switcher";
-import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
+import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, SelectRows, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
 import { RESYNC, useLive, usePaged } from "@/lib/client/api";
 import { place, useScope } from "@/lib/client/scope";
@@ -38,6 +38,7 @@ export default function Home() {
   const scope = useScope();
   const threads = usePaged<Thread>("threads", { ...scope.query, q: query.trim() || undefined, archived: archived || undefined });
   const pick = useSelection();
+  const shownIds = (threads.items ?? []).map((row) => row.id);
   useLive((event) => {
     if (["message", "message_routed", "task", "approval", RESYNC].includes(event.type)) threads.reload();
   });
@@ -58,6 +59,7 @@ export default function Home() {
       <ScopeNote />
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="conversations" />
       <BulkBar kind="thread" ids={[...pick.selected]} archivedView={archived} onDone={threads.reload} onClear={pick.clear} />
+      <SelectRows pick={pick} ids={shownIds} more={threads.more} />
       <ListTotal total={threads.total} what={["conversation", "conversations"]} searching={Boolean(query.trim())} archived={archived} />
       {threads.error ? <Alert>{threads.error}</Alert> : null}
       {threads.loading && !threads.items ? <Loading /> : null}
@@ -71,7 +73,7 @@ export default function Home() {
           return (
             <li key={thread.id} className="flex items-start gap-3">
               <span className="pt-5">
-                <SelectBox checked={pick.has(thread.id)} onChange={() => pick.toggle(thread.id)} label={`Select ${thread.title}`} />
+                <SelectBox checked={pick.has(thread.id)} onChange={(on, shift) => pick.click(thread.id, on, shift, shownIds)} label={`Select ${thread.title}`} />
               </span>
               <Link href={threadHref(thread.id)} className="block min-w-0 flex-1 rounded-2xl border border-line bg-surface p-4 hover:border-accent">
                 <div className="flex items-center gap-2">

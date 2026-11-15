@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { CheckList, keepPicked } from "@/components/check-list";
 import { connectionTitle } from "@/components/connection-form";
 import { NoProjects, ScopeInputs, type LibraryConnection } from "@/components/connection-library";
 import { TestButton } from "@/components/forms";
@@ -22,7 +23,7 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
   const projects = useProjects();
   const [picked, setPicked] = useState<Record<string, Record<string, string>>>({}); // project -> scope
   const [linked, setLinked] = useState<string[]>([]);
-  const [chooseSome, setChooseSome] = useState(false); // all the client's projects, unless not
+  const [chooseSome, setChooseSome] = useState<boolean | null>(null); // null: by whether it has an account
   const [leftOut, setLeftOut] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,10 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
   // A shared tool can go everywhere, even with no projects yet; a client's needs two to choose from.
   const offerAll = Boolean(connection && !connection.all_projects && !projects.loading && (connection.shared || theirs.length > 1));
   const everyone = connection?.shared ? "all projects" : `all of ${owner}'s projects`;
+  // A browser or files on this computer start in every project; an account starts in none, chosen one by one.
+  const account = connection?.holds_account !== false;
+  const choosing = chooseSome ?? account;
+  const group = (p: { owner: string }) => (connection?.shared ? clientName(p.owner) : undefined);
 
   async function useInAll() {
     setBusy(true);
@@ -81,25 +86,25 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
       <TestButton name={name} />
       {connection?.all_projects ? (
         <p className="text-sm text-muted">{connection.reach}, new ones too. A project&apos;s link can be narrowed under Details.</p>
-      ) : offerAll && !chooseSome ? (
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Use in {everyone}</legend>
-          <p className="text-xs text-muted">
-            {connection?.shared ? "New clients and projects get it too." : "Projects added later get it too."}
-            {theirs.length ? " Leave out any that shouldn't have it:" : ""}
-          </p>
-          {theirs.map((p) => (
-            <label key={p.name} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={!leftOut.includes(p.name)}
-                onChange={(e) => setLeftOut((all) => (e.target.checked ? all.filter((n) => n !== p.name) : [...all, p.name]))}
-                className="size-4 accent-[var(--color-accent)]"
-              />
-              {projectName(p.name)}
-              {connection?.shared ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
-            </label>
-          ))}
+      ) : offerAll && !choosing ? (
+        <div className="space-y-2">
+          <CheckList
+            legend={`Use in ${everyone}`}
+            hint={`${connection?.shared ? "New clients and projects get it too." : "Projects added later get it too."}${theirs.length ? " Leave out any that shouldn't have it:" : ""}`}
+            items={theirs.map((p) => ({
+              key: p.name,
+              text: projectName(p.name),
+              group: group(p),
+              label: (
+                <>
+                  {projectName(p.name)}
+                  {connection?.shared && theirs.length <= 8 ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
+                </>
+              ),
+            }))}
+            selected={theirs.filter((p) => !leftOut.includes(p.name)).map((p) => p.name)}
+            onChange={(next) => setLeftOut(theirs.filter((p) => !next.includes(p.name)).map((p) => p.name))}
+          />
           <div className="flex flex-wrap gap-2">
             <Button kind="primary" busy={busy} disabled={theirs.length > 0 && leftOut.length === theirs.length} onClick={useInAll}>
               {leftOut.length ? `Use in ${everyone} except ${leftOut.length}` : `Use in ${everyone}`}
@@ -110,42 +115,43 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
               </Button>
             ) : null}
           </div>
-        </fieldset>
+        </div>
       ) : connection && !projects.loading && !theirs.length ? (
         <NoProjects client={connection.shared ? undefined : connection.owner} />
       ) : eligible.length ? (
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">{connection?.projects.length ? "Also use in…" : "Use in…"}</legend>
-          {eligible.map((p) => (
-            <div key={p.name} className="space-y-1">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={p.name in picked}
-                  onChange={(e) =>
-                    setPicked((all) => {
-                      const next = { ...all };
-                      if (e.target.checked) next[p.name] = {};
-                      else delete next[p.name];
-                      return next;
-                    })
-                  }
-                  className="size-4 accent-[var(--color-accent)]"
-                />
-                {projectName(p.name)}
-                {connection?.shared ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
-              </label>
-              {p.name in picked && fields.length ? (
-                <div className="ml-6">
+        <div className="space-y-2">
+          <CheckList
+            legend={connection?.projects.length ? "Also use in…" : "Use in…"}
+            hint={account ? "This connection has an account behind it. Pick the projects that should be able to use it." : undefined}
+            items={eligible.map((p) => ({
+              key: p.name,
+              text: projectName(p.name),
+              group: group(p),
+              label: (
+                <>
+                  {projectName(p.name)}
+                  {connection?.shared && eligible.length <= 8 ? <span className="text-xs text-muted">{clientName(p.owner)}</span> : null}
+                </>
+              ),
+              detail:
+                p.name in picked && fields.length ? (
                   <ScopeInputs fields={fields} value={picked[p.name] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [p.name]: scope }))} connection={connection} />
-                </div>
-              ) : null}
-            </div>
-          ))}
-          <Button kind="primary" busy={busy} disabled={!chosen.length} onClick={link}>
-            {chosen.length > 1 ? `Link to ${chosen.length} projects` : "Link to this project"}
-          </Button>
-        </fieldset>
+                ) : undefined,
+            }))}
+            selected={chosen}
+            onChange={(next) => setPicked((all) => keepPicked(all, next, () => ({})))}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button kind="primary" busy={busy} disabled={!chosen.length} onClick={link}>
+              {!chosen.length ? "Choose projects" : chosen.length > 1 ? `Link to ${chosen.length} projects` : "Link to this project"}
+            </Button>
+            {offerAll && choosing ? (
+              <Button kind="ghost" onClick={() => setChooseSome(false)}>
+                Use in {everyone} instead
+              </Button>
+            ) : null}
+          </div>
+        </div>
       ) : null}
       {error ? <Alert>{error}</Alert> : null}
       <div className="flex flex-wrap gap-2">

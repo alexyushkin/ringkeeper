@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
 import { LocalUpdate, ServiceMark } from "@/components/catalog";
+import { CheckList, keepPicked } from "@/components/check-list";
 import { connectionTitle, defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { TestButton, type ConnectionData } from "@/components/forms";
 import { GoogleAccount } from "@/components/google";
@@ -236,6 +237,8 @@ export function NoProjects({ client }: { client?: string }) {
 export function LinkToProjects({ connection, projects, onDone }: { connection: LibraryConnection; projects: string[]; onDone: () => void }) {
   const linked = new Set((connection.links ?? []).map((l) => l.project));
   const open = projects.filter((p) => !linked.has(p));
+  const known = useApi<{ name: string; owner: string }[]>("projects"); // whose each is, to group a shared tool's
+  const owners = new Map((known.data ?? []).map((p) => [p.name, p.owner]));
   const [picked, setPicked] = useState<Record<string, Record<string, string>>>({}); // project -> scope
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -261,38 +264,27 @@ export function LinkToProjects({ connection, projects, onDone }: { connection: L
   }
 
   return (
-    <fieldset className="space-y-2 rounded-xl border border-line p-3">
-      <legend className="px-1 text-sm font-medium">Link {connectionTitle(connection)} to…</legend>
-      {open.map((project) => (
-        <div key={project} className="space-y-1">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={project in picked}
-              onChange={(e) =>
-                setPicked((all) => {
-                  const next = { ...all };
-                  if (e.target.checked) next[project] = {};
-                  else delete next[project];
-                  return next;
-                })
-              }
-              className="size-4 accent-[var(--color-accent)]"
-            />
-            {projectName(project)}
-          </label>
-          {project in picked && fields.length ? (
-            <div className="ml-6">
+    <div className="space-y-2 rounded-xl border border-line p-3">
+      <CheckList
+        legend={`Link ${connectionTitle(connection)} to…`}
+        items={open.map((project) => ({
+          key: project,
+          text: projectName(project),
+          group: connection.shared ? clientName(owners.get(project) ?? "") || undefined : undefined,
+          label: projectName(project),
+          detail:
+            project in picked && fields.length ? (
               <ScopeInputs fields={fields} value={picked[project] ?? {}} onChange={(scope) => setPicked((all) => ({ ...all, [project]: scope }))} connection={connection} />
-            </div>
-          ) : null}
-        </div>
-      ))}
+            ) : undefined,
+        }))}
+        selected={chosen}
+        onChange={(next) => setPicked((all) => keepPicked(all, next, () => ({})))}
+      />
       <Button kind="primary" busy={busy} disabled={!chosen.length} onClick={link}>
         {chosen.length > 1 ? `Link to ${chosen.length} projects` : "Link"}
       </Button>
       {error ? <Alert>{error}</Alert> : null}
-    </fieldset>
+    </div>
   );
 }
 

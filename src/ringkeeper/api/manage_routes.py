@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ringkeeper import netpolicy, remote
-from ringkeeper.adapters import vendor
+from ringkeeper.adapters import mcp, vendor
 from ringkeeper.adapters.base import HOLD_DRAFTS, ToolError
 from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import (
@@ -91,11 +91,26 @@ CONFIRMED_SETTINGS = frozenset({"telegram", "telegram_chat_ids", "telegram_reque
 
 
 def _stored(ref: str) -> bool:
+    return _secret(ref) is not None
+
+
+def _secret(ref: str) -> str | None:
     try:
-        get_vault().resolve(ref)
+        return get_vault().resolve(ref).reveal()
     except RingkeeperError:
-        return False
-    return True
+        return None
+
+
+def holds_account(
+    kind: InstanceType, secret: str | None, config: dict[str, Any] | None = None
+) -> bool:
+    """Whether a connection has an account behind it: it signs in or holds a key (a
+    database, a mailbox, a cloud, CRM or payments account). An MCP server counts when it
+    runs as a cloud login on this computer, or its settings carry a key (an env value, a
+    header, a sign-in, a key in its args); a browser or files on this computer hold none."""
+    if kind is not InstanceType.MCP or (config or {}).get("source") == "login":
+        return True
+    return secret is not None and bool(mcp.secret_fragments(secret))
 
 
 def _unavailable(error: secrets_in.CheckUnavailableError) -> HTTPException:
@@ -687,6 +702,8 @@ class ConnectionOut(BaseModel):
     config: dict[str, Any]  # never secret (for an MCP server: a masked preview, read-only tools)
     base_url: str | None
     secret_stored: bool
+    # It signs in to an account or holds a key: after it's added, no project is ticked yet.
+    holds_account: bool = True
     projects: list[str]
     # Each project's link: what it's narrowed to (empty: the whole connection).
     links: list[dict[str, Any]] = []
@@ -711,6 +728,7 @@ def _connection_out(instance: Instance) -> ConnectionOut:
          for b in instance.bindings),
         key=lambda link: str(link["project"]),
     )  # fmt: skip
+    secret = _secret(instance.secret_ref)
     return ConnectionOut(
         name=instance.name, title=instance.title, type=instance.type, env=instance.env,
         owner=instance.owner, shared=instance.shared, all_projects=instance.all_projects,
@@ -718,7 +736,8 @@ def _connection_out(instance: Instance) -> ConnectionOut:
         except_projects=list(instance.except_projects),
         reach=instances.describe_reach(instance),
         config=dict(instance.config or {}), base_url=instance.base_url,
-        secret_stored=_stored(instance.secret_ref),
+        secret_stored=secret is not None,
+        holds_account=holds_account(instance.type, secret, instance.config),
         projects=instances.bound_project_names(instance), links=links,
         scope_fields=_scope_fields(instance), last_test_at=instance.last_test_at,
         last_test_ok=instance.last_test_ok, last_test_message=instance.last_test_message,

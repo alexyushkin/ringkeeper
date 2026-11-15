@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { CheckList } from "@/components/check-list";
 import { browserZone } from "@/components/routines";
 import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -125,24 +126,33 @@ export function ChannelPrefs({ prefs, onSave }: { prefs: Prefs; onSave: (prefs: 
           <input type="checkbox" checked={everything} onChange={() => setDraft({ ...draft, clients: [], projects: [] })} disabled={everything} />
           All of them
         </label>
-        {clients.map((client) => (
-          <div key={client.slug} className="space-y-1">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={draft.clients.includes(client.slug)} onChange={() => setDraft({ ...draft, clients: flip(draft.clients, client.slug) })} />
-              {client.name} <span className="text-xs text-muted">(all its projects)</span>
-            </label>
-            {draft.clients.includes(client.slug)
-              ? null
-              : (projects.data ?? [])
-                  .filter((p) => p.owner === client.slug)
-                  .map((p) => (
-                    <label key={p.name} className="ml-6 flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={draft.projects.includes(p.name)} onChange={() => setDraft({ ...draft, projects: flip(draft.projects, p.name) })} />
-                      {p.title}
-                    </label>
-                  ))}
-          </div>
-        ))}
+        {clients.length ? (
+          <CheckList
+            items={clients.map((client) => {
+              const theirs = (projects.data ?? []).filter((p) => p.owner === client.slug);
+              const whole = draft.clients.includes(client.slug);
+              return {
+                key: client.slug,
+                text: `${client.name} ${theirs.map((p) => p.title).join(" ")}`,
+                label: (
+                  <>
+                    {client.name} <span className="text-xs text-muted">(all its projects)</span>
+                  </>
+                ),
+                detail:
+                  !whole && theirs.length ? (
+                    <CheckList
+                      items={theirs.map((p) => ({ key: p.name, text: p.title, label: p.title }))}
+                      selected={draft.projects}
+                      onChange={(next) => setDraft({ ...draft, projects: next })}
+                    />
+                  ) : undefined,
+              };
+            })}
+            selected={draft.clients}
+            onChange={(next) => setDraft({ ...draft, clients: next })}
+          />
+        ) : null}
         <p className="text-xs text-muted">&quot;Which project?&quot; questions always come, since they aren&apos;t about one yet.</p>
       </fieldset>
       {error ? <Alert>{error}</Alert> : null}

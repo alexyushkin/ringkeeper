@@ -1,9 +1,10 @@
 "use client";
 
+import { CheckList } from "@/components/check-list";
 import { LibraryCard, type LibraryConnection, type RemoteService } from "@/components/connection-library";
 import { Alert, Empty, Loading, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
-import { projectName } from "@/lib/client/scope";
+import { clientName, projectName } from "@/lib/client/scope";
 
 /**
  * Two kinds of connection. A client's connection holds that client's account and
@@ -21,8 +22,6 @@ export interface ProjectRef {
   name: string;
   owner: string;
 }
-
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 export function useProjects() {
   const projects = useApi<ProjectRef[]>("projects");
@@ -67,13 +66,10 @@ export function ProjectPicker({
   onAll?: (on: boolean) => void;
   label?: string;
 }) {
-  const chosenClient = kind === "client" ? projects.find((p) => value.includes(p.name))?.owner : undefined;
-  const clients = [...new Set(projects.map((p) => p.owner))].sort((a, b) => a.localeCompare(b));
-  const toggle = (name: string, on: boolean) => onChange(on ? [...value, name] : value.filter((v) => v !== name));
   if (!projects.length) return <p className="text-sm text-muted">Add a project first.</p>;
+  const sorted = [...projects].sort((a, b) => clientName(a.owner).localeCompare(clientName(b.owner)) || a.name.localeCompare(b.name));
   return (
-    <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">{label}</legend>
+    <div className="space-y-2">
       {kind === "shared" && onAll ? (
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={all} onChange={(e) => onAll(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
@@ -83,28 +79,17 @@ export function ProjectPicker({
         </label>
       ) : null}
       {!all ? (
-        <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-line p-2">
-          {clients.map((client) => {
-            const locked = chosenClient !== undefined && !same(chosenClient, client);
-            return (
-              <div key={client}>
-                <p className="text-xs font-semibold text-muted">{client}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {projects
-                    .filter((p) => p.owner === client)
-                    .map((p) => (
-                      <label key={p.name} className={`flex items-center gap-2 text-sm ${locked ? "opacity-50" : ""}`} title={locked ? "A client's connection is only for one client's projects" : undefined}>
-                        <input type="checkbox" disabled={locked} checked={value.includes(p.name)} onChange={(e) => toggle(p.name, e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
-                        {projectName(p.name)}
-                      </label>
-                    ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <CheckList
+          legend={label}
+          items={sorted.map((p) => ({ key: p.name, text: projectName(p.name), group: clientName(p.owner), label: projectName(p.name) }))}
+          selected={value}
+          onChange={onChange}
+          groups="always"
+          oneGroup={kind === "client"}
+          oneGroupTitle="A client's connection is only for one client's projects"
+        />
       ) : null}
-    </fieldset>
+    </div>
   );
 }
 
