@@ -62,8 +62,9 @@ async def test_every_tool_takes_instance_and_declares_its_kind(gateway: str) -> 
     assert tools.pop("list_instances").input_schema.get("properties", {}) == {}
     # A kept result is the session's own, whichever instance it came from.
     assert set(tools.pop("read_more").input_schema["properties"]) == {
-        "continuation", "offset", "limit",
+        "continuation", "offset", "limit", "fields", "where", "page",
     }  # fmt: skip
+    assert "fields" in tools["query"].input_schema["properties"]  # a list tool (ToolSpec.rows)
     for tool in tools.values():
         assert "instance" in tool.input_schema["properties"]
         assert "instance" not in tool.input_schema.get("required", [])
