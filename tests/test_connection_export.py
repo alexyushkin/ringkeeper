@@ -20,7 +20,7 @@ from tests.helpers import make_instance
 
 setup_code, admin, owner = test_web_api.setup_code, test_web_api.admin, test_web_api.owner
 SERVER = Path(__file__).parent / "fixtures" / "fake_meta_ads_mcp.py"
-CLIENT = "seaside-bakery"
+CLIENT = "general-informatics-llc"
 SECRET = "EAAB-made-up-token-123"
 
 
@@ -31,15 +31,15 @@ def add_mcp(tmp_path: Path) -> str:
     })  # fmt: skip
     with session_scope() as session:
         ref = secrets_in.store_connection(
-            session, get_settings(), "seaside-ads", InstanceType.MCP, secret
+            session, get_settings(), "gi-ads", InstanceType.MCP, secret
         )
         instances.create_instance(session, InstanceIn(
-            name="seaside-ads", title="Meta Ads · Seaside Bakery", type=InstanceType.MCP,
+            name="gi-ads", title="Meta Ads · General Informatics LLC", type=InstanceType.MCP,
             env=Env.PROD, secret_ref=ref, owner=CLIENT,
             config={"remote": "meta_ads", "source": "signin", "app": "a1",
                     "expires_at": "2027-01-12", "account": "Pat Doe"},
         ))  # fmt: skip
-    return "seaside-ads"
+    return "gi-ads"
 
 
 def test_an_mcp_servers_tools_with_flags_rules_and_arguments(
@@ -67,8 +67,8 @@ def test_an_mcp_servers_tools_with_flags_rules_and_arguments(
 
 def test_a_built_in_connections_own_tools(database_url: str) -> None:
     with session_scope() as session:
-        make_instance(session, "seaside-db", env=Env.PROD, owner=CLIENT)
-    found = connection_export.tool_list("seaside-db")
+        make_instance(session, "gi-db", env=Env.PROD, owner=CLIENT)
+    found = connection_export.tool_list("gi-db")
     by = {t["name"]: t for t in found["tools"]}
     assert by
     reads = [t for t in found["tools"] if t["rule"] == connection_export.RUNS]
@@ -81,9 +81,9 @@ def test_a_built_in_connections_own_tools(database_url: str) -> None:
 
 def test_a_business_systems_operations(database_url: str) -> None:
     with session_scope() as session:
-        make_instance(session, "seaside-crm", type=InstanceType.VENDOR, owner=CLIENT,
+        make_instance(session, "gi-crm", type=InstanceType.VENDOR, owner=CLIENT,
                       config={"vendor": "pipedrive"})  # fmt: skip
-    found = connection_export.tool_list("seaside-crm")
+    found = connection_export.tool_list("gi-crm")
     assert found["kind"] == "Pipedrive"
     assert found["count"] > 5
     with_ids = [t for t in found["tools"] if t["required"]]
@@ -100,7 +100,9 @@ def test_details_for_support_say_how_it_connects_and_nothing_of_the_client(
         instance = instances.get_instance(session, name)
         instance.last_test_at = datetime(2026, 11, 14, 9, 30, tzinfo=UTC)
         instance.last_test_ok = True
-        instance.last_test_message = "Connected: 7 tools. Accounts: Seaside Bakery (act_111)."
+        instance.last_test_message = (
+            "Connected: 7 tools. Accounts: General Informatics LLC (act_111)."
+        )
         instance.config = {**instance.config, "annotations": {"a": {}, "b": {}, "c": {}}}
     with session_scope() as session:
         found = connection_export.support_details(session, name)
@@ -112,15 +114,15 @@ def test_details_for_support_say_how_it_connects_and_nothing_of_the_client(
     assert lines["Tools"] == "3"
     assert __version__ in lines["Ringkeeper"]
     text = found["text"]
-    for private in ("Seaside", "seaside", "act_111", "Pat Doe", SECRET):
+    for private in ("General Informatics", "gi", "act_111", "Pat Doe", SECRET):
         assert private not in text
 
 
 def test_a_pasted_key_and_a_connection_never_tested(database_url: str) -> None:
     with session_scope() as session:
-        make_instance(session, "seaside-crm", type=InstanceType.VENDOR, owner=CLIENT,
+        make_instance(session, "gi-crm", type=InstanceType.VENDOR, owner=CLIENT,
                       config={"vendor": "pipedrive"})  # fmt: skip
-        found = connection_export.support_details(session, "seaside-crm")
+        found = connection_export.support_details(session, "gi-crm")
     assert found["lines"]["Signs in with"] == "A pasted key"
     assert found["lines"]["Sign-in ends"] == "Not known"
     assert found["lines"]["Last test"] == "Never tested"
@@ -129,11 +131,11 @@ def test_a_pasted_key_and_a_connection_never_tested(database_url: str) -> None:
 @pytest.mark.usefixtures("database_url")
 def test_the_routes_answer_the_owner(owner: TestClient) -> None:
     with session_scope() as session:
-        make_instance(session, "seaside-db", owner=CLIENT)
-    listed = owner.get("/connections/seaside-db/tool-list")
+        make_instance(session, "gi-db", owner=CLIENT)
+    listed = owner.get("/connections/gi-db/tool-list")
     assert listed.status_code == 200
     assert listed.json()["count"] == len(listed.json()["tools"])
-    details = owner.get("/connections/seaside-db/support")
+    details = owner.get("/connections/gi-db/support")
     assert details.status_code == 200
     assert "Connection kind: supabase" in details.json()["text"]
     assert owner.get("/connections/nothing-here/support").status_code == 404

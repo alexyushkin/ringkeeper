@@ -908,7 +908,7 @@ def claude_app(tmp_path: Path, code: Path) -> Path:
     base = tmp_path / "Claude"
     org = base / "local-agent-mode-sessions" / "account" / "org"
     sessions: dict[Path, dict[str, Any]] = {
-        org / "local_1.json": {"userSelectedFolders": [str(code / "seaside-copy")]},
+        org / "local_1.json": {"userSelectedFolders": [str(code / "gi-copy")]},
         org / "local_2.json": {
             "userSelectedFolders": [str(code / "acme-site"), str(code / "gone")]
         },
@@ -926,7 +926,7 @@ def claude_app(tmp_path: Path, code: Path) -> Path:
     newsletter = cache / "p1"
     (newsletter / "docs").mkdir(parents=True)
     (newsletter / "metadata.json").write_text(json.dumps({
-        "uuid": "p1", "name": "Seaside newsletter", "description": "Monthly email for Seaside",
+        "uuid": "p1", "name": "Newsletter", "description": "Monthly email for General Informatics",
         "prompt_template": "Write in a warm, plain voice.",
     }), encoding="utf-8")  # fmt: skip
     (newsletter / "docs" / "style.md").write_text("Short sentences.", encoding="utf-8")
@@ -940,7 +940,7 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
     desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     code = tmp_path / "code"
-    for name in ("acme-site", "seaside-copy", "globex-api"):
+    for name in ("acme-site", "gi-copy", "globex-api"):
         (code / name).mkdir(parents=True)
     config = tmp_path / "claude-config"
     config.mkdir()
@@ -955,32 +955,34 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
     folders = win.get("/bff/desktop/claude-code-folders").json()
     assert [{k: f[k] for k in ("folder", "name", "from")} for f in folders] == [
         {"folder": str(code / "acme-site"), "name": "acme-site", "from": ["Claude Code", "Cowork"]},
+        {"folder": str(code / "gi-copy"), "name": "gi-copy", "from": ["Cowork"]},
         {"folder": str(code / "globex-api"), "name": "globex-api", "from": ["Claude Code"]},
-        {"folder": str(code / "seaside-copy"), "name": "seaside-copy", "from": ["Cowork"]},
     ]
     # Used in a Cowork or Code tab session: when its session file last changed.
     used = {f["name"]: f["used_at"] for f in folders}
     assert used["acme-site"]
-    assert used["seaside-copy"]
+    assert used["gi-copy"]
 
     projects = win.get("/bff/desktop/claude-projects").json()
     assert all(p.pop("used_at") for p in projects)
     assert projects == [
         {"id": "p2", "name": "Ideas", "description": "", "instructions": False, "files": 0},
         {
-            "id": "p1", "name": "Seaside newsletter", "description": "Monthly email for Seaside",
+            "id": "p1", "name": "Newsletter",
+            "description": "Monthly email for General Informatics",
             "instructions": True, "files": 1,
         },
     ]  # fmt: skip
     made = win.post(
-        "/bff/desktop/claude-projects/p1", json={"name": "seaside-newsletter", "owner": "Seaside"}
+        "/bff/desktop/claude-projects/p1",
+        json={"name": "gi-newsletter", "owner": "General Informatics"},
     )
     assert made.status_code == 201, made.text
     body = made.json()
-    assert (body["name"], body["instructions"], body["files"]) == ("seaside-newsletter", True, 1)
+    assert (body["name"], body["instructions"], body["files"]) == ("gi-newsletter", True, 1)
     folder = Path(body["folder"])
     assert (folder / "CLAUDE.md").read_text(encoding="utf-8") == (
-        "# Seaside newsletter\n\nMonthly email for Seaside\n\nWrite in a warm, plain voice.\n"
+        "# Newsletter\n\nMonthly email for General Informatics\n\nWrite in a warm, plain voice.\n"
     )
     assert (folder / "Claude project files" / "style.md").read_text() == "Short sentences."
     if (folder / ".git").exists():  # committed, so a task's branch has them
@@ -992,10 +994,18 @@ def test_cowork_and_code_tab_folders_and_claude_projects_are_offered(
             check=True,
         ).stdout.split("\0")
         assert {"CLAUDE.md", "Claude project files/style.md"} <= set(listed)
-    project = win.get("/bff/projects/seaside-newsletter").json()
-    assert (project["owner"], project["description"]) == ("seaside", "Monthly email for Seaside")
-    seaside = {"slug": "seaside", "name": "Seaside", "projects": 1, "connections": 0}
-    assert seaside | {"month_usd": 0.0, "cap_usd": None, "default_project": None, "own": False} in (
+    project = win.get("/bff/projects/gi-newsletter").json()
+    assert (project["owner"], project["description"]) == (
+        "general-informatics",
+        "Monthly email for General Informatics",
+    )
+    gi = {
+        "slug": "general-informatics",
+        "name": "General Informatics",
+        "projects": 1,
+        "connections": 0,
+    }
+    assert gi | {"month_usd": 0.0, "cap_usd": None, "default_project": None, "own": False} in (
         win.get("/bff/clients").json()
     )
     assert (

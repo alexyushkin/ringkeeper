@@ -37,13 +37,15 @@ def projects(database_url: str) -> None:
     with session_scope() as session:
         make_project(session, "demo-shop", owner="Demo Co", title="Demo shop")
         make_project(session, "demo-site", owner="Demo Co", title="Demo site")
-        make_project(session, "seaside-web", owner="Seaside", title="Seaside website")
-        make_project(session, "seaside-crm", owner="Seaside", title="CRM")
+        make_project(
+            session, "gi-web", owner="General Informatics", title="General Informatics website"
+        )
+        make_project(session, "gi-crm", owner="General Informatics", title="CRM")
         session.scalars(select(Project).where(Project.name == "demo-shop")).one().aliases = [
             "demo", "shop",
         ]  # fmt: skip
-        session.scalars(select(Project).where(Project.name == "seaside-crm")).one().aliases = [
-            "seaside",
+        session.scalars(select(Project).where(Project.name == "gi-crm")).one().aliases = [
+            "gi",
         ]  # fmt: skip
 
 
@@ -85,8 +87,8 @@ def last_reply(thread: str) -> str:
         ("the Demo site one", "demo-site"),
         ("demo-site", "demo-site"),
         ("shop", "demo-shop"),
-        ("Seaside website", "seaside-web"),  # not the CRM, whose alias "seaside" is part of it
-        ("the seaside website please", "seaside-web"),
+        ("General Informatics website", "gi-web"),  # not the CRM, whose alias "gi" is part of it
+        ("the general informatics website please", "gi-web"),
     ],
 )
 def test_the_most_specific_name_wins(said: str, project: str) -> None:

@@ -46,24 +46,24 @@ def at(text: str) -> datetime:
 
 
 @pytest.fixture
-def seaside(database_url: str, tmp_path: Path) -> Path:
+def gi(database_url: str, tmp_path: Path) -> Path:
     """A project with three connections: a database, an SMS account, a shared tool."""
-    folder = tmp_path / "seaside"
+    folder = tmp_path / "gi"
     folder.mkdir()
-    get_vault().store("file://seaside/sms", json.dumps({"sid": "AC1", "token": "t"}))
+    get_vault().store("file://gi/sms", json.dumps({"sid": "AC1", "token": "t"}))
     get_vault().store(get_settings().claude_api_key_ref, CLAUDE_API_KEY)
     with session_scope() as session:
-        make_project(session, "seaside", workspace_path=str(folder))
-        make_instance(session, "seaside-db")
-        make_instance(session, "seaside-sms", type=InstanceType.TWILIO,
-                      secret_ref="file://seaside/sms")  # fmt: skip
+        make_project(session, "gi", workspace_path=str(folder))
+        make_instance(session, "gi-db")
+        make_instance(session, "gi-sms", type=InstanceType.TWILIO,
+                      secret_ref="file://gi/sms")  # fmt: skip
         make_instance(session, "browser", type=InstanceType.MCP, shared=True, owner="you")
-    for name in ("seaside-db", "seaside-sms", "browser"):
-        bind("seaside", name)
+    for name in ("gi-db", "gi-sms", "browser"):
+        bind("gi", name)
     with session_scope() as session:
         agents.create_agent(
-            session, "seaside",
-            AgentIn("Follow-up", "Be brief. Sign as Seaside.", ("seaside-sms",),
+            session, "gi",
+            AgentIn("Follow-up", "Be brief. Sign as General Informatics.", ("gi-sms",),
                     model="claude-haiku-5-5", effort="low", autonomy="strict"),
         )  # fmt: skip
     return folder
@@ -76,7 +76,7 @@ def routine(**fields: Any) -> str:
     }  # fmt: skip
     data = RoutineIn(**base)
     with session_scope() as session:
-        made = routines.create_routine(session, "seaside", data, tz=UTC_ZONE)
+        made = routines.create_routine(session, "gi", data, tz=UTC_ZONE)
         return str(made.id)
 
 
@@ -116,12 +116,12 @@ def runs(ident: str) -> list[RoutineRun]:
 # --- Agents ---
 
 
-def test_an_agent_s_connections_are_some_of_its_project_s(seaside: Path) -> None:
+def test_an_agent_s_connections_are_some_of_its_project_s(gi: Path) -> None:
     with session_scope() as session, pytest.raises(RuleViolationError, match="isn't linked"):
-        agents.create_agent(session, "seaside", AgentIn("x", connections=("elsewhere",)))
+        agents.create_agent(session, "gi", AgentIn("x", connections=("elsewhere",)))
 
 
-def test_an_agent_reaches_only_its_connections(seaside: Path) -> None:
+def test_an_agent_reaches_only_its_connections(gi: Path) -> None:
     ident = routine()
     with session_scope() as session:
         started = routines.start_run(session, get_settings(), routines.get_routine(session, ident),
@@ -131,21 +131,21 @@ def test_an_agent_reaches_only_its_connections(seaside: Path) -> None:
             select(WorkerSession).where(WorkerSession.task_id == started.task.id)
         ).one()
         session_id = str(worker.id)
-    caller = Caller("seaside", session_id, "token")
-    assert [i["name"] for i in bound_instances(caller)] == ["seaside-sms"]
+    caller = Caller("gi", session_id, "token")
+    assert [i["name"] for i in bound_instances(caller)] == ["gi-sms"]
     with pytest.raises(RefusalError, match="isn't one of the follow-up agent's connections"):
         asyncio.run(
             run_call(
-                ToolCall(caller, InstanceType.SUPABASE, "query", "seaside-db", {"sql": "SELECT 1"}),
+                ToolCall(caller, InstanceType.SUPABASE, "query", "gi-db", {"sql": "SELECT 1"}),
                 get_vault(),
             )
         )
     # A task not run as an agent still has every connection of the project.
-    others = Caller("seaside", "00000000-0000-0000-0000-000000000000", "token")
-    assert {i["name"] for i in bound_instances(others)} == {"seaside-db", "seaside-sms", "browser"}
+    others = Caller("gi", "00000000-0000-0000-0000-000000000000", "token")
+    assert {i["name"] for i in bound_instances(others)} == {"gi-db", "gi-sms", "browser"}
 
 
-def test_an_unattended_run_holds_its_writes_for_approval(seaside: Path) -> None:
+def test_an_unattended_run_holds_its_writes_for_approval(gi: Path) -> None:
     ident = routine()
     with session_scope() as session:
         started = routines.start_run(session, get_settings(), routines.get_routine(session, ident),
@@ -154,12 +154,10 @@ def test_an_unattended_run_holds_its_writes_for_approval(seaside: Path) -> None:
         worker = session.scalars(
             select(WorkerSession).where(WorkerSession.task_id == started.task.id)
         ).one()
-        caller = Caller("seaside", str(worker.id), "token")
+        caller = Caller("gi", str(worker.id), "token")
     args = {"to": "+15550100", "from_number": "+15550199", "body": "Thanks for your call!"}
     held = asyncio.run(
-        run_call(
-            ToolCall(caller, InstanceType.TWILIO, "send_sms", "seaside-sms", args), get_vault()
-        )
+        run_call(ToolCall(caller, InstanceType.TWILIO, "send_sms", "gi-sms", args), get_vault())
     )
     assert held["status"] == "held_for_approval"  # waits in Approvals: nobody is watching
     with session_scope() as session:
@@ -167,7 +165,7 @@ def test_an_unattended_run_holds_its_writes_for_approval(seaside: Path) -> None:
         assert decision.kind is DecisionKind.APPROVE
 
 
-def test_the_agent_s_instructions_model_and_autonomy_reach_the_worker(seaside: Path) -> None:
+def test_the_agent_s_instructions_model_and_autonomy_reach_the_worker(gi: Path) -> None:
     from ringkeeper.workers.manager import Manager  # noqa: PLC0415
     from tests.fake_runtime import FakeRuntime  # noqa: PLC0415
 
@@ -180,7 +178,7 @@ def test_the_agent_s_instructions_model_and_autonomy_reach_the_worker(seaside: P
     manager.wait_idle()
     task = json.loads(fake.started[0].env["RINGKEEPER_TASK"])
     assert task["prompt"].startswith("You are the follow-up agent for this project.")
-    assert "Be brief. Sign as Seaside." in task["prompt"]
+    assert "Be brief. Sign as General Informatics." in task["prompt"]
     assert "Digest for " in task["prompt"]
     assert (task["model"], task["effort"]) == ("claude-haiku-5-5", "low")
     assert task["max_turns"] == 40  # the routine's steps per run
@@ -190,7 +188,7 @@ def test_the_agent_s_instructions_model_and_autonomy_reach_the_worker(seaside: P
 # --- Routines ---
 
 
-def test_a_new_routine_starts_paused_and_a_test_run_still_runs(seaside: Path) -> None:
+def test_a_new_routine_starts_paused_and_a_test_run_still_runs(gi: Path) -> None:
     ident = routine()
     assert tick(at("2026-11-02T10:00:00")) == []  # paused: nothing runs on its own
     with session_scope() as session:
@@ -201,7 +199,7 @@ def test_a_new_routine_starts_paused_and_a_test_run_still_runs(seaside: Path) ->
         assert test.run.trigger == "test"
 
 
-def test_a_schedule_fires_on_time(seaside: Path) -> None:
+def test_a_schedule_fires_on_time(gi: Path) -> None:
     ident = routine()
     turn_on(ident, at("2026-11-02T09:10:00"))
     assert tick(at("2026-11-02T09:30:00")) == []  # not 10:00 yet
@@ -214,7 +212,7 @@ def test_a_schedule_fires_on_time(seaside: Path) -> None:
         assert task.max_runtime_s == 15 * 60
 
 
-def test_after_sleep_one_catch_up_run_says_what_it_makes_up_for(seaside: Path) -> None:
+def test_after_sleep_one_catch_up_run_says_what_it_makes_up_for(gi: Path) -> None:
     ident = routine()
     turn_on(ident, at("2026-11-02T09:10:00"))
     fired = tick(at("2026-11-02T13:20:00"))  # asleep through 10, 11, 12 and 13
@@ -226,7 +224,7 @@ def test_after_sleep_one_catch_up_run_says_what_it_makes_up_for(seaside: Path) -
         assert routines.get_routine(session, ident).next_run_at == at("2026-11-02T14:00:00")
 
 
-def test_catching_up_can_be_turned_off(seaside: Path) -> None:
+def test_catching_up_can_be_turned_off(gi: Path) -> None:
     ident = routine(catch_up=False)
     turn_on(ident, at("2026-11-02T09:10:00"))
     [skipped] = tick(at("2026-11-02T13:20:00"))
@@ -235,7 +233,7 @@ def test_catching_up_can_be_turned_off(seaside: Path) -> None:
     assert "catching up is off" in skipped.run.skipped
 
 
-def test_the_day_s_limit_stops_runs(seaside: Path) -> None:
+def test_the_day_s_limit_stops_runs(gi: Path) -> None:
     ident = routine(max_runs_per_day=2)
     with session_scope() as session:
         found = routines.get_routine(session, ident)
@@ -256,7 +254,7 @@ def test_the_day_s_limit_stops_runs(seaside: Path) -> None:
         assert tomorrow.task is not None
 
 
-def test_a_dollar_cap_in_api_key_mode_and_steps_and_minutes_always(seaside: Path) -> None:
+def test_a_dollar_cap_in_api_key_mode_and_steps_and_minutes_always(gi: Path) -> None:
     ident = routine(budget_usd=0.5, max_steps=12, max_minutes=5)
     with session_scope() as session:
         started = routines.start_run(
@@ -275,7 +273,7 @@ def test_a_dollar_cap_in_api_key_mode_and_steps_and_minutes_always(seaside: Path
         assert (again.task.budget_usd, again.task.max_turns) == (None, 12)  # no $ cap there
 
 
-def test_an_event_fires_once_per_event(seaside: Path) -> None:
+def test_an_event_fires_once_per_event(gi: Path) -> None:
     ident = routine(
         trigger="event", event={"source": "webhook"}, schedule=None, prompt="Lead: {{event}}"
     )
@@ -294,16 +292,16 @@ def test_an_event_fires_once_per_event(seaside: Path) -> None:
     assert len(runs(ident)) == 2
 
 
-def test_a_file_added_to_the_folder_starts_one_run(seaside: Path) -> None:
-    (seaside / "already-here.txt").write_text("x")
+def test_a_file_added_to_the_folder_starts_one_run(gi: Path) -> None:
+    (gi / "already-here.txt").write_text("x")
     ident = routine(trigger="event", event={"source": "folder"}, schedule=None,
                     prompt="New file: {{event.file}}")  # fmt: skip
     turn_on(ident, at("2026-11-02T09:00:00"))
     assert tick(at("2026-11-02T09:00:30")) == []  # the first look only notes what's there
-    (seaside / "invoices").mkdir()
-    (seaside / "invoices" / "march.pdf").write_text("pdf")
-    (seaside / ".git").mkdir()
-    (seaside / ".git" / "index").write_text("not the owner's")
+    (gi / "invoices").mkdir()
+    (gi / "invoices" / "march.pdf").write_text("pdf")
+    (gi / ".git").mkdir()
+    (gi / ".git" / "index").write_text("not the owner's")
     fired = tick(at("2026-11-02T09:01:00"))
     assert [s.run.event for s in fired] == [{"file": "invoices/march.pdf"}]
     assert tick(at("2026-11-02T09:01:30")) == []  # once per file
@@ -311,7 +309,7 @@ def test_a_file_added_to_the_folder_starts_one_run(seaside: Path) -> None:
         assert session.scalars(select(Task)).one().prompt == "New file: invoices/march.pdf"
 
 
-def test_pausing_stops_runs_at_every_level(seaside: Path) -> None:
+def test_pausing_stops_runs_at_every_level(gi: Path) -> None:
     ident = routine()
     turn_on(ident, at("2026-11-02T09:10:00"))
     with session_scope() as session:
@@ -333,24 +331,27 @@ def test_pausing_stops_runs_at_every_level(seaside: Path) -> None:
 
 def test_agents_and_routines_through_the_api(owner: TestClient, tmp_path: Path) -> None:
     get_vault().store(get_settings().claude_api_key_ref, CLAUDE_API_KEY)
-    assert owner.post("/projects", json={"name": "seaside", "owner": "Seaside"}).status_code == 201
+    assert (
+        owner.post("/projects", json={"name": "gi", "owner": "General Informatics"}).status_code
+        == 201
+    )
     made = owner.post(
         "/connections",
-        json={"name": "seaside-n8n", "type": "n8n", "env": "dev", "owner": "seaside",
+        json={"name": "gi-n8n", "type": "n8n", "env": "dev", "owner": "general-informatics",
               "secret": "k", "base_url": "https://n8n.example.com"},
     )  # fmt: skip
     assert made.status_code == 201, made.text
-    assert owner.put("/projects/seaside/connections/seaside-n8n", json={}).status_code == 200
+    assert owner.put("/projects/gi/connections/gi-n8n", json={}).status_code == 200
     agent = owner.post(
-        "/projects/seaside/agents",
-        json={"name": "Follow-up", "instructions": "Be brief.", "connections": ["seaside-n8n"]},
+        "/projects/gi/agents",
+        json={"name": "Follow-up", "instructions": "Be brief.", "connections": ["gi-n8n"]},
     )
     assert agent.status_code == 201, agent.text
     assert agent.json()["name"] == "follow-up"
 
     template = owner.get("/routine-templates").json()["daily-digest"]
     created = owner.post(
-        "/projects/seaside/routines",
+        "/projects/gi/routines",
         json={**template, "agent": "follow-up", "tz": "America/New_York"},
     )
     assert created.status_code == 201, created.text
@@ -368,7 +369,7 @@ def test_agents_and_routines_through_the_api(owner: TestClient, tmp_path: Path) 
     assert on["next_run_at"] is not None
 
     lead = owner.post(
-        "/projects/seaside/routines",
+        "/projects/gi/routines",
         json={**owner.get("/routine-templates").json()["lead-follow-up"], "agent": "follow-up"},
     ).json()
     owner.post(f"/routines/{lead['id']}/paused", json={"paused": False})
@@ -384,16 +385,14 @@ def test_agents_and_routines_through_the_api(owner: TestClient, tmp_path: Path) 
         assert wrong.status_code == 404
 
 
-def test_a_new_airtable_record_starts_one_run(
-    seaside: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_new_airtable_record_starts_one_run(gi: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from ringkeeper.services import routine_events  # noqa: PLC0415
 
-    get_vault().store("file://seaside/airtable", "pat-not-real")
+    get_vault().store("file://gi/airtable", "pat-not-real")
     with session_scope() as session:
-        make_instance(session, "seaside-airtable", type=InstanceType.AIRTABLE,
-                      secret_ref="file://seaside/airtable")  # fmt: skip
-    bind("seaside", "seaside-airtable")
+        make_instance(session, "gi-airtable", type=InstanceType.AIRTABLE,
+                      secret_ref="file://gi/airtable")  # fmt: skip
+    bind("gi", "gi-airtable")
     records: list[tuple[str, dict[str, Any]]] = [("rec1", {"Name": "Old lead"})]
 
     async def fake(_target: Any, event: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
@@ -403,7 +402,7 @@ def test_a_new_airtable_record_starts_one_run(
     monkeypatch.setitem(routine_events.POLLERS, "airtable", fake)
     event = {
         "source": "airtable",
-        "connection": "seaside-airtable",
+        "connection": "gi-airtable",
         "base": "appX",
         "table": "Leads",
     }
@@ -419,31 +418,31 @@ def test_a_new_airtable_record_starts_one_run(
         assert session.scalars(select(Task)).one().prompt == "Follow up Anna"
     with session_scope() as session, pytest.raises(RuleViolationError, match="Airtable"):
         routines.create_routine(
-            session, "seaside",
-            RoutineIn("x", "follow-up", "p", "event", event={**event, "connection": "seaside-db"}),
+            session, "gi",
+            RoutineIn("x", "follow-up", "p", "event", event={**event, "connection": "gi-db"}),
         )  # fmt: skip
 
 
 def test_agents_and_routines_across_projects_follow_the_switcher(owner: TestClient) -> None:
-    for name, client in (("seaside", "Seaside"), ("acme-web", "Acme")):
+    for name, client in (("gi", "General Informatics"), ("acme-web", "Acme")):
         made = owner.post("/projects", json={"name": name, "owner": client})
         assert made.status_code == 201, made.text
         added = owner.post(f"/projects/{name}/agents", json={"name": "digest"})
         assert added.status_code == 201, added.text
     template = owner.get("/routine-templates").json()["daily-digest"]
-    made = owner.post("/projects/seaside/routines", json={**template, "agent": "digest"})
+    made = owner.post("/projects/gi/routines", json={**template, "agent": "digest"})
     assert made.status_code == 201, made.text
 
     everyone = owner.get("/agents").json()
     assert [(a["project"], a["client"], a["name"], a["routines"]) for a in everyone] == [
         ("acme-web", "acme", "digest", 0),
-        ("seaside", "seaside", "digest", 1),
+        ("gi", "general-informatics", "digest", 1),
     ]
-    assert [a["project"] for a in owner.get("/agents", params={"client": "seaside"}).json()] == [
-        "seaside"
-    ]
+    assert [
+        a["project"] for a in owner.get("/agents", params={"client": "general-informatics"}).json()
+    ] == ["gi"]
     assert [a["project"] for a in owner.get("/agents", params={"project": "acme-web"}).json()] == [
         "acme-web"
     ]
     assert owner.get("/routines", params={"client": "acme"}).json() == []
-    assert len(owner.get("/routines", params={"client": "seaside"}).json()) == 1
+    assert len(owner.get("/routines", params={"client": "general-informatics"}).json()) == 1

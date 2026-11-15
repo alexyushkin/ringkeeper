@@ -38,8 +38,8 @@ from ringkeeper.vault import get_vault
 from tests.helpers import make_project
 
 SERVER = Path(__file__).parent / "fixtures" / "fake_meta_ads_mcp.py"
-NAME = "seaside-meta-ads"
-CLIENT = "seaside-bakery"
+NAME = "gi-meta-ads"
+CLIENT = "general-informatics-llc"
 
 
 # --- The shelf ---
@@ -129,23 +129,23 @@ def add(ran: Path) -> None:
 
 @pytest.fixture
 def ran(database_url: str, tmp_path: Path) -> Path:
-    """A client's Meta Ads: `seaside-web` reaches every ad account, `seaside-shop` only act_111."""
+    """A client's Meta Ads: `gi-web` reaches every ad account, `gi-shop` only act_111."""
     file = tmp_path / "ran.json"
     with session_scope() as session:
-        make_project(session, "seaside-web", owner=CLIENT)
-        make_project(session, "seaside-shop", owner=CLIENT)
+        make_project(session, "gi-web", owner=CLIENT)
+        make_project(session, "gi-shop", owner=CLIENT)
     add(file)
     with session_scope() as session:
-        bindings.set_binding(session, BindingIn(project="seaside-web", instance=NAME))
+        bindings.set_binding(session, BindingIn(project="gi-web", instance=NAME))
         bindings.set_binding(
             session,
-            BindingIn(project="seaside-shop", instance=NAME, scope={"account": "act_111"}),
+            BindingIn(project="gi-shop", instance=NAME, scope={"account": "act_111"}),
         )
     mcp_tools.refresh(NAME)
     return file
 
 
-def call(tool: str, project: str = "seaside-web", **arguments: Any) -> Any:
+def call(tool: str, project: str = "gi-web", **arguments: Any) -> Any:
     args = {"tool": tool, "arguments": arguments}
     who = Caller(project, "session-1", "token-1")
     made = ToolCall(who, InstanceType.MCP, "call_tool", NAME, args)
@@ -157,7 +157,7 @@ def happened(file: Path) -> list[dict[str, Any]]:
 
 
 def test_reads_run(ran: Path) -> None:
-    assert "Seaside Bakery" in call("ads_get_ad_accounts")["text"]
+    assert "General Informatics LLC" in call("ads_get_ad_accounts")["text"]
     assert "Spring sale" in call("ads_get_ad_entities", ad_account_id="act_111")["text"]
     assert "up" in call("ads_insights_performance_trend", ad_account_id="act_111")["text"]
     assert happened(ran) == []
@@ -198,22 +198,22 @@ def test_a_creative_waits_for_approval_only(ran: Path) -> None:
 
 
 def test_an_account_link_fills_in_its_account(ran: Path) -> None:
-    answer = call("ads_get_ad_entities", project="seaside-shop")
+    answer = call("ads_get_ad_entities", project="gi-shop")
     assert "act_111" in answer["text"]
 
 
 def test_an_account_link_takes_the_number_with_or_without_act(ran: Path) -> None:
-    assert "Spring sale" in call("ads_get_ad_entities", project="seaside-shop",
+    assert "Spring sale" in call("ads_get_ad_entities", project="gi-shop",
                                  ad_account_id="111")["text"]  # fmt: skip
-    assert "Spring sale" in call("ads_get_ad_entities", project="seaside-shop",
+    assert "Spring sale" in call("ads_get_ad_entities", project="gi-shop",
                                  ad_account_id="ACT_111")["text"]  # fmt: skip
 
 
 def test_an_account_link_refuses_another_account(ran: Path) -> None:
     with pytest.raises(RefusalError, match="limited to ad account 'act_111'"):
-        call("ads_get_ad_entities", project="seaside-shop", ad_account_id="act_222")
+        call("ads_get_ad_entities", project="gi-shop", ad_account_id="act_222")
     with pytest.raises(RefusalError, match="limited to"):
-        call("ads_create_campaign", project="seaside-shop", ad_account_id="222", name="X",
+        call("ads_create_campaign", project="gi-shop", ad_account_id="222", name="X",
              objective="SALES")  # fmt: skip
     assert happened(ran) == []
 
@@ -223,12 +223,12 @@ def test_an_account_link_refuses_what_names_no_account(ran: Path) -> None:
     client's account, so a link held to one account refuses them."""
     for tool, args in (("ads_get_ad_accounts", {}), ("ads_activate_entity", {"entity_id": "c-1"})):
         with pytest.raises(RefusalError, match="whole Meta Ads account"):
-            call(tool, project="seaside-shop", **args)
+            call(tool, project="gi-shop", **args)
     assert happened(ran) == []
 
 
 def test_an_account_link_still_reads_the_help(ran: Path) -> None:
-    answer = call("ads_get_help_article", project="seaside-shop", query="budgets")
+    answer = call("ads_get_help_article", project="gi-shop", query="budgets")
     assert "Ad set budgets" in answer["text"]
 
 
@@ -272,10 +272,10 @@ def settings() -> Settings:
 
 def wanted(**fields: Any) -> dict[str, Any]:
     with session_scope() as session:
-        make_project(session, "seaside-web", owner=CLIENT)
+        make_project(session, "gi-web", owner=CLIENT)
     new = NewConnection(
-        name="seaside-meta", owner=CLIENT, env=Env.PROD, remote="meta_ads",
-        project="seaside-web", scope={"account": "act_111"},
+        name="gi-meta", owner=CLIENT, env=Env.PROD, remote="meta_ads",
+        project="gi-web", scope={"account": "act_111"},
     )  # fmt: skip
     return {**new.as_dict(), **fields}
 
@@ -299,7 +299,7 @@ def test_signing_in_adds_an_mcp_connection_with_a_lasting_token(meta: Meta) -> N
     found = developer_apps.take(state)
     with session_scope() as session:
         name = developer_apps.finish(session, settings(), found, state, "code-1", {})
-    assert name == "seaside-meta"
+    assert name == "gi-meta"
     assert developer_apps.outcome(state).state == "done"  # type: ignore[union-attr]
     with session_scope() as session:
         instance = instances.get_instance(session, name)
@@ -308,7 +308,7 @@ def test_signing_in_adds_an_mcp_connection_with_a_lasting_token(meta: Meta) -> N
         assert instance.config["account"] == "Pat Doe"
         assert len(instance.config["expires_at"]) == len("2027-01-12")
         secret = json.loads(get_vault().resolve(instance.secret_ref).reveal())
-        project = projects.get_project(session, "seaside-web")
+        project = projects.get_project(session, "gi-web")
         link = next(b for b in project.bindings if b.instance.name == name)
         assert link.scope == {"account": "act_111"}
     assert secret["url"] == "https://mcp.facebook.com/ads"

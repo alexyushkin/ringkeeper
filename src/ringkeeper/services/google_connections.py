@@ -95,7 +95,7 @@ def _slug(text: str) -> str:
 
 
 def name_for(session: Session, email: str, owner: str, shared: bool) -> str:
-    """seaside-info for info@seaside.example (a client's), or your own info-seaside."""
+    """gi-info for info@geninfos.example (a client's), or your own info-gi."""
     local, _, domain = email.partition("@")
     site = domain.split(".")[0]
     base = _slug(f"{local}-{site}") if shared else _slug(f"{owner}-{local}")
