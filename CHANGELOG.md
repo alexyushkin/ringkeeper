@@ -3,6 +3,14 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **A project's description doesn't narrow what you asked.** "How many orders are there?" in
+  a project described as "Acme Bakery's wholesale orders" was handed on as "count the
+  wholesale orders", and with nothing in the table marking an order as wholesale, the task
+  ended as not done. Now the description only helps pick the project: what the task is told to
+  do keeps your words.
+
 ## 0.1.0-beta.47 (2026-11-15)
 
 - **A big table is gone through without a shell.** A task that read every record of an
