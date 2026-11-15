@@ -178,7 +178,7 @@ export function sameClient(a: string | null | undefined, b: string | null | unde
   return clientKey(a) === clientKey(b);
 }
 
-/** A name that is still its slug ("seaside-windows-doors"): one to offer a proper name for. */
+/** A name that is still its slug ("general-informatics-llc"): one to offer a proper name for. */
 export function looksLikeSlug(client: Client): boolean {
   return client.name === client.slug && /[-]/.test(client.slug);
 }

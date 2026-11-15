@@ -2,7 +2,7 @@
 
 A client existed only as the `owner` text of its projects and connections, so
 one with only connections, or none yet, wasn't listed, and a name typed as
-"Seaside Windows & Doors" was kept as its slug. Each owner becomes a client
+"General Informatics LLC" was kept as its slug. Each owner becomes a client
 (its slug, and the owner text as its name, which the app offers to change),
 and projects and connections then name the client by its slug. Runs on both
 databases.

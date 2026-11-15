@@ -164,7 +164,7 @@ class SignInIn(Input):
     owner: NonEmpty | None = None
     shared: bool = False
     all_projects: bool = False
-    name: Slug | None = None  # left out: from the address (seaside-info)
+    name: Slug | None = None  # left out: from the address (gi-info)
     project: Slug | None = None
     # Or an account to sign in again (more access, or Google stopped accepting it).
     replace: Slug | None = None

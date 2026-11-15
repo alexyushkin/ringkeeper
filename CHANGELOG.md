@@ -1070,7 +1070,7 @@ publishes it as the release notes and the app shows it with the update.
 - **Agents.** Each project can have named agents: instructions they always
   follow, the connections they may use (some of the project's; shared tools
   only when ticked: the gateway refuses the rest), and their own model, effort
-  and autonomy. Ask one in a conversation: "ask the Seaside follow-up agent
+  and autonomy. Ask one in a conversation: "ask the General Informatics follow-up agent
   to...".
 - **Routines.** A routine runs an agent on a schedule (every day, weekdays,
   chosen days, monthly or every few hours, in your time zone), when something
@@ -1096,7 +1096,7 @@ publishes it as the release notes and the app shows it with the update.
   approvals, routine results, failures or finished tasks, quiet hours, and
   which clients and projects.
 - **Clients of their own.** A client is kept with its name as you typed it
-  ("Seaside Windows & Doors"); the short form is only for links. Typing a new
+  ("General Informatics LLC"); the short form is only for links. Typing a new
   client anywhere creates it, and a client with only connections, or nothing
   yet, shows in the switcher, Clients & projects ("No projects yet", with Add
   project and its connections count) and every client picker. Clients from
@@ -1158,7 +1158,7 @@ publishes it as the release notes and the app shows it with the update.
 - **All projects, except…** A shared tool for all projects can leave out
   clients (all their projects, new ones too) and single projects. The
   connection says so plainly: "All projects except Acme (client),
-  seaside-messages". Left-out projects don't see it, and the gateway refuses
+  gi-messages". Left-out projects don't see it, and the gateway refuses
   their calls to it. Turning "All projects" off drops the exceptions.
 - **Google app, set up once; as many Google accounts as you need.** Settings ›
   Google app says what it is (connecting Ringkeeper to Google once), then shows

@@ -611,7 +611,7 @@ A project's **agents** are named helpers (Project > Agents): instructions every
 task they run starts with, the connections they may use (some of the project's;
 a shared tool only when ticked), and their own model, effort and autonomy. The
 gateway refuses an agent's call to any other connection, and its list of
-connections shows only its own. In a conversation, "ask the Seaside follow-up
+connections shows only its own. In a conversation, "ask the General Informatics follow-up
 agent to..." runs the task as that agent.
 
 A **routine** (Project > Routines, or Routines across projects) runs one agent

@@ -23,7 +23,10 @@ def did(tool: str, **arguments: Any) -> dict[str, Any]:
 def ads_get_ad_accounts() -> dict[str, Any]:
     """List the ad accounts you can reach."""
     return {
-        "data": [{"id": "act_111", "name": "Seaside Bakery"}, {"id": "act_222", "name": "Other"}]
+        "data": [
+            {"id": "act_111", "name": "General Informatics LLC"},
+            {"id": "act_222", "name": "Other"},
+        ]
     }
 
 

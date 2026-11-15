@@ -48,7 +48,7 @@ function freeName(text: string, taken: Set<string>): string {
 }
 
 /** Whose work it likely is: a client whose name is in its path or name, else the
- * folder it sits in (…\Clients\Seaside\site), unless that's a generic one. */
+ * folder it sits in (…\Clients\General Informatics\site), unless that's a generic one. */
 function likelyClient(offer: { title: string; folder?: Folder }, clients: Client[]): string {
   const text = slugify(`${offer.folder?.folder ?? ""} ${offer.title}`);
   const known = clients.find((c) => c.slug.length > 2 && `-${text}-`.includes(`-${c.slug}-`));

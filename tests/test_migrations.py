@@ -160,7 +160,7 @@ def test_owners_become_clients(database_url: str) -> None:
     probe = create_engine(database_url)
     try:
         with probe.begin() as connection:
-            for name, owner in (("acme-web", "Acme"), ("acme-app", "acme"), ("seaside", "seaside")):
+            for name, owner in (("acme-web", "Acme"), ("acme-app", "acme"), ("gi", "gi")):
                 connection.execute(
                     text("INSERT INTO projects (id, name, owner) VALUES (:id, :name, :owner)"),
                     {"id": str(uuid.uuid4()), "name": name, "owner": owner},
@@ -179,8 +179,8 @@ def test_owners_become_clients(database_url: str) -> None:
             }
     finally:
         probe.dispose()
-    assert found == {"acme": "Acme", "seaside": "seaside"}
-    assert owners == {"acme-web": "acme", "acme-app": "acme", "seaside": "seaside"}
+    assert found == {"acme": "Acme", "gi": "gi"}
+    assert owners == {"acme-web": "acme", "acme-app": "acme", "gi": "gi"}
     if database_url.startswith("sqlite"):
         # Rebuilding a table to drop a column on the way down takes its triggers
         # with it; live updates must still be there after the way back up.

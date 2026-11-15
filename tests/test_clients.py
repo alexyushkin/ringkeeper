@@ -35,15 +35,15 @@ def test_a_client_counts_your_tools_its_projects_use(session: Session) -> None:
 
 
 def test_a_client_is_named_as_typed_and_listed_without_projects(owner: TestClient) -> None:
-    made = owner.post("/clients", json={"name": "Seaside Windows & Doors"})
+    made = owner.post("/clients", json={"name": "Acme Windows & Doors"})
     assert made.status_code == 201, made.text
     assert made.json() == {
-        "slug": "seaside-windows-doors", "name": "Seaside Windows & Doors", "projects": 0,
+        "slug": "acme-windows-doors", "name": "Acme Windows & Doors", "projects": 0,
         "connections": 0, "month_usd": 0.0, "cap_usd": None, "default_project": None, "own": False,
     }  # fmt: skip
     # Typing it again, in any case, is the same client.
-    assert owner.post("/clients", json={"name": "seaside windows & doors"}).json()["slug"] == (
-        "seaside-windows-doors"
+    assert owner.post("/clients", json={"name": "acme windows & doors"}).json()["slug"] == (
+        "acme-windows-doors"
     )
     # A connection for a new client creates the client; it has no projects yet.
     added = owner.post(
@@ -56,13 +56,11 @@ def test_a_client_is_named_as_typed_and_listed_without_projects(owner: TestClien
     clients_now = listed(owner)
     assert clients_now["General Informatics LLC"]["connections"] == 1
     assert clients_now["General Informatics LLC"]["projects"] == 0
-    assert clients_now["Seaside Windows & Doors"]["connections"] == 0
+    assert clients_now["Acme Windows & Doors"]["connections"] == 0
     # A project for an existing client, typed by its name, uses its slug.
-    project = owner.post(
-        "/projects", json={"name": "seaside-site", "owner": "Seaside Windows & Doors"}
-    )
+    project = owner.post("/projects", json={"name": "acme-site", "owner": "Acme Windows & Doors"})
     assert project.status_code == 201, project.text
-    assert owner.get("/projects/seaside-site").json()["owner"] == "seaside-windows-doors"
+    assert owner.get("/projects/acme-site").json()["owner"] == "acme-windows-doors"
 
 
 def test_rename_move_and_delete_a_client(owner: TestClient) -> None:

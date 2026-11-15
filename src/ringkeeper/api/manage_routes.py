@@ -682,7 +682,7 @@ class ConnectionOut(BaseModel):
     all_projects: bool = False  # ...and every project gets it, new ones too
     except_clients: list[str] = []  # ...except these clients' projects
     except_projects: list[str] = []  # ...and these projects
-    # "All projects except Acme (client), seaside-messages" ("" if not for all projects)
+    # "All projects except Acme (client), gi-messages" ("" if not for all projects)
     reach: str = ""
     config: dict[str, Any]  # never secret (for an MCP server: a masked preview, read-only tools)
     base_url: str | None

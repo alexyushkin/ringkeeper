@@ -6,7 +6,7 @@ tool counts only when it's ticked for the agent. A task run as an agent gets the
 agent's instructions ahead of its prompt and only those connections: the
 gateway refuses the rest (services.calls), and the agent's list of connections
 shows only them. Routines run an agent; it can also be named in a conversation
-("ask the Seaside follow-up agent to...").
+("ask the General Informatics follow-up agent to...").
 """
 
 import uuid

@@ -53,7 +53,7 @@ def everywhere(database_url: str) -> None:
         make_project(session, "acme-web", owner="Acme")
         make_project(session, "acme-app", owner="Acme")
         make_project(session, "globex-portal", owner="globex")
-        make_project(session, "seaside-messages", owner="Seaside")
+        make_project(session, "gi-messages", owner="General Informatics")
         make_instance(
             session, "tool", N8N, base_url="https://n8n.example.com",
             owner=instances.SHARED_OWNER, shared=True, all_projects=True,
@@ -61,11 +61,11 @@ def everywhere(database_url: str) -> None:
 
 
 def test_a_left_out_client_cant_use_it_not_even_a_new_project(everywhere: None) -> None:
-    assert all(map(can_use, ("acme-web", "acme-app", "globex-portal", "seaside-messages")))
+    assert all(map(can_use, ("acme-web", "acme-app", "globex-portal", "gi-messages")))
 
     leave_out(clients=["  acme "])  # a client is matched ignoring case and spaces
     assert not any(map(can_use, ("acme-web", "acme-app")))
-    assert all(map(can_use, ("globex-portal", "seaside-messages")))
+    assert all(map(can_use, ("globex-portal", "gi-messages")))
 
     with session_scope() as session:  # created after: left out too
         make_project(session, "acme-shop", owner="ACME")
@@ -79,13 +79,13 @@ def test_a_left_out_client_cant_use_it_not_even_a_new_project(everywhere: None) 
 
 
 def test_giving_it_back_restores_access(everywhere: None) -> None:
-    leave_out(clients=["acme"], projects=["seaside-messages"])
+    leave_out(clients=["acme"], projects=["gi-messages"])
     with session_scope() as session:
         make_project(session, "acme-shop", owner="acme")
-    assert not any(map(can_use, ("acme-web", "acme-app", "acme-shop", "seaside-messages")))
+    assert not any(map(can_use, ("acme-web", "acme-app", "acme-shop", "gi-messages")))
 
     leave_out()
-    assert all(map(can_use, ("acme-web", "acme-app", "acme-shop", "seaside-messages")))
+    assert all(map(can_use, ("acme-web", "acme-app", "acme-shop", "gi-messages")))
 
 
 def test_leaving_out_a_project_leaves_its_client_s_others_alone(everywhere: None) -> None:
@@ -110,7 +110,7 @@ def test_only_for_all_projects_and_only_real_projects(everywhere: None) -> None:
 
 
 def test_the_connection_says_what_it_reaches(owner: TestClient) -> None:
-    for name, client in (("acme-web", "Acme"), ("seaside-messages", "Seaside")):
+    for name, client in (("acme-web", "Acme"), ("gi-messages", "General Informatics")):
         assert owner.post("/projects", json={"name": name, "owner": client}).status_code == 201
     created = owner.post(
         "/connections",
@@ -122,11 +122,11 @@ def test_the_connection_says_what_it_reaches(owner: TestClient) -> None:
 
     changed = owner.patch(
         "/connections/tool",
-        json={"except_clients": ["Acme"], "except_projects": ["seaside-messages"]},
+        json={"except_clients": ["Acme"], "except_projects": ["gi-messages"]},
     )
     assert changed.status_code == 200, changed.text
     body = changed.json()
-    assert body["reach"] == "All projects except Acme (client), Seaside messages"
+    assert body["reach"] == "All projects except Acme (client), Gi messages"
     assert body["projects"] == []
 
     # Turning "all projects" off drops the exceptions with it.

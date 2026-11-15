@@ -49,7 +49,7 @@ Rules:
 - ROUTING EXAMPLES are past answers from the operator: follow them for the
   same or very similar phrasing.
 - `agent`: when the operator asks one of a project's agents by name ("ask the
-  Seaside follow-up agent to..."), that agent's name exactly as listed under the
+  General Informatics follow-up agent to..."), that agent's name exactly as listed under the
   project's `agents`. Otherwise leave it out. Keep the agent even if the job doesn't
   look like one for it: an agent is limited to its own connections on purpose, and
   a task without it could reach more than the operator chose. If it can't do the

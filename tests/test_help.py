@@ -102,7 +102,7 @@ def test_connecting_something_the_guide_doesnt_name_still_gets_an_answer() -> No
 @pytest.mark.usefixtures("database")
 def test_an_answer_is_grounded_cited_and_ends_with_a_next_step() -> None:
     with session_scope() as session:
-        make_project(session, "seaside-web", owner="seaside")
+        make_project(session, "gi-web", owner="gi")
     model = FakeModel(["Open a client's Connections tab, then Link to project….\nSOURCES: 1, 2"])
     with session_scope() as session:
         helped = guide.answer(
@@ -112,7 +112,7 @@ def test_an_answer_is_grounded_cited_and_ends_with_a_next_step() -> None:
     assert "Never invent a feature" in system
     assert "GUIDE:" in prompt
     assert "Link to project…" in prompt  # the section itself
-    assert '"seaside-web"' in prompt  # and your setup
+    assert '"gi-web"' in prompt  # and your setup
     assert "SOURCES" not in helped.text
     assert helped.cites[0]["title"] == "Link a connection to a project"
     assert helped.cites[0]["url"].endswith("docs/connections.md#link-a-connection-to-a-project")
@@ -134,14 +134,19 @@ def test_a_client_with_nothing_yet_gets_add_project_first() -> None:
     from ringkeeper.services import clients  # noqa: PLC0415
 
     with session_scope() as session:
-        clients.ensure(session, "Seaside")
-    model = FakeModel(["Seaside has no projects yet, so add one first.\nSOURCES: 1"])
+        clients.ensure(session, "General Informatics")
+    model = FakeModel(["General Informatics has no projects yet, so add one first.\nSOURCES: 1"])
     with session_scope() as session:
         helped = guide.answer(
-            session, get_settings(), model, "How do I link a connection for Seaside?"
+            session, get_settings(), model, "How do I link a connection for General Informatics?"
         )
-    assert '"seaside": "Seaside"' in model.calls[0][1]  # the model knows it has none
-    assert helped.actions[0] == {"label": "Add project", "href": "/projects/new?client=seaside"}
+    assert (
+        '"general-informatics": "General Informatics"' in model.calls[0][1]
+    )  # the model knows it has none
+    assert helped.actions[0] == {
+        "label": "Add project",
+        "href": "/projects/new?client=general-informatics",
+    }
 
 
 # --- A conversation in Help > Ask ---
