@@ -87,7 +87,7 @@ export function BrowserTile({ project, onAdded }: { project?: string; onAdded: (
       <BrowserAbout browser={data?.browser} />
       {data?.added ? (
         <p className="text-sm">
-          Added{data.projects.length ? `, for ${data.projects.map(projectName).join(", ")}` : ", linked to no project yet"}. Link it to a project from the project&apos;s Connections, or below under Your own tools.
+          Added{data.projects.length ? `, for ${data.projects.map(projectName).join(", ")}` : ", linked to no project yet"}. Link it to more projects from a project&apos;s Connections tab.
         </p>
       ) : data?.needs ? (
         <Alert tone="warn">It needs {data.needs} on this computer first. Install it, then come back.</Alert>

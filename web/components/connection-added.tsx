@@ -81,7 +81,7 @@ export function ConnectionAdded({ name, onAnother, onDone, onLinked, doneLabel =
       <Alert tone="good">
         Added {connection ? connectionTitle(connection) : name}
         {connection?.projects.length ? `, for ${connection.projects.map(projectName).join(", ")}` : ""}.
-        {connection?.config.source === "open" ? " It needs no key." : " Its secrets are stored encrypted and won't be shown again."}
+        {connection?.config.source === "open" || connection?.config.source === "browser" ? " It needs no key." : " Its secrets are stored encrypted and won't be shown again."}
       </Alert>
       <TestButton name={name} />
       {connection?.all_projects ? (
