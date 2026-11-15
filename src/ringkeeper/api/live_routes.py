@@ -28,14 +28,14 @@ from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import DESKTOP_OWNER, OwnerToken, require_owner
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
-from ringkeeper.services import owner
+from ringkeeper.services import jobs, owner
 from ringkeeper.services.runtime import current_settings
 from ringkeeper.storage import events as storage_events
 from ringkeeper.voice import VoiceError, megabytes, vocabulary
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
-EVENTS_CHANNEL = "ringkeeper_events"
+EVENTS_CHANNEL = jobs.CHANNEL  # the database triggers' rows, and background jobs
 HEARTBEAT_SECONDS = 15.0
 MAX_STREAMS = 10  # one per open tab; each holds a database connection and a thread
 _streams: list[threading.Event] = []  # open streams, oldest first: each one's "stop"

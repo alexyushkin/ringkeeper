@@ -27,7 +27,7 @@ from ringkeeper.config import Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError
 from ringkeeper.listen import start_listener
-from ringkeeper.services import backup, digest, health, retention, undo
+from ringkeeper.services import backup, backup_drive, digest, health, retention, undo
 from ringkeeper.services.runtime import SETTINGS_CHANNEL, current_settings
 from ringkeeper.vault import get_vault
 
@@ -220,11 +220,11 @@ class Supervisor:
         try:
             with session_scope() as session:
                 written = backup.run_auto(session, settings, get_vault())
+            if written is not None:
+                logger.info("weekly backup written: %s", written)
+                backup_drive.upload_now(get_vault(), written)  # when a Google account is chosen
         except Exception:
             logger.exception("the weekly backup failed")
-            return
-        if written is not None:
-            logger.info("weekly backup written: %s", written)
 
     @staticmethod
     def _daily(settings: Settings) -> None:

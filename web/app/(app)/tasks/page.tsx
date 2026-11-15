@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, SelectRows, useSelection } from "@/components/tidy";
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
-import { RESYNC, api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { api, useApi, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
 import { clientName, projectName, useScope } from "@/lib/client/scope";
 
@@ -64,12 +64,6 @@ export default function TasksPage() {
   const [tidied, setTidied] = useState<string | null>(null);
   const pick = useSelection();
   const shownIds = (tasks.items ?? []).map((row) => row.id);
-  useLive((event) => {
-    if (event.type === "task" || event.type === RESYNC) {
-      tasks.reload();
-      old.reload();
-    }
-  });
 
   async function archiveOld() {
     const done = await api<{ changed: number }>("cleanup/old-tasks", { json: {} });

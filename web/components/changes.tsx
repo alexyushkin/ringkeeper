@@ -5,7 +5,7 @@ import Link from "@/components/link";
 import { useId, useState } from "react";
 
 import { Alert, Badge, Button, timeAgo } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
 
 interface Change {
   id: string;
@@ -26,9 +26,6 @@ interface Change {
 export function Changes({ task, thread, path, heading = "Data it changed" }: { task?: string; thread?: string; path?: string; heading?: string }) {
   const list = useApi<Change[]>(path ?? (task ? `tasks/${task}/changes` : `threads/${thread}/changes`));
   const titleId = useId(); // a page can show several lists
-  useLive((event) => {
-    if (["approval", "task"].includes(event.type)) list.reload();
-  });
   if (!list.data?.length) return null;
   return (
     <section className="mt-4 space-y-2" aria-labelledby={titleId}>

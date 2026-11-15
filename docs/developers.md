@@ -841,6 +841,19 @@ terminal: in plain words, with **Clients & projects**, **Connections** and
 | Activity | The audit log with filters, and a CSV export per client. |
 | Settings | Claude (API key, or your subscription for personal use when `RINGKEEPER_ALLOW_SUBSCRIPTION=1`), Telegram (including the requests toggle and its privacy note), models, how many tasks at once, transcript retention, passkeys, the recovery key, and **Stop everything**. |
 
+### Live updates: how a screen learns that work finished
+
+One event stream per window (`/bff/events`, `web/lib/client/live.ts`). Tasks, approvals and
+messages are sent by database triggers as their rows change. Background work that isn't one
+of those rows announces itself with `services.jobs.announce(session, kind, status)`, a
+`job` event sent when its transaction commits: the weekly backup and one made in Settings
+(`backup`), a Google Drive upload starting and ending (`backup_upload`), the daily
+connection check (`health`). `web/lib/client/refresh.ts` is the one table of which reads
+each event changes; `useApi` and `usePaged` fetch a read in it again when one of its events
+arrives, and after events may have been missed. A screen needs no listener of its own: add
+the read to the table, with a test in `web/lib/refresh.test.mjs`. A new kind of background
+job announces itself and goes in the table too.
+
 ### First start, without a terminal
 
 After [installing](install-server.md), open http://localhost:3000 (or your

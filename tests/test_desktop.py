@@ -23,6 +23,7 @@ import keyring
 import pytest
 
 from ringkeeper import ocr_local, voice_local
+from ringkeeper.adapters import google
 from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.config import get_settings
 from ringkeeper.db import dispose_engines, session_scope
@@ -30,9 +31,11 @@ from ringkeeper.desktop import server
 from ringkeeper.desktop.update import updates
 from ringkeeper.models import AuthMode, DecisionKind, InstanceType, TaskStatus
 from ringkeeper.services import (
+    backup,
     backup_places,
     claude_desktop,
     claude_work,
+    clients,
     inbox,
     instances,
     subscription,
@@ -41,7 +44,9 @@ from ringkeeper.services import (
 from ringkeeper.services.calls import RefusalError, run_call
 from ringkeeper.vault import get_vault
 from tests.conftest import CLAUDE_API_KEY
-from tests.helpers import fake_key_check
+from tests.helpers import fake_key_check, make_instance
+from tests.test_backup_drive import SECRET as DRIVE_SECRET
+from tests.test_backup_drive import FakeDrive
 from tests.test_vault import MemoryKeyring
 
 
@@ -112,6 +117,64 @@ def test_a_backup_folder_says_whether_it_leaves_this_computer(desktop: dict[str,
     assert marked.status_code == 200, marked.text
     assert win.get("/bff/desktop/backup/folder", params={"folder": plain}).json()["warning"] is None
     assert win.get("/bff/desktop/backup/folder", params={"folder": "relative"}).status_code == 422
+
+
+def test_turning_drive_on_uploads_the_newest_backup_and_the_window_hears_it(
+    desktop: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Settings, Backup, Google Drive: turned on with a backup here, the newest goes up at once,
+    and an open window hears "Uploading..." and then "done", so it shows both without a reload."""
+    fake = FakeDrive()
+    monkeypatch.setattr(google, "transport", httpx2.MockTransport(fake.handle))
+    place = tmp_path / "Ringkeeper backups"
+    place.mkdir()
+    monkeypatch.setattr(backup, "default_folder", lambda: place)  # never the real Documents
+    newest = place / "Ringkeeper-backup-2026-11-15-1029.rkbackup"
+    newest.write_bytes(b"locked" * 10)
+    get_vault().store("file://google/mine", DRIVE_SECRET)
+    with session_scope() as session:
+        clients.ensure(session, "Me")
+        clients.set_own(session, "me", True)
+        make_instance(
+            session, "my-google", InstanceType.GOOGLE, owner="me",
+            secret_ref="file://google/mine", config={"access": ["drive_files"]},
+        )  # fmt: skip
+    listening, finished = threading.Event(), threading.Event()
+    heard: list[dict[str, Any]] = []
+
+    def listen() -> None:  # an open window's event stream
+        try:
+            with window(desktop).stream("GET", "/bff/events", timeout=30) as stream:
+                listening.set()
+                for line in stream.iter_lines():
+                    event = json.loads(line[6:]) if line.startswith("data: ") else {}
+                    if event.get("type") == "job":
+                        heard.append(event)
+                    if event.get("kind") == "backup_upload" and event.get("status") != "started":
+                        finished.set()
+                        return
+        except httpx2.HTTPError:
+            return
+
+    threading.Thread(target=listen, daemon=True, name="test-listen").start()
+    assert listening.wait(10)
+    time.sleep(0.5)  # subscribed on the server's side too
+    win = window(desktop)
+    assert win.get("/bff/desktop/backup").json()["newest"]["name"] == newest.name
+    turned = win.put("/bff/desktop/backup/drive", json={"connection": "my-google"})
+    assert turned.status_code == 200, turned.text
+    assert turned.json()["uploading_newest"] is True
+    assert finished.wait(20), heard
+    assert [(e["kind"], e["status"]) for e in heard] == [
+        ("backup_upload", "started"), ("backup_upload", "done"),
+    ]  # fmt: skip
+    drive = win.get("/bff/desktop/backup").json()["drive"]
+    assert (drive["uploading"], drive["file"], drive["error"]) == (None, newest.name, None)
+    assert drive["link"].startswith("https://drive.example/")
+    assert fake.uploads == 1
+    again = win.post("/bff/desktop/backup/drive/upload")  # Upload now
+    assert again.status_code == 202, again.text
+    assert again.json()["file"] == newest.name
 
 
 def test_it_runs_on_localhost_with_sqlite_and_the_keychain(desktop: dict[str, Any]) -> None:

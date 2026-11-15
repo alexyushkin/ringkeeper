@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from pydantic import Field
 from sqlalchemy import func, select
 
@@ -22,6 +22,7 @@ from ringkeeper.api.auth import AdminDep
 from ringkeeper.api.deps import RecentAuth, SessionDep, WriteSessionDep, require_owner
 from ringkeeper.claude_auth import ClaudeAuthError
 from ringkeeper.config import get_settings
+from ringkeeper.db import session_scope
 from ringkeeper.desktop import lifecycle, opener
 from ringkeeper.desktop.update import State, updates
 from ringkeeper.errors import RuleViolationError
@@ -36,6 +37,7 @@ from ringkeeper.services import (
     claude_work,
     downloads,
     inbox,
+    jobs,
     onboarding,
     runtime,
     workspaces,
@@ -441,7 +443,7 @@ def ocr_remove() -> None:
 
 
 def _backup_folder() -> Path:
-    return Path.home() / "Documents" / "Ringkeeper backups"
+    return backup.default_folder()
 
 
 class ExportIn(Input):
@@ -451,7 +453,9 @@ class ExportIn(Input):
 
 
 @router.post("/backup/export", dependencies=[RecentAuth])
-def backup_export(data: ExportIn, session: WriteSessionDep) -> dict[str, Any]:
+def backup_export(
+    data: ExportIn, session: WriteSessionDep, background: BackgroundTasks
+) -> dict[str, Any]:
     """Write a backup file into a folder (Documents\\Ringkeeper backups unless chosen)."""
     folder = Path(data.folder.strip()) if data.folder and data.folder.strip() else _backup_folder()
     if not folder.is_absolute():
@@ -466,13 +470,14 @@ def backup_export(data: ExportIn, session: WriteSessionDep) -> dict[str, Any]:
             422,
             detail=f"Couldn't write the backup there ({error.strerror}). Choose another folder.",
         ) from None
-    uploaded = (
-        backup_drive.upload(session, get_vault(), path, backup.auto(session).keep)
-        if data.drive else None
-    )  # fmt: skip
+    backup.remember(session, path)
+    jobs.announce(session, jobs.BACKUP, jobs.DONE)
+    uploading = bool(data.drive and backup_drive.state(session).connection)
+    if uploading:  # once this answer is sent: the screen shows "Uploading..." and then how it went
+        background.add_task(backup_drive.upload_now, get_vault(), path)
     return {
         "path": str(path), "bytes": len(blob), "default_folder": str(_backup_folder()),
-        "drive": uploaded.__dict__ if uploaded is not None else None,
+        "uploading": uploading,
     }  # fmt: skip
 
 
@@ -487,7 +492,19 @@ def backup_info(session: SessionDep) -> dict[str, Any]:
         # Google Drive: the account chosen, the last upload, and the accounts that could be.
         "drive": backup_drive.state(session).__dict__,
         "google": backup_drive.accounts(session),
+        # The newest backup on this computer: what Upload now sends.
+        "newest": _file_info(backup.newest_local(session)),
     }
+
+
+def _file_info(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        made = datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
+    except OSError:
+        return None
+    return {"name": path.name, "at": made}
 
 
 class DriveIn(Input):
@@ -495,9 +512,48 @@ class DriveIn(Input):
 
 
 @router.put("/backup/drive", dependencies=[RecentAuth])
-def backup_drive_choice(data: DriveIn, session: WriteSessionDep) -> dict[str, Any]:
-    """Upload backups to this Google account from now on (None: stop)."""
-    return backup_drive.choose(session, data.connection).__dict__
+def backup_drive_choice(
+    data: DriveIn, session: WriteSessionDep, background: BackgroundTasks
+) -> dict[str, Any]:
+    """Upload backups to this Google account from now on (None: stop). Turned on with a backup
+    on this computer, the newest goes up right away; with none, the next one will."""
+    chosen = backup_drive.choose(session, data.connection)
+    newest = backup.newest_local(session) if chosen.connection else None
+    if newest is not None:
+        background.add_task(backup_drive.upload_now, get_vault(), newest)
+    return {**chosen.__dict__, "uploading_newest": newest is not None}
+
+
+@router.post("/backup/drive/upload", status_code=202, dependencies=[RecentAuth])
+def backup_drive_upload(session: SessionDep, background: BackgroundTasks) -> dict[str, Any]:
+    """Upload now: the newest backup on this computer."""
+    if not backup_drive.state(session).connection:
+        raise HTTPException(409, detail="Choose the Google account to upload to first.")
+    newest = backup.newest_local(session)
+    if newest is None:
+        raise HTTPException(
+            409, detail="There's no backup on this computer yet. Back up now first."
+        )
+    background.add_task(backup_drive.upload_now, get_vault(), newest)
+    return {"file": newest.name}
+
+
+def _back_up_now() -> None:
+    with session_scope() as session:
+        written = backup.run_auto(session, get_settings(), get_vault(), force=True)
+    if written is not None:
+        backup_drive.upload_now(get_vault(), written)
+
+
+@router.post("/backup/now", status_code=202, dependencies=[RecentAuth])
+def backup_now(session: SessionDep, background: BackgroundTasks) -> dict[str, Any]:
+    """Back up now, with the automatic backups' folder and password, then upload it."""
+    if not backup.auto(session).enabled:
+        raise HTTPException(
+            409, detail="Make a backup above with a password, or turn on automatic backups."
+        )
+    background.add_task(_back_up_now)
+    return {"started": True}
 
 
 @router.get("/backup/folder")

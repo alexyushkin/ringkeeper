@@ -4,16 +4,13 @@ import Link from "@/components/link";
 
 import { TaskCardView, type TaskCard } from "@/components/task-card";
 import { Alert, Empty, Loading } from "@/components/ui";
-import { RESYNC, useLive, usePaged } from "@/lib/client/api";
+import { usePaged } from "@/lib/client/api";
 
 const SHOWN = 20;
 
 /** The latest tasks of one project or one client, with a link to all of them. */
 export function ScopedTasks({ client, project }: { client?: string; project?: string }) {
   const tasks = usePaged<TaskCard>("tasks", { client, project }, SHOWN);
-  useLive((event) => {
-    if (event.type === "task" || event.type === RESYNC) tasks.reload();
-  });
   const all = tasks.items ?? [];
   const total = tasks.total ?? all.length;
   const query = new URLSearchParams({ ...(client ? { client } : {}), ...(project ? { project } : {}) }).toString();

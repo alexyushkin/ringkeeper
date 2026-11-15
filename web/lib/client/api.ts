@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { createLive, type LiveEvent, type Live } from "./live";
+import { changes, watchOf } from "./refresh";
 
 /** Calls go to the app's own server (/bff), never straight to Ringkeeper's API. */
 
@@ -174,7 +175,19 @@ export function useApi<T>(path: string | null, query?: Options["query"]): Loaded
     };
   }, [path, key, tick]);
   const reload = useCallback(() => setTick((n) => n + 1), []);
+  useRefresh(path, reload);
   return { data, error, loading, reload };
+}
+
+/** A read in lib/client/refresh.ts's table is fetched again when its events arrive. */
+function useRefresh(path: string | null, reload: () => void): void {
+  const watched = watchOf(path) !== undefined;
+  useEffect(() => {
+    if (!watched || path === null) return;
+    return theLive().subscribe((event) => {
+      if (changes(path, event)) reload();
+    });
+  }, [watched, path, reload]);
 }
 
 export const PAGE_SIZE = 50;
@@ -257,6 +270,7 @@ export function usePaged<T>(path: string | null, query?: Options["query"], size:
     })();
   }, [path, key, tick, size]);
   const reload = useCallback(() => setTick((n) => n + 1), []);
+  useRefresh(path, reload);
   const loadMore = useCallback(() => {
     if (path === null || !next) return;
     const mine = ++latest.current;

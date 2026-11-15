@@ -11,7 +11,7 @@ import { Markdown } from "@/components/markdown";
 import { RoutineForm, RunStatus, TRIGGER, type RoutineData, type Run } from "@/components/routines";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Empty, Loading, Section, money, timeAgo } from "@/components/ui";
 import { LoadMore } from "@/components/tidy";
-import { api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { api, useApi, usePaged } from "@/lib/client/api";
 import { projectHref, taskHref } from "@/lib/client/routes";
 import { place } from "@/lib/client/scope";
 
@@ -26,10 +26,6 @@ export function RoutineView({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useLive((event) => {
-    if (event.type === "task") runs.reload();
-    if (event.type === "approval") pending.reload();
-  });
 
   if (routine.error) return <Alert>{routine.error}</Alert>;
   if (!routine.data) return <Loading />;

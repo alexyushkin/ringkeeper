@@ -4,7 +4,7 @@ import Link from "@/components/link";
 import { useState } from "react";
 
 import { Alert, Button, timeAgo } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
 import { taskHref } from "@/lib/client/routes";
 import { place } from "@/lib/client/scope";
 
@@ -21,9 +21,6 @@ export function InterruptedList() {
   const list = useApi<Interrupted[]>("tasks/interrupted");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useLive((event) => {
-    if (event.type === "task") list.reload();
-  });
   if (!list.data?.length) return null;
 
   async function resume(path: string, key: string) {

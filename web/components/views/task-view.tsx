@@ -212,12 +212,10 @@ export function TaskView({ id }: { id: string }) {
   const recount = useMemo(() => throttle(task.reload, 1_500), [task.reload]);
   useLive((event) => {
     if (event.type === RESYNC) {
-      task.reload();
-      pending.reload();
+      task.reload(); // its approvals ("decisions") fetch again by themselves (refresh.ts)
       void more();
       return;
     }
-    if (event.type === "approval") pending.reload();
     if (event.task_id !== id) return;
     if (event.type === "session_event") {
       void more();

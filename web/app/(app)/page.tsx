@@ -13,7 +13,7 @@ import { ScheduledList } from "@/components/scheduled";
 import { ScopeNote } from "@/components/scope-switcher";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, SelectRows, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
-import { RESYNC, useLive, usePaged } from "@/lib/client/api";
+import { usePaged } from "@/lib/client/api";
 import { place, useScope } from "@/lib/client/scope";
 import { threadHref } from "@/lib/client/routes";
 
@@ -39,9 +39,6 @@ export default function Home() {
   const threads = usePaged<Thread>("threads", { ...scope.query, q: query.trim() || undefined, archived: archived || undefined });
   const pick = useSelection();
   const shownIds = (threads.items ?? []).map((row) => row.id);
-  useLive((event) => {
-    if (["message", "message_routed", "task", "approval", RESYNC].includes(event.type)) threads.reload();
-  });
 
   return (
     <>

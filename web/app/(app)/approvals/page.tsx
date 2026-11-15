@@ -6,7 +6,7 @@ import { useConnectionTitles } from "@/components/connection-form";
 import { DecisionCard, type Decision } from "@/components/decision-card";
 import { Alert, Button, Details, Empty, Loading, PageHeader, Select, timeUntil } from "@/components/ui";
 import { LoadMore } from "@/components/tidy";
-import { api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { api, useApi, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
 import { place, projectName, useScope } from "@/lib/client/scope";
 
@@ -45,13 +45,6 @@ export default function ApprovalsPage() {
   const decisions = usePaged<Decision>("decisions", { ...scope.query, kind, status: "pending", category: "approval", snoozed: false });
   const snoozed = usePaged<Decision>("decisions", { ...scope.query, kind, status: "pending", category: "approval", snoozed: true });
   const trusts = useApi<Trust[]>("trusts");
-  useLive((event) => {
-    if (event.type === "approval") {
-      decisions.reload();
-      snoozed.reload();
-      trusts.reload();
-    }
-  });
   // Production holds first; otherwise newest first, as the API lists them.
   const ordered = [...(decisions.items ?? [])].sort((a, b) => Number(b.production) - Number(a.production));
   const count = ordered.length;

@@ -1,6 +1,7 @@
 """The conveniences: files on a request, shortcuts, Run again, trust for an hour, the
 digest, the daily connection check, pins, and keys found in a project's own files."""
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -26,11 +27,13 @@ from ringkeeper.services import (
     digest,
     env_scan,
     health,
+    jobs,
     tasks,
     threads,
     trusts,
 )
 from ringkeeper.services.probes import ProbeResult
+from ringkeeper.storage import events
 from tests.helpers import make_instance, make_project
 from tests.test_web_api import (  # noqa: F401 (fixtures)
     admin,  # pyright: ignore[reportUnusedImport]
@@ -298,6 +301,23 @@ def test_a_key_about_to_expire_warns_once(project: Path, monkeypatch: pytest.Mon
     health.check_all(get_settings())
     health.check_all(get_settings())
     assert said == ["Key expiring: acme-db: key expires in 5 days"]
+
+
+def test_the_check_tells_open_windows_when_it_finishes(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each connection's badge on the Connections page updates without a reload."""
+    del project
+    with session_scope() as session:
+        make_instance(session, "acme-db", owner="acme")
+    monkeypatch.setattr(health.probes, "test_connection", works)
+    subscription = events.subscribe(get_settings().database_url, [jobs.CHANNEL])
+    try:
+        health.check_all(get_settings())
+        sent = [json.loads(payload) for _, payload in subscription.get(timeout=2.0)]
+    finally:
+        subscription.close()
+    assert {"type": "job", "kind": jobs.HEALTH, "status": jobs.DONE} in sent
 
 
 def test_the_check_runs_a_day_after_the_last(project: Path) -> None:

@@ -10,7 +10,7 @@ import { startTour, Tour } from "@/components/tour";
 import { ScanOffer } from "@/components/scans";
 import { UpdateBanner } from "@/components/update-banner";
 import { Loading, Logo } from "@/components/ui";
-import { RESYNC, api, useApi, useLive, usePaged } from "@/lib/client/api";
+import { api, useApi, usePaged } from "@/lib/client/api";
 import { appHistory, useBackCloses } from "@/lib/client/app-history";
 import { HistoryArrows } from "@/components/history-arrows";
 import { DESKTOP } from "@/lib/client/routes";
@@ -103,9 +103,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const approvals = usePaged<Pending>("decisions", { status: "pending", category: "approval", snoozed: false }, 1);
   const settings = useApi<{ values: { paused: boolean } }>("settings");
   const start = useApi<{ tour_seen: boolean }>(ready ? "start" : null);
-  useLive((event) => {
-    if (event.type === "approval" || event.type === RESYNC) approvals.reload();
-  });
   const count = approvals.total ?? 0;
   const paused = settings.data?.values.paused ?? false;
   const claude = useApi<{ waiting_until: string | null; message: string | null }>("claude-status");

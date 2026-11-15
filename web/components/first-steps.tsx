@@ -5,7 +5,7 @@ import { useState } from "react";
 import Link from "@/components/link";
 import { fillRequest } from "@/components/composer";
 import { Alert, Button, Card, ConfirmButton } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
 import { clientHref } from "@/lib/client/routes";
 import { projectName } from "@/lib/client/scope";
 
@@ -31,9 +31,6 @@ interface Start {
  * requests to try, built from your own projects and connections. */
 export function FirstSteps() {
   const start = useApi<Start>("start");
-  useLive((event) => {
-    if (["task", "message_routed"].includes(event.type)) start.reload();
-  });
   if (!start.data) return null;
   const { checklist, suggestions, demo, demo_offered, whats_new, backup_nudge, backup_upload_error } = start.data;
   const showList = !checklist.done && !checklist.dismissed;

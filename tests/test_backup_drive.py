@@ -2,6 +2,8 @@
 last few kept there, a failure said and the local copy kept, and never a client's account."""
 
 import json
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -9,10 +11,12 @@ import httpx2
 import pytest
 
 from ringkeeper.adapters import google
+from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
-from ringkeeper.models import InstanceType
-from ringkeeper.services import backup_drive, clients
+from ringkeeper.models import InstanceType, Setting
+from ringkeeper.services import backup, backup_drive, clients, jobs
+from ringkeeper.storage import events
 from ringkeeper.vault import get_vault
 from tests.helpers import make_instance
 
@@ -196,3 +200,136 @@ def test_a_client_s_google_account_is_never_used() -> None:
 def test_nothing_is_uploaded_until_an_account_is_chosen(tmp_path: Path) -> None:
     with session_scope() as session:
         assert backup_drive.upload(session, get_vault(), backup_file(tmp_path, 1), keep=4) is None
+
+
+# --- Showing it as it happens: "Uploading...", then how it went (services.jobs) ---
+
+
+def heard(subscription: events.Subscription) -> list[tuple[str, str]]:
+    """The job events sent so far: (kind, status)."""
+    found: list[tuple[str, str]] = []
+    for _, payload in subscription.get(timeout=2.0) + subscription.get(timeout=0.2):
+        event = json.loads(payload)
+        if event.get("type") == "job":
+            found.append((event["kind"], event["status"]))
+    return found
+
+
+@pytest.fixture
+def folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The default backup folder, here: never the real Documents folder."""
+    place = tmp_path / "Ringkeeper backups"
+    place.mkdir()
+    monkeypatch.setattr(backup, "default_folder", lambda: place)
+    return place
+
+
+def test_an_upload_says_it_started_and_how_it_ended(
+    drive: FakeDrive, folder: Path, database_url: str
+) -> None:
+    seen_while_going: list[str | None] = []
+    upload = drive.handle
+
+    def watching(request: httpx2.Request) -> httpx2.Response:
+        if request.url.host == "up.example":  # the file itself is on its way
+            with session_scope(commit=False) as session:  # a read, beside the upload's
+                seen_while_going.append(backup_drive.state(session).uploading)
+        return upload(request)
+
+    google.transport = httpx2.MockTransport(watching)
+    with session_scope() as session:
+        backup_drive.choose(session, "my-google")
+    subscription = events.subscribe(database_url, [jobs.CHANNEL])
+    try:
+        done = backup_drive.upload_now(get_vault(), backup_file(folder, 1))
+        said = heard(subscription)
+    finally:
+        subscription.close()
+    assert done is not None
+    assert done.error is None
+    assert seen_while_going
+    assert seen_while_going[0] is not None  # "Uploading..." meanwhile
+    assert said == [(jobs.UPLOAD, jobs.STARTED), (jobs.UPLOAD, jobs.DONE)]
+    with session_scope() as session:
+        now = backup_drive.state(session)
+    assert (now.uploading, now.file) == (None, "Ringkeeper-backup-2026-11-01-0900.rkbackup")
+
+
+def test_a_failed_upload_says_so_too(drive: FakeDrive, folder: Path, database_url: str) -> None:
+    drive.broken = True
+    with session_scope() as session:
+        backup_drive.choose(session, "my-google")
+    subscription = events.subscribe(database_url, [jobs.CHANNEL])
+    try:
+        done = backup_drive.upload_now(get_vault(), backup_file(folder, 1))
+        said = heard(subscription)
+    finally:
+        subscription.close()
+    assert done is not None
+    assert done.error is not None
+    assert said == [(jobs.UPLOAD, jobs.STARTED), (jobs.UPLOAD, jobs.FAILED)]
+
+
+def test_upload_now_sends_the_newest_backup_on_this_computer(
+    drive: FakeDrive, folder: Path
+) -> None:
+    older, newer = backup_file(folder, 1), backup_file(folder, 2)
+    os.utime(older, (1_700_000_000, 1_700_000_000))
+    os.utime(newer, (1_800_000_000, 1_800_000_000))
+    with session_scope() as session:
+        assert backup.newest_local(session) == newer
+        backup_drive.choose(session, "my-google")
+    done = backup_drive.upload_now(get_vault())
+    assert done is not None
+    assert done.file == newer.name
+    assert [
+        f["name"] for f in drive.files.values() if f["mimeType"] == backup_drive.BACKUP_TYPE
+    ] == [newer.name]
+
+
+def test_a_backup_saved_elsewhere_is_found_too(
+    folder: Path, tmp_path: Path, database_url: str
+) -> None:
+    elsewhere = tmp_path / "Dropbox"
+    elsewhere.mkdir()
+    saved = backup_file(elsewhere, 3)
+    with session_scope() as session:
+        assert backup.newest_local(session) is None
+        backup.remember(session, saved)
+        assert backup.newest_local(session) == saved
+
+
+def test_nothing_goes_up_without_an_account_or_a_backup(drive: FakeDrive, folder: Path) -> None:
+    assert backup_drive.upload_now(get_vault()) is None  # no account chosen
+    with session_scope() as session:
+        backup_drive.choose(session, "my-google")
+    assert backup_drive.upload_now(get_vault()) is None  # no backup here yet
+    assert drive.uploads == 0
+
+
+def test_an_upload_cut_off_isnt_shown_as_going_on(database_url: str) -> None:
+    started = datetime(2026, 11, 15, 10, 0, tzinfo=UTC)
+    with session_scope() as session:
+        session.add(Setting(key=backup_drive.KEY, value={"uploading": started.isoformat()}))
+    with session_scope() as session:
+        assert backup_drive.state(session, started + timedelta(minutes=5)).uploading is not None
+        assert backup_drive.state(session, started + timedelta(hours=1)).uploading is None
+
+
+def test_a_weekly_backup_says_it_finished(folder: Path, tmp_path: Path, database_url: str) -> None:
+    weekly = tmp_path / "weekly"
+    with session_scope() as session:
+        backup.set_auto(session, get_vault(), enabled=True, folder=str(weekly), keep=4,
+                        password="a long password")  # fmt: skip
+    subscription = events.subscribe(database_url, [jobs.CHANNEL])
+    try:
+        with session_scope() as session:
+            written = backup.run_auto(session, get_settings(), get_vault(), force=True)
+        said = heard(subscription)
+    finally:
+        subscription.close()
+    assert written is not None
+    assert written.parent == weekly
+    assert said == [(jobs.BACKUP, jobs.DONE)]
+    with session_scope() as session:
+        assert backup.newest_local(session) == written

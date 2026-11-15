@@ -39,6 +39,7 @@ from ringkeeper import __version__
 from ringkeeper.config import Settings, get_settings
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import Setting
+from ringkeeper.services import jobs
 from ringkeeper.vault import Vault
 from ringkeeper.vault.file import FileBackend
 
@@ -51,6 +52,7 @@ PENDING = "restore-pending.db"
 REPLACED = "ringkeeper.db.before-restore"
 PASSWORD_REF = "file://ringkeeper/backup/password"  # noqa: S105 (where it is, not what)
 AUTO_KEY = "backup.auto"
+LAST_FILE_KEY = "backup.last-file"  # {"path"}: the last backup written
 EVERY = timedelta(days=7)
 MAX_BYTES = 200 * 1024 * 1024
 
@@ -276,13 +278,53 @@ def _save_auto(session: Session, value: dict[str, Any]) -> None:
     session.flush()
 
 
+def default_folder() -> Path:
+    """Documents/Ringkeeper backups: most backup tools already include Documents."""
+    return Path.home() / "Documents" / "Ringkeeper backups"
+
+
+def remember(session: Session, path: Path) -> None:
+    """The last backup written, wherever it went: the newest local one is looked for there too."""
+    row = session.get(Setting, LAST_FILE_KEY)
+    if row is None:
+        session.add(Setting(key=LAST_FILE_KEY, value={"path": str(path)}))
+    else:
+        row.value = {"path": str(path)}
+    session.flush()
+
+
+def newest_local(session: Session) -> Path | None:
+    """The newest backup file on this computer: in the weekly backups' folder, the default
+    folder, or where the last one was saved."""
+    row = session.get(Setting, LAST_FILE_KEY)
+    last = Path(str(row.value.get("path"))) if row is not None and row.value.get("path") else None
+    weekly = auto(session).folder
+    folders = {default_folder(), *([Path(weekly)] if weekly else [])}
+    if last is not None:
+        folders.add(last.parent)
+    found: list[tuple[float, Path]] = []
+    for folder in folders:
+        try:
+            found += [(f.stat().st_mtime, f) for f in folder.glob(f"Ringkeeper-backup-*{SUFFIX}")]
+        except OSError:
+            continue  # a folder that's gone, or a drive that isn't plugged in
+    return max(found)[1] if found else None
+
+
 def run_auto(
-    session: Session, settings: Settings, vault: Vault, now: datetime | None = None
+    session: Session,
+    settings: Settings,
+    vault: Vault,
+    now: datetime | None = None,
+    *,
+    force: bool = False,
 ) -> Path | None:
-    """The weekly backup, when it's due. Returns the file written (None: not due or off)."""
+    """The weekly backup, when it's due (or now: Back up now). Returns the file written (None:
+    not due, or off). Uploading it to Google Drive is backup_drive.upload_now, afterwards."""
     now = now or datetime.now(UTC)
     current = auto(session)
-    if not current.enabled or (current.last and datetime.fromisoformat(current.last) + EVERY > now):
+    due = force or not current.last or datetime.fromisoformat(current.last) + EVERY <= now
+    if not current.enabled or not due:
         return None
     record: dict[str, Any] = {"enabled": True, "folder": current.folder, "keep": current.keep,
                               "last": now.isoformat(), "last_error": None}  # fmt: skip
@@ -300,8 +342,7 @@ def run_auto(
         record["last_error"] = f"The weekly backup didn't work: {error}"
         written = None
     _save_auto(session, record)
-    if written is not None:  # and to Google Drive, when an account is chosen
-        from ringkeeper.services import backup_drive  # noqa: PLC0415 (it's optional)
-
-        backup_drive.upload(session, vault, written, current.keep)
+    if written is not None:
+        remember(session, written)
+    jobs.announce(session, jobs.BACKUP, jobs.DONE if written is not None else jobs.FAILED)
     return written

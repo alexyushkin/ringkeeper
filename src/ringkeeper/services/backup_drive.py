@@ -11,8 +11,9 @@ it in Settings, Backup.
 """
 
 import asyncio
+import threading
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,17 +23,21 @@ from sqlalchemy.orm import Session
 
 from ringkeeper.adapters import google, rest
 from ringkeeper.adapters.base import Target, ToolError
+from ringkeeper.db import session_scope
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import Instance, InstanceType, Setting
-from ringkeeper.services import clients, google_oauth
+from ringkeeper.services import backup, clients, google_oauth, jobs
 from ringkeeper.vault import Vault
 
-KEY = "backup-drive"  # {"connection", "folder", "last", "link", "error"}
+KEY = "backup-drive"  # {"connection", "folder", "last", "link", "error", "uploading", "file"}
 FOLDER = "Ringkeeper backups"
 FOLDER_TYPE = "application/vnd.google-apps.folder"
 ACCESS = "drive_files"
 BACKUP_TYPE = "application/octet-stream"
 PREFIX = "Ringkeeper-backup-"
+# An upload still "in progress" this long after it started was cut off (the app quit).
+STALE = timedelta(minutes=30)
+_one_at_a_time = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -42,12 +47,19 @@ class Drive:
     last: str | None  # when the last upload finished
     link: str | None  # the last file in Drive
     error: str | None  # why the last upload didn't work
+    uploading: str | None = None  # when the upload going on now started
+    file: str | None = None  # the backup being uploaded, or the last one uploaded
 
 
-def state(session: Session) -> Drive:
+def state(session: Session, now: datetime | None = None) -> Drive:
     row = session.get(Setting, KEY)
     value = row.value if row is not None else {}
-    return Drive(*(value.get(k) for k in ("connection", "folder", "last", "link", "error")))
+    found = Drive(*(value.get(k) for k in ("connection", "folder", "last", "link", "error",
+                                            "uploading", "file")))  # fmt: skip
+    started = found.uploading
+    if started and datetime.fromisoformat(started) + STALE < (now or datetime.now(UTC)):
+        return Drive(**{**found.__dict__, "uploading": None})
+    return found
 
 
 def _save(session: Session, **changes: Any) -> Drive:
@@ -200,5 +212,32 @@ def upload(session: Session, vault: Vault, path: Path, keep: int) -> Drive | Non
         return _save(session, error=f"The upload to Google Drive didn't work: {error}")
     return _save(
         session, folder=folder, last=datetime.now(UTC).isoformat(),
-        link=sent.get("webViewLink"), error=None,
+        link=sent.get("webViewLink"), error=None, file=path.name,
     )  # fmt: skip
+
+
+def upload_now(vault: Vault, path: Path | None = None) -> Drive | None:
+    """Upload a backup (the newest one on this computer unless named), in steps of its own so
+    open windows show "Uploading..." and then how it went. None: no account chosen, no backup
+    here, or an upload already going."""
+    if not _one_at_a_time.acquire(blocking=False):
+        return None
+    try:
+        with session_scope() as session:
+            chosen = path or backup.newest_local(session)
+            if not state(session).connection or chosen is None:
+                return None
+            keep = backup.auto(session).keep
+            _save(session, uploading=datetime.now(UTC).isoformat(), file=chosen.name)
+            jobs.announce(session, jobs.UPLOAD, jobs.STARTED)
+        done: Drive | None = None
+        try:
+            with session_scope() as session:
+                done = upload(session, vault, chosen, keep)
+        finally:
+            with session_scope() as session:
+                done = _save(session, uploading=None)
+                jobs.announce(session, jobs.UPLOAD, jobs.FAILED if done.error else jobs.DONE)
+        return done
+    finally:
+        _one_at_a_time.release()

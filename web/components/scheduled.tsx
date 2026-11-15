@@ -4,7 +4,7 @@ import Link from "@/components/link";
 import { useState } from "react";
 
 import { Alert, Button, clock } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
 import { threadHref } from "@/lib/client/routes";
 
 interface Scheduled {
@@ -46,9 +46,6 @@ export function CancelButton({ id, onDone }: { id: string; onDone: () => void })
 /** Home: requests sent for later that haven't run yet, each with Cancel. */
 export function ScheduledList() {
   const list = useApi<Scheduled[]>("scheduled");
-  useLive((event) => {
-    if (event.type === "message" || event.type === "message_routed") list.reload();
-  });
   if (!list.data?.length) return null;
   return (
     <section aria-label="Sent for later" className="mt-6">

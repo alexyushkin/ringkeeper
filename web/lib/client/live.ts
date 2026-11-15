@@ -21,7 +21,8 @@ export interface LiveEvent {
   message_id?: string;
 }
 
-export const LIVE_TYPES = ["task", "session_event", "approval", "message", "message_routed"];
+// "job": background work started or finished (services/jobs.py; lib/client/refresh.ts).
+export const LIVE_TYPES = ["task", "session_event", "approval", "message", "message_routed", "job"];
 export const RESYNC = "resync";
 export const STREAM = "/bff/events";
 const CLOSED = 2; // EventSource.CLOSED

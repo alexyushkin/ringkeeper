@@ -19,7 +19,7 @@ from ringkeeper.channels.prefs import FAILURES
 from ringkeeper.config import Settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import Instance, Setting
-from ringkeeper.services import announce, probes
+from ringkeeper.services import announce, jobs, probes
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ def check_all(settings: Settings, now: datetime | None = None) -> Report:
                 else f"{title}: key expires in {left} day{'' if left == 1 else 's'}"
             )
         _save(session, {"at": now.isoformat(), "warned": warned})
+        jobs.announce(session, jobs.HEALTH, jobs.DONE)  # each connection's badge, fresh
         if failed or expiring:
             lines = [f"Connection stopped working: {line}" for line in failed]
             lines += [f"Key expiring: {line}" for line in expiring]

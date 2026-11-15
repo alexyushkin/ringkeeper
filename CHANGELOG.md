@@ -22,6 +22,17 @@ publishes it as the release notes and the app shows it with the update.
   sign-in, no project is ticked and **Choose projects** is the main button: "This
   connection has an account behind it. Pick the projects that should be able to use it."
   A browser or files on this computer still start in every project.
+- **Back up to Google Drive shows what's happening.** After a weekly backup's upload had
+  finished, the section still said "Nothing uploaded yet" until the page was opened again.
+  Now it shows "Uploading..." while one goes up, and the last upload's time with **Open in
+  Drive** once it's done. Turning it on uploads the newest backup on this computer right
+  away; with none yet, it says "The next backup will be uploaded", with **Back up now**.
+  **Upload now** sends the newest one again.
+- **Screens show background work as it finishes.** A finished backup, upload or daily
+  connection check now reaches every open window, like a finished task does, and each
+  screen that shows it fetches it again: Settings › Backup, Home's notices, Connections'
+  "Works" badges. Lists of tasks, approvals, changes and routine runs also fetch again
+  after the app's connection to its server comes back, so none of them stays stale.
 
 ## 0.1.0-beta.47 (2026-11-15)
 

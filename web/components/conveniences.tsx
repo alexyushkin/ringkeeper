@@ -8,7 +8,7 @@ import { fillRequest } from "@/components/composer";
 import { EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { ConnectionAdded } from "@/components/connection-added";
 import { Alert, Badge, Button, Card, Field } from "@/components/ui";
-import { api, useApi, useLive } from "@/lib/client/api";
+import { api, useApi } from "@/lib/client/api";
 import { taskHref } from "@/lib/client/routes";
 import { clientName, projectName, sameClient } from "@/lib/client/scope";
 
@@ -47,9 +47,6 @@ function tasksLink(client: string, since: string, outcome?: "broke" | "not_done"
  * setup's requests and the demo's aren't counted: a muted line says they ran. */
 export function DigestCard({ client }: { client?: string }) {
   const digest = useApi<Day>("digest");
-  useLive((event) => {
-    if (event.type === "task" || event.type === "approval") digest.reload();
-  });
   const days = (digest.data?.clients ?? []).filter((day) => !client || sameClient(day.client, client));
   const leftOut = digest.data?.left_out ?? [];
   if (!days.length && !leftOut.length) return null;

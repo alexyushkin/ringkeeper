@@ -3,7 +3,7 @@
 import Link from "@/components/link";
 
 import { timeAgo } from "@/components/ui";
-import { useApi, useLive } from "@/lib/client/api";
+import { useApi } from "@/lib/client/api";
 import { money } from "@/components/client-month";
 import { clientHref, routineHref } from "@/lib/client/routes";
 
@@ -18,9 +18,6 @@ interface Watching {
  * websites that routines watch; the last problem found; any watch that can't look. */
 export function WatchLine({ client, project }: { client?: string; project?: string }) {
   const data = useApi<Watching>("watching", { client, project });
-  useLive((event) => {
-    if (event.type === "task") data.reload(); // a watch's run is a task
-  });
   const seen = data.data;
   const capped = seen?.capped ?? [];
   if (!seen?.watching && !capped.length) return null;

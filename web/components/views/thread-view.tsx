@@ -105,7 +105,7 @@ export function ThreadView({ id }: { id: string }) {
     if (event.thread_id !== id) return;
     if (event.type === "message" || event.type === "message_routed") thread.reload();
     if (event.type === "task" || event.type === "message_routed") tasks.reload();
-    if (event.type === "approval" || event.type === "message_routed") pending.reload();
+    if (event.type === "message_routed") pending.reload(); // approvals fetch again by themselves (refresh.ts)
   });
   // While a reply or a task is on its way, fetch it every few seconds too: what it shows
   // never depends on one live event arriving.
