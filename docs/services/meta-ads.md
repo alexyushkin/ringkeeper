@@ -24,6 +24,10 @@ ID.
 It asks for `ads_mcp_management`, `ads_read`, `ads_management`, `catalog_management`,
 `business_management`, `pages_show_list` and `instagram_basic`.
 
+If Meta shows **App not active**, **URL blocked** or **Invalid Scopes**, open **Meta shows an
+error?** under the button: it says what each means and where to fix it. See [Developer
+apps](developer-apps.md#when-the-sign-in-doesnt-finish).
+
 **Your own ad accounts work straight away.** Managing other businesses' ads needs Advanced
 Access on `ads_mcp_management`, which means Meta's app review.
 

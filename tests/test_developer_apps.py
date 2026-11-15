@@ -351,3 +351,64 @@ def test_no_secret_comes_back_from_settings(owner: TestClient, fake: FakeVendor)
     assert xero["apps"][0]["client_id"] == "client-1"
     assert "accounting.invoices" in xero["scopes"]
     assert any(xero["redirect"] in step for step in xero["steps"])
+
+
+# --- When the vendor's sign-in page shows an error: which app, and what fixes it ---
+
+
+def test_meta_says_what_its_three_common_errors_mean() -> None:
+    meta = developer_apps.provider("meta")
+    shown = [t.shown for t in developer_apps.troubles_for(meta)]
+    assert shown == ["App not active", "URL blocked", "Invalid Scopes"]
+    fixes = {t.shown: t.fix for t in developer_apps.troubles_for(meta)}
+    assert "App roles" in fixes["App not active"]
+    assert "paused" in fixes["App not active"]
+    assert "Facebook Login for Business" in fixes["URL blocked"]
+    assert "ads MCP use case" in fixes["Invalid Scopes"]
+
+
+def test_every_sign_in_through_your_app_has_help() -> None:
+    for found in developer_apps.PROVIDERS.values():
+        troubles = developer_apps.troubles_for(found)
+        assert len(troubles) >= 3, found.key
+        assert all(t.shown and t.fix for t in troubles), found.key
+    # A vendor without its own list gets the three every sign-in page shows in some form.
+    xero = developer_apps.troubles_for(developer_apps.provider("xero"))
+    assert [t.shown.split(",")[0] for t in xero] == [
+        "redirect_uri mismatch", "invalid_client", "invalid_scope",
+    ]  # fmt: skip
+    assert all("Xero" in t.fix for t in xero)
+
+
+def test_the_app_s_own_page_is_built_from_its_id() -> None:
+    meta_app = developer_apps.App("a1", "Studio ads", "1234567890", "s")
+    meta = developer_apps.provider("meta")
+    assert developer_apps.app_page(meta, meta_app) == (
+        "https://developers.facebook.com/apps/1234567890/dashboard/"
+    )
+    entra = developer_apps.app_page(developer_apps.provider("microsoft"), meta_app)
+    assert entra.endswith("/appId/1234567890")
+    xero = developer_apps.provider("xero")
+    assert developer_apps.app_page(xero, meta_app) == xero.console  # no page of its own
+
+
+def test_settings_say_which_app_and_what_its_errors_mean(
+    owner: TestClient, fake: FakeVendor
+) -> None:
+    made = owner.post(
+        "/developer-apps/meta/apps",
+        json={"name": "Studio ads", "client_id": "1234567890", "client_secret": "secret-123"},
+    )
+    assert made.status_code == 201, made.text
+    providers = {p["key"]: p for p in owner.get("/developer-apps").json()["providers"]}
+    meta = providers["meta"]
+    assert [t["shown"] for t in meta["troubles"]] == [
+        "App not active",
+        "URL blocked",
+        "Invalid Scopes",
+    ]
+    app = meta["apps"][0]
+    assert (app["name"], app["client_id"]) == ("Studio ads", "1234567890")
+    assert app["page"] == "https://developers.facebook.com/apps/1234567890/dashboard/"
+    assert providers["google"]["troubles"]  # the Google sign-in reads its help from here too
+    assert all(p["troubles"] for p in providers.values())

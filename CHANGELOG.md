@@ -33,6 +33,14 @@ publishes it as the release notes and the app shows it with the update.
   fetches what it shows again, the same way for all of them (it was a conversation, then the
   backup section, then Google Drive). The pages that show tasks, approvals and messages
   already did; each now has a test that a change made elsewhere shows up without a reload.
+- **A sign-in through your own app says what went wrong.** When Meta showed "App not active",
+  the connect form kept saying "Finish signing in on Meta Ads's page" with no way forward. Now
+  every sign-in that goes through your developer app (Meta, Meta Ads, Threads, Microsoft,
+  Google, HubSpot, Salesforce, Xero, Intuit, Jobber) says which app it uses, with its app ID,
+  a link to its dashboard and one to Settings › Developer apps. **Meta shows an error?** lists
+  "App not active", "URL blocked" and "Invalid Scopes" with the fix for each, and each other
+  service has its own list. If the sign-in hasn't finished after 2 minutes, it stops waiting,
+  says so, opens that list and offers **Try again**.
 
 ## 0.1.0-beta.47 (2026-11-15)
 

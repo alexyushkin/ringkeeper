@@ -20,6 +20,27 @@ A service can have several apps, for example one registered in a client's own te
 their admin only trusts that one. When a service has more than one, its sign-in asks which
 to use. Removing an app stops its accounts working at their next refresh.
 
+## When the sign-in doesn't finish
+
+Under each **Sign in with ...** button, the form says which of your apps the sign-in goes
+through: its name and app ID, with **Open its dashboard** at the service and a link to
+Settings › Developer apps to change it. Below that, **<Service> shows an error?** lists the
+errors that service's page shows most, and the fix for each. For Meta:
+
+- **App not active:** the app is in Development mode and the Facebook profile you're signed in
+  with has no role on it, or Meta paused the app. Check **App roles**, and the banner on the
+  app's dashboard.
+- **URL blocked:** the redirect address isn't saved in the app's **Facebook Login for
+  Business** settings.
+- **Invalid Scopes:** a permission isn't added to the app. For Meta Ads, the use case **Create
+  & manage ads with ads MCP server** isn't added.
+
+Microsoft, Google and Threads have their own lists; the other services show the three every
+sign-in page has in some form (the redirect address, the client ID or secret, a scope).
+
+If the sign-in hasn't finished 2 minutes after the service's page opened, the form stops
+waiting and says so, with **Try again**, and opens that list.
+
 ## Where the sign-in comes back
 
 Most services want one exact address, and Ringkeeper's own port changes each launch, so

@@ -7,6 +7,7 @@ import { defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/co
 import { CheckList } from "@/components/check-list";
 import { Alert, Button, Field, Select, Toggle } from "@/components/ui";
 import { SHARED_OWNER } from "@/components/shared-tools";
+import { SIGNIN_WAIT_MS, SignInWaiting, ThroughApp, useTimedOut, type Trouble } from "@/components/signin-help";
 import { api, useApi } from "@/lib/client/api";
 
 export interface VendorSecret {
@@ -35,6 +36,8 @@ export interface VendorInfo {
 interface ProviderApp {
   id: string;
   name: string;
+  client_id: string;
+  page: string;
   options: Record<string, string>;
 }
 
@@ -43,6 +46,7 @@ interface ProviderInfo {
   name: string;
   access: { key: string; label: string }[];
   client_review: boolean;
+  troubles: Trouble[];
   apps: ProviderApp[];
 }
 
@@ -127,27 +131,31 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
   const [env, setEnv] = useState("");
   const [everywhere, setEverywhere] = useState(false);
   const [state, setState] = useState<string | null>(null);
+  const [since, setSince] = useState<number | null>(null); // when the vendor's page opened
+  const timedOut = useTimedOut(since);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!state) return;
-    const deadline = Date.now() + 10 * 60_000;
+    if (!state || timedOut) return; // after 2 minutes: Try again
+    const deadline = Date.now() + SIGNIN_WAIT_MS;
     const timer = setInterval(() => {
       api<{ state: string; name: string | null; error: string | null }>(`developer-apps/signin/${state}`)
         .then((found) => {
           if (found.state === "done" && found.name) {
             setState(null);
+            setSince(null);
             onAdded(found.name);
           } else if (found.state === "failed") {
             setState(null);
+            setSince(null);
             setError(found.error ?? "Not connected.");
-          } else if (Date.now() > deadline) setState(null);
+          } else if (Date.now() > deadline) clearInterval(timer);
         })
         .catch(() => undefined);
     }, 2000);
     return () => clearInterval(timer);
-  }, [state, onAdded]);
+  }, [state, timedOut, onAdded]);
 
   if (!provider) return null;
   if (!provider.apps.length) {
@@ -170,6 +178,7 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
       const started = await api<{ url: string; state: string }>("developer-apps/signin", { json: body });
       window.open(started.url, "_blank", "noopener");
       setState(started.state);
+      setSince(Date.now());
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -199,13 +208,14 @@ function SignIn({ vendor, client, project, shared = false, onAdded }: Target) {
       <EnvChoice value={env} onChange={setEnv} />
       {shared ? <Toggle label="Use in all projects" checked={everywhere} onChange={setEverywhere} hint="Every client's projects, new ones too." /> : null}
       {state ? (
-        <Alert tone="good">Finish signing in on {vendor.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert>
+        <SignInWaiting vendor={vendor.name} timedOut={timedOut} busy={busy} onTryAgain={() => void start()} />
       ) : (
         <Button kind="primary" busy={busy} disabled={!env || (vendor.key === provider.key && provider.access.length > 0 && !access.length)} onClick={start}>
           Sign in with {vendor.name}
         </Button>
       )}
       {error ? <Alert>{error}</Alert> : null}
+      <ThroughApp vendor={provider.key === "meta" ? "Meta" : vendor.name} app={chosen} troubles={provider.troubles} open={timedOut} />
     </>
   );
 }

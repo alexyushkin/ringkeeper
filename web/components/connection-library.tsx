@@ -10,6 +10,7 @@ import { TestButton, type ConnectionData } from "@/components/forms";
 import { GoogleAccount } from "@/components/google";
 import { ConnectionExports, EXPORT_ACTIONS, useAsked, type ExportAction, type ExportStart } from "@/components/connection-exports";
 import { McpTools } from "@/components/mcp-tools";
+import { SignInWaiting, ThroughApp, useTimedOut, type AppShown, type Trouble } from "@/components/signin-help";
 import { EveryProject } from "@/components/memory";
 import { Alert, Badge, Button, ConfirmButton, Details, EnvBadge, Field, LinkButton, Select, Toggle, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
@@ -622,6 +623,11 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   const [pasting, setPasting] = useState(!service.signin);
   const [waiting, setWaiting] = useState<string | null>(null); // the name sent, until it's there
   const [signin, setSignin] = useState<string | null>(null); // a sign-in through your own app
+  // Through your own app: which one, what its page may say, and a wait that ends in 2 minutes.
+  const devApps = useApi<{ providers: { key: string; troubles: Trouble[]; apps: AppShown[] }[] }>(service.provider ? "developer-apps" : null);
+  const yours = devApps.data?.providers.find((p) => p.key === service.provider);
+  const [since, setSince] = useState<number | null>(null);
+  const timedOut = useTimedOut(since);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const taken = useTakenNames();
@@ -630,10 +636,11 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   const body = { remote: service.key, url: url.trim() || null, name, title: title.trim(), owner: client, env, project: project ?? null, scope: cleaned(scope), shared };
   const needsUrl = Boolean(service.url_label) && !url.trim();
   const nothingElse = !service.signin && !service.paste && !service.local; // the address is all it takes
+  const vendorWord = service.provider === "meta" ? "Meta" : service.name;
 
   // After the service's page opens: the connection appears once its sign-in finishes.
   useEffect(() => {
-    if (!waiting) return;
+    if (!waiting || timedOut) return; // through your own app, after 2 minutes: Try again
     const deadline = Date.now() + 10 * 60_000;
     const timer = setInterval(() => {
       api<ConnectionData[]>("connections")
@@ -650,6 +657,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
           .then((found) => {
             if (found.state === "failed") {
               setWaiting(null);
+              setSince(null);
               setError(found.error ?? "The sign-in didn't finish. Try again.");
             }
           })
@@ -657,7 +665,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
       }
     }, 2000);
     return () => clearInterval(timer);
-  }, [waiting, signin, onAdded]);
+  }, [waiting, signin, timedOut, onAdded]);
 
   async function signIn() {
     setBusy(true);
@@ -667,6 +675,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
       window.open(url, "_blank", "noopener");
       setSignin(state ?? null);
       setWaiting(name);
+      setSince(state ? Date.now() : null); // only a sign-in through your own app stops at 2 minutes
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -703,13 +712,17 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
       <Field label="Name" value={title} onChange={setTyped} hint="As it shows in Ringkeeper. Change it if you like." />
       {service.url_label ? <Field label={service.url_label} value={url} onChange={setUrl} hint={service.url_hint} /> : null}
       {project ? <ScopeInputs fields={service.scope} value={scope} onChange={setScope} /> : null}
-      {waiting ? <Alert tone="good">Finish signing in on {service.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert> : null}
+      {waiting && signin ? (
+        <SignInWaiting vendor={vendorWord} timedOut={timedOut} busy={busy} onTryAgain={() => void signIn()} />
+      ) : waiting ? (
+        <Alert tone="good">Finish signing in on {service.name}&apos;s page that opened in your browser. This updates when it&apos;s done.</Alert>
+      ) : null}
       {error ? <Alert>{error}</Alert> : null}
       {service.provider && !pasting ? <ThroughYourApp service={service} /> : null}
       {service.signin && !pasting ? (
         <div className="flex flex-wrap gap-2">
           <Button kind="primary" busy={busy} disabled={!title.trim() || !env || needsUrl || (Boolean(service.provider) && !service.apps)} onClick={signIn}>
-            Sign in with {service.provider === "meta" ? "Meta" : service.name}
+            Sign in with {vendorWord}
           </Button>
           {service.paste ? (
             <Button kind="ghost" onClick={() => setPasting(true)}>
@@ -718,6 +731,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
           ) : null}
         </div>
       ) : null}
+      {service.provider && !pasting && yours ? <ThroughApp vendor={vendorWord} app={yours.apps[0]} troubles={yours.troubles} open={timedOut} /> : null}
       {nothingElse ? (
         <Button kind="primary" busy={busy} disabled={!title.trim() || !env || needsUrl} onClick={paste}>
           Connect
