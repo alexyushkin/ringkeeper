@@ -78,7 +78,8 @@ the success card starts with depends on what the connection holds:
   connection has an account behind it. Pick the projects that should be able to use it.",
   and **Choose projects** is the main button. **Use in all … projects instead** is there
   if that's what you want.
-- **It holds no account** (a browser, files on this computer): every project is ticked.
+- **It holds no account** (files on this computer, a public docs server): every project is
+  ticked.
   Untick any to leave it out, or choose **Choose projects instead**.
 
 To change it later, open the connection's card: Details › All … projects. The card says
@@ -105,8 +106,9 @@ read pages, but only what a page shows to anyone.
 - **Its own profile.** It opens Chrome (or Edge, on Windows without Chrome) with a profile
   in Ringkeeper's data folder, never your everyday one, so it's signed in only where you
   sign it in.
-- **No project at first.** It's linked to none until you pick, on the card that follows
-  or on a project's Connections tab.
+- **No project at first.** It keeps the logins you make in it, so it counts as having an
+  account: no project is ticked, and you pick on the card that follows or on a project's
+  Connections tab.
 - **What waits.** Going to pages, reading them, screenshots and following links run by
   themselves. Typing into forms, choosing in them, clicking a button that sends, buys,
   signs in or downloads, and pressing Enter wait for your approval in a client's project,
