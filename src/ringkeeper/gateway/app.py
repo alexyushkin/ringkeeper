@@ -150,6 +150,23 @@ class WorkerTokenAuth:
         await response(scope, receive, send)
 
 
+RowFields = Annotated[
+    list[str] | None,
+    Field(
+        description="Only these fields of each row (its id comes too): ask for the ones you "
+        "need, not every column.",
+        max_length=50,
+    ),
+]
+Where = Annotated[
+    dict[str, str] | None,
+    Field(
+        description='Only the rows whose field equals or contains a value, any case: {"field": '
+        '"Status", "equals": "Open"} or {"field": "Notes", "contains": "urgent"}.'
+    ),
+]
+
+
 def current_caller() -> Caller:
     state: dict[str, Any] = get_http_request().scope.get("state", {})
     caller = state.get(CALLER_KEY)
@@ -187,10 +204,18 @@ def make_tool(service: InstanceType, spec: ToolSpec, vault: Vault) -> Callable[.
             "instance", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=InstanceArg
         )
     )
+    shaped = spec.rows is not None and "fields" not in hints
+    if shaped:  # a list tool: only the fields asked for (services.rows)
+        params.append(
+            inspect.Parameter(
+                "fields", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=RowFields
+            )
+        )
 
     async def tool(**kwargs: Any) -> dict[str, Any] | ToolResult:
         instance = kwargs.pop("instance", None)
-        call = ToolCall(current_caller(), service, spec.name, instance, kwargs)
+        fields = tuple(kwargs.pop("fields", None) or ()) if shaped else ()
+        call = ToolCall(current_caller(), service, spec.name, instance, kwargs, fields)
         try:
             return _answer(await run_call(call, vault))
         except RingkeeperError as error:
@@ -234,12 +259,20 @@ def build_server(adapter: Adapter, vault: Vault) -> FastMCP:
         ],
         offset: Offset = 0,
         limit: PageLimit = PAGE_CHARS,
+        fields: RowFields = None,
+        where: Where = None,
+        page: Annotated[int | None, Field(ge=1, description="A saved list's page, from 1.")] = None,
     ) -> dict[str, Any]:
-        """Read on in a long result. A result that says `continuation` is only part of what
-        came back: pass that value with its next_offset for the next part, until next_offset
-        is null. Works for a result from any tool, for about half an hour."""
+        """Read on in a long result, for about half an hour. A result that says
+        `continuation` is only part of what came back. A saved list (it says how many rows
+        were saved) is read a page at a time: fields= gives only those, where= only the rows
+        that match (total_rows counts them), page= the next page. Anything else: pass its
+        next_offset until it's null."""
         try:
-            return continuations.read_more(current_caller(), continuation, offset, limit)
+            return continuations.read_more(
+                current_caller(), continuation, offset, limit, fields=fields, where=where,
+                page=page,
+            )  # fmt: skip
         except ToolError as error:
             raise McpToolError(scrub(str(error))) from None
 

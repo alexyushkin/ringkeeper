@@ -231,7 +231,18 @@ Files are read in one place, `adapters.extract`, for every service that has them
 Google, a mailbox, Microsoft, storage); `adapters.files` shapes the answers. A `view_*` tool
 answers with MCP image content (`ToolSpec.shows`): the gateway sends the picture as an image,
 and it's never scrubbed as text, split by `read_more` or kept in the audit log, which records
-the file's name, the page and the picture's size and type instead. A `save_*` tool writes a
+the file's name, the page and the picture's size and type instead.
+
+A list tool (`ToolSpec.rows`: Airtable's `list_records`, a database's `query`, n8n's
+`list_workflows` and `list_executions`, a mailbox's `search_messages`) takes `fields`, only
+those in each row, applied by the gateway and never sent to the service. A text value longer
+than 500 characters in its rows is cut, ending in ` […]`, and the whole answer is kept so the
+whole value is one `read_more` away. A list past 60,000 characters, from any tool, is saved:
+the answer has its first page and says how to go on ("149 records saved. Use read_more with
+continuation and fields=[...]"). `read_more` then takes `fields`, `where` (a field that
+equals or contains a value, any case; `total_rows` counts the matches) and `page`, 50 rows a
+page (`services.rows`, `services.continuations`). Anything else long is still read by
+`offset`. A `save_*` tool writes a
 copy in the project's `attachments/` folder; it's a read for holds (nothing outside this
 computer changes) but audited, and the worker counts the file as the task's own.
 
@@ -385,7 +396,12 @@ as root with only four capabilities (setuid, setgid, kill, read-search); the
 agent, git and the project's checks all run as an unprivileged `worker`
 user. It is on a network that holds only the gateway, so it can't reach
 Postgres or the api by name. Settings files (user, project, local) aren't
-loaded, and the project's `autonomy` removes tools: `strict` has no Bash. Web
+loaded, and the project's `autonomy` removes tools: `strict` has no shell (Bash, or
+PowerShell on Windows). Nor has a task off the project's code (data, ops, a general
+question): it works through the connections' own tools, and goes through a big result with
+`read_more` (`workers.manager.OFF_CODE_TOOLS`). The unattended note's last line says which
+shell a worker has, if any, and what may be missing from it (`ringkeeper_worker.agent.shell_line`).
+Web
 access (WebFetch, WebSearch) is the project's own `web` setting
 (`services/web_access.py`): unset, on for the operator's own client's projects and off
 for a client's.

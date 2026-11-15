@@ -3,6 +3,24 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **A big table is gone through without a shell.** A task that read every record of an
+  Airtable table on Windows sliced the saved result in a shell, where `jq` wasn't there and
+  Python's output failed on a name with an accent. Now a list (Airtable records, a database
+  query's rows, n8n workflows and runs, a mailbox search) takes `fields`, only those in each
+  row; long text in a row is cut with a note, and the whole value is one call away; and a long
+  list is saved and gone through with `read_more`, by `fields`, by `where` (a field that
+  equals or contains a value, which also counts them) and by `page`. The saved result says
+  exactly how: "149 records saved. Use read_more with fields=[...] to go through them." Data,
+  ops and general tasks have no shell; work on a project's code keeps it.
+- **A worker's shell on Windows prints any text.** Every worker's Python prints UTF-8,
+  `python` is the one Ringkeeper runs on, ahead of anything else on the computer, and `pip`
+  installs only into a project's own virtual environment. The worker is told which shell it
+  has and what may be missing from it.
+- **Strict autonomy has no PowerShell either.** On Windows, Claude Code has a PowerShell tool
+  beside Bash; `strict` now turns both off.
+
 ## 0.1.0-beta.46 (2026-11-14)
 
 - **A project that can do the work isn't told it has no connection.** "In the Leads table of

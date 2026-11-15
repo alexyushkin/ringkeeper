@@ -176,7 +176,7 @@ def test_worker_gets_the_session_config() -> None:
 
 
 @pytest.mark.usefixtures("task_registry")
-def test_work_off_the_code_has_no_subagents() -> None:
+def test_work_off_the_code_has_no_subagents_and_no_shell() -> None:
     # A data task's first request was more than half Claude Code's own tool definitions.
     m, runtime = manager()
     task_id = run_task()
@@ -188,6 +188,18 @@ def test_work_off_the_code_has_no_subagents() -> None:
     assert config["git"] is False
     denied = cast(list[str], config["disallowed_tools"])
     assert set(UNUSED_TOOLS) | set(SUBAGENT_TOOLS) <= set(denied)
+    assert {"Bash", "PowerShell"} <= set(denied)  # a big result is read with read_more
+
+
+@pytest.mark.usefixtures("task_registry")
+def test_work_on_the_code_keeps_its_shell() -> None:
+    m, runtime = manager()
+    run_task()
+    m.tick()
+    m.wait_idle()
+    config = task_env(runtime.started[0])
+    assert config["git"] is True
+    assert not {"Bash", "PowerShell"} & set(cast(list[str], config["disallowed_tools"]))
 
 
 @pytest.mark.usefixtures("task_registry")
@@ -302,7 +314,8 @@ def test_worker_env_is_an_allowlist() -> None:
         "LANG", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
         "DISABLE_AUTOUPDATER", "DISABLE_TELEMETRY", "MAX_MCP_OUTPUT_TOKENS",
-        "RINGKEEPER_TASK", "RINGKEEPER_GATEWAY_TOKEN", *PROXY_VARS,
+        "PYTHONUTF8", "PYTHONIOENCODING", "RINGKEEPER_TASK", "RINGKEEPER_GATEWAY_TOKEN",
+        *PROXY_VARS,
     }  # fmt: skip
 
 

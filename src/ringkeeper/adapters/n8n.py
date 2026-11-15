@@ -562,6 +562,9 @@ list_executions = replace(list_executions, screen=_by_workflow)
 retry_execution = replace(retry_execution, screen=_by_execution)
 stop_execution = replace(stop_execution, screen=_by_execution)
 
+list_workflows = replace(list_workflows, rows="workflows")  # a list tool (ToolSpec.rows)
+list_executions = replace(list_executions, rows="executions")  # a list tool (ToolSpec.rows)
+
 ADAPTER = Adapter(
     service=InstanceType.N8N,
     tools=(

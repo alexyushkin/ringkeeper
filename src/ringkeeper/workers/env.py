@@ -16,6 +16,10 @@ CLI_CACHE_VOLUME = "ringkeeper-claude-code"
 
 FIXED_ENV = {
     "LANG": "C.UTF-8",
+    # Text a worker's shell prints (a record with an accent, a name in another script) is
+    # UTF-8, whatever the computer's own code page is: Windows' cp1252 can't print most of it.
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8",
     # The SDK's own state (transcripts for resume) lives on the per-task volume.
     "CLAUDE_CONFIG_DIR": f"{STATE_DIR}/claude",
     "CLAUDE_CODE_PROJECT_DIR_NAME": "workspace",

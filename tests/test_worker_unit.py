@@ -13,7 +13,7 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from ringkeeper_worker import emit as emitter
 from ringkeeper_worker import inbox
-from ringkeeper_worker.agent import build_options
+from ringkeeper_worker.agent import build_options, shell_line
 from ringkeeper_worker.checks import run_checks
 from ringkeeper_worker.config import ConfigError, WorkerConfig, load
 from ringkeeper_worker.workspace import Workspace, WorkspaceError
@@ -95,6 +95,21 @@ def test_work_off_the_code_gets_a_short_prompt() -> None:
     assert "call the ask_user tool" in prompt
     assert "never leave part of it to a\nbackground task or agent" in prompt
     assert len(prompt) < 4000  # Claude Code's own is several times this
+
+
+def test_the_note_says_what_the_shell_is_and_has() -> None:
+    """One line, per computer: which shell, what may be missing, and that Python is there."""
+    windows = shell_line(config(), platform="win32")
+    assert "Git Bash on Windows" in windows
+    assert "jq, sed and awk may be missing" in windows
+    assert "`python`" in windows
+    assert "macOS" in shell_line(config(), platform="darwin")
+    assert "\n" not in windows
+    off_code = config(git=False, disallowed_tools=["Bash", "PowerShell"])
+    assert "no shell in this task" in shell_line(off_code)
+    prompt = build_options(off_code).system_prompt
+    assert isinstance(prompt, str)
+    assert prompt.endswith(shell_line(off_code))
 
 
 @pytest.mark.anyio

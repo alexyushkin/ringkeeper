@@ -848,7 +848,7 @@ def test_a_short_result_passes_as_it_is() -> None:
 
 
 def test_a_long_result_is_read_back_exactly() -> None:
-    result = {"rows": [{"n": i, "text": "word " * 20} for i in range(10_000)]}
+    result = {"lines": [f"{i} " + "word " * 20 for i in range(10_000)]}  # not rows: read as text
     first = continuations.fit(ME, result)
     assert first["truncated"] is True
     assert first["returned_chars"] == PAGE_CHARS
@@ -927,17 +927,17 @@ async def test_a_long_vendor_answer_reaches_the_agent_in_parts_with_secrets_scru
         {"operation": "clerk.list_users"},
     )  # fmt: skip
     first = await run_call(call, vault)
-    assert first["truncated"] is True
-    assert first["continuation"]
-    text = first["text"]
-    offset = first["next_offset"]
-    while offset is not None:
-        part = continuations.read_more(ME, first["continuation"], offset, PAGE_CHARS)
-        text += part["text"]
-        offset = part["next_offset"]
-    whole = json.loads(text)
-    assert len(whole["data"]) == 3000
-    assert key not in text
+    assert first["saved_rows"] == 3000  # a long list is saved as rows, read a page at a time
+    assert first["leak"] != key
+    users: list[str] = [r["id"] for r in first["data"]]
+    page = first["next_page"]
+    while page is not None:
+        part = continuations.read_more(ME, first["continuation"], fields=["id"], page=page)
+        users += [r["id"] for r in part["data"]]
+        page = part["next_page"]
+    assert len(set(users)) == 3000
+    text = continuations.read_more(ME, first["continuation"], 1, PAGE_CHARS)["text"]
+    assert key not in text  # read as text too, from an offset, and scrubbed there as well
 
 
 async def test_every_server_can_read_on() -> None:

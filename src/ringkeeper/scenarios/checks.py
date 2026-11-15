@@ -219,6 +219,11 @@ def judge(scenario: Scenario, seen: Evidence) -> list[str]:
         for tool in scenario.tried
         if not any(tool in called for called in seen.tried)
     ]
+    wrong += [
+        f"it called {tool}"
+        for tool in scenario.skips
+        if any(called == tool or called.endswith(f"__{tool}") for called in seen.tried)
+    ]
     answer = seen.replies.lower()
     wrong += [
         f"the last task used {tool} again, instead of the project's notes"

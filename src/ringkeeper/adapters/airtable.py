@@ -195,6 +195,8 @@ create_records = replace(create_records, undo=undo_services.AirtableCreateUndo()
 update_records = replace(update_records, undo=undo_services.AirtableUpdateUndo())
 delete_records = replace(delete_records, undo=undo_services.AirtableDeleteUndo())
 
+list_records = replace(list_records, rows="records")  # a list tool (ToolSpec.rows)
+
 ADAPTER = Adapter(
     service=InstanceType.AIRTABLE,
     tools=(

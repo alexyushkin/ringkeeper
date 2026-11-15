@@ -529,7 +529,7 @@ async def _run_unheld(call: ToolCall, spec: ToolSpec, target: Target, auth: Auth
         result = _limit_listing(result, auth)
         # What the agent reads: a line per tool, or the one it asked for with its arguments.
         result = mcp.shown(result, call.args.get("words"), call.args.get("tool"))
-    shown = continuations.fit(call.caller, scrub_obj(result))
+    shown = continuations.fit(call.caller, scrub_obj(result), spec.rows, list(call.fields))
     return shown if image is None else shown | {IMAGE: image}
 
 
@@ -618,7 +618,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         )
         raise
     why = {"reason": "trusted for an hour"} if trusted else {}
-    shown = continuations.fit(call.caller, scrub_obj(result))
+    shown = continuations.fit(call.caller, scrub_obj(result), spec.rows, list(call.fields))
     await anyio.to_thread.run_sync(
         partial(_record, call, AuditOutcome.EXECUTED, result=shown, **why)
     )
@@ -781,7 +781,7 @@ async def approve(
             partial(finish, AuditOutcome.FAILED, reason=str(error))
         )
     await _kept(pending, target, call, result)
-    shown = continuations.fit(call.caller, scrub_obj(result))
+    shown = continuations.fit(call.caller, scrub_obj(result), spec.rows, list(call.fields))
     return await anyio.to_thread.run_sync(partial(finish, AuditOutcome.EXECUTED, result=shown))
 
 
