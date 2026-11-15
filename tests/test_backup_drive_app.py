@@ -46,14 +46,17 @@ class Stream:
             return  # the app quit at the end of the test
 
     def job(self, status: str, timeout: float = 30.0) -> None:
+        """Wait for this upload event; the ones after it (it may end right away) are kept."""
         deadline = time.monotonic() + timeout
-        while not any(
-            e.get("type") == "job" and e.get("kind") == "drive_upload" and e.get("status") == status
-            for e in self.events
-        ):
+        while True:
+            for at, event in enumerate(list(self.events)):
+                if (event.get("type"), event.get("kind"), event.get("status")) == (
+                    "job", "drive_upload", status,
+                ):  # fmt: skip
+                    del self.events[: at + 1]
+                    return
             assert time.monotonic() < deadline, f"no drive_upload {status}: {self.events}"
             time.sleep(0.1)
-        self.events.clear()
 
     def close(self) -> None:
         self._stop.set()

@@ -62,7 +62,9 @@ def _rolled_back() -> None:
         raise RuntimeError("rolled back")
 
 
-def test_the_weekly_backup(heard: Heard, tmp_path: Path) -> None:
+def test_the_weekly_backup(heard: Heard, tmp_path: Path, database_url: str) -> None:
+    if not database_url.startswith("sqlite"):
+        pytest.skip("a backup is the desktop app's SQLite file")
     with session_scope() as session:
         backup.set_auto(
             session, get_vault(), enabled=True, folder=str(tmp_path), keep=2,

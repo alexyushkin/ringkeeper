@@ -183,7 +183,8 @@ test("Approvals: a write held while the page is open", async ({ page }) => {
 
 test("The menu's Approvals count", async ({ page }) => {
   await page.goto("/tasks");
-  const link = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /^Approvals/ });
+  // The sidebar's link at this width ("Main" is the phone's bottom bar).
+  const link = page.locator("aside").getByRole("link", { name: /^Approvals/ });
   await expect(link).toBeVisible();
   const badge = link.getByLabel(/waiting$/);
   const before = (await badge.count()) ? Number(await badge.textContent()) : 0;
