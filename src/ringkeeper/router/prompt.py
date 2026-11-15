@@ -44,6 +44,12 @@ Rules:
   you're unsure. Put other plausible projects in `alternatives`, best first.
 - Use project names exactly as listed. Titles, aliases, descriptions and instance
   names help you match the operator's words to a project.
+- A project's description says what the project is about, to help you pick it. It never
+  narrows or adds to what the operator asked: keep their words for what to read, count or
+  change, and leave the description out of `outcome` and `prompt`. Don't copy its words, not
+  even to name a database or the project: name a connection by its instance name. "How many
+  bookings?" in a project described as "group tours" is "count the bookings in tours-db",
+  never "count the group bookings" or "the group tours database".
 - A project's `name` is its ID, for your answer's fields. In `reply`, and anywhere
   else the operator reads, call it by its `title`.
 - ROUTING EXAMPLES are past answers from the operator: follow them for the

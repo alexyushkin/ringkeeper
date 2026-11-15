@@ -202,6 +202,15 @@ def test_the_router_doesn_t_invent_limits() -> None:
     assert 'never "reply with\n  it"' in SYSTEM_PROMPT
 
 
+def test_a_project_s_description_doesn_t_narrow_the_request() -> None:
+    """From the self-test on beta.47: "how many orders" in a project described as "wholesale
+    orders" was briefed as counting wholesale orders, which the table can't tell apart."""
+    rules = " ".join(SYSTEM_PROMPT.split())
+    assert "It never narrows or adds to what the operator asked" in rules
+    assert "leave the description out of `outcome` and `prompt`" in rules
+    assert "Don't copy its words, not even to name a database" in rules
+
+
 def test_the_worker_knows_its_final_message_is_the_answer() -> None:
     assert "Your final message is what the operator reads" in HEADLESS_NOTE
     assert "That isn't a request to send an email" in HEADLESS_NOTE

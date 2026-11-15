@@ -535,7 +535,9 @@ confidence, a kind (`feature`, `fix`, `data`, `content`, `ops`), a risk
 (`read`, `write`, `prod-write`), a complexity (`low`, `medium`, `high`), an
 outcome and the worker prompt. The answer is validated (one retry on invalid
 output), and a task is never given to projects with different owners: it must
-be split.
+be split. A project's description only helps pick the project: the outcome and the worker
+prompt keep the operator's words, so in a project described as "wholesale orders", "how many
+orders" isn't briefed as "how many wholesale orders".
 
 Each task can also say the kinds of connection it can't be done without (`needs`: `ads`,
 `meta_ads`, `google_ads`, `email`, `calendar`, `records`, `spreadsheet`, `files`, `payments`;
