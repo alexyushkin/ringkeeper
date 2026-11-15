@@ -102,6 +102,14 @@ class Option:
 
 
 @dataclass(frozen=True)
+class Trouble:
+    """An error the vendor's sign-in page may show, and what fixes it in your app."""
+
+    shown: str
+    fix: str
+
+
+@dataclass(frozen=True)
 class App:
     id: str
     name: str
@@ -140,6 +148,10 @@ class Provider:
     # A client's account needs the vendor's review of the app, until the app says it passed.
     client_review: bool = False
     listed: bool = True  # shown on the Developer apps page
+    # The app's own page at the vendor ({client_id}); without one, the console.
+    app_page: str = ""
+    # The errors its sign-in page shows most, each with the fix: under the sign-in button.
+    troubles: tuple[Trouble, ...] = ()
 
 
 def _http() -> httpx2.Client:
@@ -355,6 +367,108 @@ MICROSOFT_ACCESS = (
     Access("files_write", "OneDrive and SharePoint: change files", "Files.ReadWrite.All"),
 )
 
+META_TROUBLES = (
+    Trouble(
+        "App not active",
+        "The app is in Development mode and this Facebook profile has no role on it, or Meta "
+        "paused the app. Check App roles (add yourself), and the banner on the app's dashboard.",
+    ),
+    Trouble(
+        "URL blocked",
+        "The redirect address isn't saved in the app's Facebook Login for Business settings. "
+        "Paste the address shown here under Valid OAuth Redirect URIs, then Save changes.",
+    ),
+    Trouble(
+        "Invalid Scopes",
+        "A permission it asks for isn't added to the app: for Meta Ads, the ads MCP use case "
+        "isn't added; for Pages and Instagram, open the use case, click Customize and Add each "
+        "permission listed here.",
+    ),
+)
+THREADS_TROUBLES = (
+    Trouble(
+        "App not active",
+        "Your Threads account isn't a Threads tester on the app, or hasn't accepted it in "
+        "Threads (Settings, Account, Website permissions), or Meta paused the app.",
+    ),
+    Trouble(
+        "Invalid redirect_uri",
+        "The redirect address isn't saved in the Threads use case's settings. Paste the "
+        "address shown here as the redirect callback URL.",
+    ),
+    Trouble(
+        "Invalid Scopes",
+        "The Threads use case or one of the permissions listed here isn't added to the app.",
+    ),
+)
+MICROSOFT_TROUBLES = (
+    Trouble(
+        "AADSTS50011 (the redirect URI doesn't match)",
+        "The redirect address isn't on the app registration. Open Authentication, add it "
+        "under Web, then Save.",
+    ),
+    Trouble(
+        "AADSTS700016 (application not found)",
+        "The client ID isn't this app's, or the app takes accounts from its own organization "
+        "only: check Supported account types on its Overview, and the Tenant set for it in "
+        "Developer apps (common, for any account).",
+    ),
+    Trouble(
+        "Need admin approval (AADSTS65001)",
+        "The organization lets only its admin approve apps. Ask the admin to grant consent "
+        "for the app, then sign in again.",
+    ),
+)
+GOOGLE_TROUBLES = (
+    Trouble(
+        "Error 400: redirect_uri_mismatch",
+        "The redirect address isn't one of the OAuth client's Authorized redirect URIs. Add "
+        "it in Credentials, then Save.",
+    ),
+    Trouble(
+        "Access blocked (Error 403: access_denied)",
+        "The app is in Testing and this Google account isn't a test user. Add it under "
+        "Audience, Test users, or publish the app.",
+    ),
+    Trouble(
+        "Google hasn't verified this app",
+        "Your own app shows this while it's in Testing. Click Advanced, then Go to the app "
+        "(unsafe): it's your app, signing in to your account.",
+    ),
+    Trouble(
+        "Error 401: invalid_client",
+        "The client ID or secret saved here isn't the OAuth client's, or the client was "
+        "deleted. Compare them in Credentials.",
+    ),
+)
+
+
+def troubles_for(found: Provider) -> tuple[Trouble, ...]:
+    """Its own list, or the three every vendor's sign-in page shows in some form."""
+    return found.troubles or (
+        Trouble(
+            "redirect_uri mismatch, or invalid redirect URI",
+            f"The redirect address saved in your {found.name} app isn't exactly the one shown "
+            "here. Paste it again in the app's settings.",
+        ),
+        Trouble(
+            "invalid_client, or unauthorized client",
+            f"The client ID or secret saved here isn't your {found.name} app's, or the app was "
+            "deleted or isn't allowed for this account. Compare them on the app's page.",
+        ),
+        Trouble(
+            "invalid_scope",
+            f"Your {found.name} app isn't allowed a permission it asks for. Add the scopes "
+            "listed here in the app's settings.",
+        ),
+    )
+
+
+def app_page(found: Provider, app: App) -> str:
+    """Where the app is set up at the vendor: its own page when the vendor has one."""
+    return found.app_page.format(client_id=app.client_id) if found.app_page else found.console
+
+
 PROVIDERS: dict[str, Provider] = {
     p.key: p
     for p in (
@@ -393,6 +507,9 @@ PROVIDERS: dict[str, Provider] = {
             extra={"prompt": "select_account"},
             identify=_microsoft,
             note="A client's admin may have to allow your app in their tenant first.",
+            app_page="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/"
+            "ApplicationMenuBlade/~/Overview/appId/{client_id}",
+            troubles=MICROSOFT_TROUBLES,
         ),
         Provider(
             "hubspot", "HubSpot", "https://developers.hubspot.com/docs/apps/developer-platform/"
@@ -535,6 +652,8 @@ PROVIDERS: dict[str, Provider] = {
             "need Tech Provider status, App Review and Business Verification first.",
             hosted=True, token_by_get=True, scope_join=",", no_refresh_token=True,
             client_review=True,
+            app_page="https://developers.facebook.com/apps/{client_id}/dashboard/",
+            troubles=META_TROUBLES,
         ),
         Provider(
             "threads", "Threads", META_APPS,
@@ -555,7 +674,7 @@ PROVIDERS: dict[str, Provider] = {
             note="Your own account works without Meta's review. A client's needs App Review "
             "first.",
             hosted=True, scope_join=",", no_refresh_token=True, renew=_threads_renew,
-            client_review=True,
+            client_review=True, troubles=THREADS_TROUBLES,
         ),
         Provider(
             "google", "Google", "https://console.cloud.google.com/apis/credentials",
@@ -563,7 +682,7 @@ PROVIDERS: dict[str, Provider] = {
             scopes=google_oauth.IDENTITY,
             vendor_scopes={"google_ads": (*google_oauth.IDENTITY, f"{google_oauth.G}adwords")},
             extra={"access_type": "offline", "prompt": "consent select_account"},
-            identify=_google, listed=False,
+            identify=_google, listed=False, troubles=GOOGLE_TROUBLES,
         ),
     )
 }  # fmt: skip

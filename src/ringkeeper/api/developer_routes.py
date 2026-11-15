@@ -59,11 +59,14 @@ def _shown(settings: Settings, found: developer_apps.Provider, session: Any) -> 
         "note": found.note,
         "listed": found.listed,
         "client_review": found.client_review,
+        # What its sign-in page may say, and the fix: under each Sign in button.
+        "troubles": [{"shown": x.shown, "fix": x.fix} for x in developer_apps.troubles_for(found)],
         "apps": [
             {
                 "id": a.id, "name": a.name, "client_id": a.client_id, "options": dict(a.options),
                 "redirect": redirect,
                 "accounts": counts.get(a.id, 0),
+                "page": developer_apps.app_page(found, a),  # its dashboard at the vendor
             }
             for a in apps
         ],

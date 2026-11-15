@@ -4,6 +4,7 @@ import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
 import { CheckList } from "@/components/check-list";
+import { SIGNIN_WAIT_MS, SignInWaiting, ThroughApp, useTimedOut, type Trouble } from "@/components/signin-help";
 import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, LinkButton, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { connectionHref } from "@/lib/client/routes";
@@ -70,6 +71,7 @@ interface GoogleTool {
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 const CONSOLE = "https://console.cloud.google.com";
+const GOOGLE_CONSOLE = `${CONSOLE}/apis/credentials`; // where the OAuth clients are
 const APIS: [string, string][] = [
   ["Gmail API", "gmail.googleapis.com"],
   ["Google Drive API", "drive.googleapis.com"],
@@ -396,27 +398,33 @@ export function GoogleConnect({
   const [name, setName] = useState("");
   const [all, setAll] = useState(false);
   const [state, setState] = useState<string | null>(null);
+  const [since, setSince] = useState<number | null>(null); // when Google's page opened
+  const timedOut = useTimedOut(since);
+  const help = useApi<{ providers: { key: string; troubles: Trouble[] }[] }>("developer-apps");
+  const troubles = help.data?.providers.find((p) => p.key === "google")?.troubles ?? [];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!state) return;
-    const deadline = Date.now() + 10 * 60_000;
+    if (!state || timedOut) return; // after 2 minutes: Try again
+    const deadline = Date.now() + SIGNIN_WAIT_MS;
     const timer = setInterval(() => {
       api<{ state: string; name: string | null; error: string | null }>(`google/signin/${state}`)
         .then((found) => {
           if (found.state === "done" && found.name) {
             setState(null);
+            setSince(null);
             onAdded(found.name);
           } else if (found.state === "failed") {
             setState(null);
+            setSince(null);
             setError(found.error ?? "Not connected.");
-          } else if (Date.now() > deadline) setState(null);
+          } else if (Date.now() > deadline) clearInterval(timer);
         })
         .catch(() => undefined);
     }, 2000);
     return () => clearInterval(timer);
-  }, [state, onAdded]);
+  }, [state, timedOut, onAdded]);
 
   const data = app.data;
   if (!data) return null;
@@ -440,12 +448,14 @@ export function GoogleConnect({
       const started = await api<{ url: string; state: string }>("google/signin", { json: body });
       window.open(started.url, "_blank", "noopener");
       setState(started.state);
+      setSince(Date.now());
     } catch (err) {
       setError(errorText(err));
     } finally {
       setBusy(false);
     }
   }
+  const through = data.apps.find((a) => a.id === appId) ?? data.apps[0];
 
   return (
     <div className="space-y-3">
@@ -482,7 +492,9 @@ export function GoogleConnect({
           {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}
         </>
       )}
-      {state ? (
+      {state && timedOut ? (
+        <SignInWaiting vendor="Google" timedOut busy={busy} onTryAgain={() => void signIn()} />
+      ) : state ? (
         <Alert tone="warn">Finish on Google&apos;s page (it opened in your browser). If it says Google hasn&apos;t verified the app: Advanced › Go to Ringkeeper (unsafe).</Alert>
       ) : (
         <Button kind="primary" busy={busy} disabled={!access.length} onClick={signIn}>
@@ -490,6 +502,7 @@ export function GoogleConnect({
         </Button>
       )}
       {error ? <Alert>{error}</Alert> : null}
+      <ThroughApp vendor="Google" app={through ? { ...through, page: GOOGLE_CONSOLE } : undefined} troubles={troubles} open={timedOut} />
     </div>
   );
 }
