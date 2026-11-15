@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.47 (2026-11-15)
 
 - **A big table is gone through without a shell.** A task that read every record of an
   Airtable table on Windows sliced the saved result in a shell, where `jq` wasn't there and
