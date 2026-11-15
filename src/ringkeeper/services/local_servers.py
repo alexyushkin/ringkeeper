@@ -301,6 +301,9 @@ def start(name: str, work: Callable[[], None]) -> Job:
         except Exception as error:  # an installer's surprise: say what, keep the app up
             logger.exception("install of %s failed", name)
             job.state, job.error = "failed", f"The install failed: {type(error).__name__}"
+        from ringkeeper.services import jobs  # noqa: PLC0415 (a cycle)
+
+        jobs.announce(jobs.INSTALL, jobs.DONE if job.state == "done" else jobs.FAILED)
 
     threading.Thread(target=go, daemon=True, name=f"rk-install-{name}").start()
     return job

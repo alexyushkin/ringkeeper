@@ -8,9 +8,15 @@ and has "Drive: files Ringkeeper creates" can hold them: never a client's accoun
 
 Restoring is unchanged: on a new computer, download the file from Drive in a browser and pick
 it in Settings, Backup.
+
+An upload runs in the background (`start`): the app shows "Uploading..." from when it starts
+and the result when it ends, told by a "job" event (services.jobs), so the screen never waits
+on Google or goes stale.
 """
 
 import asyncio
+import logging
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,15 +30,19 @@ from ringkeeper.adapters import google, rest
 from ringkeeper.adapters.base import Target, ToolError
 from ringkeeper.errors import RingkeeperError, RuleViolationError
 from ringkeeper.models import Instance, InstanceType, Setting
-from ringkeeper.services import clients, google_oauth
-from ringkeeper.vault import Vault
+from ringkeeper.services import clients, google_oauth, jobs
+from ringkeeper.vault import Vault, get_vault
 
-KEY = "backup-drive"  # {"connection", "folder", "last", "link", "error"}
+logger = logging.getLogger(__name__)
+
+KEY = "backup-drive"  # {"connection", "folder", "last", "link", "error", "uploading"}
 FOLDER = "Ringkeeper backups"
 FOLDER_TYPE = "application/vnd.google-apps.folder"
 ACCESS = "drive_files"
 BACKUP_TYPE = "application/octet-stream"
 PREFIX = "Ringkeeper-backup-"
+SUFFIX = ".rkbackup"  # services.backup.SUFFIX
+_busy = threading.Lock()  # one upload at a time; held while one runs in this process
 
 
 @dataclass(frozen=True)
@@ -42,12 +52,18 @@ class Drive:
     last: str | None  # when the last upload finished
     link: str | None  # the last file in Drive
     error: str | None  # why the last upload didn't work
+    uploading: str | None = None  # when the upload running now started
+    file: str | None = None  # the last file uploaded
 
 
 def state(session: Session) -> Drive:
     row = session.get(Setting, KEY)
     value = row.value if row is not None else {}
-    return Drive(*(value.get(k) for k in ("connection", "folder", "last", "link", "error")))
+    found = Drive(*(value.get(k) for k in ("connection", "folder", "last", "link", "error",
+                                           "uploading", "file")))  # fmt: skip
+    if found.uploading and not _busy.locked():  # the app quit while one ran: it's not running
+        return Drive(**{**found.__dict__, "uploading": None})
+    return found
 
 
 def _save(session: Session, **changes: Any) -> Drive:
@@ -188,17 +204,104 @@ async def _send(
 
 
 def upload(session: Session, vault: Vault, path: Path, keep: int) -> Drive | None:
-    """Upload a backup that's already on this computer. None: no Google account chosen. A
-    failure is kept (and said on Home and in Settings); the local copy stays either way."""
+    """Upload a backup that's already on this computer, now, in this session (`start` runs it
+    in the background without holding one). None: no Google account chosen. A failure is
+    kept (and said on Home and in Settings); the local copy stays either way."""
     now = state(session)
     if not now.connection:
         return None
+    return _finish(session, path, _transfer(session, vault, now, path, keep))
+
+
+def _transfer(
+    session: Session, vault: Vault, now: Drive, path: Path, keep: int
+) -> tuple[str, dict[str, Any]] | str:
+    """The upload: (folder, the file) or why it didn't work."""
     try:
-        target = _target(session, vault, now.connection)
-        folder, sent = asyncio.run(_send(target, now.folder, path, keep))
+        target = _target(session, vault, now.connection or "")
+    except (RingkeeperError, ToolError) as error:
+        return str(error)
+    return _send_now(target, now.folder, path, keep)
+
+
+def _send_now(
+    target: Target, folder: str | None, path: Path, keep: int
+) -> tuple[str, dict[str, Any]] | str:
+    try:
+        return asyncio.run(_send(target, folder, path, keep))
     except (RingkeeperError, ToolError, OSError) as error:
-        return _save(session, error=f"The upload to Google Drive didn't work: {error}")
+        return str(error)
+
+
+def _finish(session: Session, path: Path, result: tuple[str, dict[str, Any]] | str) -> Drive:
+    if isinstance(result, str):
+        jobs.changed(session, jobs.DRIVE_UPLOAD, jobs.FAILED)
+        return _save(
+            session, uploading=None, error=f"The upload to Google Drive didn't work: {result}"
+        )
+    folder, sent = result
+    jobs.changed(session, jobs.DRIVE_UPLOAD, jobs.DONE)
     return _save(
-        session, folder=folder, last=datetime.now(UTC).isoformat(),
-        link=sent.get("webViewLink"), error=None,
+        session, folder=folder, last=datetime.now(UTC).isoformat(), file=path.name,
+        link=sent.get("webViewLink"), error=None, uploading=None,
     )  # fmt: skip
+
+
+def start(session: Session, path: Path, keep: int) -> threading.Thread | None:
+    """Upload in the background: "uploading" is saved in this session (the app shows it once
+    it commits), and the result in the upload's own. None: no Google account chosen."""
+    now = state(session)
+    if not now.connection:
+        return None
+    if not _busy.acquire(blocking=False):
+        raise RuleViolationError("An upload to Google Drive is already running.")
+    try:
+        _save(session, uploading=datetime.now(UTC).isoformat(), error=None)
+        jobs.changed(session, jobs.DRIVE_UPLOAD, jobs.STARTED)
+        thread = threading.Thread(
+            target=_run, args=(now, path, keep), daemon=True, name="rk-drive-upload"
+        )
+        thread.start()
+    except BaseException:
+        _busy.release()
+        raise
+    return thread
+
+
+def _run(now: Drive, path: Path, keep: int) -> None:
+    """No session is held while the file goes to Google: on SQLite a writing session holds
+    the one write lock, and an upload can take minutes. `now` is what the starting session
+    saw: it may not have committed yet."""
+    from ringkeeper.db import session_scope  # noqa: PLC0415 (no database at import time)
+
+    try:
+        with session_scope(commit=False) as session:
+            try:
+                ready: Target | str = _target(session, get_vault(), now.connection or "")
+            except (RingkeeperError, ToolError) as error:
+                ready = str(error)
+        result = ready if isinstance(ready, str) else _send_now(ready, now.folder, path, keep)
+        # Waits for the session that started it to commit (its "uploading").
+        with session_scope() as session:
+            _finish(session, path, result)
+    except Exception:
+        logger.exception("the upload to Google Drive failed")
+        try:
+            with session_scope() as session:
+                _save(session, uploading=None, error="The upload to Google Drive stopped.")
+                jobs.changed(session, jobs.DRIVE_UPLOAD, jobs.FAILED)
+        except Exception:
+            logger.exception("couldn't save that the upload stopped")
+    finally:
+        _busy.release()
+
+
+def newest(folders: list[Path]) -> Path | None:
+    """The newest backup on this computer, in any of these folders."""
+    found: list[Path] = []
+    for folder in folders:
+        try:
+            found += [p for p in folder.glob(f"{PREFIX}*{SUFFIX}") if p.is_file()]
+        except OSError:
+            continue
+    return max(found, key=lambda p: p.stat().st_mtime, default=None)

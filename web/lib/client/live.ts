@@ -8,6 +8,11 @@
 // have been missed (the stream came back, the window was hidden or restored from the
 // back-forward cache, the network returned), every listener gets a "resync" event, to
 // fetch what it shows again.
+//
+// Background work that isn't a task, an approval or a message (a backup, an upload to
+// Google Drive, the connection check, a download) sends a "job" event when it starts and
+// ends. Every screen's data (useApi) watches the stream and fetches again on a job or a
+// resync, so no screen has to listen for its own job, and none goes stale after one.
 
 export interface LiveEvent {
   type: string;
@@ -21,8 +26,15 @@ export interface LiveEvent {
   message_id?: string;
 }
 
-export const LIVE_TYPES = ["task", "session_event", "approval", "message", "message_routed"];
+export const JOB = "job";
+export const LIVE_TYPES = ["task", "session_event", "approval", "message", "message_routed", JOB];
 export const RESYNC = "resync";
+
+/** Whether a screen's data should be fetched again: a job started or ended, or events may
+ * have been missed. A task or an approval is for the screens that show those. */
+export function refetches(event: LiveEvent): boolean {
+  return event.type === JOB || event.type === RESYNC;
+}
 export const STREAM = "/bff/events";
 const CLOSED = 2; // EventSource.CLOSED
 export const RETRY_MS = [3_000, 6_000, 15_000, 30_000];
@@ -44,6 +56,9 @@ export interface Browser {
 
 export interface Live {
   subscribe(listener: Listener): () => void;
+  /** Hear events while a subscriber holds the stream open, without opening one: a page
+   * outside the app's frame (setup, sign-in) mustn't open a stream it can't use. */
+  watch(listener: Listener): () => void;
   /** Tell every listener to fetch again: events may have been missed. */
   resync(): void;
   /** Start over with a new stream (a page restored from the back-forward cache). */
@@ -52,13 +67,14 @@ export interface Live {
 
 export function createLive(browser: Browser): Live {
   const listeners = new Set<Listener>();
+  const watchers = new Set<Listener>();
   let source: Source | null = null;
   let opened = false; // a stream has opened before: the next open means a gap
   let retries = 0;
   let pending: unknown = null;
 
   function emit(event: LiveEvent): void {
-    for (const listener of [...listeners]) listener(event);
+    for (const listener of [...listeners, ...watchers]) listener(event);
   }
 
   function dispatch(message: { data?: string }): void {
@@ -118,6 +134,12 @@ export function createLive(browser: Browser): Live {
           stop();
           opened = false; // the next view fetches when it mounts
         }
+      };
+    },
+    watch(listener) {
+      watchers.add(listener);
+      return () => {
+        watchers.delete(listener);
       };
     },
     resync() {

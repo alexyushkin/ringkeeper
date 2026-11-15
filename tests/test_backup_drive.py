@@ -2,6 +2,9 @@
 last few kept there, a failure said and the local copy kept, and never a client's account."""
 
 import json
+import os
+import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +15,8 @@ from ringkeeper.adapters import google
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import InstanceType
-from ringkeeper.services import backup_drive, clients
+from ringkeeper.services import backup_drive, clients, jobs
+from ringkeeper.storage import events
 from ringkeeper.vault import get_vault
 from tests.helpers import make_instance
 
@@ -196,3 +200,90 @@ def test_a_client_s_google_account_is_never_used() -> None:
 def test_nothing_is_uploaded_until_an_account_is_chosen(tmp_path: Path) -> None:
     with session_scope() as session:
         assert backup_drive.upload(session, get_vault(), backup_file(tmp_path, 1), keep=4) is None
+
+
+def test_an_upload_runs_in_the_background_and_says_so(
+    drive: FakeDrive, tmp_path: Path, database_url: str
+) -> None:
+    """Uploading... from when it starts, then the file and the link, each told to the app."""
+    heard = events.subscribe(database_url, [events.LIVE])
+    path = backup_file(tmp_path, 3)
+    try:
+        with session_scope() as session:
+            backup_drive.choose(session, "my-google")
+            thread = backup_drive.start(session, path, keep=4)
+            assert thread is not None
+            assert backup_drive.state(session).uploading is not None
+        thread.join(30)
+        said: list[dict[str, Any]] = []
+        while len(said) < 2 and (got := heard.get(10)):
+            said += [json.loads(p) for _, p in got]
+    finally:
+        heard.close()
+    assert [(e["kind"], e["status"]) for e in said if e["type"] == jobs.TYPE] == [
+        (jobs.DRIVE_UPLOAD, jobs.STARTED), (jobs.DRIVE_UPLOAD, jobs.DONE),
+    ]  # fmt: skip
+    with session_scope() as session:
+        done = backup_drive.state(session)
+    assert (done.uploading, done.file, done.error) == (None, path.name, None)
+    assert done.link == "https://drive.example/f002"
+
+
+def test_one_upload_at_a_time(
+    drive: FakeDrive, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = threading.Event()
+    handle = drive.handle
+
+    def slow(request: httpx2.Request) -> httpx2.Response:
+        gate.wait(30)
+        return handle(request)
+
+    monkeypatch.setattr(google, "transport", httpx2.MockTransport(slow))
+    with session_scope() as session:
+        backup_drive.choose(session, "my-google")
+        first = backup_drive.start(session, backup_file(tmp_path, 1), keep=4)
+    with session_scope() as session, pytest.raises(RuleViolationError, match="already running"):
+        backup_drive.start(session, backup_file(tmp_path, 2), keep=4)
+    gate.set()
+    assert first is not None
+    first.join(30)
+    with session_scope() as session:  # done: the next one may start
+        again = backup_drive.start(session, backup_file(tmp_path, 2), keep=4)
+    assert again is not None
+    again.join(30)
+
+
+def test_a_failed_background_upload_is_said(drive: FakeDrive, tmp_path: Path) -> None:
+    drive.broken = True
+    with session_scope() as session:
+        backup_drive.choose(session, "my-google")
+        thread = backup_drive.start(session, backup_file(tmp_path, 1), keep=4)
+    assert thread is not None
+    thread.join(30)
+    with session_scope() as session:
+        done = backup_drive.state(session)
+    assert done.uploading is None
+    assert done.error is not None
+    assert "Drive is down" in done.error
+
+
+def test_an_upload_the_app_quit_during_isn_t_shown_as_running(drive: FakeDrive) -> None:
+    with session_scope() as session:
+        backup_drive.choose(session, "my-google")
+        backup_drive._save(session, uploading=datetime.now(UTC).isoformat())  # pyright: ignore[reportPrivateUsage]
+        assert backup_drive.state(session).uploading is None  # nothing runs it now
+        with backup_drive._busy:  # pyright: ignore[reportPrivateUsage] (while one runs, it is)
+            assert backup_drive.state(session).uploading is not None
+
+
+def test_the_newest_backup_on_this_computer(tmp_path: Path) -> None:
+    weekly, made = tmp_path / "weekly", tmp_path / "made"
+    weekly.mkdir()
+    made.mkdir()
+    old = backup_file(weekly, 1)
+    new = backup_file(made, 2)
+    (made / "notes.txt").write_text("not a backup")
+    os.utime(old, (1_000_000, 1_000_000))
+    assert backup_drive.newest([weekly, made, tmp_path / "gone"]) == new
+    assert backup_drive.newest([tmp_path / "gone"]) is None
