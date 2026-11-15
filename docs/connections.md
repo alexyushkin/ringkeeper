@@ -94,6 +94,28 @@ this computer, public documentation. **Connectors › Add your own tool**, searc
 then choose **For all projects** or link it to some. To leave a client or project out,
 open its card: Details › All projects › Except….
 
+### A browser
+
+**Browser (Playwright)** is the first card under **Add your own tool**. One click,
+**Add the browser**, installs Microsoft's Playwright server (pinned to one version) and
+connects it. It's for pages a task has to use, not just read: clicking through a site,
+filling in forms, and pages that need a login. Without it, tasks still search the web and
+read pages, but only what a page shows to anyone.
+
+- **Its own profile.** It opens Chrome (or Edge, on Windows without Chrome) with a profile
+  in Ringkeeper's data folder, never your everyday one, so it's signed in only where you
+  sign it in.
+- **No project at first.** It's linked to none until you pick, on the card that follows
+  or on a project's Connections tab.
+- **What waits.** Going to pages, reading them, screenshots and following links run by
+  themselves. Typing into forms, choosing in them, clicking a button that sends, buys,
+  signs in or downloads, and pressing Enter wait for your approval in a client's project,
+  and run in your own client's. Code run in a page, and reading or changing the logins it
+  keeps, wait everywhere.
+- **When a task needed one.** A task that ends Not done because a page needed clicking or
+  a login offers **Add a browser to <project>**, or, if you have one already, **Link your
+  Browser (Playwright) to <project> and retry**.
+
 ## A service you host for clients
 
 Some services are yours but hold work for several clients, like your own n8n with each

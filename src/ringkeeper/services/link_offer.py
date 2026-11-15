@@ -15,7 +15,7 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Instance, InstanceType, Project, Task
 from ringkeeper.schemas import BindingIn
-from ringkeeper.services import bindings, clients, needs, tasks, titles
+from ringkeeper.services import bindings, clients, instances, needs, tasks, titles
 
 # A built-in connection that can't do something the service's own server can (remote.py),
 # when the client hasn't added that server: a lookup, not a model call. What the worker said
@@ -78,8 +78,10 @@ def find(session: Session, task: Task, lacked: str) -> dict[str, Any] | None:
     if not lacked:
         return recommend(session, task, lacked)
     linked = {b.instance_id for b in project.bindings}
+    # A browser is your own tool: the one you have counts for any client's project.
+    owners = [project.owner, instances.SHARED_OWNER] if lacked == needs.BROWSER else [project.owner]
     owned = session.scalars(
-        select(Instance).where(Instance.owner == project.owner).order_by(Instance.name)
+        select(Instance).where(Instance.owner.in_(owners)).order_by(Instance.name)
     ).all()
     found = next((i for i in owned if i.id not in linked and needs.fits(i, lacked)), None)
     if found is None:
@@ -92,8 +94,10 @@ def find(session: Session, task: Task, lacked: str) -> dict[str, Any] | None:
 
 
 def label(session: Session, instance: Instance, project: Project) -> str:
-    client = clients.display(session, project.owner)
     what = instance.title or instance.name
+    if instance.shared:  # your own tool
+        return f"Link your {what} to {titles.of(session, project.name)} and retry"
+    client = clients.display(session, project.owner)
     return f"Link {client}'s {what} to {titles.of(session, project.name)} and retry"
 
 

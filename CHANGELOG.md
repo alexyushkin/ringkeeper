@@ -42,6 +42,16 @@ publishes it as the release notes and the app shows it with the update.
   service has its own list. If the sign-in hasn't finished after 2 minutes, it stops waiting,
   says so, opens that list and offers **Try again**.
 
+## Unreleased
+
+- **A browser is one click.** **Add your own tool** starts with **Browser (Playwright)**:
+  one click installs and connects it, with a browser profile of its own, never your
+  everyday one. It's for clicking, forms and pages that need a login, which web search and
+  page reading can't do. It's linked to no project until you pick. Going to pages and
+  reading them runs; typing into forms, sending them and downloads wait for your approval
+  in a client's project. A task that ended Not done because a page needed it offers **Add a
+  browser**, like a missing connection.
+
 ## 0.1.0-beta.47 (2026-11-15)
 
 - **A big table is gone through without a shell.** A task that read every record of an

@@ -73,7 +73,8 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
         "your reason, instead of done. `needs`: the kind of connection that was missing, if "
         "that's why: one of email, calendar, records, spreadsheet, files, payments, ads, meta_ads, "
         "google_ads, google, microsoft, slack, airtable, notion, stripe, n8n, github, vercel, or "
-        "empty. `done`: what you did finish, when "
+        "browser (a page that needs clicking, filling in a form, or a login, which reading pages "
+        "and web search can't do), or empty. `done`: what you did finish, when "
         "part of it is done (it then shows as partly done); leave it out when nothing is. Still "
         "end your turn with a short note for the operator.",
         {

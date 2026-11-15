@@ -30,7 +30,7 @@ import anyio.to_thread
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ringkeeper import plan_limits, remote, sensitive, signed_links
+from ringkeeper import browser, plan_limits, remote, sensitive, signed_links
 from ringkeeper.adapters import ADAPTERS, agent_name, mcp, vendor
 from ringkeeper.adapters.base import (
     IMAGE,
@@ -64,6 +64,7 @@ from ringkeeper.services import (
     agents,
     audit,
     bindings,
+    clients,
     continuations,
     decisions,
     google_oauth,
@@ -533,6 +534,14 @@ async def _run_unheld(call: ToolCall, spec: ToolSpec, target: Target, auth: Auth
     return shown if image is None else shown | {IMAGE: image}
 
 
+async def _browser_runs_here(call: ToolCall, config: JSON) -> bool:
+    """The browser's forms, sends and downloads wait in a client's project, not your own;
+    code and its saved logins wait everywhere (ringkeeper.browser)."""
+    if not browser.is_browser(config) or browser.asks_everywhere(str(call.args.get("tool") or "")):
+        return False
+    return await _db(partial(clients.owns_project, project=call.caller.project))
+
+
 async def run_call(call: ToolCall, vault: Vault) -> JSON:
     """Run one gateway tool call through every check. Returns a scrubbed result."""
     adapter = ADAPTERS[call.service]
@@ -596,7 +605,7 @@ async def run_call(call: ToolCall, vault: Vault) -> JSON:
         hold is Hold.ALWAYS
         or (hold is Hold.DRAFT and holds_drafts(auth.config))
         or (hold is Hold.PROD and auth.env is Env.PROD and not auth.preapproved)
-    )
+    ) and not await _browser_runs_here(call, auth.config)
     trusted = False
     # A call that needs the name typed always asks: `trusts` refuses it too.
     if held and (spec.typed is not None or not runs_without_asking(auth.config, call.tool)):

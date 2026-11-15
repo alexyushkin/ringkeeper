@@ -32,6 +32,7 @@ from ringkeeper.models import Env, InstanceType
 from ringkeeper.schemas import Input, InstanceIn, NonEmpty, ScopeValue, Slug, Title
 from ringkeeper.services import (
     admin_audit,
+    browser,
     bundles,
     catalog,
     developer_apps,
@@ -422,6 +423,35 @@ def _store_extension(new: NewConnection, bundle: bundles.Bundle, spec: dict[str,
             by="owner", instance=new.name,
         )  # fmt: skip
         remote_connections.link(session, new)
+
+
+# --- Browser (Playwright): one click (services.browser) ---
+
+
+class BrowserIn(Input):
+    project: Slug | None = None  # a task's "Add a browser": linked to that project too
+
+
+@router.get("/connections/browser")
+def browser_info(session: SessionDep) -> dict[str, Any]:
+    """The tile: whether it's added, what it installs and what this computer still needs."""
+    found = browser.plan()
+    added = instances.find_instance(session, browser.NAME)
+    job = local_servers.job(browser.NAME)
+    return {
+        "name": browser.NAME, "added": added is not None,
+        "projects": instances.bound_project_names(added) if added is not None else [],
+        "package": f"{found.identifier} {found.version}", "publisher": found.publisher,
+        "needs": found.needs if found.missing else None, "browser": browser.which_browser(),
+        "installing": job is not None and job.state == "installing",
+    }  # fmt: skip
+
+
+@router.post("/connections/browser", status_code=202, dependencies=[RecentAuth])
+def browser_add(data: BrowserIn) -> dict[str, Any]:
+    """Install and connect it, linked to no project (or the one a task asked for)."""
+    job = browser.start(get_settings(), project=data.project)
+    return {"name": browser.NAME, "state": job.state}
 
 
 @router.get("/connections/local/{name}")

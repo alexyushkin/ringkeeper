@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { BrowserTile } from "@/components/browser-tile";
 import { ConnectRemote, type RemoteService } from "@/components/connection-library";
 import { ConnectionForm, defaultTitle, EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { GoogleConnect } from "@/components/google";
@@ -176,13 +177,15 @@ interface Tile {
   key: string;
   label: string;
   sub: string;
-  open: "form" | "google" | "remote";
+  open: "form" | "google" | "remote" | "browser";
   words: string[]; // what a search for it might say
   badge?: string; // instead of "Built in"
   category: Category;
+  shared?: boolean; // only among your own tools
 }
 
 const BUILT_IN: Tile[] = [
+  { key: "browser", label: "Browser (Playwright)", sub: "Clicking, forms, pages that need a login", open: "browser", category: "Dev tools", shared: true, words: ["browser", "playwright", "chrome", "edge", "click", "form", "login", "sign in", "web", "puppeteer", "selenium"] },
   { key: "supabase", label: "Database", sub: "Postgres: Supabase, Neon or your own", open: "form", category: "Databases", words: ["postgres", "postgresql", "sql", "supabase", "neon", "database", "db"] },
   { key: "airtable", label: "Airtable", sub: "Bases and records, with undo", open: "form", category: "Databases", words: ["airtable"] },
   { key: "oracle", label: "Oracle Database", sub: "Your own, or Autonomous with a wallet", open: "form", category: "Databases", words: ["oracle", "oracledb", "sql", "autonomous", "atp", "adb", "wallet", "database"] },
@@ -237,6 +240,7 @@ const SIGN_IN_WORDS: Record<string, string[]> = {
 
 // Services with no logo in lib/client/logos or public/logos: their initials on their color.
 const MARKS: Record<string, [string, string, string]> = {
+  browser: ["PW", "#2ead33", "#fff"], // Playwright: its initials on its green
   twilio: ["T", "#f22f46", "#fff"],
   retell: ["R", "#6d28d9", "#fff"],
   mailbox: ["@", "#2563eb", "#fff"],
@@ -381,6 +385,8 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
           <VendorConnect vendor={vendor} client={target.client} project={target.project} shared={shared} onAdded={target.onAdded} />
         ) : tile?.open === "form" ? (
           <ConnectionForm client={shared ? undefined : target.client} project={target.project} shared={shared} type={tile.key} onSaved={(c) => target.onAdded(c.name)} />
+        ) : tile?.open === "browser" ? (
+          <BrowserTile project={target.project} onAdded={target.onAdded} />
         ) : tile?.open === "google" ? (
           <GoogleConnect owner={shared ? undefined : target.client} shared={shared} project={target.project} onAdded={target.onAdded} />
         ) : service ? (
@@ -395,7 +401,7 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
   // Every service, by what people look for: built in (Ringkeeper's own rules) and the
   // service's own server you sign in to.
   const tiles = [
-    ...BUILT_IN.map((tile) => ({ id: `tile:${tile.key}`, key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: tile.badge ?? "Built in", words: tile.words, open: () => setOpened({ tile }) })),
+    ...BUILT_IN.filter((tile) => shared || !tile.shared).map((tile) => ({ id: `tile:${tile.key}`, key: tile.key, label: tile.label, sub: tile.sub, category: tile.category, badge: tile.badge ?? "Built in", words: tile.words, open: () => setOpened({ tile }) })),
     ...signIn.map((service) => ({
       id: `service:${service.key}`,
       key: service.key,
@@ -424,6 +430,7 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
           Yours, not a client&apos;s: a browser, files on this computer, a public docs server, or your own account with a service. Any client&apos;s projects can use it, or all of them.
         </p>
       ) : null}
+      {shared && !searching ? <BrowserTile project={target.project} onAdded={target.onAdded} /> : null}
       <CatalogSearch {...target} featured={tiles} onFeatured={openId} onTyped={setSearching} />
       {searching ? null : (
         <>
@@ -431,7 +438,7 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
             <b>Built in</b>: Ringkeeper&apos;s own rules, and most changes can be undone. <b>Official</b>: the service&apos;s own server; you sign in on its page, and a project&apos;s link can often be narrowed.
           </p>
           {CATEGORIES.map((category) => {
-            const here = tiles.filter((tile) => tile.category === category);
+            const here = tiles.filter((tile) => tile.category === category && tile.id !== "tile:browser"); // the browser has its own card above
             return here.length ? (
               <section key={category} className="space-y-2">
                 <h3 className="font-medium">{category}</h3>
