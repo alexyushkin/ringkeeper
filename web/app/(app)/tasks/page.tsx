@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { TaskCardView, type TaskCard } from "@/components/task-card";
-import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, useSelection } from "@/components/tidy";
+import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, SelectRows, useSelection } from "@/components/tidy";
 import { Alert, Button, Empty, Loading, PageHeader, Select } from "@/components/ui";
 import { RESYNC, api, useApi, useLive, usePaged } from "@/lib/client/api";
 import { ScopeNote } from "@/components/scope-switcher";
@@ -63,6 +63,7 @@ export default function TasksPage() {
   const old = useApi<{ count: number; days: number }>("cleanup/old-tasks");
   const [tidied, setTidied] = useState<string | null>(null);
   const pick = useSelection();
+  const shownIds = (tasks.items ?? []).map((row) => row.id);
   useLive((event) => {
     if (event.type === "task" || event.type === RESYNC) {
       tasks.reload();
@@ -111,6 +112,7 @@ export default function TasksPage() {
       {tidied ? <Alert tone="good">{tidied}</Alert> : null}
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="tasks" />
       <BulkBar kind="task" ids={[...pick.selected]} archivedView={archived} onDone={tasks.reload} onClear={pick.clear} />
+      <SelectRows pick={pick} ids={shownIds} more={tasks.more} />
       <ListTotal total={tasks.total} what={["task", "tasks"]} searching={Boolean(query.trim())} archived={archived} />
       {tasks.error ? <Alert>{tasks.error}</Alert> : null}
       {tasks.loading && !tasks.items ? <Loading /> : null}
@@ -119,7 +121,7 @@ export default function TasksPage() {
         {tasks.items?.map((task) => (
           <div key={task.id} className="flex items-start gap-3">
             <span className="pt-5">
-              <SelectBox checked={pick.has(task.id)} onChange={() => pick.toggle(task.id)} label={`Select the ${projectName(task.project)} task`} />
+              <SelectBox checked={pick.has(task.id)} onChange={(on, shift) => pick.click(task.id, on, shift, shownIds)} label={`Select the ${projectName(task.project)} task`} />
             </span>
             <div className="min-w-0 flex-1">
               <TaskCardView task={task} />

@@ -63,7 +63,7 @@
 "doc": "connections",
 "anchor": "all-of-a-clients-projects",
 "title": "All of a client's projects",
-"text": "A connection can go to all of its client's projects, and to projects added later. When you add one and the client has more than one project, that's what the success card suggests; untick any project to leave it out, or choose **Choose projects instead**. To change it later, open the connection's card: Details › All … projects. The card says what it reaches, like \"All Acme projects except Website\". Each project's link can still be narrowed under Details, to one base, branch or site. A client's connection never reaches another client's projects."
+"text": "A connection can go to all of its client's projects, and to projects added later. What the success card starts with depends on what the connection holds: - **It has an account behind it** (a database, a mailbox, a cloud, CRM or payments account, or a tool given a key or a sign-in): no project is ticked. It says \"This connection has an account behind it. Pick the projects that should be able to use it.\", and **Choose projects** is the main button. **Use in all … projects instead** is there if that's what you want. - **It holds no account** (a browser, files on this computer): every project is ticked. Untick any to leave it out, or choose **Choose projects instead**. To change it later, open the connection's card: Details › All … projects. The card says what it reaches, like \"All Acme projects except Website\". Each project's link can still be narrowed under Details, to one base, branch or site. A client's connection never reaches another client's projects."
 },
 {
 "doc": "connections",
@@ -502,6 +502,12 @@
 "anchor": "morning-digest",
 "title": "Morning digest",
 "text": "Home shows the last 24 hours per client: what ran, what wasn't done (amber), what failed (red, for tasks that broke) and what waits for you. Each count opens the list of those tasks, for that client and that window; hold the pointer on the heading to see when the window started. Check my setup's requests and the demo's tasks aren't counted: a line under the card says they ran, with a link to the report. To get it on Telegram, Slack and Discord too, turn on Settings › Notifications › Morning digest and set the time."
+},
+{
+"doc": "working-faster",
+"anchor": "lists-of-checkboxes",
+"title": "Lists of checkboxes",
+"text": "Every list of projects, clients, connections or tools works the same way: an agent's connections, Link to…, a channel's clients and projects, what a sign-in may be used for, the writes that run without asking, adding projects from Claude, and the task and conversation lists. - **Select all** and **Clear** are above it, with how many are ticked (\"3 of 4 selected\"). - **Space** ticks or unticks the box you're on. **Shift-click** ticks or unticks every row between that one and the last one you clicked. - With more than 8 rows there's a filter box, and the rows are grouped by client, each group with its own Select all. Select all with a filter typed ticks only what it shows. - Where a connection is a client's, only one client's projects can be ticked at a time."
 },
 {
 "doc": "working-faster",

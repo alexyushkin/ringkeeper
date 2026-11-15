@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { useBackCloses } from "@/lib/client/app-history";
 
+import { BulkControls, shiftOf, useRange } from "@/components/check-list";
 import { Alert, Button, Field, Toggle } from "@/components/ui";
 import { ApiError, api, type PagedList } from "@/lib/client/api";
 
@@ -19,19 +20,33 @@ function noun(kind: Kind, count: number): string {
 
 export function useSelection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const range = useRange();
   return {
     selected,
     has: (id: string) => selected.has(id),
-    toggle: (id: string) =>
-      setSelected((all) => {
-        const next = new Set(all);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      }),
+    /** A row's box: with shift, every row between it and the last one clicked (in `shown`). */
+    click: (id: string, on: boolean, shift: boolean, shown: string[]) =>
+      setSelected((all) => new Set(range.click([...all], shown.map((key) => ({ key, text: key })), id, on, shift))),
     setAll: (ids: string[]) => setSelected(new Set(ids)),
     clear: () => setSelected(new Set()),
   };
+}
+
+/** Select all and Clear over the rows loaded so far, with "3 of 20 selected". */
+export function SelectRows({ pick, ids, more }: { pick: ReturnType<typeof useSelection>; ids: string[]; more?: boolean }) {
+  if (ids.length < 2) return null;
+  const on = ids.filter((id) => pick.has(id)).length;
+  return (
+    <div className="mb-2">
+      <BulkControls
+        count={`${on} of ${ids.length}${more ? " shown" : ""} selected`}
+        onAll={() => pick.setAll([...new Set([...pick.selected, ...ids])])}
+        onClear={pick.clear}
+        allDisabled={on === ids.length}
+        clearDisabled={!pick.selected.size}
+      />
+    </div>
+  );
 }
 
 /** Search (which also finds archived ones) and the archived view. */
@@ -62,14 +77,14 @@ export function LoadMore<T>({ list }: { list: PagedList<T> }) {
   );
 }
 
-export function SelectBox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+export function SelectBox({ checked, onChange, label }: { checked: boolean; onChange: (on: boolean, shift: boolean) => void; label: string }) {
   return (
     <input
       type="checkbox"
       aria-label={label}
       className="size-4 shrink-0 accent-[var(--color-accent)]"
       checked={checked}
-      onChange={onChange}
+      onChange={(event) => onChange(event.target.checked, shiftOf(event))}
       onClick={(event) => event.stopPropagation()}
     />
   );

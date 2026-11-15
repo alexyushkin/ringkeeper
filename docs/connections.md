@@ -70,11 +70,19 @@ connects with a warning: it stops working when the tunnel does. A key for a serv
 
 ## All of a client's projects
 
-A connection can go to all of its client's projects, and to projects added later. When
-you add one and the client has more than one project, that's what the success card
-suggests; untick any project to leave it out, or choose **Choose projects instead**. To
-change it later, open the connection's card: Details › All … projects. The card says what
-it reaches, like "All Acme projects except Website".
+A connection can go to all of its client's projects, and to projects added later. What
+the success card starts with depends on what the connection holds:
+
+- **It has an account behind it** (a database, a mailbox, a cloud, CRM or payments
+  account, or a tool given a key or a sign-in): no project is ticked. It says "This
+  connection has an account behind it. Pick the projects that should be able to use it.",
+  and **Choose projects** is the main button. **Use in all … projects instead** is there
+  if that's what you want.
+- **It holds no account** (a browser, files on this computer): every project is ticked.
+  Untick any to leave it out, or choose **Choose projects instead**.
+
+To change it later, open the connection's card: Details › All … projects. The card says
+what it reaches, like "All Acme projects except Website".
 
 Each project's link can still be narrowed under Details, to one base, branch or site. A
 client's connection never reaches another client's projects.

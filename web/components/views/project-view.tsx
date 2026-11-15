@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { EVERY_REPO, notesOnly, reachesEverything, ScopeInputs, scopeText, type LibraryConnection, type ScopeField } from "@/components/connection-library";
 import { Catalog, ServiceMark } from "@/components/catalog";
+import { CheckList, keepPicked } from "@/components/check-list";
 import { ConnectionAdded } from "@/components/connection-added";
 import { connectionTitle } from "@/components/connection-form";
 import { ProjectScan } from "@/components/conveniences";
@@ -156,33 +157,26 @@ export function ProjectView({ name }: { name: string }) {
           <legend className="px-1 text-sm font-medium">Link to {projectName(name)}</legend>
           {available.length ? (
             <>
-              {available.map((c) => (
-                <div key={c.name} className="space-y-1">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={c.name in picked}
-                      onChange={(e) =>
-                        setPicked((all) => {
-                          const next = { ...all };
-                          if (e.target.checked) next[c.name] = {};
-                          else delete next[c.name];
-                          return next;
-                        })
-                      }
-                      className="size-4 accent-[var(--color-accent)]"
-                    />
-                    <ServiceMark id={typeof c.config.remote === "string" ? c.config.remote : c.type} database={c.type === "supabase"} />
-                    <span className="font-medium">{connectionTitle(c)}</span>
-                    {c.shared ? <span className="text-xs text-muted">your tool</span> : <EnvBadge env={c.env} />}
-                  </label>
-                  {c.name in picked && (c.scope_fields ?? []).length ? (
-                    <div className="ml-6">
+              <CheckList
+                items={available.map((c) => ({
+                  key: c.name,
+                  text: `${connectionTitle(c)} ${c.type}`,
+                  group: c.shared ? "Your tools" : clientName(c.owner),
+                  label: (
+                    <>
+                      <ServiceMark id={typeof c.config.remote === "string" ? c.config.remote : c.type} database={c.type === "supabase"} />
+                      <span className="font-medium">{connectionTitle(c)}</span>
+                      {c.shared ? <span className="text-xs text-muted">your tool</span> : <EnvBadge env={c.env} />}
+                    </>
+                  ),
+                  detail:
+                    c.name in picked && (c.scope_fields ?? []).length ? (
                       <ScopeInputs fields={c.scope_fields ?? []} value={picked[c.name] ?? {}} onChange={(next) => setPicked((all) => ({ ...all, [c.name]: next }))} connection={c} />
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                    ) : undefined,
+                }))}
+                selected={chosen}
+                onChange={(next) => setPicked((all) => keepPicked(all, next, () => ({})))}
+              />
               <Button
                 kind="primary"
                 disabled={!chosen.length}

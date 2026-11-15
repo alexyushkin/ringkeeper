@@ -3,6 +3,7 @@
 import Link from "@/components/link";
 import { useEffect, useState } from "react";
 
+import { CheckList } from "@/components/check-list";
 import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, LinkButton, Select, Toggle } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 import { connectionHref } from "@/lib/client/routes";
@@ -445,7 +446,6 @@ export function GoogleConnect({
       setBusy(false);
     }
   }
-  const toggle = (key: string, on: boolean) => setAccess((now) => (on ? [...now, key] : now.filter((k) => k !== key)));
 
   return (
     <div className="space-y-3">
@@ -458,19 +458,25 @@ export function GoogleConnect({
           hint="Which of your Google apps. A client's Workspace admin may trust only the one in their own Google Cloud project."
         />
       ) : null}
-      <fieldset className="space-y-1">
-        <legend className="text-sm font-medium">What may it be used for?</legend>
-        {data.access.map((a) => (
-          <label key={a.key} className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={access.includes(a.key)} onChange={(e) => toggle(a.key, e.target.checked)} className="mt-0.5 size-4 accent-[var(--color-accent)]" />
-            <span>
-              {a.label}
-              {a.note ? <span className="block text-xs text-muted">{a.note}</span> : null}
-            </span>
-          </label>
-        ))}
+      <div className="space-y-1">
+        <CheckList
+          legend="What may it be used for?"
+          align="start"
+          items={data.access.map((a) => ({
+            key: a.key,
+            text: `${a.label} ${a.note ?? ""}`,
+            label: (
+              <span>
+                {a.label}
+                {a.note ? <span className="block text-xs text-muted">{a.note}</span> : null}
+              </span>
+            ),
+          }))}
+          selected={access}
+          onChange={setAccess}
+        />
         <p className="text-xs text-muted">Reading runs; every write (sending, sharing, invites, edits, uploads, drafts, the trash) asks you first. You can let a tool run without asking later, per account.</p>
-      </fieldset>
+      </div>
       {replace ? null : (
         <>
           {shared ? <Toggle label="Use in all projects" checked={all} onChange={setAll} hint="Every client's projects, new ones too." /> : null}
@@ -499,10 +505,12 @@ export function GoogleAccount({ name, onChange }: { name: string; onChange: () =
   if (!data) return null;
   const labels = Object.fromEntries((app.data?.access ?? []).map((a) => [a.key, a.label]));
 
-  async function rule(tool: string, run: boolean) {
+  // Writes that may run without asking: the rest of them ask first.
+  const free = data.tools.filter((t) => t.kind === "write" && t.allowed && !t.fixed);
+  async function runs(next: string[]) {
     setError(null);
-    const rules = Object.fromEntries(data!.tools.filter((t) => t.rule === "run" && t.name !== tool).map((t) => [t.name, "run"]));
-    if (run) rules[tool] = "run";
+    const others = data!.tools.filter((t) => t.rule === "run" && !free.includes(t)).map((t) => t.name);
+    const rules = Object.fromEntries([...others, ...next].map((tool) => [tool, "run"]));
     try {
       await api(`connections/${name}/write-rules`, { method: "PUT", json: { rules } });
       account.reload();
@@ -520,22 +528,42 @@ export function GoogleAccount({ name, onChange }: { name: string; onChange: () =
         {(app.data?.apps.length ?? 0) > 1 ? <span className="text-muted"> · through {app.data?.apps.find((a) => a.id === data.app)?.name ?? data.app}</span> : null}
       </p>
       <Details label="Tools and approvals">
-        <ul className="space-y-2">
-          {data.tools.map((t) => (
-            <li key={t.name} className="text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <code>{t.name}</code>
-                {t.kind === "read" ? <Badge tone="good">Reads</Badge> : null}
-                {!t.allowed ? <Badge>Not given</Badge> : null}
-              </div>
-              <p className="text-xs text-muted">{t.description}</p>
-              {t.kind === "write" && t.allowed && t.fixed ? <p className="text-xs text-muted">Always asks you first.{t.why ? ` ${t.why}` : ""}</p> : null}
-              {t.kind === "write" && t.allowed && !t.fixed ? (
-                <Toggle label="Run without asking" checked={t.rule === "run"} onChange={(on) => void rule(t.name, on)} hint={t.rule === "run" ? "Runs and is logged; you're not asked." : "Asks you first."} />
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-3">
+          {free.length ? (
+            <CheckList
+              legend="Writes that run without asking"
+              hint="A ticked one runs and is logged; you're not asked. The rest ask you first."
+              align="start"
+              items={free.map((t) => ({
+                key: t.name,
+                text: `${t.name} ${t.description}`,
+                label: (
+                  <span>
+                    <code>{t.name}</code>
+                    <span className="block text-xs text-muted">{t.description}</span>
+                  </span>
+                ),
+              }))}
+              selected={free.filter((t) => t.rule === "run").map((t) => t.name)}
+              onChange={(next) => void runs(next)}
+            />
+          ) : null}
+          <ul className="space-y-2">
+            {data.tools
+              .filter((t) => !free.includes(t))
+              .map((t) => (
+                <li key={t.name} className="text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code>{t.name}</code>
+                    {t.kind === "read" ? <Badge tone="good">Reads</Badge> : null}
+                    {!t.allowed ? <Badge>Not given</Badge> : null}
+                  </div>
+                  <p className="text-xs text-muted">{t.description}</p>
+                  {t.kind === "write" && t.allowed && t.fixed ? <p className="text-xs text-muted">Always asks you first.{t.why ? ` ${t.why}` : ""}</p> : null}
+                </li>
+              ))}
+          </ul>
+        </div>
       </Details>
       {changing ? (
         <GoogleConnect replace={name} initial={data.access} initialApp={data.app ?? ""} onAdded={() => { setChanging(false); account.reload(); onChange(); }} />

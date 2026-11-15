@@ -97,6 +97,20 @@ says they ran, with a link to the report.
 To get it on Telegram, Slack and Discord too, turn on Settings › Notifications ›
 Morning digest and set the time.
 
+## Lists of checkboxes
+
+Every list of projects, clients, connections or tools works the same way: an agent's
+connections, Link to…, a channel's clients and projects, what a sign-in may be used for,
+the writes that run without asking, adding projects from Claude, and the task and
+conversation lists.
+
+- **Select all** and **Clear** are above it, with how many are ticked ("3 of 4 selected").
+- **Space** ticks or unticks the box you're on. **Shift-click** ticks or unticks every
+  row between that one and the last one you clicked.
+- With more than 8 rows there's a filter box, and the rows are grouped by client, each
+  group with its own Select all. Select all with a filter typed ticks only what it shows.
+- Where a connection is a client's, only one client's projects can be ticked at a time.
+
 ## Back and Forward
 
 In the desktop app, the two arrows at the window's top left go back and forward through where

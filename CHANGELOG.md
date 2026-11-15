@@ -10,6 +10,18 @@ publishes it as the release notes and the app shows it with the update.
   wholesale orders", and with nothing in the table marking an order as wholesale, the task
   ended as not done. Now the description only helps pick the project: what the task is told to
   do keeps your words.
+- **Every list of checkboxes has Select all and Clear.** Projects, clients, connections and
+  tools: after adding a connection, Link to…, a project's Link a connection, an agent's
+  connections, a channel's clients and projects, what a sign-in may be used for, a Google
+  account's writes that run without asking, adding projects from Claude, and the task and
+  conversation lists. Each shows how many are ticked ("3 of 4 selected"); Space ticks the
+  box you're on and shift-click ticks a range. With more than 8 rows there's a filter box,
+  and rows are grouped by client, each with its own Select all.
+- **A new connection with an account behind it starts in no project.** After adding a
+  database, a mailbox, a cloud, CRM or payments account, or a tool given a key or a
+  sign-in, no project is ticked and **Choose projects** is the main button: "This
+  connection has an account behind it. Pick the projects that should be able to use it."
+  A browser or files on this computer still start in every project.
 
 ## 0.1.0-beta.47 (2026-11-15)
 
