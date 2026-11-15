@@ -25,6 +25,8 @@ class ToolCall:
     tool: str
     instance: str | None
     args: dict[str, Any] = field(default_factory=dict[str, Any])
+    # A list tool's `fields`: applied to its answer by the gateway, never sent to the service.
+    fields: tuple[str, ...] = ()
 
 
 def canonical_json(value: object) -> str:

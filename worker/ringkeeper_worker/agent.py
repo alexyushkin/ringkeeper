@@ -1,5 +1,6 @@
 """Run one Claude Agent SDK session and stream every message as a JSON line."""
 
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -73,9 +74,26 @@ tools for its data, and files or the shell only when the task needs them. Today 
 {today}. Answer plainly and briefly: the answer, what you changed, or what's left."""
 
 
+def shell_line(config: WorkerConfig, platform: str = sys.platform) -> str:
+    """What the worker's shell is and has, on this computer: one line."""
+    if "Bash" in config.disallowed_tools:
+        return (
+            "There's no shell in this task: a saved result is gone through with read_more "
+            "(fields, where, page)."
+        )
+    if platform == "win32":
+        return (
+            "Your shell is Git Bash on Windows (PowerShell where Git Bash isn't installed): "
+            "jq, sed and awk may be missing, and Python is there as `python`."
+        )
+    if platform == "darwin":
+        return "Your shell is bash on macOS: jq may be missing, and Python is there as `python3`."
+    return "Your shell is bash on Linux: jq may be missing, and Python is there as `python`."
+
+
 def system_prompt(config: WorkerConfig) -> str | dict[str, str]:
     """Claude Code's own prompt for work on the code; a short one for everything else."""
-    note = HEADLESS_NOTE.format(workspace=config.workspace)
+    note = HEADLESS_NOTE.format(workspace=config.workspace) + "\n" + shell_line(config)
     if config.git:
         return {"type": "preset", "preset": "claude_code", "append": note}
     today = datetime.now().astimezone().strftime("%A, %Y-%m-%d")

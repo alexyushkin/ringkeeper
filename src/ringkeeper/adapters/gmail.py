@@ -621,6 +621,8 @@ class DraftUndo(Undoer):
 create_draft = replace(create_draft, undo=DraftUndo())
 
 
+search_messages = replace(search_messages, rows="messages")  # a list tool (ToolSpec.rows)
+
 ADAPTER = Adapter(
     service=InstanceType.GMAIL,
     tools=(

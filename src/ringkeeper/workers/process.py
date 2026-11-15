@@ -152,6 +152,13 @@ class ProcessRuntime:
             raise ProcessRuntimeError(f"not a worker state name: {name!r}")
         return self.state_root / name
 
+    def search_path(self) -> str:
+        """The bundled tools (git), then the Python Ringkeeper runs on, then the computer's
+        own PATH: a worker's `python` is one that's there and current, not whichever one
+        (or the Microsoft Store's stand-in) the computer has first."""
+        python = str(Path(self.python).parent)
+        return os.pathsep.join([*self.tools_path, python, os.environ.get("PATH", "")])
+
     def environment(self, spec: WorkerSpec) -> dict[str, str]:
         state = self.state_dir(spec.state_volume)
         home = state / "home"
@@ -159,7 +166,7 @@ class ProcessRuntime:
         for name in WINDOWS_ENV if WINDOWS else POSIX_ENV:
             if name in os.environ:
                 env[name] = os.environ[name]
-        env["PATH"] = os.pathsep.join([*self.tools_path, os.environ.get("PATH", "")])
+        env["PATH"] = self.search_path()
         # Its own home: the user's ~/.claude, ~/.gitconfig and caches stay out of reach.
         env["HOME"] = str(home)
         if WINDOWS:
@@ -172,7 +179,9 @@ class ProcessRuntime:
             }
         else:
             env["TMPDIR"] = str(state / "tmp")
-        env |= {"PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+        env["PYTHONUNBUFFERED"] = "1"  # and UTF-8 for its shell (workers.env)
+        # Its `python` is Ringkeeper's own (search_path): a package goes in a venv, never there.
+        env["PIP_REQUIRE_VIRTUALENV"] = "1"
         # Its own home has no ~/.gitconfig, so commits need an identity given here.
         name, email = git_identity(Path(spec.workspace), env["PATH"])
         env |= {

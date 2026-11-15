@@ -72,7 +72,7 @@ def test_the_catalog_covers_what_was_asked_for() -> None:
     } <= keys  # fmt: skip
     assert {s.needs for s in SCENARIOS} >= set(world.SANDBOXES)
     # A full run stays a few dollars at most: routing scenarios are short and cheap.
-    assert 20 <= len([s for s in SCENARIOS if not s.needs]) <= 37
+    assert 20 <= len([s for s in SCENARIOS if not s.needs]) <= 38
 
 
 @pytest.mark.parametrize(
@@ -593,3 +593,47 @@ def test_a_go_ahead_the_self_test_answered_is_in_the_report() -> None:
         [report.result(scenario(project=SHOP), seen)], day="2026-11-10", model="m", credential="k"
     )
     assert "as expected; it asked to go ahead on Demo shop database; said yes" in text
+
+
+def test_every_record_must_be_counted_right_without_a_shell() -> None:
+    sorted_out = next(s for s in SCENARIOS if s.key == "every-record")
+    assert sorted_out.counts == (
+        ("urgent", demo_airtable.URGENT), ("routine", demo_airtable.ROUTINE),
+    )  # fmt: skip
+    tickets = demo_airtable.TICKET_RECORDS
+    assert len(tickets) == 150 == demo_airtable.URGENT + demo_airtable.ROUTINE
+    assert sum("urgent" in t["fields"]["Notes"] for t in tickets) == demo_airtable.URGENT
+    assert any(not t["fields"]["Customer"].isascii() for t in tickets)
+    assert min(t["fields"]["Notes"].find("Priority") for t in tickets) > 500  # past the cut
+    right = "Urgent: 61 tickets. Routine: 89 tickets."
+    listed = "mcp__ringkeeper-airtable__list_records"
+    seen = Evidence(projects=[SHOP], statuses=["succeeded"], tools=[listed])
+    seen = replace(seen, replies=right, tried=[listed])
+    assert judge(sorted_out, seen) == []
+    shelled = judge(sorted_out, replace(seen, tried=[*seen.tried, "Bash"]))
+    assert "it called Bash" in shelled
+
+
+@pytest.mark.anyio
+async def test_the_demo_airtable_pages_and_counts_by_formula() -> None:
+    from ringkeeper.adapters import airtable  # noqa: PLC0415
+    from ringkeeper.adapters.base import Target  # noqa: PLC0415
+    from ringkeeper.models import Env  # noqa: PLC0415
+    from ringkeeper.vault import Secret  # noqa: PLC0415
+
+    previous = airtable.transport
+    demo_airtable.install()
+    try:
+        target = Target("demo-airtable", Env.PROD, None, Secret("r", demo_airtable.TOKEN))
+        first = await airtable.list_records.handler(target, demo_airtable.BASE, "Tickets")
+        assert (len(first["records"]), first["total"]) == (50, 150)
+        urgent = await airtable.list_records.handler(
+            target, demo_airtable.BASE, "Tickets", filter_formula="FIND('urgent', {Notes})"
+        )
+        assert urgent["total"] == demo_airtable.URGENT
+        with pytest.raises(Exception, match="422"):
+            await airtable.list_records.handler(
+                target, demo_airtable.BASE, "Tickets", filter_formula="{Notes} != ''"
+            )
+    finally:
+        airtable.transport = previous

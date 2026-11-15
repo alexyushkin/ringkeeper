@@ -284,6 +284,8 @@ execute = replace(execute, classify=_reads, undo=SqlUndo())
 run_sql = _run
 
 
+query = replace(query, rows="rows")  # a list tool (ToolSpec.rows)
+
 ADAPTER = Adapter(
     service=InstanceType.SUPABASE,
     tools=(list_tables, describe_table, query, execute),

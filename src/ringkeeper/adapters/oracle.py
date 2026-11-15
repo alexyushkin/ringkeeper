@@ -516,6 +516,8 @@ class OracleUndo(SqlUndo):
 
 execute = replace(execute, classify=_reads, undo=OracleUndo())
 
+query = replace(query, rows="rows")  # a list tool (ToolSpec.rows)
+
 ADAPTER = Adapter(
     service=InstanceType.ORACLE,
     tools=(list_tables, describe_table, query, execute),

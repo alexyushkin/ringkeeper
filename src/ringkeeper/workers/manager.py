@@ -77,8 +77,10 @@ logger = logging.getLogger(__name__)
 # Tools removed from the agent's context by project autonomy, and the web's unless the
 # project allows it (services.web_access). The container is the sandbox either way; these
 # narrow what the agent can try inside it.
+# Claude Code's shells: Bash, and on Windows PowerShell beside it (or instead, without Git Bash).
+SHELL_TOOLS = ["Bash", "PowerShell"]
 DISALLOWED_TOOLS = {
-    Autonomy.STRICT: ["Bash"],
+    Autonomy.STRICT: SHELL_TOOLS,
     Autonomy.STANDARD: [],
     Autonomy.RELAXED: [],
 }
@@ -88,6 +90,9 @@ DISALLOWED_TOOLS = {
 UNUSED_TOOLS = ["Workflow", "ScheduleWakeup", "ReportFindings", "Skill", "ListAgents"]
 # Subagents help with work on code; anywhere else they're one more definition to send.
 SUBAGENT_TOOLS = ["Agent", "Task"]
+# Off code, the work is the connections' own tools: a big result is gone through with
+# read_more (fields, where, page), not sliced in a shell that may lack jq or print cp1252.
+OFF_CODE_TOOLS = [*SUBAGENT_TOOLS, *SHELL_TOOLS]
 MAX_EVENT_BYTES = 64 * 1024
 REVOKED_BY = "session-manager"
 VOLUME_SWEEP_SECONDS = 3600
@@ -602,7 +607,7 @@ class Manager:
                 else [
                     *DISALLOWED_TOOLS[autonomy],
                     *UNUSED_TOOLS,
-                    *([] if uses_git else SUBAGENT_TOOLS),
+                    *([] if uses_git else OFF_CODE_TOOLS),
                     *([] if web else web_access.TOOLS),
                     *(setup_check.READ_ONLY_TOOLS if read_only else ()),
                 ]

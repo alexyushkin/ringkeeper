@@ -80,6 +80,7 @@ class Scenario:
     tools: tuple[str, ...] = ()  # each must have been used (part of the tool's name)
     # ...or only called: its call can come back as an error (a file that can't be read)
     tried: tuple[str, ...] = ()
+    skips: tuple[str, ...] = ()  # tools no task may even try (a shell)
     # (a name, its count): the reply must give that very number next to the name
     counts: tuple[tuple[str, int], ...] = ()
     held: int = 0  # how many approvals it must raise, at least
@@ -373,6 +374,19 @@ SCENARIOS: tuple[Scenario, ...] = (
         never_held=True, cost_ceiling=1.0,
         notes="51 workflows over two pages, with duplicate names in both groups. A real run "
         "counted a plain list by hand and got both wrong.",
+    ),
+    Scenario(
+        "every-record", "Every record of a long table read and sorted, with no shell", "limits",
+        request=(
+            "In Demo shop's Airtable, go through every ticket in the Tickets table and sort them "
+            "into urgent and routine by what each one's notes say. How many are urgent and how "
+            "many are routine?"
+        ),
+        project=SHOP, tools=("airtable",), skips=("Bash", "PowerShell"),
+        counts=(("urgent", 61), ("routine", 89)), never_held=True, cost_ceiling=1.5, minutes=10,
+        notes="150 records with long notes and a few names that aren't ASCII; the priority is "
+        "past where a list cuts its text. On Windows a real run sliced a saved result in a "
+        "shell: jq wasn't there, and Python's output was cp1252.",
     ),
     Scenario(
         "unreadable-attachment", "An attachment that can't be read ends as not done", "limits",

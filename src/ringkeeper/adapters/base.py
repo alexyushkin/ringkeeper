@@ -159,6 +159,10 @@ class ToolSpec:
 
     # Its answer can hold a picture (IMAGE): sent as an image, never as text.
     shows: bool = False
+    # A list tool: the key of its answer's rows. It takes `fields` (only those in each row), a
+    # long text value in a row is cut, and a long list is saved and read in pages
+    # (services.rows, services.continuations).
+    rows: str | None = None
 
 
 def _spec(
