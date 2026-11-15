@@ -112,11 +112,16 @@ def test_one_click_installs_it_linked_to_no_project(
                 "pinned": f"{plan.identifier}@{plan.version}"}  # fmt: skip
 
     monkeypatch.setattr(local_servers, "install", installed)
-    monkeypatch.setattr(local_servers, "finder", lambda _name: "node")
+
+    def node(_name: str) -> str:
+        return "node"
+
+    monkeypatch.setattr(local_servers, "finder", node)
     info = owner.get("/connections/browser").json()
     assert (info["added"], info["needs"]) == (False, None)
     started = owner.post("/connections/browser", json={})
     assert started.status_code == 202, started.text
+    state = "installing"
     for _ in range(100):
         state = owner.get("/connections/local/browser").json()["state"]
         if state != "installing":

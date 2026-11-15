@@ -41,7 +41,6 @@ publishes it as the release notes and the app shows it with the update.
   "App not active", "URL blocked" and "Invalid Scopes" with the fix for each, and each other
   service has its own list. If the sign-in hasn't finished after 2 minutes, it stops waiting,
   says so, opens that list and offers **Try again**.
-
 - **A browser is one click.** **Add your own tool** starts with **Browser (Playwright)**:
   one click installs and connects it, with a browser profile of its own, never your
   everyday one. It's for clicking, forms and pages that need a login, which web search and
