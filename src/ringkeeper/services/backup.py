@@ -18,6 +18,7 @@ Automatic backups: weekly, into a folder you choose, keeping the last N, with a
 password kept in the vault.
 """
 
+import contextlib
 import io
 import json
 import os
@@ -277,12 +278,23 @@ def _save_auto(session: Session, value: dict[str, Any]) -> None:
 
 
 def run_auto(
-    session: Session, settings: Settings, vault: Vault, now: datetime | None = None
+    session: Session,
+    settings: Settings,
+    vault: Vault,
+    now: datetime | None = None,
+    *,
+    force: bool = False,
 ) -> Path | None:
-    """The weekly backup, when it's due. Returns the file written (None: not due or off)."""
+    """The weekly backup, when it's due (force: Back up now, when they're on). Returns the file
+    written (None: not due, off, or it didn't work). It's uploaded to Google Drive in the
+    background when an account is chosen, and the app is told either way (services.jobs)."""
+    from ringkeeper.services import backup_drive, jobs  # noqa: PLC0415 (optional, and a cycle)
+
     now = now or datetime.now(UTC)
     current = auto(session)
-    if not current.enabled or (current.last and datetime.fromisoformat(current.last) + EVERY > now):
+    if not current.enabled:
+        return None
+    if not force and current.last and datetime.fromisoformat(current.last) + EVERY > now:
         return None
     record: dict[str, Any] = {"enabled": True, "folder": current.folder, "keep": current.keep,
                               "last": now.isoformat(), "last_error": None}  # fmt: skip
@@ -300,8 +312,9 @@ def run_auto(
         record["last_error"] = f"The weekly backup didn't work: {error}"
         written = None
     _save_auto(session, record)
+    jobs.changed(session, jobs.BACKUP, jobs.DONE if written is not None else jobs.FAILED)
     if written is not None:  # and to Google Drive, when an account is chosen
-        from ringkeeper.services import backup_drive  # noqa: PLC0415 (it's optional)
-
-        backup_drive.upload(session, vault, written, current.keep)
+        # One uploading now: this one goes with the next.
+        with contextlib.suppress(RuleViolationError):
+            backup_drive.start(session, written, current.keep)
     return written

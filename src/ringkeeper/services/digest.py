@@ -22,7 +22,7 @@ from ringkeeper.models import (
     TaskStatus,
     Thread,
 )
-from ringkeeper.services import announce, clients, inbox, setup_check, tasks, titles
+from ringkeeper.services import announce, clients, inbox, jobs, setup_check, tasks, titles
 from ringkeeper.wording import plain
 
 LAST_KEY = "digest.last"
@@ -133,4 +133,5 @@ def send_if_due(session: Session, settings: Settings, now: datetime | None = Non
         row.value = {"day": day}
     session.flush()
     announce.send(session, settings, text(build(session, now)))
+    jobs.changed(session, jobs.DIGEST)
     return True

@@ -6,7 +6,10 @@
   shows "I heard: ..." and sends the text only after you confirm it.
 - GET /events: server-sent events for task status, transcript lines,
   approvals and routed messages (ids only; the app fetches the rest). They
-  come from database triggers (storage.events), so every writer is covered. The
+  come from database triggers (storage.events), so every writer is covered;
+  background work that isn't one of those rows (a backup, an upload, the
+  connection check, a download) says it finished with a "job" event
+  (services.jobs). The
   session is checked again at every heartbeat (a stream ends soon after
   sign-out). Only a few streams stay open at once: a new one ends the oldest
   (most likely a window that went away without saying so), never refused, since
@@ -35,7 +38,7 @@ from ringkeeper.voice import VoiceError, megabytes, vocabulary
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 
-EVENTS_CHANNEL = "ringkeeper_events"
+EVENTS_CHANNEL = storage_events.LIVE
 HEARTBEAT_SECONDS = 15.0
 MAX_STREAMS = 10  # one per open tab; each holds a database connection and a thread
 _streams: list[threading.Event] = []  # open streams, oldest first: each one's "stop"

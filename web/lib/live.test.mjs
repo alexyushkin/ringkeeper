@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { RESYNC, RETRY_MS, createLive } from "./client/live.ts";
+import { JOB, LIVE_TYPES, RESYNC, RETRY_MS, createLive, refetches } from "./client/live.ts";
 
 function fakeBrowser() {
   const sources = [];
@@ -135,4 +135,36 @@ test("a page back from the back-forward cache starts a new stream and fetches ag
   assert.deepEqual(seen, [RESYNC]);
   live.resync(); // the window shown again
   assert.deepEqual(seen, [RESYNC, RESYNC]);
+});
+
+test("a job event reaches every screen's data, which fetches again on it or a resync", () => {
+  assert.ok(LIVE_TYPES.includes(JOB));
+  assert.equal(refetches({ type: JOB, kind: "drive_upload", status: "done" }), true);
+  assert.equal(refetches({ type: RESYNC }), true);
+  assert.equal(refetches({ type: "task", task_id: "t1" }), false); // the task screens listen for those
+  assert.equal(refetches({ type: "approval" }), false);
+});
+
+test("a watcher hears events while a subscriber holds the stream open, and opens none itself", () => {
+  const browser = fakeBrowser();
+  const live = createLive(browser);
+  const heard = [];
+  const unwatch = live.watch((event) => heard.push(`${event.type}:${event.kind ?? ""}`));
+  assert.equal(browser.sources.length, 0); // setup and sign-in pages open no stream
+  live.resync(); // nobody holds it: nothing to tell
+  assert.deepEqual(heard, []);
+  const { stop } = listening(live);
+  const [source] = browser.sources;
+  source.fire("open");
+  source.fire(JOB, { data: JSON.stringify({ type: JOB, kind: "backup", status: "done" }) });
+  live.resync();
+  assert.deepEqual(heard, ["job:backup", "resync:"]);
+  stop(); // the last subscriber leaves: the stream closes, watchers or not
+  assert.equal(source.closed, true);
+  unwatch();
+  const again = listening(live);
+  browser.sources[1].fire("open");
+  browser.sources[1].fire(JOB, { data: JSON.stringify({ type: JOB, kind: "health" }) });
+  assert.deepEqual(heard, ["job:backup", "resync:"]); // unwatched: no more
+  again.stop();
 });

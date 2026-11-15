@@ -19,6 +19,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 Notification = tuple[str, str]  # channel, payload
+# The web app's live updates (api.live_routes): triggers on tasks, decisions and messages,
+# and services.jobs for background work that isn't one of those rows.
+LIVE = "ringkeeper_events"
 
 
 class Subscription(Protocol):

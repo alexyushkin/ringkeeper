@@ -847,6 +847,10 @@ class InApp:
                     if isinstance(error, RingkeeperError)
                     else (f"Something went wrong ({type(error).__name__}). It's in the log.")
                 )
+        finally:
+            from ringkeeper.services import jobs  # noqa: PLC0415 (a cycle)
+
+            jobs.announce(jobs.SETUP_CHECK, jobs.FAILED if self._failed else jobs.DONE)
 
     def stop(self) -> None:
         """Finish the requests under way, and send no more."""

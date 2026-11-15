@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createLive, type LiveEvent, type Live } from "./live";
+import { createLive, refetches, type LiveEvent, type Live } from "./live";
 
 /** Calls go to the app's own server (/bff), never straight to Ringkeeper's API. */
 
@@ -151,11 +151,13 @@ export function useApi<T>(path: string | null, query?: Options["query"]): Loaded
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+  const quiet = useRef(false); // fetched again for a job: what's shown stays until it's back
   const key = JSON.stringify(query ?? {});
   useEffect(() => {
     if (path === null) return;
     let cancelled = false;
-    setLoading(true);
+    if (!quiet.current) setLoading(true);
+    quiet.current = false;
     api<T>(path, { query: JSON.parse(key) as Options["query"] })
       .then((result) => {
         if (!cancelled) {
@@ -174,6 +176,15 @@ export function useApi<T>(path: string | null, query?: Options["query"]): Loaded
     };
   }, [path, key, tick]);
   const reload = useCallback(() => setTick((n) => n + 1), []);
+  // Background work finished (or events may have been missed): fetch again (live.ts).
+  useEffect(() => {
+    if (path === null || typeof window === "undefined") return;
+    return theLive().watch((event) => {
+      if (!refetches(event)) return;
+      quiet.current = true;
+      setTick((n) => n + 1);
+    });
+  }, [path]);
   return { data, error, loading, reload };
 }
 

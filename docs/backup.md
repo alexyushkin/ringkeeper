@@ -70,8 +70,16 @@ you keep here). The copy on this computer is still saved.
   never a client's. It needs "Drive: files Ringkeeper creates", which lets Ringkeeper see
   only the files it makes. If none of yours has it, **Add Drive access** signs that account
   in again with it.
-- **What you see:** when the last upload finished, with a link to the file. If an upload
-  doesn't work, Home and Settings say so, and the copy on this computer is kept.
+- **Turning it on:** if there's a backup on this computer already, the newest one is
+  uploaded right away. If there's none, it says "The next backup will be uploaded", with
+  **Back up now** beside it (with weekly backups on, it makes one with their password;
+  otherwise it takes you to **Make a backup**).
+- **What you see:** "Uploading..." while an upload runs, then when it finished, which file,
+  and **Open in Drive**. The section updates by itself when an upload or a weekly backup
+  finishes, without leaving the page. If an upload doesn't work, Home and Settings say so,
+  and the copy on this computer is kept.
+- **Upload now:** sends the newest backup on this computer again, for example after an
+  upload didn't work.
 - **Restoring:** on the new computer, download the file from Drive in your browser, then
   pick it under **Restore a backup** with its password.
 

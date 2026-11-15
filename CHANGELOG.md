@@ -22,6 +22,17 @@ publishes it as the release notes and the app shows it with the update.
   sign-in, no project is ticked and **Choose projects** is the main button: "This
   connection has an account behind it. Pick the projects that should be able to use it."
   A browser or files on this computer still start in every project.
+- **Back up to Google Drive shows what it's doing.** After a backup at 10:29:57 was uploaded
+  at 10:30:00, the section still said "Nothing uploaded yet" a minute later. Now it shows
+  "Uploading..." while an upload runs and updates by itself when it ends: when, which file,
+  and **Open in Drive**. Turning it on uploads the newest backup on this computer right
+  away; with none yet, it says the next one will be uploaded, with **Back up now** beside
+  it. **Upload now** sends the newest one again.
+- **No page goes stale after background work.** A finished backup, upload, connection
+  check, digest, download, Check my setup or self-test now tells every open page, and each
+  fetches what it shows again, the same way for all of them (it was a conversation, then the
+  backup section, then Google Drive). The pages that show tasks, approvals and messages
+  already did; each now has a test that a change made elsewhere shows up without a reload.
 
 ## 0.1.0-beta.47 (2026-11-15)
 

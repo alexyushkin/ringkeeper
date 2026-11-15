@@ -65,6 +65,9 @@ class SelfTest:
             day = datetime.now().astimezone().date().isoformat()
             (folder.parent / f"{day}.md").write_text(text, encoding="utf-8")
         launcher.remove(folder)
+        from ringkeeper.services import jobs  # noqa: PLC0415 (it needs the database)
+
+        jobs.announce(jobs.SELF_TEST, jobs.FAILED if text is None else jobs.DONE)
 
     def stop(self, settings: Settings) -> None:
         """Finish the scenario under way, and skip the rest."""

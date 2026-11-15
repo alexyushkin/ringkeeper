@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Button, Card, Field, Toggle, useNamedHere } from "@/components/ui";
+import { Alert, Button, Card, Field, Spinner, Toggle, useNamedHere } from "@/components/ui";
 import Link from "@/components/link";
 import { GoogleConnect } from "@/components/google";
 import { api, useApi } from "@/lib/client/api";
@@ -24,6 +24,14 @@ interface Drive {
   last: string | null;
   link: string | null;
   error: string | null;
+  uploading: string | null; // when the upload running now started
+  file: string | null; // the last file uploaded
+}
+
+/** The newest backup on this computer: what Upload now sends. */
+interface Newest {
+  name: string;
+  at: string;
 }
 
 /** One of the owner's own Google accounts (shared, or their own client's): never a client's. */
@@ -42,6 +50,7 @@ interface Info {
   synced: Place[];
   drive: Drive;
   google: GoogleAccount[];
+  newest: Newest | null;
 }
 
 /** What a backup folder means for a lost computer (GET desktop/backup/folder). */
@@ -72,6 +81,11 @@ interface Preview {
   routines: number;
   tasks: number;
   restarting?: boolean;
+}
+
+/** "...: ConnectError" ends a sentence before the next one starts. */
+function sentence(text: string): string {
+  return /[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
 }
 
 function message(err: unknown): string {
@@ -225,8 +239,7 @@ function Export({ defaultFolder, synced, drive, onSaved }: { defaultFolder: stri
     try {
       const done = await api<{ path: string; drive: Drive | null }>("desktop/backup/export", { json: { password, folder: folder || null, drive: toDrive && Boolean(drive.connection) } });
       setSaved(done.path);
-      if (done.drive?.error) setError(`${done.drive.error} The copy on this computer is saved.`);
-      onSaved();
+      onSaved(); // Back up to Google Drive shows "Uploading..." and then how it went
       setPassword("");
       setAgain("");
     } catch (err) {
@@ -415,11 +428,11 @@ function ToDrive({ info, onSaved }: { info: Info; onSaved: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function choose(connection: string | null) {
+  async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
     try {
-      await api("desktop/backup/drive", { method: "PUT", json: { connection } });
+      await action();
       onSaved();
     } catch (err) {
       setError(message(err));
@@ -427,6 +440,17 @@ function ToDrive({ info, onSaved }: { info: Info; onSaved: () => void }) {
       setBusy(false);
     }
   }
+  const choose = (connection: string | null) => run(() => api("desktop/backup/drive", { method: "PUT", json: { connection } }));
+  const uploadNow = () => run(() => api("desktop/backup/drive/upload", { method: "POST" }));
+  // With weekly backups on, their password and folder; otherwise Make a backup, above.
+  const backUpNow = () => {
+    if (info.auto.enabled) return run(() => api("desktop/backup/now", { method: "POST" }));
+    const card = document.getElementById("section-backup-make");
+    card?.scrollIntoView({ behavior: "smooth", block: "start" });
+    card?.querySelector<HTMLInputElement>('input[type="password"]')?.focus();
+    return Promise.resolve();
+  };
+  const account = info.google.find((a) => a.name === drive.connection)?.title ?? drive.connection;
 
   return (
     <Card anchor="backup-drive" className="space-y-3">
@@ -435,28 +459,53 @@ function ToDrive({ info, onSaved }: { info: Info; onSaved: () => void }) {
         Each backup (the one you make and the weekly ones) is also uploaded, locked with its password, into a &quot;Ringkeeper backups&quot; folder Ringkeeper creates in your Drive. The last {info.auto.keep} are kept there, as here, and the copy on this computer is still saved. Only your own Google account (yours, not a client&apos;s) with &quot;Drive: files Ringkeeper creates&quot; can hold them.
       </p>
       {drive.connection ? (
-        <div className="space-y-2 text-sm">
+        <div className="space-y-2 text-sm" data-drive>
           <p>
-            Uploading to <b>{info.google.find((a) => a.name === drive.connection)?.title ?? drive.connection}</b>.
-            {drive.last ? (
-              <>
-                {" "}Last upload {new Date(drive.last).toLocaleString()}
-                {drive.link ? (
-                  <>
-                    {" "}·{" "}
-                    <a href={drive.link} target="_blank" rel="noreferrer" className="text-accent">
-                      the file in Drive
-                    </a>
-                  </>
-                ) : null}
-                .
-              </>
-            ) : " Nothing uploaded yet."}
+            Backups go to <b>{account}</b>.
           </p>
-          {drive.error ? <Alert>{drive.error} The copy on this computer is saved.</Alert> : null}
-          <Button kind="ghost" busy={busy} onClick={() => void choose(null)}>
-            Stop uploading
-          </Button>
+          {drive.uploading ? (
+            <p className="flex items-center gap-2" role="status">
+              <Spinner /> Uploading{info.newest ? ` ${info.newest.name}` : ""}...
+            </p>
+          ) : drive.last ? (
+            <p role="status">
+              Last upload {new Date(drive.last).toLocaleString()}
+              {drive.file ? <span className="text-muted"> ({drive.file})</span> : null}
+              {drive.link ? (
+                <>
+                  {" "}·{" "}
+                  <a href={drive.link} target="_blank" rel="noreferrer" className="text-accent">
+                    Open in Drive
+                  </a>
+                </>
+              ) : null}
+            </p>
+          ) : info.newest ? (
+            <p role="status">Nothing uploaded yet.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3" role="status">
+              <span>The next backup will be uploaded.</span>
+              <Button busy={busy} onClick={() => void backUpNow()}>
+                Back up now
+              </Button>
+            </div>
+          )}
+          {drive.error && !drive.uploading ? <Alert>{sentence(drive.error)} The copy on this computer is saved.</Alert> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {info.newest ? (
+              <Button busy={busy} disabled={Boolean(drive.uploading)} onClick={() => void uploadNow()}>
+                Upload now
+              </Button>
+            ) : null}
+            <Button kind="ghost" busy={busy} onClick={() => void choose(null)}>
+              Stop uploading
+            </Button>
+          </div>
+          {info.newest ? (
+            <p className="text-xs text-muted">
+              Upload now sends the newest backup on this computer: {info.newest.name}, made {new Date(info.newest.at).toLocaleString()}.
+            </p>
+          ) : null}
         </div>
       ) : ready.length ? (
         <div className="flex flex-wrap items-center gap-2">

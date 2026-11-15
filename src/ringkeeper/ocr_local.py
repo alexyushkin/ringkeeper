@@ -187,6 +187,9 @@ class LocalOcr:
             self.progress.error = (
                 "The download didn't finish. Check the internet connection and try again."
             )
+        from ringkeeper.services import jobs  # noqa: PLC0415 (it needs the database)
+
+        jobs.announce(jobs.OCR, jobs.DONE if self.progress.state == "ready" else jobs.FAILED)
 
     def install(self) -> None:
         if self.engine is None:

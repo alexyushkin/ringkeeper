@@ -230,6 +230,9 @@ class LocalModel:
             self.progress.error = (
                 "The download didn't finish. Check the internet connection and try again."
             )
+        from ringkeeper.services import jobs  # noqa: PLC0415 (it needs the database)
+
+        jobs.announce(jobs.VOICE, jobs.DONE if self.progress.state == "ready" else jobs.FAILED)
 
     def _download_model(self, files: list[tuple[str, int]]) -> None:
         choice = CHOICES[self.choice]
