@@ -147,7 +147,9 @@ def test_turning_drive_on_uploads_the_newest_backup_and_the_window_hears_it(
             with window(desktop).stream("GET", "/bff/events", timeout=30) as stream:
                 listening.set()
                 for line in stream.iter_lines():
-                    event = json.loads(line[6:]) if line.startswith("data: ") else {}
+                    event: dict[str, Any] = (
+                        json.loads(line[6:]) if line.startswith("data: ") else {}
+                    )
                     if event.get("type") == "job":
                         heard.append(event)
                     if event.get("kind") == "backup_upload" and event.get("status") != "started":

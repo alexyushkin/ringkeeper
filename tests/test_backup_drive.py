@@ -11,7 +11,6 @@ import httpx2
 import pytest
 
 from ringkeeper.adapters import google
-from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import InstanceType, Setting
@@ -19,6 +18,7 @@ from ringkeeper.services import backup, backup_drive, clients, jobs
 from ringkeeper.storage import events
 from ringkeeper.vault import get_vault
 from tests.helpers import make_instance
+from tests.test_backup import desktop_db
 
 SECRET = json.dumps(
     {
@@ -318,13 +318,14 @@ def test_an_upload_cut_off_isnt_shown_as_going_on(database_url: str) -> None:
 
 def test_a_weekly_backup_says_it_finished(folder: Path, tmp_path: Path, database_url: str) -> None:
     weekly = tmp_path / "weekly"
+    desktop, _ = desktop_db(tmp_path)  # a backup is the desktop app's database
     with session_scope() as session:
         backup.set_auto(session, get_vault(), enabled=True, folder=str(weekly), keep=4,
                         password="a long password")  # fmt: skip
     subscription = events.subscribe(database_url, [jobs.CHANNEL])
     try:
         with session_scope() as session:
-            written = backup.run_auto(session, get_settings(), get_vault(), force=True)
+            written = backup.run_auto(session, desktop, get_vault(), force=True)
         said = heard(subscription)
     finally:
         subscription.close()
