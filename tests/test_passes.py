@@ -355,7 +355,9 @@ def test_the_app_makes_shows_and_revokes_a_pass_without_showing_its_token(
     revoked = owner.post("/passes/acme-code/revoke")
     assert revoked.status_code == 200, revoked.text
     assert revoked.json()["revoked_at"] is not None
-    assert owner.delete("/passes/acme-code").status_code == 204
+    gone = owner.delete("/passes/acme-code")
+    assert gone.status_code == 200, gone.text
+    assert gone.json() == {"removed_from": [], "left_in": []}  # a server: no AI apps here
     assert owner.get("/passes").json()["passes"] == []
     assert owner.get("/passes/acme-code/changes").status_code == 404
     audit = test_web_api.audit_text()
@@ -383,6 +385,10 @@ def test_claude_desktop_gets_the_pass_as_an_extension_file(
     from ringkeeper.api import passes_routes  # noqa: PLC0415
 
     monkeypatch.setattr(passes_routes, "downloads", lambda: tmp_path)
+    # The desktop app's pass card looks for Claude Code and Cursor: in a home of its own here.
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, str(tmp_path / "home"))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     with session_scope() as session:
         make_project(session, ACME)
     assert owner.post("/passes", json={"name": "acme-desk", "project": ACME}).status_code == 201
