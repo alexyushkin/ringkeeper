@@ -35,6 +35,7 @@ PAGES = (
     "services/plaid", "services/oracle", "services/cloud", "services/bluesky", "services/meta",
     "services/meta-ads",
     "services/google-ads", "services/notion", "services/leadfeeder", "services/calcom",
+    "services/more-services",
     "services/pagespeed",
 )  # fmt: skip
 QUESTION = re.compile(r"^\*\*(.+?\?)\*\*\s*(.*)$", re.S)

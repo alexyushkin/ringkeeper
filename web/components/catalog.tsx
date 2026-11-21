@@ -169,7 +169,7 @@ function SignInBadge({ signin }: { signin: boolean | null }) {
 }
 
 /** What people look for, in the order the catalog shows it. */
-const CATEGORIES = ["Databases", "Email", "CRM", "Accounting", "Payments", "CMS", "Social", "Ads", "Cloud", "Storage", "AI", "Dev tools", "Other"] as const;
+const CATEGORIES = ["Databases", "Email", "CRM", "Work", "Accounting", "Payments", "CMS", "Social", "Ads", "Cloud", "Storage", "AI", "Dev tools", "Other"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 /** A built-in service: its own form (a ConnectionForm type, Google, or a token service). */
@@ -236,6 +236,37 @@ const SIGN_IN_WORDS: Record<string, string[]> = {
   airtable: ["automations", "automation", "interfaces", "interface"],
   meta_ads: ["facebook", "instagram", "advertising", "campaigns", "campaign"],
   pipeboard: ["facebook", "instagram", "advertising", "campaigns", "campaign"],
+  make: ["automation", "automations", "scenario", "scenarios", "integromat", "workflow"],
+  zapier: ["automation", "automations", "zap", "zaps", "workflow"],
+  klaviyo: ["email", "marketing", "newsletter", "campaigns", "flows", "sms"],
+  brevo: ["email", "marketing", "newsletter", "campaigns", "sms", "sendinblue"],
+  kit: ["convertkit", "email", "marketing", "newsletter", "broadcasts", "subscribers"],
+  mailerlite: ["email", "marketing", "newsletter", "campaigns", "subscribers"],
+  customerio: ["customer.io", "email", "marketing", "messaging", "campaigns", "segments"],
+  customerio_eu: ["customer.io", "email", "marketing", "messaging", "europe", "eu"],
+  instantly: ["outreach", "cold email", "campaigns", "leads", "sales"],
+  lemlist: ["outreach", "cold email", "campaigns", "leads", "sales"],
+  hunter: ["email finder", "verify", "leads", "outreach", "sales"],
+  intercom: ["support", "helpdesk", "conversations", "chat", "customers"],
+  intercom_eu: ["support", "helpdesk", "conversations", "chat", "europe", "eu"],
+  trello: ["boards", "cards", "tasks", "projects", "kanban"],
+  basecamp: ["projects", "to-dos", "todos", "tasks", "messages"],
+  todoist: ["tasks", "to-dos", "todos", "projects"],
+  canva: ["design", "designs", "graphics", "images"],
+  typeform: ["forms", "surveys", "responses"],
+  jotform: ["forms", "surveys", "submissions"],
+  tally: ["forms", "surveys", "submissions"],
+  fireflies: ["meetings", "transcripts", "notes", "calls"],
+  granola: ["meetings", "transcripts", "notes"],
+  otter: ["meetings", "transcripts", "notes"],
+  calendly: ["calendar", "booking", "bookings", "scheduling", "schedule", "meetings", "appointments"],
+  vapi: ["voice", "phone", "calls", "assistants"],
+  tiktok_ads: ["tiktok", "advertising", "campaigns", "campaign"],
+  ahrefs: ["seo", "backlinks", "keywords", "rankings"],
+  semrush: ["seo", "backlinks", "keywords", "rankings", "traffic"],
+  buffer: ["social", "posts", "scheduling", "instagram", "facebook", "linkedin"],
+  hootsuite: ["social", "posts", "scheduling", "instagram", "facebook", "linkedin"],
+  metricool: ["social", "posts", "scheduling", "analytics", "instagram", "facebook"],
 };
 
 // Services with no logo in lib/client/logos or public/logos: their initials on their color.
@@ -279,6 +310,37 @@ const MARKS: Record<string, [string, string, string]> = {
   servicetitan: ["ST", "#0f5bff", "#fff"],
   tavily: ["T", "#2d6cdf", "#fff"],
   wave: ["W", "#1c5cff", "#fff"],
+  make: ["M", "#6d00cc", "#fff"],
+  zapier: ["Z", "#ff4f00", "#fff"],
+  klaviyo: ["K", "#232426", "#fff"],
+  brevo: ["B", "#0b996e", "#fff"],
+  kit: ["K", "#fb6970", "#fff"],
+  mailerlite: ["ML", "#09c269", "#fff"],
+  customerio: ["C", "#7131ff", "#fff"],
+  customerio_eu: ["C", "#7131ff", "#fff"],
+  instantly: ["I", "#1a73e8", "#fff"],
+  lemlist: ["L", "#316bff", "#fff"],
+  hunter: ["H", "#fa5320", "#fff"],
+  intercom: ["I", "#1f8ded", "#fff"],
+  intercom_eu: ["I", "#1f8ded", "#fff"],
+  trello: ["T", "#0079bf", "#fff"],
+  basecamp: ["B", "#1d2d35", "#ffcc00"],
+  todoist: ["T", "#e44332", "#fff"],
+  canva: ["C", "#00c4cc", "#fff"],
+  typeform: ["T", "#262627", "#fff"],
+  jotform: ["J", "#ff6100", "#fff"],
+  tally: ["T", "#111111", "#fff"],
+  fireflies: ["F", "#6c3bf5", "#fff"],
+  granola: ["G", "#1f3b2d", "#fff"],
+  otter: ["O", "#1e40ff", "#fff"],
+  calendly: ["C", "#006bff", "#fff"],
+  vapi: ["V", "#5dfeca", "#111"],
+  tiktok_ads: ["TT", "#111111", "#fff"],
+  ahrefs: ["A", "#ff8800", "#111"],
+  semrush: ["S", "#ff642d", "#fff"],
+  buffer: ["B", "#231f20", "#fff"],
+  hootsuite: ["H", "#143059", "#fff"],
+  metricool: ["M", "#2d65f2", "#fff"],
 };
 
 /** A service's logo on its color, else its initials. A database connection: Postgres's. */
@@ -408,7 +470,7 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
       label: service.name,
       sub: SIGN_IN_SUB[service.key] ?? (service.needs || (service.url_label ? "Your own address" : service.signin ? "Sign in" : "Paste a token")),
       category: SIGN_IN_CATEGORY[service.key] ?? ((service.category || "Other") as Category),
-      badge: SIGN_IN_BADGE[service.key] ?? "Official",
+      badge: SIGN_IN_BADGE[service.key] ?? (service.beta ? "Beta" : "Official"),
       words: [service.key, ...service.name.toLowerCase().split(/[^a-z0-9]+/), ...(SIGN_IN_WORDS[service.key] ?? [])],
       open: () => setOpened({ service }),
     })),
@@ -435,7 +497,7 @@ export function Catalog({ start, startScope, ...target }: Target & { start?: str
       {searching ? null : (
         <>
           <p className="text-xs text-muted">
-            <b>Built in</b>: Ringkeeper&apos;s own rules, and most changes can be undone. <b>Official</b>: the service&apos;s own server; you sign in on its page, and a project&apos;s link can often be narrowed.
+            <b>Built in</b>: Ringkeeper&apos;s own rules, and most changes can be undone. <b>Official</b>: the service&apos;s own server; you sign in on its page, and a project&apos;s link can often be narrowed. <b>Beta</b>: the same, not yet tried with a real account.
           </p>
           {CATEGORIES.map((category) => {
             const here = tiles.filter((tile) => tile.category === category && tile.id !== "tile:browser"); // the browser has its own card above

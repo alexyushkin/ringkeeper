@@ -3,6 +3,24 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **29 more services you sign in to,** each with the service's own server:
+  - Email marketing: **Klaviyo**, **Brevo**, **Kit (ConvertKit)**, **MailerLite** and
+    **Customer.io**.
+  - Outreach: **Instantly** (a key), **lemlist** and **Hunter**. Support: **Intercom**.
+  - Work, in a new **Work** group: **Trello**, **Basecamp**, **Todoist**, **Canva**,
+    **Typeform**, **Jotform**, **Tally**, **Fireflies**, **Granola** and **Otter**.
+  - Social: **Buffer**, **Hootsuite** and **Metricool**. Ads: **TikTok Ads**.
+  - Also **Make**, **Zapier**, **Calendly**, **Vapi**, **Ahrefs** and **Semrush**.
+  - Intercom and Customer.io have a second tile each for workspaces hosted in Europe.
+
+  Reading runs. Sending, scheduling or launching a campaign, and making or scheduling a social
+  post, need the connection's name typed. Calendly bookings and Vapi calls wait for approval
+  every time, and every other change waits. Each tile says **Beta** until it's been tried with
+  a real account; each one's sign-in was checked to accept Ringkeeper. Details, costs and
+  plans: [Marketing, outreach, work and social](docs/services/more-services.md).
+
 ## 0.1.0-beta.48 (2026-11-15)
 
 - **A project's description doesn't narrow what you asked.** "How many orders are there?" in
