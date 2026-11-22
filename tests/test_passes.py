@@ -29,6 +29,7 @@ from ringkeeper.calls import Caller, ToolCall
 from ringkeeper.channels import links
 from ringkeeper.config import get_settings
 from ringkeeper.db import session_scope
+from ringkeeper.gateway import pass_server
 from ringkeeper.models import (
     AuditEvent,
     AuditOutcome,
@@ -293,10 +294,50 @@ def test_the_bridge_shows_the_project_s_connections_and_checks_nothing_itself(
     names, read, refused = asyncio.run(go())
     assert {"database_query", "database_execute", "memory_recall"} <= names
     assert {"ringkeeper_check_approval", "ringkeeper_ask", "ringkeeper_task_status"} <= names
+    assert "ringkeeper_about" in names
     assert not any(n.startswith("airtable_") for n in names)  # only what the project has
     assert read.structured_content["rows"] == [[1], [2]]
     assert refused.is_error  # the gateway's refusal, passed through
     assert "not available" in text_of(refused)
+
+
+def test_a_pass_says_whose_connections_these_are(clients: tuple[str, Vault]) -> None:
+    url, vault = clients
+    found = call(url, new_pass(vault), "about", {}, "ringkeeper").structured_content
+    assert found["client"] == "acme"
+    assert found["project"] == ACME
+    assert found["project_title"]
+    assert found["rule"] == pass_server.RULE
+
+
+def test_an_app_is_told_to_use_only_the_pass_for_the_client_s_data(
+    clients: tuple[str, Vault],
+) -> None:
+    # A real mix-up: asked about a client's Notion, the AI used its own Notion connector, which
+    # reached the user's workspace instead of the client's.
+    url, vault = clients
+    token = new_pass(vault)
+
+    async def go() -> tuple[str, str]:
+        kinds = await bridge.services(url, token)
+        found = await bridge.about(url, token)
+        async with Client(bridge.build(url, token, kinds, "acme-desktop", found)) as app:
+            bridged = app.instructions or ""
+        async with mcp(url, token, "ringkeeper") as direct:  # an app with no bridge
+            told = direct.instructions or ""
+        return bridged, told
+
+    bridged, told = asyncio.run(go())
+    assert bridged.startswith("acme's connections, for the project ")
+    assert "only these, for acme's data" in bridged
+    assert "Never use another connector" in bridged
+    assert pass_server.RULE in told
+
+
+def test_the_rule_still_goes_with_a_ringkeeper_too_old_to_name_the_client() -> None:
+    told = bridge.instructions({})
+    assert told.startswith("One Ringkeeper project's connections, through Ringkeeper.")
+    assert "only these, for this client's data" in told
 
 
 def test_the_bridge_says_when_ringkeeper_isn_t_running(tmp_path: Path) -> None:
