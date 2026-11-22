@@ -10,6 +10,9 @@ publishes it as the release notes and the app shows it with the update.
   the transcript with each tool used, and the changes line by line are folded under **How it
   ran**, one click away. A task's card in a conversation and in Tasks no longer lists steps
   and cost. While a task runs, the card and the page say how many steps it's taken so far.
+- **Security: Next.js 16.4.6.** The web app's framework moves from 16.4.3 to 16.4.6, which fixes
+  published Next.js advisories: cache leaks between users, an image-optimizer SVG bypass, and
+  response mix-ups in self-hosted apps. Nothing changes in how the app works.
 - **29 more services you sign in to,** each with the service's own server:
   - Email marketing: **Klaviyo**, **Brevo**, **Kit (ConvertKit)**, **MailerLite** and
     **Customer.io**.
