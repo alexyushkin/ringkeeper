@@ -413,6 +413,16 @@ def _restore_pending(data_dir: Path, database_url: str) -> None:
         logger.info("restored a backup: the database it replaced is %s", backup.REPLACED)
 
 
+def _publish_handover_key(settings: Any, data_dir: Path) -> None:
+    """Where Ringkeeper Connect finds the key to send its clients with. Never stops the start."""
+    from ringkeeper.services import connect_handover  # noqa: PLC0415 (after the environment)
+
+    try:
+        connect_handover.publish(settings, data_dir)
+    except Exception as error:  # a missing key only means Connect can't send yet
+        print(f"Couldn't publish the key for Ringkeeper Connect: {error}", file=sys.stderr)
+
+
 def run(  # noqa: PLR0915 (the whole start-up, in order)
     data_dir: Path,
     *,
@@ -435,6 +445,7 @@ def run(  # noqa: PLR0915 (the whole start-up, in order)
         _restore_pending(data_dir, settings.database_url)
         migrate.upgrade(settings.database_url)
         bootstrap.run(settings)  # the keychain's master key, before the gateway needs it
+        _publish_handover_key(settings, data_dir)
         launch = Launch()
         opener.can_sign_in(lambda page: sign_in_address(launch, api_port, page))
         stopping = stop or threading.Event()  # set by the caller or the shell

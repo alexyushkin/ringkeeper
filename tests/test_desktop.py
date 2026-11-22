@@ -813,6 +813,34 @@ def test_another_ai_app_s_server_is_imported_by_its_own_key(
     assert key.encode() not in (desktop["data_dir"] / "ringkeeper.db").read_bytes()
 
 
+def test_what_ringkeeper_connect_sends_is_shown_then_brought_in(desktop: dict[str, Any]) -> None:
+    import base64  # noqa: PLC0415
+
+    from tests.test_connect_handover import payload, seal  # noqa: PLC0415
+
+    # The app publishes its key as it starts; Connect seals with it and leaves the file here.
+    public = (desktop["data_dir"] / "handover" / "ringkeeper.pub").read_text().strip()
+    sent = desktop["data_dir"] / "handover" / "from-connect-20261122T120000.json"
+    sent.write_text(seal(payload(), base64.urlsafe_b64decode(public + "=")), encoding="utf-8")
+    win = window(desktop)
+
+    waiting = win.get("/bff/desktop/from-connect").json()["waiting"]
+    [shown] = waiting
+    assert [c["name"] for c in shown["clients"]] == ["Acme Bakery"]
+    assert "fake-notes-key" not in json.dumps(waiting)
+
+    made = win.post("/bff/desktop/from-connect/bring-in", json={"file": shown["file"]})
+    assert made.status_code == 200, made.text
+    assert sorted(made.json()["connections"]) == ["fetch", "notes", "tickets"]
+    assert not sent.exists()  # its keys are in the vault now
+    assert win.get("/bff/desktop/from-connect").json()["waiting"] == []
+    names = {c["name"] for c in win.get("/bff/connections").json()}
+    assert {"notes", "tickets", "fetch"} <= names
+    assert b"fake-notes-key" not in (desktop["data_dir"] / "ringkeeper.db").read_bytes()
+    gone = win.post("/bff/desktop/from-connect/bring-in", json={"file": shown["file"]})
+    assert gone.status_code == 404
+
+
 def test_claude_desktop_extensions_are_imported_with_what_they_need(
     desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

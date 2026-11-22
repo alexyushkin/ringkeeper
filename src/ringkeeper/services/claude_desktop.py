@@ -323,7 +323,7 @@ def imported(session: Session) -> dict[str, str]:
     return {str(i.config.get("server")): i.name for i in rows if i.config.get("source") in apps}
 
 
-def _free_name(session: Session, server: str) -> str:
+def free_name(session: Session, server: str) -> str:
     base = "".join(c if c.isalnum() else "-" for c in server.lower()).strip("-")[:56] or "mcp"
     base = re.sub("-+", "-", base)
     name, n = base, 2
@@ -367,7 +367,7 @@ def import_server(
             f"client's (these are {', '.join(shown)}'s). Make it a shared tool to "
             "use it for several clients."
         )
-    name = _free_name(session, server.name)
+    name = free_name(session, server.name)
     ref = secrets_in.store_connection(
         session, settings, name, InstanceType.MCP, json.dumps(server.spec)
     )

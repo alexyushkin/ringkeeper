@@ -34,6 +34,11 @@ publishes it as the release notes and the app shows it with the update.
   **Agents**, **Routines** and **Activity** are under **More** in the sidebar. Each Settings
   tab ends with **More settings** for the sections few people need (Slack and Discord, Quick
   request, Self-test and others); search still finds and opens them.
+- **Bring in your clients from Ringkeeper Connect.** Connect's new **Send to Ringkeeper**
+  button hands Ringkeeper every client, its connections and their keys, and the tools for
+  every client. Home shows what came, with **Bring them in**: no file to save and no password,
+  since it's locked so only this Ringkeeper can open it. Sign-ins made in Connect are signed
+  in again here. See [Send to Ringkeeper](docs/from-connect.md).
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it
