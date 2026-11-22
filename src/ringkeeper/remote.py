@@ -225,6 +225,42 @@ GUARDS: dict[str, Guard] = {
             }
         )
     ),
+    # Email marketing and outreach: reading lists and campaigns runs, a draft waits, and
+    # whatever reaches real people (sending, scheduling, launching a campaign) or deletes needs
+    # the name typed. Not the CRM guard, whose "campaign" and "email" would hold every read.
+    "marketing": Guard(
+        frozenset(
+            {
+                "send",
+                "schedule",
+                "publish",
+                "launch",
+                "activate",
+                "start",
+                "resume",
+                "enroll",
+                "enrol",
+                "delete",
+                "remove",
+                "bulk",
+                "import",
+                "unsubscribe",
+                "sms",
+            }
+        ),
+        why="sends to real people, or deletes something",
+    ),
+    # Social posting: making or changing a post can put it live, so it needs the name typed.
+    "social": Guard(
+        frozenset({"publish", "send", "share", "schedule", "boost", "delete", "remove"}),
+        why="posts publicly, or deletes something",
+        final_all=(
+            frozenset({"create", "post"}),
+            frozenset({"add", "post"}),
+            frozenset({"update", "post"}),
+            frozenset({"edit", "post"}),
+        ),
+    ),
     "held": Guard(),  # every change waits for approval; nothing more
     # Credits are real money: nothing here runs by itself, even after an approval.
     "credits": Guard(
@@ -310,6 +346,11 @@ class Remote:
     provider_scopes: tuple[str, ...] = ()
     # Shown above the sign-in: what the app needs, besides the address to paste.
     provider_steps: str = ""
+    # Not yet tried with a real account: the catalog says Beta instead of Official.
+    beta: bool = False
+    # The desktop app's sign-in comes back to localhost, not 127.0.0.1: Calendly takes an
+    # http address only when it's localhost.
+    localhost: bool = False
 
 
 META_ADS_URL = "https://mcp.facebook.com/ads"
@@ -710,6 +751,214 @@ CATALOG: tuple[Remote, ...] = (
     Remote(
         "upwork", "Upwork", "https://mcp.upwork.com/mcp", signin=True, paste=None,
         category="Other", guard="held", note="Proposals and messages wait for your approval.",
+    ),
+    # --- Added 2026-11-21: each server's sign-in was checked to register Ringkeeper, and none
+    # has been tried with a real account yet (beta) ---
+    # Automations
+    Remote(
+        "make", "Make", "https://mcp.make.com", signin=True, paste=None, category="Dev tools",
+        guard="held", beta=True,
+        note="Runs the client's Make scenarios. Running one waits for your approval, and uses "
+        "Make operations.",
+    ),
+    Remote(
+        "zapier", "Zapier", "https://mcp.zapier.com/api/v1/connect", signin=True, paste=None,
+        category="Dev tools", guard="held", beta=True,
+        note="In Zapier, choose which actions it may use. Each action waits for your approval, "
+        "and uses Zapier tasks.",
+    ),
+    # Email marketing
+    Remote(
+        "klaviyo", "Klaviyo", "https://mcp.klaviyo.com/mcp", signin=True, paste=None,
+        category="Email", guard="marketing", beta=True,
+        note="Sign in as an Owner, Admin or Manager of the client's account. Sending or "
+        "scheduling a campaign needs the name typed.",
+    ),
+    Remote(
+        "brevo", "Brevo", "https://mcp.brevo.com/v1/brevo/mcp", signin=True,
+        paste="Brevo MCP key", paste_url="https://app.brevo.com/settings/keys/api",
+        paste_steps="In the client's Brevo account: SMTP & API, then API Keys. Generate a key "
+        "and tick the MCP option: an ordinary API key won't work.",
+        category="Email", guard="marketing", beta=True,
+        note="It can send real email and SMS campaigns: sending or scheduling needs the name "
+        "typed.",
+    ),
+    Remote(
+        "kit", "Kit (ConvertKit)", "https://app.kit.com/mcp", signin=True, paste=None,
+        category="Email", guard="marketing", beta=True,
+        needs="needs a paid Kit plan",
+        note="Needs the Creator or Creator Pro plan. Drafts wait for approval; sending or "
+        "scheduling a broadcast needs the name typed.",
+    ),
+    Remote(
+        "mailerlite", "MailerLite", "https://mcp.mailerlite.com/mcp", signin=True, paste=None,
+        category="Email", guard="marketing", beta=True,
+        note="Sending or scheduling a campaign needs the name typed.",
+    ),
+    Remote(
+        "customerio", "Customer.io", "https://mcp.customer.io/mcp", signin=True, paste=None,
+        category="Email", guard="marketing", beta=True,
+        note="An admin of the client's account turns on MCP first, under Account settings, then "
+        "AI. It starts with drafts only: sending stays off until that admin also allows "
+        "editing live data. For a workspace hosted in Europe, use Customer.io (Europe).",
+    ),
+    Remote(
+        "customerio_eu", "Customer.io (Europe)", "https://mcp-eu.customer.io/mcp", signin=True,
+        paste=None, category="Email", guard="marketing", beta=True,
+        note="For a workspace hosted in Europe. An admin turns on MCP first, under Account "
+        "settings, then AI.",
+    ),
+    # Outreach
+    Remote(
+        "instantly", "Instantly", "https://mcp.instantly.ai/mcp", signin=False,
+        paste="Instantly API key",
+        paste_url="https://app.instantly.ai/app/settings/integrations",
+        paste_steps="In the client's Instantly account: Settings, Integrations, then API Keys. "
+        "Create an API v2 key and tick only what Ringkeeper should be able to do.",
+        category="CRM", guard="marketing", beta=True,
+        note="Instantly only lets its own partners sign in, so it takes a key. Starting a "
+        "campaign sends real cold email and needs the name typed. Checking and enriching "
+        "emails uses Instantly credits.",
+    ),
+    Remote(
+        "lemlist", "lemlist", "https://app.lemlist.com/mcp", signin=True, paste=None,
+        category="CRM", guard="marketing", beta=True,
+        note="Starting a campaign sends real outreach and needs the name typed. Finding and "
+        "checking emails and phone numbers uses lemlist credits. A sign-in ends after about 30 "
+        "days without use.",
+    ),
+    Remote(
+        "hunter", "Hunter", "https://mcp.hunter.io/mcp", signin=True, paste=None,
+        category="CRM", guard="marketing", beta=True,
+        note="Finding and checking emails uses Hunter credits (50 a month on the free plan). "
+        "Starting a sequence sends real email and needs the name typed.",
+    ),
+    Remote(
+        "intercom", "Intercom", "https://mcp.intercom.com/mcp", signin=True, paste=None,
+        category="CRM", guard="crm", beta=True,
+        note="Reads the client's conversations and contacts. For a workspace hosted in Europe "
+        "(app.eu.intercom.com), use Intercom (Europe). Australia isn't supported by Intercom "
+        "yet.",
+    ),
+    Remote(
+        "intercom_eu", "Intercom (Europe)", "https://mcp.eu.intercom.com/mcp", signin=True,
+        paste=None, category="CRM", guard="crm", beta=True,
+        note="For a workspace hosted in Europe (app.eu.intercom.com).",
+    ),
+    # Work: projects, forms, meetings
+    Remote(
+        "trello", "Trello", "https://mcp.trello.com/v1", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Signs in with the client's Atlassian account. Changes to cards wait for approval.",
+    ),
+    Remote(
+        "basecamp", "Basecamp", "https://mcp.basecamp.com/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Sign in as someone in the client's Basecamp, and choose read-only or full access. "
+        "One sign-in is one Basecamp account. Messages and to-dos wait for your approval.",
+    ),
+    Remote(
+        "todoist", "Todoist", "https://ai.todoist.net/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Works on every Todoist plan. For a repeating task, ask to reschedule it: changing "
+        "its date can remove the repeat.",
+    ),
+    Remote(
+        "canva", "Canva", "https://mcp.canva.com/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Finds, creates and edits the client's designs. Changes wait for your approval.",
+    ),
+    Remote(
+        "typeform", "Typeform", "https://api.typeform.com/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Reads responses; building or changing a form waits for your approval.",
+    ),
+    Remote(
+        "jotform", "Jotform", "https://mcp.jotform.com/", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Reads submissions; building or changing a form waits for your approval.",
+    ),
+    Remote(
+        "tally", "Tally", "https://api.tally.so/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Works on every Tally plan, including the free one. Building or changing a form "
+        "waits for your approval.",
+    ),
+    Remote(
+        "fireflies", "Fireflies", "https://api.fireflies.ai/mcp", signin=True,
+        paste="Fireflies API key", paste_url="https://app.fireflies.ai/settings",
+        paste_steps="While signed in to the client's Fireflies account: Settings, then "
+        "Developer Settings, and copy the API key.",
+        category="Work", guard="held", beta=True,
+        note="Searches the client's meeting transcripts, summaries and action items.",
+    ),
+    Remote(
+        "granola", "Granola", "https://mcp.granola.ai/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="On the free plan it sees only the last 30 days of your own notes; transcripts "
+        "need a paid plan. On an Enterprise workspace, an admin turns on MCP access first.",
+    ),
+    Remote(
+        "otter", "Otter", "https://mcp.otter.ai/mcp", signin=True, paste=None,
+        category="Work", guard="held", beta=True,
+        note="Reads only: the meetings the account recorded and ones shared with it.",
+    ),
+    # Scheduling, voice, ads, SEO and social
+    Remote(
+        "calendly", "Calendly", "https://mcp.calendly.com", signin=True, paste=None,
+        category="Other", guard="scheduling", beta=True, localhost=True,
+        note="Reading runs. Bookings, cancels and every other change email real people, so "
+        "each waits for your approval, every time.",
+    ),
+    Remote(
+        "vapi", "Vapi", "https://mcp.vapi.ai/mcp", signin=True, paste=None, category="AI",
+        guard="voice", beta=True,
+        note="You pick the client's Vapi organization when you sign in. It can place real, "
+        "billed phone calls, so calls and every other change wait for your approval, every "
+        "time.",
+    ),
+    Remote(
+        "tiktok_ads", "TikTok Ads", "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer",
+        signin=True, paste=None, category="Ads", guard="ads", beta=True,
+        note="TikTok's own server. It can create campaigns and change budgets, audiences and "
+        "creatives, not only report: changes wait for approval, and budgets and launching need "
+        "the name typed.",
+    ),
+    Remote(
+        "ahrefs", "Ahrefs", "https://api.ahrefs.com/mcp/mcp", signin=True, paste=None,
+        category="Other", guard="held", beta=True, needs="needs an Ahrefs Lite plan or higher",
+        note="Every lookup uses the account's API units. Signing in makes a key limited to "
+        "200,000 units a month; a workspace admin can change that in Ahrefs. Ask for something "
+        "specific.",
+    ),
+    Remote(
+        "semrush", "Semrush", "https://mcp.semrush.com/v2/mcp", signin=True,
+        paste="Semrush API key",
+        paste_url="https://www.semrush.com/accounts/subscription-info/api-units/",
+        paste_steps="While signed in to the client's Semrush account: My Profile, Subscription "
+        "info, then API units.",
+        auth_scheme="Apikey", category="Other", guard="held", beta=True,
+        note="Every lookup uses the account's API units, and what it can see depends on the "
+        "subscription. Ask for something specific.",
+    ),
+    Remote(
+        "buffer", "Buffer", "https://mcp.buffer.com/mcp", signin=True, paste=None,
+        category="Social", guard="social", beta=True,
+        note="Plans and schedules the client's social posts. Making, changing or scheduling a "
+        "post needs the name typed.",
+    ),
+    Remote(
+        "hootsuite", "Hootsuite", "https://mcp.hootsuite.com/perch", signin=True, paste=None,
+        category="Social", guard="social", beta=True,
+        note="The client's social accounts must already be connected in Hootsuite, on a plan "
+        "with publishing. Approval steps set up in Hootsuite still apply, and posting needs the "
+        "name typed here too.",
+    ),
+    Remote(
+        "metricool", "Metricool", "https://ai.metricool.com/mcp", signin=True, paste=None,
+        category="Social", guard="social", beta=True,
+        note="Works on every Metricool plan, including Free. Its sign-in page asks for wider "
+        "access than its tools use. Making or scheduling a post needs the name typed.",
     ),
 )  # fmt: skip
 

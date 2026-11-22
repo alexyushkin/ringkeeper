@@ -110,10 +110,15 @@ class LocalConnectionIn(PlanIn):
     all_projects: bool = False
 
 
-def redirect_uri(request: Request, settings: Settings) -> str:
-    """Where the service sends the browser back: this app's own address."""
+def redirect_uri(request: Request, settings: Settings, *, localhost: bool = False) -> str:
+    """Where the service sends the browser back: this app's own address. `localhost`: as
+    localhost rather than 127.0.0.1, for a service that takes no other http address (the
+    desktop app answers on both)."""
     if settings.mode == "desktop":
-        return str(request.base_url).rstrip("/") + CALLBACK_PATH
+        base = str(request.base_url).rstrip("/")
+        if localhost:
+            base = base.replace("://127.0.0.1:", "://localhost:", 1)
+        return base + CALLBACK_PATH
     if not settings.web_origin:
         raise HTTPException(
             409, detail="Signing in needs RINGKEEPER_WEB_ORIGIN, the web app's own address."
@@ -199,9 +204,10 @@ def start_signin(data: RemoteConnectionIn, request: Request, session: SessionDep
         except developer_apps.SignInError as error:
             raise HTTPException(409, detail=str(error)) from None
         return {"url": url, "state": state}
+    localhost = bool(new.remote) and remote_connections.service(str(new.remote)).localhost
     try:
         url = mcp_oauth.start(
-            new.url or "", redirect_uri(request, settings), new.as_dict(),
+            new.url or "", redirect_uri(request, settings, localhost=localhost), new.as_dict(),
             developer_apps.listed_redirect(settings),
         )  # fmt: skip
     except mcp_oauth.SignInError as error:

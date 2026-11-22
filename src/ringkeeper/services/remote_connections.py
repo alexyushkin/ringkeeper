@@ -256,7 +256,7 @@ def catalog_shelf() -> list[dict[str, Any]]:
             "sql": bool(r.sql_tools), "category": r.category, "url_label": r.url_label,
             "url_hint": r.url_hint, "local": bool(r.local), "needs": r.needs,
             "provider": r.provider, "provider_steps": r.provider_steps,
-            "provider_scopes": list(r.provider_scopes),
+            "provider_scopes": list(r.provider_scopes), "beta": r.beta,
         }
         for r in remote.CATALOG
         if r.shelf

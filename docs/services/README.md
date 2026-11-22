@@ -16,6 +16,7 @@ One page per kind of connection: where to get its key, what it can do, what wait
 - [Clouds: AWS, Azure, Google Cloud and OCI](cloud.md)
 - [ElevenLabs (voice agents, calls and speech)](elevenlabs.md)
 - [Cal.com (bookings and scheduling)](calcom.md)
+- [Marketing, outreach, work and social (Klaviyo, Zapier, Trello, Buffer and 25 more)](more-services.md)
 - [PageSpeed Insights](pagespeed.md)
 - [Developer apps: your own registered apps](developer-apps.md)
 - [Bluesky](bluesky.md)

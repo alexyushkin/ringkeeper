@@ -111,7 +111,7 @@ NEEDS: dict[str, Need] = {
         add=("google_ads",),
     ),
     "ads": Need(
-        "ads", remotes=ADS, vendors=("google_ads",),
+        "ads", remotes=(*ADS, "tiktok_ads"), vendors=("google_ads",),
         words=("meta-ads", "facebook-ads", "google-ads", "adwords", " ads"), add=ADS,
     ),
     "email": Need(
@@ -121,7 +121,8 @@ NEEDS: dict[str, Need] = {
         vendors=("microsoft",), words=("mail", "smtp", "outlook", "imap"), add=("mailbox",),
     ),
     "calendar": Need(
-        "calendar", types=(InstanceType.GOOGLE,), remotes=("calcom",), vendors=("microsoft",),
+        "calendar", types=(InstanceType.GOOGLE,), remotes=("calcom", "calendly"),
+        vendors=("microsoft",),
         words=("calendar", "cal.com", "calendly"), add=("google", "calcom"), does="calendars",
     ),
     "records": Need(
@@ -187,6 +188,8 @@ SERVICE_WORDS = {
     "office 365": "microsoft", "microsoft 365": "microsoft", "facebook ads": "meta_ads",
     "instagram ads": "meta_ads", "meta": "meta_ads", "adwords": "google_ads",
     "cal.com": "calcom", "postgres": "database", "postgresql": "database", "mysql": "database",
+    "customer.io": "customerio", "convertkit": "kit", "tiktok ads": "tiktok_ads",
+    "tiktok": "tiktok_ads",
 }  # fmt: skip
 
 # The kinds the router may name: work in an outside account that no code change can do.

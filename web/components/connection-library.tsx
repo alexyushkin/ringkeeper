@@ -69,6 +69,8 @@ export interface RemoteService {
   redirect_error?: string;
   /** How many apps of that kind you've added. */
   apps?: number;
+  /** Not yet tried with a real account: the catalog says Beta. */
+  beta?: boolean;
 }
 
 /** Which service's mark a connection shows. */
@@ -707,6 +709,7 @@ export function ConnectRemote({ service, client, project, shared = false, onAdde
   }
   return (
     <div className="space-y-3 rounded-xl border border-line p-3">
+      {service.beta ? <p className="text-sm text-muted">Beta: Ringkeeper hasn&apos;t tried {service.name} with a real account yet. Its sign-in has been checked.</p> : null}
       {service.note ? <p className="text-sm text-muted">{service.note}</p> : null}
       <EnvChoice value={env} onChange={setEnv} tool />
       <Field label="Name" value={title} onChange={setTyped} hint="As it shows in Ringkeeper. Change it if you like." />
