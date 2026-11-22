@@ -178,7 +178,7 @@ export function Shell({ children }: { children: ReactNode }) {
           type="button"
           onClick={() => setTuckOpen(!tuckOpen)}
           title={narrow ? (tuckOpen ? "Less" : "More: Agents, Routines, Activity") : undefined}
-          aria-label={narrow ? (tuckOpen ? "Less" : "More") : undefined}
+          aria-label={tuckOpen ? "Fewer pages" : "More pages"}
           aria-expanded={tuckOpen}
           className={`flex items-center gap-3 rounded-xl py-2 text-sm text-muted hover:bg-sunken hover:text-ink ${narrow ? "w-10 justify-center" : "px-3"}`}
         >
