@@ -3,7 +3,7 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
-## Unreleased
+## 0.1.0-beta.49 (2026-11-22)
 
 - **A task's other actions are under More.** **Remember this**, **Run again** and **Save this
   request** were buttons on every task. Now they're one **More** button, on the task's page and
