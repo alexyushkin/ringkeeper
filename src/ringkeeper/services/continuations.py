@@ -34,7 +34,8 @@ MOST_RESULTS = 50  # across every session; the oldest goes first
 TTL_SECONDS = 30 * 60
 READ_ON = (
     "This is part of a longer result, as JSON text. Call read_more with this continuation and "
-    "next_offset for the rest before answering, or say your answer is based on part of it."
+    "offset set to next_offset for the rest before answering, or say your answer is based on "
+    "part of it."
 )
 
 

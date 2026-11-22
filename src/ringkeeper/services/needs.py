@@ -280,6 +280,10 @@ def _serves(instance: Instance, key: str) -> bool:
     """Whether this connection is the service `key` (one a message named)."""
     if need(key) is not None:
         return fits(instance, key)
+    # A built-in connection of that kind is that service: a Supabase connection serves a
+    # request that says "Supabase", like the official Supabase server does.
+    if instance.type.value == key:
+        return True
     service = _service_of(instance)
     if service is not None:
         return service == key

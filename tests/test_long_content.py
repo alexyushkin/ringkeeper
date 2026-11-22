@@ -854,6 +854,8 @@ def test_a_long_result_is_read_back_exactly() -> None:
     assert first["returned_chars"] == PAGE_CHARS
     assert first["total_chars"] > PAGE_CHARS
     assert "read_more" in first["note"]
+    # Named as read_more takes it: a real run on beta.49 passed `next_offset` and was refused.
+    assert "offset set to next_offset" in first["note"]
     text = first["text"]
     offset = first["next_offset"]
     while offset is not None:

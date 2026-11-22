@@ -114,6 +114,9 @@ anything secret, or what the notes below already say: a note that says the same 
 Good notes:
 - "Bayside's workflows in agency-n8n are named 'Bayside #N' and 'Mr. Gutter #N'. Filter by
   name." (Where things live)
+- "In northwind-db, an order's amount is orders.total, and orders.customer_id joins to
+  customers.id." (Where things live: which table holds what, and how they join, so a later run
+  can query without listing or describing the tables)
 - "The Airtable tools here can't list Northwind's automations: they're checked in Airtable
   itself." (Gotcha)
 Bad notes:

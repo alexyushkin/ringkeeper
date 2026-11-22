@@ -315,6 +315,19 @@ def test_a_named_service_only_that_service_does() -> None:
     )
 
 
+@pytest.mark.parametrize("kind", [InstanceType.SUPABASE, InstanceType.NEON, InstanceType.N8N])
+def test_a_built_in_connection_is_the_service_it_is(kind: InstanceType) -> None:
+    """A real run on beta.49: "read ... from the acme-orders-db connection" was routed with
+    service "Supabase", and Demo shop's own Supabase connection didn't count, so the reply
+    said the project had no Supabase connection."""
+    link("hb-db", type=kind, title="Harbor Bakery's own")
+    thread_id = ask(LEADS_REQUEST)
+    route(output(records_task(needs=["records"], service=kind.value)))
+    [task] = all_tasks()
+    assert task.project == "hb-shop"
+    assert "has no" not in messages(thread_id)[-1].body
+
+
 def test_the_reply_says_what_it_looked_for_and_what_the_project_has() -> None:
     link_the_shops_connections()
     thread_id = ask("Charge the deposit for the wedding cake order")
