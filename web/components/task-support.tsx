@@ -27,11 +27,11 @@ export function TaskSupport({ id }: { id: string }) {
     }
   }
   return (
-    <div className="mt-6 space-y-1">
+    <div className="space-y-1">
       <Button kind="ghost" busy={busy} onClick={() => void copy()}>
         Copy details for support
       </Button>
-      <p className="text-xs text-muted">How it ran: its sessions, why each started and how each ended. No request, result or client data.</p>
+      <p className="text-xs text-muted">It copies the task's sessions, why each started and how each ended. No request, result or client data.</p>
       {said ? <Alert tone="good">{said}</Alert> : null}
       {error ? <Alert>{error}</Alert> : null}
     </div>

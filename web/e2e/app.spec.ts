@@ -153,6 +153,12 @@ with session_scope() as session:
     await page.goto("/tasks");
     await page.getByText("Added the line to NOTES.md.").click();
     await expect(page).toHaveURL(new RegExp(`/tasks/${taskId}$`));
+    // The result shows; how it ran is folded until it's asked for.
+    await expect(page.getByRole("main").getByText("Added the line to NOTES.md.")).toBeVisible();
+    await expect(page.getByText("I'll add the line now.")).toHaveCount(0);
+    await expect(page.getByText("Cost (estimate)")).toHaveCount(0);
+    await page.getByRole("button", { name: "How it ran: steps, cost and transcript" }).click();
+    await expect(page.getByText("Cost (estimate)")).toBeVisible();
     await expect(page.getByText("I'll add the line now.")).toBeVisible();
     await expect(page.getByText("Used Edit")).toBeVisible();
     await page.getByRole("button", { name: "Show arguments" }).click();

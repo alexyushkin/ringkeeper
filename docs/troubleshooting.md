@@ -93,7 +93,7 @@ removed Ringkeeper. Open it under Connections and sign in again.
 
 ## How a task ran
 
-**Copy details for support**, at the bottom of a task's page, copies how it ran: each of its
+**Copy details for support**, under **How it ran** on a task's page, copies how it ran: each of its
 sessions, why each started (your request, your follow-up or answer, or Ringkeeper going on by
 itself after a held change, a restart or Claude failing for a moment), how each ended, its held
 calls and the app's version. It leaves out the request, the result, the project and any
