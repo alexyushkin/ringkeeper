@@ -435,6 +435,10 @@ def run(  # noqa: PLR0915 (the whole start-up, in order)
         api_sock, gateway_sock = _listen(), _listen()
         api_port, gateway_port = api_sock.getsockname()[1], gateway_sock.getsockname()[1]
         prepare_environment(data_dir, f"http://127.0.0.1:{gateway_port}")
+        # Node.js and uv from the install folder, first on PATH, for tools run with npx or uvx.
+        from ringkeeper import bundled_tools  # noqa: PLC0415
+
+        bundled_tools.add_to_path()
 
         from ringkeeper import bootstrap, migrate  # noqa: PLC0415 (after the environment is set)
         from ringkeeper.api.app import create_app  # noqa: PLC0415

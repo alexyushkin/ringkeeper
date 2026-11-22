@@ -73,7 +73,10 @@ one-click sign-in works (Ringkeeper asks the server, and remembers for a week).
   commands that install and run it; installing needs exactly what was shown.
   npm install scripts are off. Nothing updates by itself: when the catalog has
   a newer version, the connection offers it, with the same confirmation. They
-  need Node.js, uv or Docker on the computer, and say so if it's missing.
+  need Node.js, uv or Docker. The desktop app brings Node.js (with npm and npx)
+  and uv in its install folder (`tools/`, put first on its PATH by
+  `ringkeeper.bundled_tools`), so only Docker can be missing; it says so if it is.
+  A server install uses what's on its machine.
 - **Add by address:** any remote MCP server that isn't in the registry.
 - **Install extension:** a Claude Desktop extension file (`.mcpb`, or the older
   `.dxt`). One confirmation screen shows what its manifest says: the name and

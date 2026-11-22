@@ -10,8 +10,9 @@ Sign in with the cloud's command line tool (`aws sso login`, `az login`, `gcloud
 or your OCI config). **Connectors** then lists the login under **Signed in on this
 computer**. Connect it, and it's your own tool.
 
-The first run downloads the server, so it needs `uv` for AWS and OCI, and Node.js for Azure
-and Google Cloud. The form says if one is missing.
+The first run downloads the server, with `uv` for AWS and OCI and Node.js for Azure and
+Google Cloud. The desktop app has both built in; a server install needs them on its machine,
+and the form says if one is missing.
 
 ## Keeping clients apart
 
