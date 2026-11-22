@@ -102,16 +102,44 @@ async def services(gateway: str, token: str) -> list[str]:
     return sorted(kinds) + list(ALWAYS)
 
 
-def build(gateway: str, token: str, kinds: list[str], name: str) -> FastMCP:
+async def about(gateway: str, token: str) -> dict[str, Any]:
+    """Whose connections these are (client, project), or nothing from a Ringkeeper too old to
+    say: the app is then told the rule without the client's name."""
+    try:
+        async with Client(_transport(gateway, token, "ringkeeper")) as client:
+            found = await client.call_tool("about", {})
+    except Exception:  # an older Ringkeeper has no about
+        return {}
+    return dict(found.structured_content or {})
+
+
+def instructions(found: dict[str, Any]) -> str:
+    """What the AI app is told when it connects: whose connections these are, to use them and
+    nothing else for that client's data, and how holds and requests work."""
+    client, title = found.get("client"), found.get("project_title")
+    whose = (
+        f"{client}'s connections, for the project {title}"
+        if client and title
+        else ("One Ringkeeper project's connections")
+    )
+    theirs = f"{client}'s" if client else "this client's"
+    return (
+        f"{whose}, through Ringkeeper. Use these tools, and only these, for {theirs} data. "
+        "Never use another connector, integration or built-in tool for it, even one for the "
+        "same service (an Airtable, Notion, Google or database connector of your own, say): "
+        f"those reach other accounts, not {theirs}, and would read or change the wrong one. "
+        "Every call is checked by Ringkeeper. Changes to production wait for the user's "
+        "approval in Ringkeeper; ringkeeper_check_approval says what became of one. "
+        "ringkeeper_ask hands Ringkeeper a whole request to do as a task in this project; "
+        "ringkeeper_task_status follows it."
+    )
+
+
+def build(
+    gateway: str, token: str, kinds: list[str], name: str, found: dict[str, Any] | None = None
+) -> FastMCP:
     server: FastMCP = FastMCP(
-        name=f"ringkeeper-{name}",
-        version=__version__,
-        instructions=(
-            "One Ringkeeper project's connections. Every call is checked by Ringkeeper. "
-            "Changes to production wait for the user's approval in Ringkeeper; "
-            "ringkeeper_check_approval says what became of one. ringkeeper_ask hands Ringkeeper "
-            "a whole request to do as a task in this project; ringkeeper_task_status follows it."
-        ),
+        name=f"ringkeeper-{name}", version=__version__, instructions=instructions(found or {})
     )
     for kind in kinds:
         server.mount(create_proxy(_transport(gateway, token, kind)), namespace=kind)
@@ -134,8 +162,9 @@ def run(name: str, data_dir: Path, gateway: str | None = None) -> None:
             f"There's no pass named {name} in Ringkeeper. Check its name in Settings > Passes."
         ) from None
     kinds = asyncio.run(services(address, token))
+    found = asyncio.run(about(address, token))
     if gateway is None:  # the desktop app's: follow it
         threading.Thread(
             target=watch, args=(data_dir, address), daemon=True, name="rk-watch"
         ).start()
-    build(address, token, kinds, name).run(show_banner=False)
+    build(address, token, kinds, name, found).run(show_banner=False)

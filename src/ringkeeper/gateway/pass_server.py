@@ -23,9 +23,17 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway.arguments import CheckedArguments
 from ringkeeper.models import DecisionStatus
 from ringkeeper.scrub import scrub
-from ringkeeper.services import decisions, holds, pass_tasks, passes
+from ringkeeper.services import decisions, holds, pass_tasks, passes, projects, titles
 
 RESULT_CHARS = 4000
+# An AI app also has connectors of its own, often to the same services. Those reach the user's
+# own accounts, not the client's: used for a client's data they read or change the wrong one.
+RULE = (
+    "Use these tools, and only these, for this client's data. Never use another connector, "
+    "integration or built-in tool for it, even one for the same service (an Airtable, Notion, "
+    "Google or database connector of your own, say): those reach other accounts, not this "
+    "client's, and would read or change the wrong one."
+)
 NOT_YOURS = "There's no held call with that id for this pass."
 SAYS = {
     DecisionStatus.PENDING: "It's still waiting for the user's approval in Ringkeeper.",
@@ -63,6 +71,20 @@ def approval(caller: Caller, decision_id: str) -> dict[str, Any]:
         return found
 
 
+def whose(caller: Caller) -> dict[str, Any]:
+    """The client and project a pass is for."""
+    if not passes.is_pass_session(caller.session_id) or caller.project is None:
+        raise RingkeeperError("only a pass can ask whose connections these are")
+    with session_scope() as session:
+        client = projects.owners(session).get(caller.project)
+        return {
+            "client": client,
+            "project": caller.project,
+            "project_title": titles.of(session, caller.project),
+            "rule": RULE,
+        }
+
+
 def asked(caller: Caller, request: str) -> tuple[str, float]:
     """The task started, and how long to wait for it."""
     with session_scope() as session:
@@ -97,14 +119,22 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
         name="ringkeeper",
         version=__version__,
         instructions=(
-            "You're using one Ringkeeper project's connections through a pass. Changes to "
-            "production are held for the user's approval in Ringkeeper; check_approval says "
-            "what became of one. ask hands Ringkeeper a whole request to do as a task in this "
-            "project; task_status follows it."
+            "You're using one Ringkeeper project's connections through a pass; about says "
+            f"whose. {RULE} Changes to production are held for the user's approval in "
+            "Ringkeeper; check_approval says what became of one. ask hands Ringkeeper a whole "
+            "request to do as a task in this project; task_status follows it."
         ),
         mask_error_details=True,
     )
     server.add_middleware(CheckedArguments())
+
+    async def about() -> dict[str, Any]:
+        """Whose connections these are: the client and the project this pass is for, and the
+        rule for that client's data."""
+        try:
+            return await anyio.to_thread.run_sync(whose, current_caller())
+        except RingkeeperError as error:
+            raise McpToolError(scrub(str(error))) from None
 
     async def check_approval(
         decision_id: Annotated[
@@ -151,6 +181,7 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
             raise McpToolError(scrub(str(error))) from None
 
     reads = ToolAnnotations(read_only_hint=True, destructive_hint=False)
+    server.tool(about, name="about", annotations=reads)
     server.tool(check_approval, name="check_approval", annotations=reads)
     starts = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True)
     server.tool(ask, name="ask", annotations=starts)

@@ -13,6 +13,12 @@ checked the same way a task's is:
   [Undo](undo.md).
 - It can't use Claude through Ringkeeper, reach another project, or change Ringkeeper's settings.
 
+The app is also told, when it connects, whose connections these are ("Acme's connections, for
+the project Acme web") and to use them, and nothing else, for that client's data. An AI app
+often has connectors of its own to the same services, like Notion, Airtable or Google. Those
+are your own accounts, not the client's, so used for the client's work they'd read or change
+the wrong one. Its `ringkeeper_about` tool says the same: the client, the project and the rule.
+
 The app never sees the connections' keys, and the pass's own key stays in Ringkeeper's vault:
 what you add to the app only starts Ringkeeper's bridge on this computer.
 
@@ -51,8 +57,8 @@ steps: a command for Claude Code, the JSON for Cursor.
 Click **Update**.
 
 The app then has tools named by service: `database_query`, `airtable_list_records`,
-`memory_recall`, and so on, and Ringkeeper's own: `ringkeeper_ask`, `ringkeeper_task_status`
-and `ringkeeper_check_approval`.
+`memory_recall`, and so on, and Ringkeeper's own: `ringkeeper_ask`, `ringkeeper_task_status`,
+`ringkeeper_check_approval` and `ringkeeper_about`.
 
 The extension starts Ringkeeper from where it's installed (usually
 `%LOCALAPPDATA%\Programs\Ringkeeper` on Windows), so it keeps working after Ringkeeper updates.

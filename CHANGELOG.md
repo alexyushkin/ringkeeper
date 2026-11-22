@@ -9,6 +9,11 @@ publishes it as the release notes and the app shows it with the update.
   after the request that started it and before anything sent later, with its files and
   **Details ›**. The **Work** list at the end now holds only work that's running, waiting or
   went wrong.
+- **A pass tells the AI app whose data it's for.** When Claude Desktop, Claude Code or Cursor
+  connects with a pass, it's told whose connections these are ("Acme's connections, for the
+  project Acme web") and to use them, and nothing else, for that client's data. Without that,
+  an app could pick its own Notion or Google connector, which reaches your account instead of
+  the client's. A new `ringkeeper_about` tool says the same.
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it
