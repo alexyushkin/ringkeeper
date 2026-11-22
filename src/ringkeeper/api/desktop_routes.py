@@ -238,14 +238,15 @@ def import_claude_project(
 
 @router.get("/claude-desktop-servers")
 def claude_desktop_servers(session: SessionDep) -> dict[str, Any]:
-    """The MCP servers in Claude Desktop's settings and its installed extensions: name,
-    a preview with secrets masked, how many secrets, what an extension still needs,
-    and what's in the way of importing it."""
+    """The MCP servers in Claude Desktop's settings and its installed extensions, and in the
+    other AI apps here (apps): name, the app, a preview with secrets masked, how many
+    secrets, what an extension still needs, and what's in the way of importing it."""
     config, extensions = claude_desktop.find_config(), claude_desktop.find_extensions()
     done = claude_desktop.imported(session)
     return {
         "config": str(config) if config else None,
         "extensions": str(extensions) if extensions else None,
+        "apps": claude_desktop.apps_seen(),
         "servers": [
             s.summary() | {"imported_as": done.get(s.key)} for s in claude_desktop.everything()
         ],
@@ -276,14 +277,14 @@ def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> d
     here from Claude Desktop's files (or typed for an extension) and go straight
     into the vault."""
     found = {s.key: s for s in claude_desktop.everything()}
-    if not found and claude_desktop.find_config() is None:
-        raise HTTPException(404, detail="Claude Desktop's settings aren't on this computer.")
+    if not found:
+        raise HTTPException(404, detail="No AI app here has connections set up to import.")
     done = claude_desktop.imported(session)
     created: dict[str, str] = {}
     for choice in data.servers:
         server = found.get(choice.name)
         if server is None:
-            raise HTTPException(404, detail=f"Claude Desktop has no server named {choice.name}.")
+            raise HTTPException(404, detail=f"There's no server {choice.name} to import here.")
         if choice.name in done:
             raise HTTPException(
                 409, detail=f"{server.name} is already imported as {done[choice.name]}."

@@ -523,7 +523,7 @@ function Appearance() {
 
 function ImportFromClaudeDesktop() {
   return (
-    <Section id="claude-desktop" title="From Claude Desktop" summary="import its tools" defaultOpen={false}>
+    <Section id="claude-desktop" title="From your AI apps" summary="import their tools" defaultOpen={false}>
       <ClaudeDesktopImport bare />
     </Section>
   );

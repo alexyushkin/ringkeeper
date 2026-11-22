@@ -770,6 +770,49 @@ def test_personal_subscription_mode_is_off_until_turned_on(
     assert first not in json.dumps(settings)
 
 
+def test_another_ai_app_s_server_is_imported_by_its_own_key(
+    desktop: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    other_ai_apps: Path,
+) -> None:
+    # The same name in Claude Desktop and in Cursor: two servers, each imported once.
+    server = Path(__file__).parent / "fixtures" / "fake_mcp_server.py"
+    key = "fake-cursor-key-0987654321"
+    config = tmp_path / "claude_desktop_config.json"
+    config.write_text(
+        json.dumps({"mcpServers": {"notes": {"command": sys.executable, "args": [str(server)]}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(claude_desktop, "config_paths", lambda: [config])
+    cursor = other_ai_apps / ".cursor" / "mcp.json"
+    cursor.parent.mkdir(parents=True)
+    entry = {"command": sys.executable, "args": [str(server)], "env": {"FAKE_API_KEY": key}}
+    cursor.write_text(json.dumps({"mcpServers": {"notes": entry}}), encoding="utf-8")
+    win = window(desktop)
+    assert win.post("/bff/projects", json={"name": "acme-web", "owner": "acme"}).status_code == 201
+
+    listed = win.get("/bff/desktop/claude-desktop-servers").json()
+    assert {(s["key"], s["app_label"]) for s in listed["servers"]} == {
+        ("notes", "Claude Desktop"),
+        ("cursor:notes", "Cursor"),
+    }
+    assert listed["apps"] == [{"id": "cursor", "label": "Cursor", "count": 1, "problems": []}]
+    assert key not in json.dumps(listed)
+
+    made = win.post(
+        "/bff/desktop/claude-desktop-servers/import",
+        json={"servers": [{"name": "cursor:notes", "project": "acme-web"}]},
+    )
+    assert made.json() == {"imported": {"cursor:notes": "notes"}}, made.text
+    after = {s["key"]: s for s in win.get("/bff/desktop/claude-desktop-servers").json()["servers"]}
+    assert after["cursor:notes"]["imported_as"] == "notes"
+    assert after["notes"]["imported_as"] is None  # Claude Desktop's is still its own
+    [connection] = [c for c in win.get("/bff/connections").json() if c["name"] == "notes"]
+    assert connection["config"]["source"] == "cursor"
+    assert key.encode() not in (desktop["data_dir"] / "ringkeeper.db").read_bytes()
+
+
 def test_claude_desktop_extensions_are_imported_with_what_they_need(
     desktop: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -199,6 +199,20 @@ TARGET_PASSWORD = "pw-target-6b1d9f2e"  # a fake; long enough to scrub safely
 
 
 @pytest.fixture(autouse=True)
+def other_ai_apps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The home folder the import looks in for other AI apps' settings (services.ai_apps):
+    an empty one per test, never this computer's own."""
+    from ringkeeper.services import ai_apps  # noqa: PLC0415 (after the test's environment)
+
+    home = tmp_path / "ai-apps-home"
+    home.mkdir()
+    monkeypatch.setattr(ai_apps, "_home", lambda: home)
+    monkeypatch.setattr(ai_apps, "_roaming", lambda: home / "AppData" / "Roaming")
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    return home
+
+
+@pytest.fixture(autouse=True)
 def _fresh_scrubber() -> Iterator[None]:
     yield
     scrub.clear()

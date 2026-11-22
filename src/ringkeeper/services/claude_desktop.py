@@ -1,5 +1,7 @@
 """Importing MCP servers from Claude Desktop: claude_desktop_config.json and
-installed Desktop extensions (the Claude Extensions folder, one manifest.json each).
+installed Desktop extensions (the Claude Extensions folder, one manifest.json each). The
+same list has the servers set up in other AI apps here (Claude Code, Cursor, VS Code and
+more: services.ai_apps), each keyed by its app.
 
 Desktop mode only: the files are on this computer. Each server the user picks
 becomes an `mcp` connection linked to one project. Everything needed to start
@@ -35,9 +37,18 @@ from ringkeeper.config import Settings
 from ringkeeper.errors import RuleViolationError
 from ringkeeper.models import Env, Instance, InstanceType
 from ringkeeper.schemas import BindingIn, InstanceIn
-from ringkeeper.services import admin_audit, bindings, clients, instances, projects, secrets_in
+from ringkeeper.services import (
+    admin_audit,
+    ai_apps,
+    bindings,
+    clients,
+    instances,
+    projects,
+    secrets_in,
+)
 
 SOURCE = "claude-desktop"
+LABEL = "Claude Desktop"
 CONFIG_NAME = "claude_desktop_config.json"
 EXTENSIONS = "Claude Extensions"
 EXTENSION_SETTINGS = "Claude Extensions Settings"
@@ -94,6 +105,8 @@ class Server:
     needed: tuple[Needed, ...] = ()
     # An extension's manifest command and saved settings, to fill in (`complete`).
     source: JSON = field(default_factory=dict[str, Any])
+    app: str = SOURCE  # the AI app it's set up in
+    app_label: str = LABEL
 
     def __post_init__(self) -> None:
         if not self.key:
@@ -122,14 +135,35 @@ class Server:
             "needs": [{"key": n.key, "title": n.title, "secret": n.sensitive} for n in self.needed],
             "problem": self.problem,
             "suggested": self.suggested(),
+            "app": self.app,
+            "app_label": self.app_label,
         }
 
 
 def everything() -> list[Server]:
-    """The config's servers, then the installed extensions."""
+    """The config's servers, then the installed extensions, then the other AI apps'."""
     config, extensions = find_config(), find_extensions()
     found = read_servers(config) if config is not None else []
-    return found + (read_extensions(extensions) if extensions is not None else [])
+    found += read_extensions(extensions) if extensions is not None else []
+    return found + [other(f) for f in ai_apps.scan()[0]]
+
+
+def other(found: ai_apps.Found) -> Server:
+    """A server from another AI app, keyed <app>:<name> so it can't be taken for Claude
+    Desktop's of the same name."""
+    server = _server(found.name, found.entry)
+    if found.unset and not server.problem:
+        named = ", ".join(found.unset)
+        server = replace(server, problem=f"uses {named}, which isn't set on this computer")
+    return replace(server, key=f"{found.app}:{found.name}", app=found.app, app_label=found.label)
+
+
+def apps_seen() -> list[JSON]:
+    """Each AI app that has settings here: how many servers, and files it couldn't read."""
+    return [
+        {"id": s.id, "label": s.label, "count": s.count, "problems": list(s.problems)}
+        for s in ai_apps.scan()[1]
+    ]
 
 
 def read_servers(path: Path) -> list[Server]:
@@ -282,9 +316,11 @@ def complete(server: Server, given: dict[str, str] | None = None) -> Server:
 
 
 def imported(session: Session) -> dict[str, str]:
-    """Claude Desktop server key (its name, or extension:<folder>) -> the connection."""
+    """Server key -> the connection: Claude Desktop's name or extension:<folder>, another
+    app's <app>:<name>."""
     rows = session.scalars(select(Instance).where(Instance.type == InstanceType.MCP)).all()
-    return {str(i.config.get("server")): i.name for i in rows if i.config.get("source") == SOURCE}
+    apps = {SOURCE} | {a.id for a in ai_apps.apps()}
+    return {str(i.config.get("server")): i.name for i in rows if i.config.get("source") in apps}
 
 
 def _free_name(session: Session, server: str) -> str:
@@ -336,7 +372,7 @@ def import_server(
         session, settings, name, InstanceType.MCP, json.dumps(server.spec)
     )
     config: JSON = {
-        "source": SOURCE,
+        "source": server.app,
         "server": server.key,
         "transport": server.transport,
         "preview": server.preview,
@@ -356,7 +392,7 @@ def import_server(
     where = "all projects" if shared and all_projects else ", ".join(linked)
     admin_audit.record(
         session, "connection.import",
-        f"imported MCP server {server.name} from Claude Desktop as a {kind} for {where}",
+        f"imported MCP server {server.name} from {server.app_label} as a {kind} for {where}",
         by="owner", instance=name, project=linked[0] if len(linked) == 1 else None,
     )  # fmt: skip
     return name

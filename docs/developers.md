@@ -40,7 +40,7 @@ projects, or to **all projects** (new ones get it too). Only MCP servers can be
 shared tools, local or remote, and anything they do that isn't marked read-only
 still waits for your approval, with the usual per-tool overrides. **Add a
 connection** asks first whether it's a client's account or your own tool, and
-Connectors has **Add your own tool**. Importing from Claude Desktop or the
+Connectors has **Add your own tool**. Importing from your AI apps or the
 catalog asks which kind each server is, and suggests a shared tool when it needs
 no key, token, login or address.
 
@@ -265,8 +265,10 @@ computer changes) but audited, and the worker counts the file as the task's own.
 - **twilio:** the secret is JSON with the Account SID and a Standard API key
   (SID and secret). Sending a text always waits for approval.
 - **mcp:** an MCP server from the catalog, added by its address, or imported
-  from Claude Desktop (desktop app, Settings or first run). How to start it (command, args, env; or URL and headers) is
-  read from Claude Desktop's file straight into the vault; the connection keeps
+  from Claude Desktop or another AI app (desktop app, Settings or first run;
+  services.ai_apps lists the apps and where each keeps its settings). How to start it
+  (command, args, env; or URL and headers) is read from the app's file straight into the
+  vault; the connection keeps
   only a preview with secret-looking args masked. A command server runs on the
   gateway's machine for each call, with a small environment (no Claude
   credential, nothing of Ringkeeper's) in its own folder. Each tool's default
