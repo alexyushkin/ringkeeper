@@ -11,10 +11,12 @@
             onnxruntime has no build for them, and the app says voice isn't there
 - web/      the static web app (web/scripts/build-desktop.mjs)
 - mingit/   git for the workers, on Windows (fetch-mingit.ps1)
+- tools/    Node.js (node, npm, npx) and uv (uv, uvx), for the tools people import or
+            add from the catalog that run with npx or uvx (ringkeeper.bundled_tools)
 - notices/  third-party license notices, shown in Settings > About
 
 Everything is pinned: Python by version (uv checks the download), packages by
-uv.lock with hashes, MinGit by checksum.
+uv.lock with hashes, MinGit, Node.js and uv by checksum.
 """
 
 import argparse
@@ -25,8 +27,11 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
+import urllib.request
+import zipfile
 from email.parser import Parser
 from pathlib import Path
 
@@ -356,6 +361,165 @@ def build_web(skip: bool) -> None:
 
 MINGIT_SCRIPT = SHELL / "scripts" / "fetch-mingit.ps1"
 
+# --- Node.js and uv (tools/) ---
+
+# Node.js's current LTS line and uv, pinned by their published SHA-256s (nodejs.org's
+# SHASUMS256.txt, uv's release .sha256 files).
+NODE_VERSION = "24.22.3"
+UV_VERSION = "0.13.7"
+NODE = {
+    "win-x64": ("node-v24.22.3-win-x64.zip",
+                "e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f"),
+    "darwin-arm64": ("node-v24.22.3-darwin-arm64.tar.gz",
+                     "ff6e17d4874b76d272212b908cc020d6e815fba5a6c7eaaa06add725840307fd"),
+    "darwin-x64": ("node-v24.22.3-darwin-x64.tar.gz",
+                   "977614af0504c81045e7fd85596dbca0e5f951b96681516dadafedcca8c447f7"),
+}  # fmt: skip
+UV = {
+    "win-x64": ("uv-x86_64-pc-windows-msvc.zip",
+                "0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021"),
+    "darwin-arm64": ("uv-aarch64-apple-darwin.tar.gz",
+                     "81b811b57e4624df7ed3aac148e0359100d9962f3d9dce00aec533dc2e086731"),
+    "darwin-x64": ("uv-x86_64-apple-darwin.tar.gz",
+                   "20c47e4c1f630b8abaff8c291fa9b9aa300fef92c4fbff95adf198b55287cda7"),
+}  # fmt: skip
+# uv's archives hold only the programs: its licenses, from the same release's source.
+UV_LICENSES = {
+    "LICENSE-MIT": "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c",
+    "LICENSE-APACHE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+}
+# Not needed to run node, npm, npx, uv or uvx: headers, docs, corepack and its links.
+NODE_TRIM = (
+    "include", "share", "CHANGELOG.md", "README.md", "corepack", "corepack.cmd",
+    "install_tools.bat", "nodevars.bat", "lib/node_modules/corepack", "bin/corepack",
+    "node_modules/corepack",
+)  # fmt: skip
+TOOL_LICENSES = SHELL / "target" / "tool-licenses"
+# On a Mac, npm and npx are symbolic links into npm's folder, which an app bundle may not
+# keep: small scripts do the same.
+MAC_NPM = """#!/bin/sh
+here="$(cd "$(dirname "$0")" && pwd)"
+exec "$here/node" "$here/../lib/node_modules/npm/bin/{name}-cli.js" "$@"
+"""
+
+
+def tool_platform() -> str:
+    if WINDOWS:
+        return "win-x64"
+    return "darwin-x64" if INTEL_MAC else "darwin-arm64"
+
+
+def download(url: str, sha256: str, target: Path) -> Path:
+    """One pinned download, refused unless its SHA-256 is the one written here."""
+    import hashlib  # noqa: PLC0415
+
+    with urllib.request.urlopen(url, timeout=300) as answer:  # noqa: S310 (a fixed https address)
+        data = answer.read()
+    if hashlib.sha256(data).hexdigest() != sha256:
+        sys.exit(f"{url}: its SHA-256 isn't the pinned one")
+    target.write_bytes(data)
+    return target
+
+
+def unpack(archive: Path, into: Path) -> None:
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive) as packed:
+            packed.extractall(into)  # noqa: S202 (checked against its pinned SHA-256 first)
+    else:
+        with tarfile.open(archive) as packed:
+            packed.extractall(into, filter="data")
+
+
+def fetch_tools(work: Path) -> dict[str, str]:
+    """Node.js and uv in shell/resources/tools, checked by running each. Their licenses go
+    beside the bundle for the notices."""
+    tools = OUT / "tools"
+    remove(tools)
+    tools.mkdir(parents=True)
+    remove(TOOL_LICENSES)
+    TOOL_LICENSES.mkdir(parents=True)
+    where = tool_platform()
+
+    name, sha = NODE[where]
+    archive = download(f"https://nodejs.org/dist/v{NODE_VERSION}/{name}", sha, work / name)
+    unpack(archive, work / "node")
+    [top] = list((work / "node").iterdir())
+    shutil.move(str(top), str(tools / "node"))
+    node = tools / "node"
+    for part in NODE_TRIM:
+        remove(node / part)
+    if not WINDOWS:
+        for tool in ("npm", "npx"):
+            link = node / "bin" / tool
+            link.unlink(missing_ok=True)
+            link.write_text(MAC_NPM.format(name=tool), encoding="utf-8")
+            link.chmod(0o755)
+    shutil.copy(node / "LICENSE", TOOL_LICENSES / "node-LICENSE")
+
+    name, sha = UV[where]
+    url = f"https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/{name}"
+    unpack(download(url, sha, work / name), work / "uv")
+    (tools / "uv").mkdir()
+    for program in (p for p in (work / "uv").rglob("*") if p.is_file()):
+        if program.stem in {"uv", "uvx", "uvw"}:
+            shutil.move(str(program), str(tools / "uv" / program.name))
+    for license_name, sha in UV_LICENSES.items():
+        raw = f"https://raw.githubusercontent.com/astral-sh/uv/{UV_VERSION}/{license_name}"
+        download(raw, sha, TOOL_LICENSES / f"uv-{license_name}")
+
+    bin_dir = node if WINDOWS else node / "bin"
+    exe = ".exe" if WINDOWS else ""
+    for check in (
+        [bin_dir / f"node{exe}", "--version"],
+        [bin_dir / ("npx.cmd" if WINDOWS else "npx"), "--version"],
+        [tools / "uv" / f"uv{exe}", "--version"],
+        [tools / "uv" / f"uvx{exe}", "--version"],
+    ):
+        print(run(*check).strip())
+    return {"node": NODE_VERSION, "uv": UV_VERSION}
+
+
+def tool_components() -> list[dict]:
+    """Node.js (with npm and what npm bundles) and uv, for the notices."""
+    node = OUT / "tools" / "node"
+    if not node.is_dir():
+        return []
+    npm = node / ("node_modules" if WINDOWS else "lib/node_modules") / "npm"
+    npm_texts = license_texts(npm, LICENSE_NAMES)
+    for path in (
+        sorted((npm / "node_modules").rglob("*")) if (npm / "node_modules").is_dir() else []
+    ):
+        if path.is_file() and path.name.upper().startswith(LICENSE_NAMES):
+            npm_texts.append(
+                (str(path.relative_to(npm)), path.read_text(encoding="utf-8", errors="replace"))
+            )
+    return [
+        {
+            "name": "Node.js",
+            "version": NODE_VERSION,
+            "license": "MIT (and others, in its license)",
+            "kind": "runs tools that use npx",
+            "texts": [("LICENSE", (TOOL_LICENSES / "node-LICENSE").read_text(encoding="utf-8"))],
+        },
+        {
+            "name": "npm",
+            "version": json.loads((npm / "package.json").read_text())["version"],
+            "license": "Artistic-2.0 (and others, below)",
+            "kind": "comes with Node.js",
+            "texts": npm_texts,
+        },
+        {
+            "name": "uv",
+            "version": UV_VERSION,
+            "license": "MIT OR Apache-2.0",
+            "kind": "runs tools that use uvx",
+            "texts": [
+                (name, (TOOL_LICENSES / f"uv-{name}").read_text(encoding="utf-8"))
+                for name in UV_LICENSES
+            ],
+        },
+    ]
+
 
 def _mingit_version() -> str | None:
     match = re.search(r'\$Version = "([^"]+)"', MINGIT_SCRIPT.read_text())
@@ -577,6 +741,7 @@ def write_notices(python_root: Path, mingit_version: str | None) -> None:
                 "texts": texts,
             }
         )
+    components += tool_components()
     components += python_components(site)
     components += python_components(VOICE_LICENSES, "Python package, downloaded for voice")
     components += python_components(OCR_LICENSES, "Python package, downloaded for reading scans")
@@ -657,6 +822,8 @@ def main() -> None:
         return
     with tempfile.TemporaryDirectory(prefix="rk-bundle-") as temp:
         python_root = build_python(Path(temp))
+    with tempfile.TemporaryDirectory(prefix="rk-tools-") as temp:
+        fetch_tools(Path(temp))
     build_web(args.skip_web)
     mingit_version = fetch_mingit()
     write_notices(python_root, mingit_version)

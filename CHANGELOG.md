@@ -39,6 +39,11 @@ publishes it as the release notes and the app shows it with the update.
   every client. Home shows what came, with **Bring them in**: no file to save and no password,
   since it's locked so only this Ringkeeper can open it. Sign-ins made in Connect are signed
   in again here. See [Send to Ringkeeper](docs/from-connect.md).
+- **Node.js and uv come with the desktop app.** Tools that run with `npx` or `uvx` (most of
+  the catalog's local ones, and many people import from Claude Desktop or Cursor) now work
+  with nothing else to install: Node.js 24 (with npm and npx) and uv are in Ringkeeper's
+  install folder, used first. Their licenses are in Settings › About. The download is bigger
+  for it.
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it

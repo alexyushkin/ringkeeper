@@ -8,6 +8,7 @@
       "resources/python/": "python/",
       "resources/web/": "web/",
       "resources/mingit/": "mingit/",
+      "resources/tools/": "tools/",
       "resources/notices/": "notices/"
     },
     "windows": {
