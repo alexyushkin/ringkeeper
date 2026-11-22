@@ -8,14 +8,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Changes } from "@/components/changes";
-import { TaskAgain } from "@/components/conveniences";
+import { TaskMore } from "@/components/conveniences";
 import { type Decision } from "@/components/decision-card";
 import { Waiting } from "@/components/waiting";
 import { Markdown } from "@/components/markdown";
 import { AddConnection } from "@/components/missing-connection";
 import { TidyButtons } from "@/components/tidy";
 import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, StatusBadge, TextArea, money, timeAgo } from "@/components/ui";
-import { RememberThis, SavedToMemory } from "@/components/memory";
+import { SavedToMemory } from "@/components/memory";
 import { TaskSupport } from "@/components/task-support";
 import { TaskFiles } from "@/components/task-files";
 import { working } from "@/components/task-card";
@@ -262,7 +262,6 @@ export function TaskView({ id }: { id: string }) {
         </div>
         <Markdown text={t.summary ?? t.outcome ?? t.prompt} className="text-sm" />
         <SavedToMemory task={id} />
-        {t.summary && !["running", "queued"].includes(t.status) ? <RememberThis text={t.summary} projects={[t.project]} task={id} /> : null}
         {t.plan_limit ? <Alert tone="warn">{t.plan_limit}</Alert> : null}
         {t.partly_done && t.status === "not_done" ? <Alert tone="good">Done: {t.partly_done}</Alert> : null}
         {t.error && t.status !== "succeeded" ? <Alert tone={t.partly_done ? "warn" : undefined}>{t.status === "not_done" ? `Not done: ${t.error}` : t.error}</Alert> : null}
@@ -278,7 +277,7 @@ export function TaskView({ id }: { id: string }) {
         {t.offer?.add && t.offer.href ? (
           <AddConnection missing={{ project: t.project, title: "", need: t.offer.add, label: t.offer.label, href: t.offer.href }} back={taskHref(id)} run={`task:${id}`} onRan={() => task.reload()} />
         ) : null}
-        {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
+        {t.status === "running" || t.status === "queued" ? null : <TaskMore id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} summary={t.summary} />}
         {t.status === "running" ? <p className="text-sm text-muted">{working(t.steps)}</p> : null}
         <div className="flex flex-wrap gap-2">
           {ACTIVE.has(t.status) || t.status === "waiting" ? (
