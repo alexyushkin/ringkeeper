@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
 import { FirstSteps } from "@/components/first-steps";
+import { FromConnect } from "@/components/from-connect";
 import { InterruptedList } from "@/components/interrupted";
 import { WatchLine } from "@/components/watch-line";
 import { ScheduledList } from "@/components/scheduled";
@@ -79,6 +80,7 @@ export default function Home() {
     <>
       <PageHeader title="What do you need?" subtitle="Say it in your own words. Ringkeeper sends it to the right client project." />
       <Composer onSent={(thread) => router.push(threadHref(thread))} />
+      <FromConnect onBrought={threads.reload} />
       <InterruptedList />
       <div className="mt-4">
         <FirstSteps />

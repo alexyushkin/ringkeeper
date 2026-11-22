@@ -35,6 +35,7 @@ from ringkeeper.services import (
     backup_places,
     claude_desktop,
     claude_work,
+    connect_handover,
     downloads,
     inbox,
     onboarding,
@@ -305,6 +306,58 @@ def import_claude_desktop_servers(data: ImportIn, session: WriteSessionDep) -> d
         except RuleViolationError as error:
             raise HTTPException(422, detail=str(error)) from None
     return {"imported": created}
+
+
+# --- From Ringkeeper Connect (its Send to Ringkeeper button) ---
+
+
+def _sent(name: str) -> Path:
+    """One file Connect left, by its name: only ever in the hand-over folder."""
+    found = {p.name: p for p in connect_handover.waiting(get_settings().data_dir)}
+    if name not in found:
+        raise HTTPException(404, "That isn't here any more. Send it again from Ringkeeper Connect.")
+    return found[name]
+
+
+@router.get("/from-connect")
+def from_connect(session: SessionDep) -> dict[str, Any]:
+    """What Ringkeeper Connect sent and is waiting here: per file, what bringing it in would
+    make (no keys), or why it can't be opened."""
+    settings = get_settings()
+    shown: list[dict[str, Any]] = []
+    for path in connect_handover.waiting(settings.data_dir):
+        try:
+            payload = connect_handover.open_sent(settings, path)
+        except connect_handover.HandoverError as error:
+            shown.append({"file": path.name, "error": str(error)})
+            continue
+        shown.append({"file": path.name, **connect_handover.summary(session, payload)})
+    return {"waiting": shown}
+
+
+class SentIn(Input):
+    file: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+@router.post("/from-connect/bring-in", dependencies=[RecentAuth])
+def bring_in_from_connect(data: SentIn, session: WriteSessionDep) -> dict[str, Any]:
+    """Bring in what Connect sent, then delete the file: its keys are in the vault now."""
+    settings = get_settings()
+    path = _sent(data.file)
+    try:
+        payload = connect_handover.open_sent(settings, path)
+        made = connect_handover.bring_in(session, settings, payload)
+    except (connect_handover.HandoverError, RuleViolationError) as error:
+        raise HTTPException(422, str(error)) from None
+    session.flush()
+    path.unlink(missing_ok=True)
+    return made
+
+
+@router.post("/from-connect/throw-away", dependencies=[RecentAuth])
+def throw_away_from_connect(data: SentIn) -> dict[str, str]:
+    _sent(data.file).unlink(missing_ok=True)
+    return {"said": "Thrown away. Nothing was brought in."}
 
 
 # --- Tasks in Docker ---

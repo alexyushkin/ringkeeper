@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ClaudeDesktopImport } from "@/components/claude-desktop-import";
+import { FromConnect } from "@/components/from-connect";
 import { ClaudeCodeLogin } from "@/components/claude-code-login";
 import { ClaudeCodeFolders } from "@/components/claude-folders";
 import { Catalog } from "@/components/catalog";
@@ -189,6 +190,7 @@ function DesktopProjectsStep({ onDone }: { onDone: (name: string, saved?: Projec
           projects.reload();
         }}
       />
+      <FromConnect onBrought={projects.reload} />
       <ClaudeDesktopImport quiet onImported={projects.reload} />
       <BrowseCatalog projects={projects.data ?? []} />
       <Card>
