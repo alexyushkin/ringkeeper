@@ -31,6 +31,10 @@ ROOT = Path(__file__).parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "voice-works.ogg"
 IMAGE = "ringkeeper-stt:test"
 MODELS_VOLUME = "ringkeeper_test_stt_models"  # kept between runs: the model is ~150 MB
+# A fresh runner builds the image and downloads the model while the first of these tests
+# sets up, so they get room for that on top of the usual limit, which would end it first.
+STARTUP_SECONDS = 600
+REAL_SERVICE = pytest.mark.timeout(STARTUP_SECONDS + 600)
 
 
 class FakeEngine:
@@ -232,7 +236,7 @@ def stt_container() -> Iterator[tuple[str, Any]]:
     )  # fmt: skip
     url = f"http://127.0.0.1:{port}"
     try:
-        deadline = time.monotonic() + 600  # the first run downloads the model
+        deadline = time.monotonic() + STARTUP_SECONDS  # the first run downloads the model
         while True:
             try:
                 if httpx2.get(f"{url}/health", timeout=2).status_code == 200:
@@ -250,6 +254,7 @@ def stt_container() -> Iterator[tuple[str, Any]]:
 
 
 @pytest.mark.container
+@REAL_SERVICE
 def test_the_real_service_transcribes_a_voice_note(stt_container: tuple[str, Any]) -> None:
     url, container = stt_container
     response = httpx2.post(
@@ -267,6 +272,7 @@ def test_the_real_service_transcribes_a_voice_note(stt_container: tuple[str, Any
 
 
 @pytest.mark.container
+@REAL_SERVICE
 def test_the_real_service_enforces_the_duration_limit(stt_container: tuple[str, Any]) -> None:
     url, container = stt_container
     # Concatenated Ogg streams decode as one: four copies run past the 10 s limit.
@@ -297,6 +303,7 @@ sys.stdout.write(base64.b64encode(buffer.getvalue()).decode())
 
 
 @pytest.mark.container
+@REAL_SERVICE
 def test_a_small_file_with_a_long_recording_is_stopped_early(
     stt_container: tuple[str, Any],
 ) -> None:
