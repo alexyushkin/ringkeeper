@@ -639,11 +639,12 @@ export function SavedToMemory({ task }: { task: string }) {
 const MOST_CHARS = 2000;
 
 /** "Remember this" on a message or a result: an editable note for one project's memory. */
-export function RememberThis({ text, projects, task }: { text: string; projects: string[]; task?: string }) {
+/** `asked`: chosen from a More menu, so the note opens at once; Cancel calls `onDone`. */
+export function RememberThis({ text, projects, task, asked = false, onDone }: { text: string; projects: string[]; task?: string; asked?: boolean; onDone?: () => void }) {
   const scope = useScope();
   const offered = projects.length ? projects : scope.projects.map((p) => p.name);
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
+  const [open, setOpen] = useState(asked);
+  const [note, setNote] = useState(asked ? text.trim().slice(0, MOST_CHARS) : "");
   const [project, setProject] = useState(offered[0] ?? "");
   const [error, setError] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -664,6 +665,7 @@ export function RememberThis({ text, projects, task }: { text: string; projects:
     }
   }
 
+  if (!open && asked) return said ? <p className="text-xs text-good">{said}</p> : null;
   if (!open) {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -690,7 +692,13 @@ export function RememberThis({ text, projects, task }: { text: string; projects:
         <Button kind="primary" busy={busy} disabled={!note.trim() || note.length > MOST_CHARS || !project} onClick={() => void save()}>
           Save to memory
         </Button>
-        <Button kind="ghost" onClick={() => setOpen(false)}>
+        <Button
+          kind="ghost"
+          onClick={() => {
+            setOpen(false);
+            onDone?.();
+          }}
+        >
           Cancel
         </Button>
       </div>

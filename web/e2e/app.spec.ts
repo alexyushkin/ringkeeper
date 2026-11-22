@@ -165,6 +165,15 @@ with session_scope() as session:
     await expect(page.getByText('"new_string": "voice works"')).toBeVisible();
     await page.getByRole("button", { name: /Changes/ }).click();
     await expect(page.getByText("+voice works")).toBeVisible();
+    // The task's other actions are behind More.
+    await expect(page.getByRole("button", { name: "Run again" })).toHaveCount(0);
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Run again" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Save this request" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Remember this" }).click();
+    await expect(page.getByLabel("Note to keep")).toHaveValue("Added the line to NOTES.md.");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByLabel("Note to keep")).toHaveCount(0);
   });
 
   await test.step("a conversation shows a task's result and a new reply after a visit to the task", async () => {

@@ -7,7 +7,8 @@ import Link from "@/components/link";
 import { fillRequest } from "@/components/composer";
 import { EnvChoice, nameFor, useTakenNames } from "@/components/connection-form";
 import { ConnectionAdded } from "@/components/connection-added";
-import { Alert, Badge, Button, Card, Field } from "@/components/ui";
+import { RememberThis } from "@/components/memory";
+import { Alert, Badge, Button, Card, Field, More } from "@/components/ui";
 import { api, useApi, useLive } from "@/lib/client/api";
 import { taskHref } from "@/lib/client/routes";
 import { clientName, projectName, sameClient } from "@/lib/client/scope";
@@ -129,12 +130,17 @@ export function Shortcuts({ project, client }: { project?: string; client?: stri
 }
 
 /** A task's page: the same request again, or saved on its project. */
-export function TaskAgain({ id, project, prompt, outcome }: { id: string; project: string; prompt: string; outcome: string | null }) {
+/** A finished task's other actions, behind More: keep its result in the project's memory, run
+ * it again, or save the request for Home. */
+export function TaskMore({ id, project, prompt, outcome, summary }: { id: string; project: string; prompt?: string; outcome: string | null; summary: string | null }) {
   const router = useRouter();
-  const [saving, setSaving] = useState(false);
-  const [label, setLabel] = useState((outcome ?? prompt).slice(0, 40));
+  const [doing, setDoing] = useState<"remember" | "save" | null>(null);
+  const [round, setRound] = useState(0); // a second Remember this opens a fresh note
+  const [label, setLabel] = useState((outcome ?? prompt ?? "").slice(0, 40));
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saving = doing === "save";
+  const setSaving = (on: boolean) => setDoing(on ? "save" : null);
 
   async function again() {
     setError(null);
@@ -150,7 +156,7 @@ export function TaskAgain({ id, project, prompt, outcome }: { id: string; projec
     setError(null);
     try {
       // The request itself: a task's prompt also says which files came with it.
-      await api("shortcuts", { json: { project, label: label.trim(), prompt: prompt.split(ATTACHED)[0]?.trim() } });
+      await api("shortcuts", { json: { project, label: label.trim(), prompt: prompt?.split(ATTACHED)[0]?.trim() } });
       setSaving(false);
       setSaved(true);
     } catch (err) {
@@ -158,18 +164,27 @@ export function TaskAgain({ id, project, prompt, outcome }: { id: string; projec
     }
   }
 
+  const items = [
+    ...(summary
+      ? [
+          {
+            label: "Remember this",
+            onSelect: () => {
+              setDoing("remember");
+              setRound(round + 1);
+            },
+          },
+        ]
+      : []),
+    { label: "Run again", onSelect: () => void again() },
+    // Saving needs the request itself, which a conversation's card doesn't carry.
+    ...(saved || !prompt ? [] : [{ label: "Save this request", onSelect: () => setSaving(true) }]),
+  ];
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={again}>Run again</Button>
-        {saved ? (
-          <span className="self-center text-sm text-muted">★ Saved on {projectName(project)}: it&apos;s on Home.</span>
-        ) : (
-          <Button kind="ghost" onClick={() => setSaving(!saving)}>
-            ☆ Save this request
-          </Button>
-        )}
-      </div>
+      <More items={items} />
+      {doing === "remember" && summary ? <RememberThis key={round} text={summary} projects={[project]} task={id} asked onDone={() => setDoing(null)} /> : null}
+      {saved ? <p className="text-sm text-muted">★ Saved on {projectName(project)}: it&apos;s on Home.</p> : null}
       {saving ? (
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-60 flex-1">
@@ -177,6 +192,9 @@ export function TaskAgain({ id, project, prompt, outcome }: { id: string; projec
           </div>
           <Button kind="primary" disabled={!label.trim()} onClick={save}>
             Save on {projectName(project)}
+          </Button>
+          <Button kind="ghost" onClick={() => setSaving(false)}>
+            Cancel
           </Button>
         </div>
       ) : null}

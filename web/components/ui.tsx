@@ -345,6 +345,53 @@ export function Toggle({ label, checked, onChange, hint }: { label: string; chec
 }
 
 /** Technical detail stays out of the way until asked for. */
+/** A few actions that aren't the point of the page, behind one button. Escape, a click
+ * elsewhere or choosing one closes it. */
+export function More({ items, label = "More" }: { items: { label: string; onSelect: () => void }[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const menu = useId();
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      if (event instanceof MouseEvent && (event.target as Element | null)?.closest(`[data-more="${menu}"]`)) return;
+      setOpen(false);
+    };
+    document.addEventListener("keydown", close);
+    document.addEventListener("mousedown", close);
+    return () => {
+      document.removeEventListener("keydown", close);
+      document.removeEventListener("mousedown", close);
+    };
+  }, [open, menu]);
+  if (!items.length) return null;
+  return (
+    <div className="relative inline-block" data-more={menu}>
+      <Button kind="ghost" onClick={() => setOpen(!open)} label={label}>
+        <span aria-hidden>{label} ▾</span>
+      </Button>
+      {open ? (
+        <div role="menu" aria-label={label} className="absolute left-0 z-20 mt-1 min-w-48 rounded-xl border border-line bg-surface p-1 shadow-lg">
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-sunken"
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function Details({ children, label = "Show details", defaultOpen = false }: { children: ReactNode; label?: string; defaultOpen?: boolean }) {
   // Back to this page shows it open or folded as it was.
   const [open, setOpen, ref] = useOpenHere(label, defaultOpen);

@@ -12,7 +12,8 @@ import { Markdown, plainText } from "@/components/markdown";
 import { AddConnection, type Missing } from "@/components/missing-connection";
 import { TidyButtons } from "@/components/tidy";
 import { TaskCardView, type TaskCard } from "@/components/task-card";
-import { RememberThis, SavedToMemory } from "@/components/memory";
+import { TaskMore } from "@/components/conveniences";
+import { SavedToMemory } from "@/components/memory";
 import { TaskFiles } from "@/components/task-files";
 import { Waiting } from "@/components/waiting";
 import { CancelButton } from "@/components/scheduled";
@@ -157,7 +158,6 @@ export function ThreadView({ id }: { id: string }) {
               <Card>
                 <p className="text-xs font-medium text-muted">Ringkeeper</p>
                 <Markdown text={message.body} className="mt-1 text-sm" />
-              {message.role === "router" && !message.routing?.missing?.length && !message.routing?.ran ? <RememberThis text={message.body} projects={[...new Set((tasks.data ?? []).map((t) => t.project))]} /> : null}
               {message.routing?.help ? <HelpExtras help={message.routing.help} /> : null}
               {message.routing?.retry ? <TryAgain id={message.routing.retry} onDone={thread.reload} /> : null}
               {(message.routing?.missing ?? []).map((missing) => (
@@ -216,7 +216,6 @@ export function ThreadView({ id }: { id: string }) {
                 {["queued", "running"].includes(task.status) ? null : (
                   <div className="space-y-1 px-4 pt-1">
                     <SavedToMemory task={task.id} />
-                    {task.summary ? <RememberThis text={task.summary} projects={[task.project]} task={task.id} /> : null}
                   </div>
                 )}
               </div>
@@ -259,7 +258,7 @@ function TaskResult({ task }: { task: TaskCard }) {
       {task.files ? <TaskFiles id={task.id} compact /> : null}
       <div className="mt-2 space-y-1">
         <SavedToMemory task={task.id} />
-        {task.summary ? <RememberThis text={task.summary} projects={[task.project]} task={task.id} /> : null}
+        <TaskMore id={task.id} project={task.project} outcome={task.outcome} summary={task.summary} />
       </div>
     </Card>
   );
