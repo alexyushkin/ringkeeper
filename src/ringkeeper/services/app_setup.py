@@ -218,7 +218,11 @@ def keep_copy(settings: Settings, key: str, raw: bytes) -> Path:
     nonce = secrets.token_bytes(NONCE_BYTES)
     sealed = nonce + _cipher(settings).encrypt(nonce, raw, key.encode())
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    path = folder / f"{key}-{stamp}.bak"
+    # Two copies in one clock tick (Windows' clock can repeat) get the next number, so none
+    # overwrites another and they still sort oldest first.
+    n = 0
+    while (path := folder / f"{key}-{stamp}-{n:03d}.bak").exists():
+        n += 1
     path.write_bytes(base64.b64encode(sealed))
     for old in sorted(folder.glob(f"{key}-*.bak"))[:-KEEP]:
         old.unlink(missing_ok=True)

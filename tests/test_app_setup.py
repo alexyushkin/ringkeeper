@@ -4,6 +4,7 @@ left alone. Every test runs in a home folder of its own; conftest stops the run 
 the real files."""
 
 import json
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -209,6 +210,28 @@ def test_claude_code_follows_its_own_config_folder(
     assert app_setup.add(settings(), "claude-code", SERVER, STARTED)
     assert SERVER in json.loads((elsewhere / ".claude.json").read_text())["mcpServers"]
     assert not claude_file(home).exists()
+
+
+def test_copies_made_in_one_clock_tick_are_all_kept_in_order(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows' clock can give the same time twice: neither copy may overwrite the other.
+    frozen = datetime(2026, 11, 22, 12, 0, 0, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> "Clock":
+            return cls.fromtimestamp(frozen.timestamp(), tz)
+
+    monkeypatch.setattr(app_setup, "datetime", Clock)
+    for n in range(3):
+        app_setup.keep_copy(settings(), "cursor", f"version {n}".encode())
+    kept = sorted(app_setup.backup_folder(settings()).glob("cursor-*.bak"))
+    assert [app_setup.read_copy(settings(), "cursor", p) for p in kept] == [
+        b"version 0",
+        b"version 1",
+        b"version 2",
+    ]
 
 
 def test_only_the_newest_copies_are_kept(home: Path) -> None:
