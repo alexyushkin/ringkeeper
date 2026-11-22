@@ -51,9 +51,14 @@ there too, to work on it, and it's then listed with the task's files.
 
 ## Run again and saved requests
 
-On a task's page, **Run again** starts the same request as a new task.
-**Save this request** keeps it on its project as a shortcut: saved requests are under
-the box on Home, one click to fill it in.
+A finished task's **More** button has the actions that aren't the result itself:
+
+- **Run again** starts the same request as a new task.
+- **Save this request** (on the task's page) keeps it on its project as a shortcut: saved
+  requests are under the box on Home, one click to fill it in.
+- **Remember this** keeps the result, edited as you like, in the project's memory.
+
+Under a task's result in a conversation, **More** has **Remember this** and **Run again**.
 
 ## Keys already in a project
 

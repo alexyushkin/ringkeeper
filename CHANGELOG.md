@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A task's other actions are under More.** **Remember this**, **Run again** and **Save this
+  request** were buttons on every task. Now they're one **More** button, on the task's page and
+  under its result in a conversation (where it has **Remember this** and **Run again**). The
+  routing replies, like "Working on it in …", no longer have **Remember this**.
 - **A finished task reads as a reply in its conversation.** Its result shows where it finished,
   after the request that started it and before anything sent later, with its files and
   **Details ›**. The **Work** list at the end now holds only work that's running, waiting or

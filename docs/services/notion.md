@@ -86,7 +86,8 @@ it, when Notion allows; its rows aren't changed. A row you type with only a titl
 You can add notes yourself, with the same rules and in the same place:
 
 - **Add a note** on the project's **Memory** (in its Settings).
-- **Remember this** under a result or a reply: edit the text, and save it.
+- **More › Remember this** under a task's result, in the conversation or on its page: edit the
+  text, and save it.
 - Say **"remember that …"** in a conversation. When it's clear which project (the one chosen at the
   top, the one the message names, or the one the conversation is about), it's saved straight
   away, with no task, and the reply says what was saved and where. Otherwise the request is
