@@ -57,6 +57,11 @@ folded under **How it ran: steps, cost and transcript**: its steps and cost, eac
 and the changes line by line. It opens with a click, and Back to the page shows it as you
 left it. While a task runs, its page and its card say how many steps it's taken so far.
 
+In a conversation, a finished task's result reads as Ringkeeper's reply, where it finished: after
+the request that started it and before anything you sent later. Its files are under it, and
+**Details ›** opens its page. Only work that's running, waiting or went wrong keeps a card, under
+**Work** at the end of the conversation.
+
 A request that clearly needs a kind of connection the project doesn't have (ads, email, a
 calendar, tables and records, a spreadsheet, files, payments) doesn't start a task at all. The
 reply says so at once, with what it looked for and what the project has: "This project has no
