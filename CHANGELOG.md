@@ -44,6 +44,9 @@ publishes it as the release notes and the app shows it with the update.
   with nothing else to install: Node.js 24 (with npm and npx) and uv are in Ringkeeper's
   install folder, used first. Their licenses are in Settings › About. The download is bigger
   for it.
+- **Fixed: a copy of an AI app's settings could be lost.** When Ringkeeper changed Claude Code's
+  or Cursor's settings twice within the same instant, the second copy it kept replaced the
+  first. Each copy now has its own name.
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it
