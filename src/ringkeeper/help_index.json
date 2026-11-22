@@ -193,6 +193,12 @@
 },
 {
 "doc": "passes",
+"anchor": "one-pass-for-every-client",
+"title": "One pass for every client",
+"text": "A pass can also be for every client: one entry in the AI app instead of one per project. Choose **Every client, one at a time** as its project. The AI then works with one client's project at a time: - `ringkeeper_list_clients` lists the clients and their projects, and which one is chosen. - `ringkeeper_use_client` chooses one, by the client's name (when it has one project) or the project's name or title. Each switch is in Activity, under the pass's name. - Until one is chosen, every tool says to choose first, and nothing is reached. - Once chosen, each call is checked exactly as that project's own pass's would be: another client's connection is still refused. The choice holds for every chat in the app, until the AI chooses another or the app restarts. A project added later shows up in the list, but its kinds of connections (a CRM when no other project had one, say) need the AI app restarted to appear."
+},
+{
+"doc": "passes",
 "anchor": "make-a-pass",
 "title": "Make a pass",
 "text": "1. Settings > Passes > New pass. Pick the project, and give the pass a name the app will list it by, like `acme-code`. 2. On the pass, click **Add to** the app: - **Claude Desktop:** the pass is saved into your Downloads folder as an extension, `Ringkeeper-<pass>.mcpb`, and opened, so Claude Desktop asks whether to install it. Click Install. If Claude doesn't ask, double-click the file, or add it from Claude's Customize > Connectors. - **Claude Code** and **Cursor:** Ringkeeper adds the pass to the app's own settings, for every folder you use the app in. An app that isn't on this computer says so. 3. Start a new chat (Claude Desktop), a new session (Claude Code), or restart Cursor. Ringkeeper has to be running while you use it. The pass shows **Added** for each app it's in, and **Take it out** removes it from that app. Removing a pass takes it out of Claude Code and Cursor too. Claude Desktop's extension is taken out in Claude, under Settings > Extensions."

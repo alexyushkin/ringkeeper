@@ -620,3 +620,176 @@ def test_ask_waits_50_seconds_at_most_and_it_s_a_setting(owner: TestClient) -> N
     for wrong in (60, 120, 2):
         assert owner.patch("/settings", json={"pass_ask_wait_seconds": wrong}).status_code == 422
     assert waits() == 20
+
+
+# --- A pass for every client: one client's project at a time ---
+
+
+def every_pass(vault: Vault, name: str = "every-client") -> str:
+    with session_scope() as session:
+        passes.create(session, vault, name, None)
+    return vault.resolve(passes.ref(name)).reveal()
+
+
+def chosen_call(
+    url: str, token: str, tool: str, args: dict[str, Any], service: str, project: str | None
+) -> Any:
+    headers = {"Authorization": f"Bearer {token}"}
+    if project:
+        headers[passes.PROJECT_HEADER] = project
+
+    async def go() -> Any:
+        transport = StreamableHttpTransport(f"{url}/mcp/{service}", headers=headers)
+        async with Client(transport) as client:
+            return await client.call_tool(tool, args, raise_on_error=False)
+
+    return asyncio.run(go())
+
+
+ORDERS = {"sql": "SELECT * FROM orders"}
+
+
+def signed_in(url: str, token: str, project: str) -> str:
+    """Why the gateway turned a pass away, naming this project (its 401's reason)."""
+    headers = {"Authorization": f"Bearer {token}", passes.PROJECT_HEADER: project}
+    answer = httpx2.post(f"{url}/mcp/database", headers=headers, json={}, timeout=10)
+    assert answer.status_code == 401
+    return str(answer.json()["error_description"])
+
+
+def test_the_bridge_and_the_gateway_name_the_same_header() -> None:
+    assert bridge.PROJECT_HEADER == passes.PROJECT_HEADER
+
+
+def test_nothing_answers_until_a_client_is_chosen(clients: tuple[str, Vault]) -> None:
+    url, vault = clients
+    token = every_pass(vault)
+    before = chosen_call(url, token, "query", {"instance": ACME_DB, **ORDERS}, "database", None)
+    assert before.is_error
+    assert "choose one first with ringkeeper_use_client" in text_of(before)
+    listed = chosen_call(url, token, "about", {}, "ringkeeper", None).structured_content
+    assert listed["every_client"] is True
+    assert [p["project"] for p in listed["projects"]] == [ACME, GLOBEX]  # by client
+    assert listed["rule"]
+    asked = chosen_call(url, token, "ask", {"request": "count the orders"}, "ringkeeper", None)
+    assert asked.is_error
+    assert "choose one first" in text_of(asked)
+
+
+def test_each_call_reaches_only_the_chosen_client_s_project(clients: tuple[str, Vault]) -> None:
+    url, vault = clients
+    token = every_pass(vault)
+    acme = chosen_call(url, token, "query", {"instance": ACME_DB, **ORDERS}, "database", ACME)
+    assert [row[1] for row in acme.structured_content["rows"]] == ["paid", "open"]
+    globex = chosen_call(url, token, "query", {"instance": GLOBEX_DB, **ORDERS}, "database", GLOBEX)
+    assert globex.structured_content["rows"] == [[9, "GLOBEX-ONLY"]]
+    # Chosen Acme, it can't reach Globex's connection: the same check as Acme's own pass.
+    crossed = chosen_call(url, token, "query", {"instance": GLOBEX_DB, **ORDERS}, "database", ACME)
+    assert crossed.is_error
+    assert "not available" in text_of(crossed)
+
+
+def test_a_project_that_isn_t_there_is_refused(clients: tuple[str, Vault]) -> None:
+    url, vault = clients
+    token = every_pass(vault)
+    assert "there's no project no-such-project" in signed_in(url, token, "no-such-project")
+
+
+def test_a_one_project_pass_can_t_name_another(clients: tuple[str, Vault]) -> None:
+    url, vault = clients
+    token = new_pass(vault)  # Acme's
+    assert signed_in(url, token, GLOBEX) == "the pass acme-desktop is for acme-web only"
+    mine = chosen_call(url, token, "query", {"instance": ACME_DB, **ORDERS}, "database", ACME)
+    assert not mine.is_error
+
+
+def test_a_switch_is_in_activity(clients: tuple[str, Vault]) -> None:
+    url, vault = clients
+    token = every_pass(vault)
+    now = chosen_call(
+        url, token, "about", {"switched": True}, "ringkeeper", GLOBEX
+    ).structured_content
+    assert (now["client"], now["project"]) == ("globex", GLOBEX)
+    [switched] = [e for e in audit("pass:every-client") if e.tool == "pass.switched"]
+    assert switched.project == GLOBEX
+    assert "switched to globex's globex-portal" in str(switched.reason)
+
+
+def test_the_ai_lists_chooses_and_switches_clients_through_the_bridge(
+    clients: tuple[str, Vault],
+) -> None:
+    url, vault = clients
+    token = every_pass(vault)
+
+    async def go() -> dict[str, Any]:
+        found = await bridge.about(url, token)
+        kinds = await bridge.every_kind(url, token, found["projects"])
+        seen: dict[str, Any] = {}
+        async with Client(bridge.build_every(url, token, kinds, "every-client")) as app:
+            seen["told"] = app.instructions or ""
+            seen["names"] = {t.name for t in await app.list_tools()}
+            seen["before"] = await app.call_tool(
+                "database_query", {"instance": ACME_DB, **ORDERS}, raise_on_error=False
+            )
+            seen["listed"] = (await app.call_tool("ringkeeper_list_clients", {})).structured_content
+            seen["acme"] = (
+                await app.call_tool("ringkeeper_use_client", {"client": "acme"})
+            ).structured_content
+            seen["acme_rows"] = await app.call_tool(
+                "database_query", {"instance": ACME_DB, **ORDERS}
+            )
+            await app.call_tool("ringkeeper_use_client", {"client": GLOBEX})
+            seen["globex_rows"] = await app.call_tool(
+                "database_query", {"instance": GLOBEX_DB, **ORDERS}
+            )
+            seen["crossed"] = await app.call_tool(
+                "database_query", {"instance": ACME_DB, **ORDERS}, raise_on_error=False
+            )
+            seen["nobody"] = await app.call_tool(
+                "ringkeeper_use_client", {"client": "initech"}, raise_on_error=False
+            )
+        return seen
+
+    seen = asyncio.run(go())
+    assert "ringkeeper_list_clients, then ringkeeper_use_client" in seen["told"]
+    assert "Never use another connector" in seen["told"]
+    assert {"ringkeeper_list_clients", "ringkeeper_use_client", "database_query"} <= seen["names"]
+    assert seen["before"].is_error
+    assert "choose one first" in text_of(seen["before"])
+    assert seen["listed"]["chosen"] is None
+    assert {p["client"] for p in seen["listed"]["projects"]} == {"acme", "globex"}
+    assert seen["acme"]["project"] == ACME
+    assert [row[1] for row in seen["acme_rows"].structured_content["rows"]] == ["paid", "open"]
+    assert seen["globex_rows"].structured_content["rows"] == [[9, "GLOBEX-ONLY"]]
+    assert seen["crossed"].is_error  # Globex chosen: Acme's connection isn't there
+    assert seen["nobody"].is_error
+    assert "There's no client or project initech" in text_of(seen["nobody"])
+
+
+def test_a_client_with_several_projects_is_asked_which() -> None:
+    listed = [
+        {"client": "Acme", "client_id": "acme", "project": "acme-web", "project_title": "Acme web"},
+        {"client": "Acme", "client_id": "acme", "project": "acme-shop", "project_title": "Shop"},
+        {
+            "client": "Globex Corp",
+            "client_id": "globex",
+            "project": "globex-portal",
+            "project_title": "Globex portal",
+        },
+    ]
+    assert bridge.pick(listed, "Globex Corp")["project"] == "globex-portal"  # by its name
+    assert bridge.pick(listed, "globex")["project"] == "globex-portal"  # by its id
+    assert bridge.pick(listed, "shop")["project"] == "acme-shop"  # by its title
+    with pytest.raises(bridge.BridgeError, match="Acme has several projects: acme-web"):
+        bridge.pick(listed, "acme")
+
+
+def test_a_pass_for_every_client_is_made_and_shown(clients: tuple[str, Vault]) -> None:
+    _url, vault = clients
+    with session_scope() as session:
+        make_project(session, "initech-site", owner="initech")
+    every_pass(vault)
+    with session_scope() as session:
+        row = passes.get(session, "every-client")
+        assert row.project is None
+        assert passes.for_every_client(row)

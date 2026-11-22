@@ -8,27 +8,39 @@ airtable_list_records, memory_recall, ringkeeper_check_approval.
 
 It exits when Ringkeeper quits, so it never holds the install folder while an update replaces
 it. Claude Desktop's relay (desktop/relay.js) starts it again once Ringkeeper is back.
+
+A pass for every client has one project at a time. The AI lists them
+(ringkeeper_list_clients) and chooses one (ringkeeper_use_client); every call then names that
+project in a header, and the gateway checks it as that project's. Until one is chosen, nothing
+but the list answers. The choice holds for every chat in the app, until it's changed or the
+app restarts.
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.exceptions import ToolError
 from fastmcp.server import create_proxy
+from mcp_types import ToolAnnotations
+from pydantic import Field
 
 from ringkeeper import __version__
 
 ALWAYS = ("memory", "ringkeeper")  # besides each kind of connection the project has
 LISTS_ALL = "database"  # any service endpoint's list_instances names all of the project's
 NOT_RUNNING = "Ringkeeper isn't running. Start it, then restart this app."
+PROJECT_HEADER = "x-ringkeeper-project"  # services.passes.PROJECT_HEADER
 STOPPED = 75  # Ringkeeper quit or restarted: the relay starts the bridge again when it's back
 WATCH_SECONDS = 2.0
 MISSES = 2  # checks in a row that find it gone
@@ -90,10 +102,41 @@ def _transport(gateway: str, token: str, service: str) -> StreamableHttpTranspor
     )
 
 
-async def services(gateway: str, token: str) -> list[str]:
-    """The endpoints this pass needs: one per kind of connection its project uses."""
+@dataclass
+class Choice:
+    """The project a pass for every client is using now (None: not chosen yet)."""
+
+    project: str | None = None
+
+
+class _Chosen(StreamableHttpTransport):
+    """A gateway endpoint for a pass for every client: each new session names the project
+    chosen at that moment."""
+
+    def __init__(self, url: str, token: str, choice: Choice) -> None:
+        super().__init__(url, headers={"Authorization": f"Bearer {token}"})
+        self.choice = choice
+
+    @contextlib.asynccontextmanager
+    async def connect_session(self, **kwargs: Any) -> AsyncGenerator[Any]:
+        if self.choice.project:
+            self.headers[PROJECT_HEADER] = self.choice.project
+        else:
+            self.headers.pop(PROJECT_HEADER, None)
+        async with super().connect_session(**kwargs) as session:
+            yield session
+
+
+def _for(gateway: str, token: str, service: str, project: str | None) -> StreamableHttpTransport:
+    return _Chosen(f"{gateway.rstrip('/')}/mcp/{service}", token, Choice(project))
+
+
+async def services(gateway: str, token: str, project: str | None = None) -> list[str]:
+    """The endpoints this pass needs: one per kind of connection its project uses.
+    `project`: the one a pass for every client asks about."""
+    transport = _for(gateway, token, LISTS_ALL, project) if project else None
     try:
-        async with Client(_transport(gateway, token, LISTS_ALL)) as client:
+        async with Client(transport or _transport(gateway, token, LISTS_ALL)) as client:
             listed = await client.call_tool("list_instances", {})
     except Exception as error:  # an expired or revoked pass, or the app stopped
         raise BridgeError(f"Ringkeeper refused this pass, or isn't running: {error}") from None
@@ -102,12 +145,18 @@ async def services(gateway: str, token: str) -> list[str]:
     return sorted(kinds) + list(ALWAYS)
 
 
-async def about(gateway: str, token: str) -> dict[str, Any]:
+async def about(
+    gateway: str, token: str, project: str | None = None, *, switched: bool = False
+) -> dict[str, Any]:
     """Whose connections these are (client, project), or nothing from a Ringkeeper too old to
-    say: the app is then told the rule without the client's name."""
+    say: the app is then told the rule without the client's name. A pass for every client
+    gets the projects to choose from; `project` and `switched` choose one (and say so in
+    Activity)."""
+    transport = _for(gateway, token, "ringkeeper", project) if project else None
+    arguments = {"switched": True} if switched else {}
     try:
-        async with Client(_transport(gateway, token, "ringkeeper")) as client:
-            found = await client.call_tool("about", {})
+        async with Client(transport or _transport(gateway, token, "ringkeeper")) as client:
+            found = await client.call_tool("about", arguments)
     except Exception:  # an older Ringkeeper has no about
         return {}
     return dict(found.structured_content or {})
@@ -146,6 +195,91 @@ def build(
     return server
 
 
+EVERY = (
+    "Connections for every client, one client at a time, through Ringkeeper. Before you use "
+    "any tool for a client's data, call ringkeeper_list_clients, then ringkeeper_use_client "
+    "with that client: only the chosen client's connections answer, and the choice holds for "
+    "every chat in this app until it's changed. Use these tools, and only these, for a "
+    "client's data. Never use another connector, integration or built-in tool for it, even "
+    "one for the same service (an Airtable, Notion, Google or database connector of your own, "
+    "say): those reach other accounts, not the client's, and would read or change the wrong "
+    "one. Every call is checked by Ringkeeper. Changes to production wait for the user's "
+    "approval in Ringkeeper; ringkeeper_check_approval says what became of one. ringkeeper_ask "
+    "hands Ringkeeper a whole request to do as a task in the chosen client's project; "
+    "ringkeeper_task_status follows it."
+)
+
+
+def pick(listed: list[dict[str, Any]], wanted: str) -> dict[str, Any]:
+    """The project `wanted` names: a project's name or title, or a client with one project.
+    Raises BridgeError with what to say when it names none, or a client with several."""
+    said = wanted.strip().casefold()
+    for row in listed:
+        if said in {str(row["project"]).casefold(), str(row["project_title"]).casefold()}:
+            return row
+    theirs = [
+        row
+        for row in listed
+        if said in {str(row["client"]).strip().casefold(), str(row.get("client_id")).casefold()}
+    ]
+    if len(theirs) == 1:
+        return theirs[0]
+    if theirs:
+        names = ", ".join(f"{r['project']} ({r['project_title']})" for r in theirs)
+        raise BridgeError(f"{theirs[0]['client']} has several projects: {names}. Choose one.")
+    raise BridgeError(f"There's no client or project {wanted}. ringkeeper_list_clients lists them.")
+
+
+async def every_kind(gateway: str, token: str, listed: list[dict[str, Any]]) -> list[str]:
+    """Every kind of connection any of the projects uses, Ringkeeper's own included."""
+    kinds: set[str] = set()
+    for row in listed:
+        kinds |= set(await services(gateway, token, str(row["project"])))
+    return sorted(kinds - set(ALWAYS)) + list(ALWAYS)
+
+
+def build_every(gateway: str, token: str, kinds: list[str], name: str) -> FastMCP:
+    """A pass for every client: its tools, and the two that list and choose the client."""
+    choice = Choice()
+    server: FastMCP = FastMCP(name=f"ringkeeper-{name}", version=__version__, instructions=EVERY)
+    for kind in kinds:
+        url = f"{gateway.rstrip('/')}/mcp/{kind}"
+        server.mount(create_proxy(_Chosen(url, token, choice)), namespace=kind)
+
+    async def ringkeeper_list_clients() -> dict[str, Any]:
+        """The clients and projects this connection can use, and the one chosen now."""
+        found = await about(gateway, token)
+        return {"projects": found.get("projects", []), "chosen": choice.project}
+
+    async def ringkeeper_use_client(
+        client: Annotated[
+            str,
+            Field(
+                description="The client's name (when it has one project), or the project's "
+                "name or title, as ringkeeper_list_clients shows them.",
+                min_length=1,
+                max_length=200,
+            ),
+        ],
+    ) -> dict[str, Any]:
+        """Use this client's connections from now on, in every chat in this app."""
+        listed = (await about(gateway, token)).get("projects", [])
+        try:
+            row = pick(listed, client)
+        except BridgeError as error:
+            raise ToolError(str(error)) from None
+        now = await about(gateway, token, str(row["project"]), switched=True)
+        if not now.get("project"):
+            raise ToolError(f"Ringkeeper refused {row['project']}. Check that it's still there.")
+        choice.project = str(now["project"])
+        return {"now": f"{now['client']}: {now['project_title']} ({now['project']})", **now}
+
+    reads = ToolAnnotations(read_only_hint=True, destructive_hint=False)
+    server.tool(ringkeeper_list_clients, annotations=reads)
+    server.tool(ringkeeper_use_client, annotations=ToolAnnotations(destructive_hint=False))
+    return server
+
+
 def run(name: str, data_dir: Path, gateway: str | None = None) -> None:
     from ringkeeper.config import get_settings  # noqa: PLC0415 (after the caller's environment)
     from ringkeeper.keys import load_master_key  # noqa: PLC0415
@@ -161,10 +295,15 @@ def run(name: str, data_dir: Path, gateway: str | None = None) -> None:
         raise BridgeError(
             f"There's no pass named {name} in Ringkeeper. Check its name in Settings > Passes."
         ) from None
-    kinds = asyncio.run(services(address, token))
     found = asyncio.run(about(address, token))
+    if found.get("every_client"):
+        listed = cast(list[dict[str, Any]], found.get("projects") or [])
+        kinds = asyncio.run(every_kind(address, token, listed))
+        server = build_every(address, token, kinds, name)
+    else:
+        server = build(address, token, asyncio.run(services(address, token)), name, found)
     if gateway is None:  # the desktop app's: follow it
         threading.Thread(
             target=watch, args=(data_dir, address), daemon=True, name="rk-watch"
         ).start()
-    build(address, token, kinds, name, found).run(show_banner=False)
+    server.run(show_banner=False)

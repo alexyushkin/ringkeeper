@@ -72,16 +72,19 @@ InstanceArg = Annotated[
 WRITE_NOTE = "[write] Name the instance. It may wait for the user's approval."
 
 
-def _pass_caller(token: str) -> Caller:
+def _pass_caller(token: str, chosen: str | None) -> Caller:
     with session_scope() as session:
-        return passes.verify(session, token)
+        return passes.verify(session, token, chosen)
 
 
 class WorkerTokenAuth:
     """ASGI middleware: verify the bearer worker token, or answer 401 with the reason."""
 
     def __init__(
-        self, app: ASGIApp, service: InstanceType | None, role: TokenRole = TokenRole.WORKER
+        self,
+        app: ASGIApp,
+        service: InstanceType | None,
+        role: TokenRole = TokenRole.WORKER,
     ) -> None:
         self.app = app
         self.service = service  # None: the architect endpoint
@@ -131,10 +134,13 @@ class WorkerTokenAuth:
         worker does, and nothing else."""
         if self.role is not TokenRole.WORKER:
             return "a pass can't use this endpoint"
+        chosen = Headers(scope=scope).get(passes.PROJECT_HEADER) or None
         try:
-            caller = await anyio.to_thread.run_sync(_pass_caller, token)
+            caller = await anyio.to_thread.run_sync(_pass_caller, token, chosen)
         except passes.PassError as error:
             return str(error)
+        # A pass for every client with no client chosen goes on with no project: its tools
+        # are listed, and each call says to choose one first (services.calls.no_project).
         scope.setdefault("state", {})[CALLER_KEY] = caller
         await self.app(scope, receive, send)
         return None

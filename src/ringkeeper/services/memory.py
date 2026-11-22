@@ -845,7 +845,10 @@ class Who:
 
 def _who(session: Session, caller: Caller) -> Who:
     if caller.project is None:
-        raise RuleViolationError("only a verified caller has a memory")
+        from ringkeeper.services import passes  # noqa: PLC0415
+
+        said = passes.CHOOSE_FIRST if passes.is_pass_session(caller.session_id) else None
+        raise RuleViolationError(said or "only a verified caller has a memory")
     project = projects.get_project(session, caller.project)
     agent = agents.for_worker_session(session, caller.session_id)
     row = _worker(session, caller.session_id)

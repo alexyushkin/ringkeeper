@@ -140,11 +140,21 @@ def _named(session: Session, name: str, unavailable: str) -> Instance:
     return instance
 
 
+def no_project(caller: Caller) -> RefusalError:
+    """Why a caller with no project is refused: a pass for every client that hasn't chosen
+    one yet is told how to; anything else has no verified caller."""
+    from ringkeeper.services import passes  # noqa: PLC0415 (passes reaches projects)
+
+    if passes.is_pass_session(caller.session_id):
+        return RefusalError(passes.CHOOSE_FIRST, "every-client pass with no client chosen")
+    return RefusalError("a valid worker token is required", "no verified caller")
+
+
 def authorize(session: Session, call: ToolCall, spec: ToolSpec) -> Authorized:
     """Checks 2-4. Raises RefusalError on the first one that fails."""
     caller = call.caller
     if caller.project is None:
-        raise RefusalError("a valid worker token is required", "no verified caller")
+        raise no_project(caller)
     project = session.scalars(select(Project).where(Project.name == caller.project)).one_or_none()
     if project is None:
         raise RefusalError(
@@ -379,7 +389,7 @@ def unauthenticated(
 def bound_instances(caller: Caller) -> list[dict[str, Any]]:
     """The calling project's own instances, for the list_instances tool. No secrets."""
     if caller.project is None:
-        raise RefusalError("a valid worker token is required", "no verified caller")
+        raise no_project(caller)
     with session_scope() as session:
         project = session.scalars(
             select(Project).where(Project.name == caller.project)

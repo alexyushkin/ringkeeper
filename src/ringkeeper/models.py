@@ -749,7 +749,10 @@ class SessionEvent(Base):
 class Pass(Base):
     """A way for an AI app on this computer (Claude Desktop, Claude Code, Cursor) to use one
     project's connections through the gateway, like a task does. Its token is in the vault;
-    only its hash is here. Revoking it stops it at once (services.passes)."""
+    only its hash is here. Revoking it stops it at once (services.passes).
+
+    With no project it's for every client: the AI app chooses a project at a time, and each
+    call is checked as that project's (services.passes.verify)."""
 
     __tablename__ = "passes"
 
@@ -757,7 +760,7 @@ class Pass(Base):
         primary_key=True, server_default=text("gen_random_uuid()")
     )
     name: Mapped[str] = mapped_column(String(63), unique=True)
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE", name="fk_passes_project")
     )
     token_hash: Mapped[str] = mapped_column(Text, unique=True)
@@ -766,7 +769,7 @@ class Pass(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     revoked_by: Mapped[str | None] = mapped_column(Text)
 
-    project: Mapped["Project"] = relationship()
+    project: Mapped["Project | None"] = relationship()
 
 
 class TokenRevocation(Base):

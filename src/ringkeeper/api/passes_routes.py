@@ -58,11 +58,26 @@ def _apps(settings: Settings, name: str) -> list[dict[str, Any]]:
     return [app_setup.status(key, server, started) for key in app_setup.APPS]
 
 
+EVERY_CLIENT = "every client"
+
+
+def _project(row: Pass) -> str | None:
+    """The pass's project, or None for a pass for every client."""
+    return row.project.name if row.project is not None else None
+
+
+def _for(session: Any, row: Pass) -> str:
+    """What a pass is for, as said: its project's title, or every client."""
+    project = _project(row)
+    return titles.of(session, project) if project else EVERY_CLIENT
+
+
 def _shown(session: Any, settings: Settings, row: Pass) -> dict[str, Any]:
+    project = _project(row)
     return {
         "name": row.name,
-        "project": row.project.name,
-        "project_title": titles.of(session, row.project.name),
+        "project": project,  # None: every client, one at a time
+        "project_title": _for(session, row),
         "created_at": row.created_at,
         "last_used_at": row.last_used_at,
         "revoked_at": row.revoked_at,
@@ -82,15 +97,15 @@ def list_all(session: SessionDep) -> dict[str, Any]:
 
 class PassIn(Input):
     name: Annotated[str, Field(min_length=1, max_length=63)]
-    project: Slug
+    project: Slug | None = None  # None: every client, the AI app choosing one at a time
 
 
 @router.post("", status_code=201, dependencies=[RecentAuth])
 def create(data: PassIn, session: WriteSessionDep) -> dict[str, Any]:
     row = passes.create(session, get_vault(), data.name, data.project)
     admin_audit.record(
-        session, "pass.created", f"made the pass {row.name} for {row.project.name}",
-        by="owner", project=row.project.name,
+        session, "pass.created", f"made the pass {row.name} for {_project(row) or EVERY_CLIENT}",
+        by="owner", project=_project(row),
     )  # fmt: skip
     return _shown(session, get_settings(), row)
 
@@ -100,7 +115,7 @@ def revoke(name: Slug, session: WriteSessionDep) -> dict[str, Any]:
     row = passes.revoke(session, name, by="owner")
     admin_audit.record(
         session, "pass.revoked", f"revoked the pass {row.name}",
-        by="owner", project=row.project.name,
+        by="owner", project=_project(row),
     )  # fmt: skip
     return _shown(session, get_settings(), row)
 
@@ -109,7 +124,7 @@ def revoke(name: Slug, session: WriteSessionDep) -> dict[str, Any]:
 def remove(name: Slug, session: WriteSessionDep) -> dict[str, Any]:
     """Gone, and out of the AI apps it was added to, so they don't keep starting a pass that
     isn't there. An app whose file can't be changed now is said, and the pass goes anyway."""
-    project = passes.get(session, name).project.name
+    project = _project(passes.get(session, name))
     passes.remove(session, get_vault(), name)
     admin_audit.record(
         session, "pass.removed", f"removed the pass {name}", by="owner", project=project
@@ -141,7 +156,7 @@ def claude_desktop(name: Slug, session: SessionDep) -> dict[str, str]:
     row = passes.get(session, name)
     if row.revoked_at is not None:
         raise HTTPException(409, f"The pass {name} is revoked. Make a new one.")
-    blob = passes.extension(settings, row.name, titles.of(session, row.project.name))
+    blob = passes.extension(settings, row.name, _for(session, row))
     path = downloads() / f"Ringkeeper-{row.name}.mcpb"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +218,7 @@ def add_to_app(name: Slug, app: AppKey, session: WriteSessionDep) -> dict[str, A
         raise HTTPException(409, str(error)) from None
     admin_audit.record(
         session, "pass.added_to_app", f"added the pass {name} to {the_app.label}",
-        by="owner", project=row.project.name,
+        by="owner", project=_project(row),
     )  # fmt: skip
     restart = "Start a new Claude Code session" if app == "claude-code" else "Restart Cursor"
     return {"said": f"Added to {the_app.label}. {restart} and it has the pass's tools.",
@@ -225,7 +240,7 @@ def remove_from_app(name: Slug, app: AppKey, session: WriteSessionDep) -> dict[s
         raise HTTPException(409, str(error)) from None
     admin_audit.record(
         session, "pass.removed_from_app", f"took the pass {name} out of {the_app.label}",
-        by="owner", project=row.project.name,
+        by="owner", project=_project(row),
     )  # fmt: skip
     return {"said": f"Taken out of {the_app.label}.", "status": _status(settings, row.name, app)}
 
