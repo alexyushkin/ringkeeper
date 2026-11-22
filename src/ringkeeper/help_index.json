@@ -469,9 +469,15 @@
 },
 {
 "doc": "working-faster",
+"anchor": "whats-folded-away",
+"title": "What's folded away",
+"text": "Home, the menu and Settings show what most people use, and keep the rest one click away: - **Home:** saved requests, **Sent for later** and the digest are under **More on Home**, a line under the request box that's there only when one of them has something. - **The menu:** **Agents**, **Routines** and **Activity** are under **More** at the end of the sidebar. It stays open while you're on one of them. On a phone they're under the **More** tab, as before. - **Settings:** the sections few people need are under **More settings** at the end of their tab: Where Claude runs; Slack and Discord; Quick request, importing your AI apps' tools and Self-test; Your name, Notion AI memory and Shared notes. Search (Ctrl K) still finds every one, and opens it."
+},
+{
+"doc": "working-faster",
 "anchor": "send-later",
 "title": "Send later",
-"text": "Under the request box on Home, **Send later…** picks a day and time (this computer's time). The request waits until then, in its conversation and in **Sent for later** on Home, each with **Cancel**. At its time it's routed like any request. If Ringkeeper isn't running then (the computer was asleep, say), it runs when Ringkeeper starts, unless that's more than 6 hours late: then it doesn't run, and its conversation says so. A time can be up to 90 days ahead."
+"text": "Under the request box on Home, **Send later…** picks a day and time (this computer's time). The request waits until then, in its conversation and in **Sent for later** on Home (under **More on Home**), each with **Cancel**. At its time it's routed like any request. If Ringkeeper isn't running then (the computer was asleep, say), it runs when Ringkeeper starts, unless that's more than 6 hours late: then it doesn't run, and its conversation says so. A time can be up to 90 days ahead."
 },
 {
 "doc": "working-faster",
@@ -489,7 +495,7 @@
 "doc": "working-faster",
 "anchor": "run-again-and-saved-requests",
 "title": "Run again and saved requests",
-"text": "A finished task's **More** button has the actions that aren't the result itself: - **Run again** starts the same request as a new task. - **Save this request** (on the task's page) keeps it on its project as a shortcut: saved requests are under the box on Home, one click to fill it in. - **Remember this** keeps the result, edited as you like, in the project's memory. Under a task's result in a conversation, **More** has **Remember this** and **Run again**."
+"text": "A finished task's **More** button has the actions that aren't the result itself: - **Run again** starts the same request as a new task. - **Save this request** (on the task's page) keeps it on its project as a shortcut: saved requests are on Home under **More on Home**, one click to fill it in. - **Remember this** keeps the result, edited as you like, in the project's memory. Under a task's result in a conversation, **More** has **Remember this** and **Run again**."
 },
 {
 "doc": "working-faster",
@@ -519,7 +525,7 @@
 "doc": "working-faster",
 "anchor": "morning-digest",
 "title": "Morning digest",
-"text": "Home shows the last 24 hours per client: what ran, what wasn't done (amber), what failed (red, for tasks that broke) and what waits for you. Each count opens the list of those tasks, for that client and that window; hold the pointer on the heading to see when the window started. Check my setup's requests and the demo's tasks aren't counted: a line under the card says they ran, with a link to the report. To get it on Telegram, Slack and Discord too, turn on Settings › Notifications › Morning digest and set the time."
+"text": "Home shows the last 24 hours per client, under **More on Home**: what ran, what wasn't done (amber), what failed (red, for tasks that broke) and what waits for you. Each count opens the list of those tasks, for that client and that window; hold the pointer on the heading to see when the window started. Check my setup's requests and the demo's tasks aren't counted: a line under the card says they ran, with a link to the report. To get it on Telegram, Slack and Discord too, turn on Settings › Notifications › Morning digest and set the time."
 },
 {
 "doc": "working-faster",

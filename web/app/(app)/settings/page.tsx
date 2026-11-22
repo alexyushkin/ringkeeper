@@ -10,6 +10,8 @@ import { KindSection, TelegramPrefs, useChannels } from "@/components/channels";
 import { Alert, Button, Card, ConfirmButton, Details, Field, Loading, PageHeader, Section, Select, Tabs, Toggle, type Tab } from "@/components/ui";
 import { EveryProject, MyMemory, PersonalMemory, SharedNotes } from "@/components/memory";
 import { api, useApi } from "@/lib/client/api";
+import { useOpenHere } from "@/lib/client/app-history";
+import { namedInHash } from "@/lib/settings-sections";
 import { DESKTOP } from "@/lib/client/routes";
 import { applyTheme, readTheme } from "@/lib/client/theme";
 import { setSendMode, useSendMode } from "@/lib/client/use-send-keys";
@@ -119,9 +121,11 @@ export default function SettingsPage() {
       label: "Claude",
       content: () => (
         <>
-          <ClaudePlace />
           <ClaudeCard settings={settings.data!} onSaved={settings.reload} />
           <PersonalMode on={v.allow_subscription} onChange={(on) => change({ allow_subscription: on })} />
+          <MoreSettings ids={["claude-place"]}>
+            <ClaudePlace />
+          </MoreSettings>
         </>
       ),
     },
@@ -232,12 +236,14 @@ export default function SettingsPage() {
           </Details>
           {channels.data ? <TelegramPrefs prefs={channels.data.telegram.prefs} onSaved={channels.reload} /> : null}
         </Section>
-        <Section id="slack" title="Slack" summary={channelSummary("slack")}>
-          <KindSection kind="slack" list={channels.data?.channels ?? []} onChanged={channels.reload} />
-        </Section>
-        <Section id="discord" title="Discord" summary={channelSummary("discord")}>
-          <KindSection kind="discord" list={channels.data?.channels ?? []} onChanged={channels.reload} />
-        </Section>
+        <MoreSettings ids={["slack", "discord"]}>
+          <Section id="slack" title="Slack" summary={channelSummary("slack")}>
+            <KindSection kind="slack" list={channels.data?.channels ?? []} onChanged={channels.reload} />
+          </Section>
+          <Section id="discord" title="Discord" summary={channelSummary("discord")}>
+            <KindSection kind="discord" list={channels.data?.channels ?? []} onChanged={channels.reload} />
+          </Section>
+        </MoreSettings>
         </div>
       ),
     },
@@ -259,15 +265,7 @@ export default function SettingsPage() {
             />
           </Section>
           {DESKTOP ? <ThisComputer startAtLogin={v.start_at_login} onChange={(on) => change({ start_at_login: on })} /> : null}
-          {DESKTOP ? (
-            <Section id="hotkey" title="Quick request" summary={v.hotkey_enabled ? v.hotkey.replace("Super", "Win") : "off"} defaultOpen={false}>
-              <Toggle label="Open the quick request box with a key" checked={v.hotkey_enabled} onChange={(on) => change({ hotkey_enabled: on })} hint="A small box over whatever you're doing: type or speak, send, and it closes." />
-              {v.hotkey_enabled ? <TextSetting label="Key (like Ctrl+Alt+R; Super is the Windows key)" value={v.hotkey} onSave={(text) => change({ hotkey: text })} /> : null}
-            </Section>
-          ) : null}
-          {DESKTOP ? <ImportFromClaudeDesktop /> : null}
           <SetupCheck />
-          {DESKTOP ? <SelfTest /> : null}
           {DESKTOP ? null : (
             <>
               <Passkeys />
@@ -275,6 +273,16 @@ export default function SettingsPage() {
               <SignOut />
             </>
           )}
+          {DESKTOP ? (
+            <MoreSettings ids={["hotkey", "claude-desktop", "self-test"]}>
+              <Section id="hotkey" title="Quick request" summary={v.hotkey_enabled ? v.hotkey.replace("Super", "Win") : "off"} defaultOpen={false}>
+                <Toggle label="Open the quick request box with a key" checked={v.hotkey_enabled} onChange={(on) => change({ hotkey_enabled: on })} hint="A small box over whatever you're doing: type or speak, send, and it closes." />
+                {v.hotkey_enabled ? <TextSetting label="Key (like Ctrl+Alt+R; Super is the Windows key)" value={v.hotkey} onSave={(text) => change({ hotkey: text })} /> : null}
+              </Section>
+              <ImportFromClaudeDesktop />
+              <SelfTest />
+            </MoreSettings>
+          ) : null}
         </>
       ),
     },
@@ -287,15 +295,17 @@ export default function SettingsPage() {
           <Section id="every-project" title="Notion for every project" defaultOpen>
             <EveryProject />
           </Section>
-          <Section id="your-name" title="Your name" summary={v.owner_name || "not set"} defaultOpen={false}>
-            <div className="space-y-2">
-              <TextSetting label="Your name, shown on notes you save" value={v.owner_name} onSave={(text) => change({ owner_name: text })} />
-              <p className="text-xs text-muted">Notes you and your tasks save to Notion get it in their Saved by column, so a team sharing one Notion page sees whose notes are whose. Rows people type in Notion stay as they are.</p>
-            </div>
-          </Section>
           <MyMemory />
-          <PersonalMemory />
-          <SharedNotes />
+          <MoreSettings ids={["your-name", "notion-memory", "shared-notes"]}>
+            <Section id="your-name" title="Your name" summary={v.owner_name || "not set"} defaultOpen={false}>
+              <div className="space-y-2">
+                <TextSetting label="Your name, shown on notes you save" value={v.owner_name} onSave={(text) => change({ owner_name: text })} />
+                <p className="text-xs text-muted">Notes you and your tasks save to Notion get it in their Saved by column, so a team sharing one Notion page sees whose notes are whose. Rows people type in Notion stay as they are.</p>
+              </div>
+            </Section>
+            <PersonalMemory />
+            <SharedNotes />
+          </MoreSettings>
         </div>
       ),
     },
@@ -340,6 +350,30 @@ export default function SettingsPage() {
     </>
   );
 }
+
+/** The sections of a tab that few people need, folded at its end. Search, or a link to one of
+ * them, opens the fold (each section then opens and scrolls into view itself). */
+function MoreSettings({ ids, children }: { ids: string[]; children: React.ReactNode }) {
+  const [open, setOpen, ref] = useOpenHere(MORE_SETTINGS, false);
+  useEffect(() => {
+    const named = () => {
+      if (ids.includes(namedInHash(window.location.hash).section)) setOpen(true);
+    };
+    named();
+    window.addEventListener("hashchange", named);
+    return () => window.removeEventListener("hashchange", named);
+  }, [ids.join(" ")]);
+  return (
+    <div ref={ref} data-details={MORE_SETTINGS} className="mt-4">
+      <button type="button" onClick={() => setOpen(!open)} className="text-sm text-accent" aria-expanded={open}>
+        {open ? "Fewer settings" : MORE_SETTINGS}
+      </button>
+      {open ? <div className="mt-3 space-y-4">{children}</div> : null}
+    </div>
+  );
+}
+
+const MORE_SETTINGS = "More settings";
 
 function NumberSetting({ label, value, onSave, hint }: { label: string; value: number; onSave: (n: number) => void; hint?: string }) {
   const [text, setText] = useState(String(value));

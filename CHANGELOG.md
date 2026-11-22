@@ -29,6 +29,11 @@ publishes it as the release notes and the app shows it with the update.
   its app. Their keys move into Ringkeeper's vault, and Ringkeeper never changes those apps'
   files. Variables (`${env:NAME}`) are filled in from this computer, and a settings file that
   can't be read is named.
+- **Home, the menu and Settings show less at once.** Saved requests, **Sent for later** and
+  the digest are under **More on Home**, which shows only when one of them has something.
+  **Agents**, **Routines** and **Activity** are under **More** in the sidebar. Each Settings
+  tab ends with **More settings** for the sections few people need (Slack and Discord, Quick
+  request, Self-test and others); search still finds and opens them.
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it
