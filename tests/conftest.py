@@ -40,9 +40,10 @@ from tests.helpers import bind, make_instance, make_project
 #
 # Any read or write of the installed app's keychain item (service "Ringkeeper"),
 # its data folder, this checkout's own .ringkeeper, or the projects folder
-# (Documents/Ringkeeper) stops the whole run: the call fails with
-# TouchedRealDataError (a BaseException, so `except Exception` can't swallow
-# it), and the run ends after that test.
+# (Documents/Ringkeeper), and any change to the settings files of the AI apps a
+# pass is added to (Claude Code's .claude.json, Cursor's .cursor/mcp.json), stops
+# the whole run: the call fails with TouchedRealDataError (a BaseException, so
+# `except Exception` can't swallow it), and the run ends after that test.
 
 
 class TouchedRealDataError(BaseException):
@@ -54,6 +55,12 @@ REAL_FOLDERS = tuple(
     os.path.normcase(os.path.abspath(p))
     for p in (desktop_paths.data_dir(), Path(".ringkeeper"), desktop_paths.workspaces_dir())
 )
+# Read by the project scan (the folders Claude Code was opened in), so only a change stops it.
+REAL_APP_FILES = tuple(
+    os.path.normcase(os.path.abspath(p))
+    for p in (Path.home() / ".claude.json", Path.home() / ".cursor" / "mcp.json")
+)
+_WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
 _FILE_EVENTS = {
     "open", "os.mkdir", "os.rmdir", "os.remove", "os.rename", "os.listdir", "os.scandir",
     "os.chmod", "os.truncate", "shutil.rmtree", "shutil.copyfile", "shutil.move",
@@ -77,11 +84,36 @@ def _real(path: object) -> str | None:
     return None
 
 
+def _changes(event: str, args: tuple[object, ...]) -> bool:
+    """Whether this event can change a file: anything but opening it to read."""
+    if event != "open":
+        return True
+    mode, flags = (args[1] if len(args) > 1 else None), (args[2] if len(args) > 2 else 0)
+    if isinstance(mode, str):
+        return any(c in mode for c in "wax+")
+    return isinstance(flags, int) and bool(flags & _WRITE_FLAGS)
+
+
+def _real_app_file(path: object) -> str | None:
+    if isinstance(path, bytes):
+        path = os.fsdecode(path)
+    if not isinstance(path, (str, os.PathLike)):
+        return None
+    try:
+        full: str = os.path.normcase(os.path.abspath(os.fspath(cast(str, path))))
+    except (TypeError, ValueError):
+        return None
+    return full if full in REAL_APP_FILES else None
+
+
 def _audit(event: str, args: tuple[object, ...]) -> None:
     if event not in _FILE_EVENTS or touched:
         return
     for arg in args[:2]:
-        if (found := _real(arg)) is not None:
+        found = _real(arg)
+        if found is None and _changes(event, args):
+            found = _real_app_file(arg)
+        if found is not None:
             touched.append(f"{event} {found}")
             raise TouchedRealDataError(f"a test touched the real app's data: {event} {found}")
 

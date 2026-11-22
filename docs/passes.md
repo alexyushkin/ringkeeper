@@ -20,16 +20,35 @@ what you add to the app only starts Ringkeeper's bridge on this computer.
 
 1. Settings > Passes > New pass. Pick the project, and give the pass a name the app will list it
    by, like `acme-code`.
-2. Choose the app:
-   - **Claude Desktop:** click **Save the extension**. It's saved into your Downloads folder as
-     `Ringkeeper-<pass>.mcpb`. Double-click it, and Claude Desktop asks whether to install it.
-     If double-clicking doesn't open Claude, add the file from Claude's Customize > Connectors.
-   - **Claude Code:** run the command in a terminal. It adds the pass for every folder you use
-     Claude Code in.
-   - **Cursor:** put the JSON in `.cursor/mcp.json` in your home folder, or in one project's
-     folder for that project only. If the file already lists servers, add this one beside them.
-3. Start a new chat (Claude Desktop), or restart the app (Claude Code, Cursor). Ringkeeper has
-   to be running while you use it.
+2. On the pass, click **Add to** the app:
+   - **Claude Desktop:** the pass is saved into your Downloads folder as an extension,
+     `Ringkeeper-<pass>.mcpb`, and opened, so Claude Desktop asks whether to install it. Click
+     Install. If Claude doesn't ask, double-click the file, or add it from Claude's
+     Customize > Connectors.
+   - **Claude Code** and **Cursor:** Ringkeeper adds the pass to the app's own settings, for
+     every folder you use the app in. An app that isn't on this computer says so.
+3. Start a new chat (Claude Desktop), a new session (Claude Code), or restart Cursor.
+   Ringkeeper has to be running while you use it.
+
+The pass shows **Added** for each app it's in, and **Take it out** removes it from that app.
+Removing a pass takes it out of Claude Code and Cursor too. Claude Desktop's extension is taken
+out in Claude, under Settings > Extensions.
+
+### What Ringkeeper changes in Claude Code and Cursor
+
+Only the app's list of servers: `mcpServers` in Claude Code's `.claude.json` (in your home
+folder, or in `CLAUDE_CONFIG_DIR` if you set one) and in Cursor's `.cursor/mcp.json`. Every
+other setting stays as it was, and that's checked before anything is saved. Before each
+change, an encrypted copy of the file as it was is kept in Ringkeeper's data folder, under
+`app-settings-backups` (the newest five per app).
+
+Ringkeeper leaves the file alone, and says why, when it isn't valid JSON (a comment in it, say),
+when Claude Code hasn't saved its settings yet (open it once first), or when the app keeps
+changing the file while Ringkeeper saves. Then **Add it by hand instead**, on the pass, has the
+steps: a command for Claude Code, the JSON for Cursor.
+
+**Added for an older version** means the app starts the pass the way an earlier install did.
+Click **Update**.
 
 The app then has tools named by service: `database_query`, `airtable_list_records`,
 `memory_recall`, and so on, and Ringkeeper's own: `ringkeeper_ask`, `ringkeeper_task_status`
@@ -48,7 +67,7 @@ yourself:
    Claude rewrites the file while it runs, and an edit made then is lost.
 2. Open `claude_desktop_config.json`: `%APPDATA%\Claude\` on Windows,
    `~/Library/Application Support/Claude/` on a Mac. Copy it somewhere first.
-3. In the pass, under Claude Desktop > Add it by hand instead, copy the JSON, and add its entry
+3. In the pass, under Add it by hand instead > Claude Desktop, copy the JSON, and add its entry
    under `mcpServers`, beside any servers already there.
 4. Start Claude.
 
@@ -77,8 +96,9 @@ same link while the change is waiting, and the result once it ran.
 
 ## Revoke or remove a pass
 
-**Revoke** stops it: the app's next call is refused, and the refusal is in Activity. **Remove**
-deletes a revoked pass and its key. What it did stays in Activity.
+**Revoke** stops it: the app's next call is refused, and the refusal is in Activity. A revoked
+pass still lists the apps it's in, with **Take it out**. **Remove** deletes a revoked pass and its
+key, and takes it out of Claude Code and Cursor. What it did stays in Activity.
 
 ## When Ringkeeper quits, restarts or updates
 

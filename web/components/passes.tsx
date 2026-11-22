@@ -6,6 +6,16 @@ import { Changes } from "@/components/changes";
 import { Alert, Badge, Button, Card, ConfirmButton, Details, Field, Section, Select, timeAgo } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
 
+/** An AI app on this computer, and whether the pass is in it (services.app_setup). */
+interface AppStatus {
+  app: string;
+  label: string;
+  found: boolean;
+  added: boolean;
+  current: boolean; // as this install runs it now
+  problem: string | null; // why its settings file was left alone
+}
+
 interface PassInfo {
   name: string;
   project: string;
@@ -14,6 +24,7 @@ interface PassInfo {
   last_used_at: string | null;
   revoked_at: string | null;
   setup: { server: string; json: string; claude_code: string };
+  apps: AppStatus[];
 }
 
 interface PassList {
@@ -119,12 +130,12 @@ function PassCard({ pass, onChanged }: { pass: PassInfo; onChanged: () => void }
         </div>
         {state}
       </div>
-      {!pass.revoked_at && <Setup pass={pass} />}
+      {pass.revoked_at ? <InApps pass={pass} onChanged={onChanged} revoked /> : <Setup pass={pass} onChanged={onChanged} />}
       <Changes path={`passes/${pass.name}/changes`} heading="Data it changed through this pass" />
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap gap-2">
         {pass.revoked_at ? (
-          <ConfirmButton question={`Remove ${pass.name}? Its history stays in Activity.`} confirm="Remove" onConfirm={() => act(`passes/${pass.name}`, "DELETE")}>
+          <ConfirmButton question={`Remove ${pass.name}? It's taken out of Claude Code and Cursor too. Its history stays in Activity.`} confirm="Remove" onConfirm={() => act(`passes/${pass.name}`, "DELETE")}>
             Remove
           </ConfirmButton>
         ) : (
@@ -137,30 +148,158 @@ function PassCard({ pass, onChanged }: { pass: PassInfo; onChanged: () => void }
   );
 }
 
-const APPS = {
-  "claude-desktop": { label: "Claude Desktop", where: "" },
-  "claude-code": { label: "Claude Code", where: "Run this in a terminal. It adds the pass for every folder you use Claude Code in." },
-  cursor: { label: "Cursor", where: "Put this in .cursor/mcp.json in your home folder (or in one project's folder, for that project only). If the file already lists servers, add this one beside them." },
-} as const;
-
-function Setup({ pass }: { pass: PassInfo }) {
-  const [app, setApp] = useState<keyof typeof APPS>("claude-desktop");
-
+/** Set it up in each AI app on this computer: one click each. The steps by hand stay, closed,
+ * for an app Ringkeeper can't change (its file has comments, say). */
+function Setup({ pass, onChanged }: { pass: PassInfo; onChanged: () => void }) {
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Set it up in">
-        {(Object.keys(APPS) as (keyof typeof APPS)[]).map((key) => (
+      <p className="text-sm">Add it to an AI app, then start a new chat or session there. Ringkeeper has to be running while you use it.</p>
+      <ClaudeDesktopRow pass={pass} />
+      <InApps pass={pass} onChanged={onChanged} />
+      <Details label="Add it by hand instead">
+        <ByHand pass={pass} />
+      </Details>
+    </div>
+  );
+}
+
+/** Claude Code and Cursor: added to or taken out of their settings files. On a revoked pass,
+ * only the apps it's still in, to take it out. */
+function InApps({ pass, onChanged, revoked = false }: { pass: PassInfo; onChanged: () => void; revoked?: boolean }) {
+  const shown = revoked ? pass.apps.filter((a) => a.added) : pass.apps;
+  if (!shown.length) return null;
+  return (
+    <>
+      {revoked ? <p className="text-sm text-muted">It&apos;s still in these apps. Take it out, so they stop starting it.</p> : null}
+      {shown.map((a) => (
+        <AppRow key={a.app} pass={pass} status={a} onChanged={onChanged} revoked={revoked} />
+      ))}
+    </>
+  );
+}
+
+function AppRow({ pass, status, onChanged, revoked }: { pass: PassInfo; status: AppStatus; onChanged: () => void; revoked: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function act(method: "POST" | "DELETE") {
+    setBusy(true);
+    setError(null);
+    setSaid(null);
+    try {
+      const done = await api<{ said: string }>(`passes/${pass.name}/apps/${status.app}`, { method });
+      setSaid(done.said);
+      onChanged();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const state = !status.found ? (
+    <span className="text-xs text-muted">Not on this computer</span>
+  ) : status.problem ? (
+    <Badge tone="warn">Can&apos;t change its settings</Badge>
+  ) : status.added ? (
+    status.current ? <Badge tone="good">Added</Badge> : <Badge tone="warn">Added for an older version</Badge>
+  ) : null;
+  return (
+    <div className="space-y-2 rounded-xl border border-line p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">{status.label}</span>
+        {state}
+        <span className="ml-auto" />
+        {status.found && !status.problem && !revoked && (!status.added || !status.current) ? (
+          <Button kind="primary" busy={busy} onClick={() => void act("POST")}>
+            {status.added ? "Update" : `Add to ${status.label}`}
+          </Button>
+        ) : null}
+        {status.found && status.added ? (
+          <Button busy={busy} onClick={() => void act("DELETE")}>
+            Take it out
+          </Button>
+        ) : null}
+      </div>
+      {status.problem ? <p className="text-xs text-muted">{status.problem} Or add it by hand, below.</p> : null}
+      {said ? <Alert tone="good">{said}</Alert> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+/** Claude Desktop: its extension, saved into Downloads and opened, so Claude asks whether to
+ * install it. Its own Settings › Extensions takes it out. */
+function ClaudeDesktopRow({ pass }: { pass: PassInfo }) {
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function add() {
+    setBusy(true);
+    setError(null);
+    try {
+      const done = await api<{ said: string }>(`passes/${pass.name}/apps/claude-desktop`, { method: "POST" });
+      setSaid(done.said);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-line p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">Claude Desktop</span>
+        <span className="ml-auto" />
+        <Button kind="primary" busy={busy} onClick={() => void add()}>
+          Add to Claude Desktop
+        </Button>
+      </div>
+      {said ? <Alert tone="good">{said}</Alert> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </div>
+  );
+}
+
+const BY_HAND = {
+  "claude-code": { label: "Claude Code" },
+  cursor: { label: "Cursor" },
+  "claude-desktop": { label: "Claude Desktop" },
+} as const;
+
+/** The steps by hand, for an app whose settings Ringkeeper can't change. */
+function ByHand({ pass }: { pass: PassInfo }) {
+  const [app, setApp] = useState<keyof typeof BY_HAND>("claude-code");
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="By hand in">
+        {(Object.keys(BY_HAND) as (keyof typeof BY_HAND)[]).map((key) => (
           <Button key={key} kind={key === app ? "primary" : "secondary"} onClick={() => setApp(key)}>
-            {APPS[key].label}
+            {BY_HAND[key].label}
           </Button>
         ))}
       </div>
       {app === "claude-desktop" ? (
-        <ClaudeDesktop pass={pass} />
+        <>
+          <p className="text-sm">
+            <b>Quit Claude completely first</b> (from its icon by the clock, not just the window): it rewrites its settings file while it runs, and your change would be lost. Then add this to{" "}
+            <span className="font-mono text-xs">claude_desktop_config.json</span> (in <span className="font-mono text-xs">%APPDATA%\Claude</span> on Windows,{" "}
+            <span className="font-mono text-xs">~/Library/Application Support/Claude</span> on a Mac), beside any servers already there, and start Claude.
+          </p>
+          <CopyBlock key={app} text={pass.setup.json} />
+        </>
+      ) : app === "claude-code" ? (
+        <>
+          <p className="text-sm">Run this in a terminal. It adds the pass for every folder you use Claude Code in.</p>
+          <CopyBlock key={app} text={pass.setup.claude_code} />
+        </>
       ) : (
         <>
-          <p className="text-sm">{APPS[app].where} Ringkeeper has to be running while you use it.</p>
-          <CopyBlock key={app} text={app === "claude-code" ? pass.setup.claude_code : pass.setup.json} />
+          <p className="text-sm">Put this in .cursor/mcp.json in your home folder (or in one project&apos;s folder, for that project only). If the file already lists servers, add this one beside them.</p>
+          <CopyBlock key={app} text={pass.setup.json} />
         </>
       )}
     </div>
@@ -181,52 +320,5 @@ function CopyBlock({ text }: { text: string }) {
         {copied ? "Copied" : "Copy"}
       </Button>
     </>
-  );
-}
-
-/** Claude Desktop: an extension file to open, saved into Downloads. The settings file by
- * hand is the fallback, and only with Claude quit: it rewrites the file while it runs. */
-function ClaudeDesktop({ pass }: { pass: PassInfo }) {
-  const [saved, setSaved] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      const done = await api<{ path: string }>(`passes/${pass.name}/claude-desktop`, { method: "POST" });
-      setSaved(done.path);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm">
-        Save the pass as a Claude Desktop extension, then double-click the file: Claude Desktop asks whether to install it. If double-clicking doesn&apos;t open Claude, add the file from Claude&apos;s Customize &gt; Connectors.
-        Start a new chat afterwards. Ringkeeper has to be running while you use it.
-      </p>
-      <Button kind="primary" onClick={save} busy={busy}>
-        Save the extension
-      </Button>
-      {saved && (
-        <Alert tone="good">
-          Saved to <span className="break-all font-mono text-xs">{saved}</span>. Double-click it to install it.
-        </Alert>
-      )}
-      {error && <Alert>{error}</Alert>}
-      <Details label="Add it by hand instead">
-        <p className="text-sm">
-          <b>Quit Claude completely first</b> (from its icon by the clock, not just the window): it rewrites its settings file while it runs, and your change would be lost. Then add this to{" "}
-          <span className="font-mono text-xs">claude_desktop_config.json</span> (in <span className="font-mono text-xs">%APPDATA%\Claude</span> on Windows,{" "}
-          <span className="font-mono text-xs">~/Library/Application Support/Claude</span> on a Mac), beside any servers already there, and start Claude.
-        </p>
-        <CopyBlock text={pass.setup.json} />
-      </Details>
-    </div>
   );
 }

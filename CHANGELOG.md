@@ -20,6 +20,17 @@ publishes it as the release notes and the app shows it with the update.
   every time, and every other change waits. Each tile says **Beta** until it's been tried with
   a real account; each one's sign-in was checked to accept Ringkeeper. Details, costs and
   plans: [Marketing, outreach, work and social](docs/services/more-services.md).
+- **A pass is added to an AI app in one click.** Each pass in Settings > Passes has **Add to
+  Claude Desktop**, **Add to Claude Code** and **Add to Cursor**. No command in a terminal,
+  and no JSON to paste. Claude Desktop's extension opens straight away, so Claude asks whether
+  to install it. Claude Code and Cursor get the pass in their own settings:
+  - only their list of servers changes;
+  - an encrypted copy of the file is kept first;
+  - a file Ringkeeper can't read safely (one with a comment in it, say) is left alone, and the
+    pass says why.
+
+  Each app shows **Added**, with **Take it out**. Removing a pass takes it out of Claude Code
+  and Cursor too. The steps by hand are still there, under **Add it by hand instead**.
 
 ## 0.1.0-beta.48 (2026-11-15)
 
