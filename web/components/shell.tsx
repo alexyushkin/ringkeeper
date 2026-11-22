@@ -38,6 +38,9 @@ const MORE = [
   { href: "/help", label: "Help", icon: `${CIRCLE}M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01` },
 ];
 const SEARCH = "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4";
+// In the sidebar these are under a closed More, open while one of them is the page.
+const TUCKED = new Set(["/agents", "/routines", "/activity"]);
+const DOTS = "M5 12h.01M12 12h.01M19 12h.01";
 
 // What the first-run tour points at (components/tour), wherever it's on screen.
 const TOUR: Record<string, string> = { "/approvals": "approvals", "/connections": "connections" };
@@ -81,6 +84,12 @@ export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
   const [narrow, setNarrow] = useNarrowSidebar();
+  const tucked = MORE.filter((item) => TUCKED.has(item.href));
+  const onTucked = tucked.some((item) => active(path, item.href));
+  const [tuckOpen, setTuckOpen] = useState(onTucked);
+  useEffect(() => {
+    if (onTucked) setTuckOpen(true);
+  }, [onTucked]);
   // The app's history starts here, before any step in it (lib/client/app-history).
   useEffect(() => {
     appHistory();
@@ -145,7 +154,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </>
           )}
         </button>
-        {[...MAIN, ...MORE].map((item) => (
+        {[...MAIN, ...MORE.filter((item) => !TUCKED.has(item.href)), ...(tuckOpen ? tucked : [])].map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -165,6 +174,17 @@ export function Shell({ children }: { children: ReactNode }) {
             )}
           </Link>
         ))}
+        <button
+          type="button"
+          onClick={() => setTuckOpen(!tuckOpen)}
+          title={narrow ? (tuckOpen ? "Less" : "More: Agents, Routines, Activity") : undefined}
+          aria-label={tuckOpen ? "Fewer pages" : "More pages"}
+          aria-expanded={tuckOpen}
+          className={`flex items-center gap-3 rounded-xl py-2 text-sm text-muted hover:bg-sunken hover:text-ink ${narrow ? "w-10 justify-center" : "px-3"}`}
+        >
+          <Icon d={DOTS} small />
+          {narrow ? null : tuckOpen ? "Less" : "More"}
+        </button>
         <button
           type="button"
           onClick={() => setNarrow(!narrow)}
@@ -233,7 +253,7 @@ export function Shell({ children }: { children: ReactNode }) {
           className={`flex flex-col items-center gap-0.5 pt-2 text-xs ${MORE.some((m) => active(path, m.href)) ? "text-accent" : "text-muted"}`}
           aria-expanded={moreOpen}
         >
-          <Icon d="M5 12h.01M12 12h.01M19 12h.01" />
+          <Icon d={DOTS} />
           More
         </button>
       </nav>

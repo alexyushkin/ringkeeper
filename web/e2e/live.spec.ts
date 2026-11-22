@@ -92,6 +92,8 @@ from ringkeeper.services import threads
 with session_scope() as session:
     threads.post_message(session, ${JSON.stringify(later)}, author="owner", source="telegram", run_at=datetime.now(UTC) + timedelta(hours=3))
 `);
+  // It's under More on Home, which shows once there's something in it.
+  await page.getByRole("button", { name: /^More on Home/ }).click(SHOWN);
   await expect(page.getByRole("region", { name: "Sent for later" }).getByText(later)).toBeVisible(SHOWN);
 });
 

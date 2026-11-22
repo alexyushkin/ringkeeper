@@ -2,7 +2,7 @@
 
 import Link from "@/components/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer } from "@/components/composer";
 import { DigestCard, Shortcuts } from "@/components/conveniences";
@@ -14,6 +14,7 @@ import { ScopeNote } from "@/components/scope-switcher";
 import { BulkBar, ListTools, ListTotal, LoadMore, SelectBox, SelectRows, useSelection } from "@/components/tidy";
 import { Alert, Badge, Empty, Loading, PageHeader, timeAgo } from "@/components/ui";
 import { RESYNC, useLive, usePaged } from "@/lib/client/api";
+import { useOpenHere } from "@/lib/client/app-history";
 import { place, useScope } from "@/lib/client/scope";
 import { threadHref } from "@/lib/client/routes";
 
@@ -28,6 +29,37 @@ interface Thread {
   archived: boolean;
   places: string[];
 }
+
+/** Saved requests, requests sent for later and the digest: one closed line under the box,
+ * there only when one of them has something. They load either way, so the line knows. */
+function MoreOnHome({ children }: { children: ReactNode }) {
+  const [open, setOpen, ref] = useOpenHere(MORE_ON_HOME, false);
+  const inside = useRef<HTMLDivElement | null>(null);
+  const [has, setHas] = useState(false);
+  useEffect(() => {
+    const box = inside.current;
+    if (!box) return;
+    const look = () => setHas(box.childElementCount > 0);
+    look();
+    const watch = new MutationObserver(look);
+    watch.observe(box, { childList: true });
+    return () => watch.disconnect();
+  }, []);
+  return (
+    <div ref={ref} data-details={MORE_ON_HOME} className={has ? "mt-4" : ""}>
+      {has ? (
+        <button type="button" onClick={() => setOpen(!open)} className="text-sm text-accent" aria-expanded={open}>
+          {open ? "Less on Home" : MORE_ON_HOME}
+        </button>
+      ) : null}
+      <div ref={inside} hidden={!open}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const MORE_ON_HOME = "More on Home: saved requests, sent for later, digest";
 
 const SOURCE: Record<string, string> = { web: "the app", api: "another app", cli: "the command line", telegram: "Telegram", slack: "Slack", discord: "Discord", pass: "a pass" };
 
@@ -47,14 +79,16 @@ export default function Home() {
     <>
       <PageHeader title="What do you need?" subtitle="Say it in your own words. Ringkeeper sends it to the right client project." />
       <Composer onSent={(thread) => router.push(threadHref(thread))} />
-      <Shortcuts project={scope.project || undefined} client={scope.client || undefined} />
       <InterruptedList />
       <div className="mt-4">
         <FirstSteps />
       </div>
       <WatchLine client={scope.client || undefined} project={scope.project || undefined} />
-      <ScheduledList />
-      <DigestCard client={scope.client || undefined} />
+      <MoreOnHome>
+        <Shortcuts project={scope.project || undefined} client={scope.client || undefined} />
+        <ScheduledList />
+        <DigestCard client={scope.client || undefined} />
+      </MoreOnHome>
       <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">{archived ? "Archived conversations" : "Recent conversations"}</h2>
       <ScopeNote />
       <ListTools query={query} onQuery={setQuery} archived={archived} onArchived={(on) => { setArchived(on); pick.clear(); }} what="conversations" />

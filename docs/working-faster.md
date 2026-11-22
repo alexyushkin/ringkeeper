@@ -26,11 +26,25 @@ open Ringkeeper in. **Esc** leaves the box. While the @ list is open, Enter pick
 from it and nothing is sent. In a plan's note, the key sends it as **Ask for changes**; it
 never approves a plan or a change.
 
+## What's folded away
+
+Home, the menu and Settings show what most people use, and keep the rest one click away:
+
+- **Home:** saved requests, **Sent for later** and the digest are under **More on Home**, a
+  line under the request box that's there only when one of them has something.
+- **The menu:** **Agents**, **Routines** and **Activity** are under **More** at the end of
+  the sidebar. It stays open while you're on one of them. On a phone they're under the
+  **More** tab, as before.
+- **Settings:** the sections few people need are under **More settings** at the end of their
+  tab: Where Claude runs; Slack and Discord; Quick request, importing your AI apps' tools
+  and Self-test; Your name, Notion AI memory and Shared notes. Search (Ctrl K) still finds
+  every one, and opens it.
+
 ## Send later
 
 Under the request box on Home, **Send later…** picks a day and time (this computer's
 time). The request waits until then, in its conversation and in **Sent for later** on
-Home, each with **Cancel**. At its time it's routed like any request.
+Home (under **More on Home**), each with **Cancel**. At its time it's routed like any request.
 
 If Ringkeeper isn't running then (the computer was asleep, say), it runs when Ringkeeper
 starts, unless that's more than 6 hours late: then it doesn't run, and its conversation
@@ -55,7 +69,7 @@ A finished task's **More** button has the actions that aren't the result itself:
 
 - **Run again** starts the same request as a new task.
 - **Save this request** (on the task's page) keeps it on its project as a shortcut: saved
-  requests are under the box on Home, one click to fill it in.
+  requests are on Home under **More on Home**, one click to fill it in.
 - **Remember this** keeps the result, edited as you like, in the project's memory.
 
 Under a task's result in a conversation, **More** has **Remember this** and **Run again**.
@@ -94,7 +108,7 @@ call under one is in Activity.
 
 ## Morning digest
 
-Home shows the last 24 hours per client: what ran, what wasn't done (amber), what failed
+Home shows the last 24 hours per client, under **More on Home**: what ran, what wasn't done (amber), what failed
 (red, for tasks that broke) and what waits for you. Each count opens the list of those tasks,
 for that client and that window; hold the pointer on the heading to see when the window
 started. Check my setup's requests and the demo's tasks aren't counted: a line under the card
