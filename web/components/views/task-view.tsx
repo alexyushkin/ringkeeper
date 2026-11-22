@@ -18,6 +18,7 @@ import { Alert, Badge, Button, Card, Code, ConfirmButton, Details, Loading, Stat
 import { RememberThis, SavedToMemory } from "@/components/memory";
 import { TaskSupport } from "@/components/task-support";
 import { TaskFiles } from "@/components/task-files";
+import { working } from "@/components/task-card";
 import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
 import { throttle } from "@/lib/throttle";
 import { taskHref, threadHref } from "@/lib/client/routes";
@@ -82,6 +83,7 @@ interface Event {
 type Block = { _kind?: string; text?: string; name?: string; input?: unknown; content?: unknown; is_error?: boolean };
 
 const ACTIVE = new Set(["queued", "running"]);
+const HOW_IT_RAN = "How it ran: steps, cost and transcript";
 const RESUMABLE = new Set(["succeeded", "failed", "stopped", "timed_out", "budget_exceeded", "needs_input", "not_done"]);
 
 function blocks(payload: Record<string, unknown>): Block[] {
@@ -277,43 +279,7 @@ export function TaskView({ id }: { id: string }) {
           <AddConnection missing={{ project: t.project, title: "", need: t.offer.add, label: t.offer.label, href: t.offer.href }} back={taskHref(id)} run={`task:${id}`} onRan={() => task.reload()} />
         ) : null}
         {t.status === "running" || t.status === "queued" ? null : <TaskAgain id={id} project={t.project} prompt={t.prompt} outcome={t.outcome ?? null} />}
-        <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-xs text-muted">Steps</dt>
-            <dd>{t.steps}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted">Cost (estimate)</dt>
-            <dd>{money(t.cost_usd)}</dd>
-          </div>
-          {t.tokens?.requests ? (
-            <div>
-              <dt className="text-xs text-muted">Tokens</dt>
-              <dd>
-                {(t.tokens.input + t.tokens.cache_read + t.tokens.cache_write).toLocaleString()} in · {t.tokens.output.toLocaleString()} out
-              </dd>
-            </div>
-          ) : null}
-          <div>
-            <dt className="text-xs text-muted">Started</dt>
-            <dd>{timeAgo(t.created_at)}</dd>
-          </div>
-          {t.branch ? (
-            <div>
-              <dt className="text-xs text-muted">Branch</dt>
-              <dd className="truncate">{t.branch_state ? `${t.branch} (${t.branch_state})` : t.branch}</dd>
-            </div>
-          ) : null}
-        </dl>
-        <Details>
-          <ul className="space-y-1 text-xs">
-            {t.session_list.map((s) => (
-              <li key={s.id}>
-                #{s.ordinal} {s.role} · {s.model ?? "default model"} · {s.status} · {s.steps} step{s.steps === 1 ? "" : "s"} · {money(s.cost_usd)}
-              </li>
-            ))}
-          </ul>
-        </Details>
+        {t.status === "running" ? <p className="text-sm text-muted">{working(t.steps)}</p> : null}
         <div className="flex flex-wrap gap-2">
           {ACTIVE.has(t.status) || t.status === "waiting" ? (
             <Button kind="danger" busy={busy} onClick={() => act("stop")}>
@@ -333,38 +299,82 @@ export function TaskView({ id }: { id: string }) {
       </Card>
 
       {t.folder_note ? <p className="mt-3 text-sm text-warn">{t.folder_note}</p> : null}
-      <div className="mt-4 flex gap-2" role="tablist">
-        <Button kind={tab === "transcript" ? "primary" : "secondary"} onClick={() => setTab("transcript")}>
-          Transcript
-        </Button>
-        <Button kind={tab === "changes" ? "primary" : "secondary"} onClick={() => setTab("changes")}>
-          Changes ({t.changed_files.length})
-        </Button>
+      {/* What the task made, and what's left to decide about it, stay in view. */}
+      <div className="mt-3 space-y-3">
+        <TaskFiles id={id} />
+        {t.branch && !t.branch_state && !ACTIVE.has(t.status) ? <KeepOrDiscard id={id} branch={t.branch} onDone={task.reload} /> : null}
+        {t.branch_state === "kept" ? <p className="text-sm text-good">Kept: these changes were merged into the project&apos;s main branch.</p> : null}
+        {t.branch_state === "discarded" ? <p className="text-sm text-muted">Discarded: these changes were thrown away.</p> : null}
       </div>
-
-      {tab === "transcript" ? (
-        <ol className="mt-3 space-y-3">
-          {events.length === 0 ? <p className="text-sm text-muted">No transcript yet: it fills in as the task runs. Transcripts older than {retention} days are deleted (Settings › Advanced).</p> : null}
-          {events.map((event) => (
-            <li key={event.id} className={event.role === "architect" ? "border-l-2 border-accent pl-3" : ""}>
-              <EventView event={event} />
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <div className="mt-3 space-y-3">
-          <TaskFiles id={id} />
-          {t.branch && !t.branch_state && !ACTIVE.has(t.status) ? <KeepOrDiscard id={id} branch={t.branch} onDone={task.reload} /> : null}
-          {t.branch_state === "kept" ? <p className="text-sm text-good">Kept: these changes were merged into the project&apos;s main branch.</p> : null}
-          {t.branch_state === "discarded" ? <p className="text-sm text-muted">Discarded: these changes were thrown away.</p> : null}
-          {t.diff ? <Code>{t.diff}</Code> : t.changed_files.length ? null : <p className="text-sm text-muted">No file changes recorded for this task.</p>}
-        </div>
-      )}
 
       {/* Under the latest result, where the reader is. */}
       <Waiting decisions={waiting} onDone={pending.reload} />
 
-      <TaskSupport id={id} />
+      {/* How it ran is there when it's wanted, folded until then. */}
+      <div className="mt-6 space-y-3">
+        <Details label={HOW_IT_RAN}>
+          <div className="space-y-4">
+            <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-muted">Steps</dt>
+                <dd>{t.steps}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Cost (estimate)</dt>
+                <dd>{money(t.cost_usd)}</dd>
+              </div>
+              {t.tokens?.requests ? (
+                <div>
+                  <dt className="text-xs text-muted">Tokens</dt>
+                  <dd>
+                    {(t.tokens.input + t.tokens.cache_read + t.tokens.cache_write).toLocaleString()} in · {t.tokens.output.toLocaleString()} out
+                  </dd>
+                </div>
+              ) : null}
+              <div>
+                <dt className="text-xs text-muted">Started</dt>
+                <dd>{timeAgo(t.created_at)}</dd>
+              </div>
+              {t.branch ? (
+                <div>
+                  <dt className="text-xs text-muted">Branch</dt>
+                  <dd className="truncate">{t.branch_state ? `${t.branch} (${t.branch_state})` : t.branch}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <ul className="space-y-1 text-xs text-muted">
+              {t.session_list.map((s) => (
+                <li key={s.id}>
+                  #{s.ordinal} {s.role} · {s.model ?? "default model"} · {s.status} · {s.steps} step{s.steps === 1 ? "" : "s"} · {money(s.cost_usd)}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2" role="tablist">
+              <Button kind={tab === "transcript" ? "primary" : "secondary"} onClick={() => setTab("transcript")}>
+                Transcript
+              </Button>
+              <Button kind={tab === "changes" ? "primary" : "secondary"} onClick={() => setTab("changes")}>
+                Changes ({t.changed_files.length})
+              </Button>
+            </div>
+            {tab === "transcript" ? (
+              <ol className="space-y-3">
+                {events.length === 0 ? <p className="text-sm text-muted">No transcript yet: it fills in as the task runs. Transcripts older than {retention} days are deleted (Settings › Advanced).</p> : null}
+                {events.map((event) => (
+                  <li key={event.id} className={event.role === "architect" ? "border-l-2 border-accent pl-3" : ""}>
+                    <EventView event={event} />
+                  </li>
+                ))}
+              </ol>
+            ) : t.diff ? (
+              <Code>{t.diff}</Code>
+            ) : (
+              <p className="text-sm text-muted">{t.changed_files.length ? `Changed ${t.changed_files.length} file${t.changed_files.length === 1 ? "" : "s"}, with no line-by-line changes recorded.` : "No file changes recorded for this task."}</p>
+            )}
+            <TaskSupport id={id} />
+          </div>
+        </Details>
+      </div>
     </>
   );
 }

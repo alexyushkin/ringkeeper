@@ -4,7 +4,7 @@ import Link from "@/components/link";
 
 import { plainText } from "@/components/markdown";
 import { firstSentences, withoutTables } from "@/lib/markdown-table";
-import { StatusBadge, money, timeAgo } from "@/components/ui";
+import { StatusBadge, timeAgo } from "@/components/ui";
 import { taskHref } from "@/lib/client/routes";
 import { place } from "@/lib/client/scope";
 
@@ -39,6 +39,12 @@ const PHASE: Record<string, string> = {
   done: "Done",
 };
 
+/** What a running task shows in place of its transcript: that it's working, and how far. */
+export function working(steps: number): string {
+  return steps ? `Working: ${steps} step${steps === 1 ? "" : "s"} so far.` : "Working.";
+}
+
+/** A task's card: what it found or did. How it ran (steps, cost, transcript) is on its page. */
 export function TaskCardView({ task }: { task: TaskCard }) {
   return (
     <Link href={taskHref(task.id)} className="block rounded-2xl border border-line bg-surface p-4 hover:border-accent">
@@ -53,9 +59,7 @@ export function TaskCardView({ task }: { task: TaskCard }) {
       <p className="mt-2 line-clamp-3 text-sm [overflow-wrap:anywhere]">{firstSentences(plainText(withoutTables(task.summary ?? task.outcome ?? "—")))}</p>
       {task.partly_done && task.status === "not_done" ? <p className="mt-1 line-clamp-2 text-sm text-good [overflow-wrap:anywhere]">Done: {task.partly_done}</p> : null}
       {task.error && task.status !== "succeeded" ? <p className={`mt-1 line-clamp-3 text-sm [overflow-wrap:anywhere] ${task.partly_done ? "text-warn" : "text-bad"}`}>{task.partly_done ? `Not done: ${task.error}` : task.error}</p> : null}
-      <p className="mt-2 text-xs text-muted">
-        {task.steps} step{task.steps === 1 ? "" : "s"} · {money(task.cost_usd)} · open the transcript ›
-      </p>
+      {task.status === "running" ? <p className="mt-2 text-xs text-muted">{working(task.steps)}</p> : null}
     </Link>
   );
 }

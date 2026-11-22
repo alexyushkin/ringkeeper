@@ -5,6 +5,11 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A task's page shows what it did, without the working.** The result, the files it made,
+  and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
+  the transcript with each tool used, and the changes line by line are folded under **How it
+  ran**, one click away. A task's card in a conversation and in Tasks no longer lists steps
+  and cost. While a task runs, the card and the page say how many steps it's taken so far.
 - **29 more services you sign in to,** each with the service's own server:
   - Email marketing: **Klaviyo**, **Brevo**, **Kit (ConvertKit)**, **MailerLite** and
     **Customer.io**.

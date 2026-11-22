@@ -52,6 +52,11 @@ A task's result answers your request as you asked it. When the task goes on by i
 you decide a held change, after Claude's side failed for a moment, after a restart or a raised
 spending cap), what it says then goes below that answer, never in its place.
 
+A task's page shows its result, the files it made and anything waiting for you. How it ran is
+folded under **How it ran: steps, cost and transcript**: its steps and cost, each tool it used,
+and the changes line by line. It opens with a click, and Back to the page shows it as you
+left it. While a task runs, its page and its card say how many steps it's taken so far.
+
 A request that clearly needs a kind of connection the project doesn't have (ads, email, a
 calendar, tables and records, a spreadsheet, files, payments) doesn't start a task at all. The
 reply says so at once, with what it looked for and what the project has: "This project has no
@@ -114,9 +119,10 @@ ends, so an answer never says the rest is still being fetched.
 ### A task's changes to files
 
 A task that works on a project's code (a feature, a fix, content) works on a branch of its
-own, and leaves the folder checked out as it found it. To use the changes, open the task's
-**Changes** tab: **Keep these changes** merges them into the project's main branch, and
-**Discard** throws them away. A follow-up in the same conversation keeps working on the
+own, and leaves the folder checked out as it found it. To use the changes, open the task:
+under its result, **Keep these changes** merges them into the project's main branch, and
+**Discard** throws them away. The changes line by line are under **How it ran** ›
+**Changes**. A follow-up in the same conversation keeps working on the
 same branch, so it sees the earlier work. A task that only read changes nothing and leaves
 no branch.
 
@@ -134,7 +140,7 @@ branch").
 
 ### Files a task makes
 
-The files a task made or changed are listed on its page (the **Changes** tab) and under its
+The files a task made or changed are listed on its page, under its result, and under its
 result in the conversation. In the desktop app each has **Open** and **Show in folder**. A
 code task's files are on its branch until you keep them: they open from a copy, and your
 folder isn't touched. Only documents open: PDFs, Office files, text, Markdown, CSV, JSON
