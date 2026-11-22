@@ -39,7 +39,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { tab: "advanced", id: "work", title: "Spending cap per task", words: "budget cost money dollars limit spend" },
   { tab: "advanced", id: "this-computer", title: "This computer", words: "start at login startup launch", where: "desktop" },
   { tab: "advanced", id: "hotkey", title: "Quick request", words: "hotkey shortcut keyboard key box", where: "desktop" },
-  { tab: "advanced", id: "claude-desktop", title: "From Claude Desktop", words: "import tools mcp servers", where: "desktop" },
+  { tab: "advanced", id: "claude-desktop", title: "From your AI apps", words: "import tools mcp servers claude desktop code cursor vs code windsurf gemini cline zed continue codex", where: "desktop" },
   { tab: "advanced", id: "setup-check", title: "Check my setup", words: "setup test check connections diagnose report probe" },
   { tab: "advanced", id: "self-test", title: "Self-test", words: "test scenarios check report", where: "desktop" },
   { tab: "advanced", id: "passkeys", title: "Passkeys", words: "security login sign in webauthn", where: "server" },

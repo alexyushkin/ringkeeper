@@ -16,11 +16,13 @@ interface Server {
   problem: string | null;
   imported_as: string | null;
   suggested: Kind; // a client's account if it needs a key, token, login or address
+  app_label: string; // the AI app it's set up in
 }
 
 interface Found {
   config: string | null;
   servers: Server[];
+  apps: { id: string; label: string; count: number; problems: string[] }[]; // besides Claude Desktop
 }
 
 interface Choice {
@@ -30,7 +32,8 @@ interface Choice {
 }
 
 /**
- * The MCP servers in Claude Desktop's settings. Each one is a client's account
+ * The MCP servers in Claude Desktop's settings and in the other AI apps here (Claude Code,
+ * Cursor, VS Code and more). Each one is a client's account
  * (linked to projects of that client) or your own tool (linked to any client's
  * projects, or all of them), or skipped. Ringkeeper reads their secrets from the
  * file itself and puts them in its vault; they never come through this page.
@@ -74,14 +77,17 @@ export function ClaudeDesktopImport({ onImported, quiet = false, bare = false }:
 
   return (
     <Wrapper bare={bare}>
-      {found.data && !found.data.config ? (
-        <p className="text-sm text-muted">Claude Desktop&apos;s settings aren&apos;t on this computer.</p>
-      ) : servers.length === 0 ? (
-        <p className="text-sm text-muted">Claude Desktop has no tools set up, so there's nothing to import. Add one with Add a connection.</p>
-      ) : (
+      {(found.data?.apps ?? []).flatMap((a) => a.problems).map((problem) => (
+        <Alert key={problem} tone="warn">
+          {problem}
+        </Alert>
+      ))}
+      {found.data && servers.length === 0 ? (
+        <p className="text-sm text-muted">No AI app on this computer has tools set up, so there&apos;s nothing to import. Add one with Add a connection.</p>
+      ) : servers.length === 0 ? null : (
         <>
           <p className="text-sm text-muted">
-            The MCP servers you set up in Claude Desktop. A client&apos;s account goes to that client&apos;s projects; your own tool (a browser, files, a fetcher) can go to any client&apos;s projects, or all of them. Their keys move into Ringkeeper&apos;s encrypted vault. Tools the server marks as read-only run without asking; the rest wait for your approval.
+            The MCP servers you set up in your AI apps: {apps(servers)}. A client&apos;s account goes to that client&apos;s projects; your own tool (a browser, files, a fetcher) can go to any client&apos;s projects, or all of them. Their keys move into Ringkeeper&apos;s encrypted vault. Tools the server marks as read-only run without asking; the rest wait for your approval.
           </p>
           <div className="space-y-2">
             {servers.map((s) => {
@@ -99,6 +105,7 @@ export function ClaudeDesktopImport({ onImported, quiet = false, bare = false }:
                   head={
                     <>
                       <span className="font-medium">{s.name}</span>
+                      <span className="text-xs text-muted">{s.app_label}</span>
                       {s.secrets ? <span className="text-xs text-muted">{s.secrets === 1 ? "1 secret" : `${s.secrets} secrets`}</span> : null}
                       <span className={`ml-auto text-xs ${s.problem ? "text-bad" : "text-muted"}`}>{status}</span>
                     </>
@@ -132,12 +139,18 @@ export function ClaudeDesktopImport({ onImported, quiet = false, bare = false }:
   );
 }
 
+/** "Claude Desktop, Cursor and VS Code": the apps the servers are from. */
+function apps(servers: Server[]): string {
+  const names = [...new Set(servers.map((s) => s.app_label))];
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "");
+}
+
 /** Its own card, or (bare) inside someone else's section. */
 function Wrapper({ bare, children }: { bare: boolean; children: React.ReactNode }) {
   if (bare) return <div className="space-y-3">{children}</div>;
   return (
     <Card className="space-y-3">
-      <h2 className="text-lg font-semibold">From Claude Desktop</h2>
+      <h2 className="text-lg font-semibold">From your AI apps</h2>
       {children}
     </Card>
   );

@@ -19,6 +19,12 @@ publishes it as the release notes and the app shows it with the update.
   project Acme web") and to use them, and nothing else, for that client's data. Without that,
   an app could pick its own Notion or Google connector, which reaches your account instead of
   the client's. A new `ringkeeper_about` tool says the same.
+- **Import tools from more AI apps.** Settings › From your AI apps (and the first run) now
+  lists the tools set up in Claude Code, Cursor, VS Code, Windsurf, Gemini CLI, Cline, Roo
+  Code, Zed, Continue, Codex, Kiro, Amazon Q and others, as well as Claude Desktop, each with
+  its app. Their keys move into Ringkeeper's vault, and Ringkeeper never changes those apps'
+  files. Variables (`${env:NAME}`) are filled in from this computer, and a settings file that
+  can't be read is named.
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it
