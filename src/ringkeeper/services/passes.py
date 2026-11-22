@@ -7,6 +7,11 @@ architect, not another project.
 
 Its token lives in the vault; the database keeps only its hash, so a copied database can't be
 used to call anything. Revoking a pass stops it on its next call.
+
+A pass for every client has no project of its own. The AI app chooses one project at a time
+(the bridge's ringkeeper_use_client), and each call names it in a header: the call is then
+checked exactly as that project's pass's would be. With none named, it reaches nothing but the
+list of projects to choose from.
 """
 
 import hashlib
@@ -30,13 +35,18 @@ from ringkeeper.calls import Caller
 from ringkeeper.config import Settings
 from ringkeeper.errors import AlreadyExistsError, NotFoundError, RuleViolationError
 from ringkeeper.models import Pass
-from ringkeeper.services.projects import get_project
+from ringkeeper.services.projects import find_project, get_project
 from ringkeeper.vault import Vault
 
 PREFIX = "rkp_"  # tells a pass from a worker token at a glance
 SESSION = "pass:"  # its calls' session id, in the audit log and on approvals
 REF = "file://ringkeeper/passes/{name}"
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+PROJECT_HEADER = "x-ringkeeper-project"  # the project a call from a pass for every client is for
+CHOOSE_FIRST = (
+    "This connection is for every client: choose one first with ringkeeper_use_client "
+    "(ringkeeper_list_clients lists them)."
+)
 
 
 def is_pass_token(token: str) -> bool:
@@ -77,15 +87,16 @@ def list_passes(session: Session) -> list[Pass]:
     return list(session.scalars(query))
 
 
-def create(session: Session, vault: Vault, name: str, project: str) -> Pass:
-    """A new pass for one project. Its token goes to the vault, never back to the caller."""
+def create(session: Session, vault: Vault, name: str, project: str | None) -> Pass:
+    """A new pass for one project, or (None) for every client. Its token goes to the vault,
+    never back to the caller."""
     if not NAME.match(name):
         raise RuleViolationError(
             "A pass's name uses lowercase letters, digits and dashes, like acme-claude-desktop."
         )
     if find(session, name) is not None:
         raise AlreadyExistsError(f"There's already a pass named {name}. Pick another name.")
-    owner = get_project(session, project)
+    owner = get_project(session, project) if project is not None else None
     token = PREFIX + secrets.token_urlsafe(32)
     row = Pass(name=name, project=owner, token_hash=_hash(token))
     session.add(row)
@@ -194,8 +205,11 @@ class PassError(Exception):
     """Why a pass token was refused, for the 401."""
 
 
-def verify(session: Session, token: str) -> Caller:
-    """The caller a pass token stands for. Raises PassError if it can't be used."""
+def verify(session: Session, token: str, chosen: str | None = None) -> Caller:
+    """The caller a pass token stands for. `chosen`: the project a pass for every client is
+    using (its call's header); a one-project pass may only name its own. A pass for every
+    client with none chosen is a caller with no project, which reaches no connection. Raises
+    PassError if it can't be used."""
     row = session.scalars(
         select(Pass).where(Pass.token_hash == _hash(token)).options(selectinload(Pass.project))
     ).one_or_none()
@@ -203,5 +217,19 @@ def verify(session: Session, token: str) -> Caller:
         raise PassError("that pass doesn't exist (it may have been removed)")
     if row.revoked_at is not None:
         raise PassError(f"the pass {row.name} has been revoked")
+    if row.project is not None:
+        if chosen and chosen != row.project.name:
+            raise PassError(f"the pass {row.name} is for {row.project.name} only")
+        project: str | None = row.project.name
+    elif chosen:
+        if find_project(session, chosen) is None:
+            raise PassError(f"there's no project {chosen} (it may have been removed)")
+        project = chosen
+    else:
+        project = None
     row.last_used_at = datetime.now(UTC)
-    return Caller(row.project.name, session_id(row), session_id(row))
+    return Caller(project, session_id(row), session_id(row))
+
+
+def for_every_client(row: Pass) -> bool:
+    return row.project_id is None

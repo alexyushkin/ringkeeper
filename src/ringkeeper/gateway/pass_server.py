@@ -23,7 +23,16 @@ from ringkeeper.errors import RingkeeperError
 from ringkeeper.gateway.arguments import CheckedArguments
 from ringkeeper.models import DecisionStatus
 from ringkeeper.scrub import scrub
-from ringkeeper.services import decisions, holds, pass_tasks, passes, projects, titles
+from ringkeeper.services import (
+    admin_audit,
+    clients,
+    decisions,
+    holds,
+    pass_tasks,
+    passes,
+    projects,
+    titles,
+)
 
 RESULT_CHARS = 4000
 # An AI app also has connectors of its own, often to the same services. Those reach the user's
@@ -71,18 +80,51 @@ def approval(caller: Caller, decision_id: str) -> dict[str, Any]:
         return found
 
 
-def whose(caller: Caller) -> dict[str, Any]:
-    """The client and project a pass is for."""
-    if not passes.is_pass_session(caller.session_id) or caller.project is None:
+def whose(caller: Caller, switched: bool = False) -> dict[str, Any]:
+    """The client and project a pass is for: the client by its name, and its id. A pass for
+    every client that hasn't chosen one gets the list to choose from instead. `switched`: the
+    bridge just chose this project, so Activity says so."""
+    if not passes.is_pass_session(caller.session_id):
         raise RingkeeperError("only a pass can ask whose connections these are")
     with session_scope() as session:
-        client = projects.owners(session).get(caller.project)
+        owners = projects.owners(session)
+
+        def client(project: str) -> dict[str, str | None]:
+            owner = owners.get(project)
+            return {
+                "client": clients.display(session, owner) if owner else None,
+                "client_id": owner,
+            }
+
+        if caller.project is None:
+            shown = titles.mapping(session)
+            listed = [
+                {**client(name), "project": name, "project_title": shown.get(name) or name}
+                for name in owners
+            ]
+            listed.sort(key=lambda row: (str(row["client"]).casefold(), str(row["project"])))
+            return {"every_client": True, "projects": listed, "rule": RULE}
+        theirs = client(caller.project)
+        if switched:
+            name = str(caller.session_id).removeprefix(passes.SESSION)
+            admin_audit.record(
+                session, "pass.switched",
+                f"the pass {name} switched to {theirs['client']}'s {caller.project}",
+                by="owner", project=caller.project, session_id=caller.session_id,
+            )  # fmt: skip
         return {
-            "client": client,
+            **theirs,
             "project": caller.project,
             "project_title": titles.of(session, caller.project),
             "rule": RULE,
         }
+
+
+def chosen(caller: Caller) -> Caller:
+    """The caller, once a pass for every client has chosen a project. Raises otherwise."""
+    if caller.project is None:
+        raise RingkeeperError(passes.CHOOSE_FIRST)
+    return caller
 
 
 def asked(caller: Caller, request: str) -> tuple[str, float]:
@@ -128,11 +170,16 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
     )
     server.add_middleware(CheckedArguments())
 
-    async def about() -> dict[str, Any]:
+    async def about(
+        switched: Annotated[
+            bool, Field(description="Left out: only the bridge sets it, as it switches.")
+        ] = False,
+    ) -> dict[str, Any]:
         """Whose connections these are: the client and the project this pass is for, and the
-        rule for that client's data."""
+        rule for that client's data. A connection for every client that hasn't chosen one
+        lists the clients and projects to choose from."""
         try:
-            return await anyio.to_thread.run_sync(whose, current_caller())
+            return await anyio.to_thread.run_sync(whose, current_caller(), switched)
         except RingkeeperError as error:
             raise McpToolError(scrub(str(error))) from None
 
@@ -144,7 +191,7 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
         """What became of a call that was held for the user's approval: still waiting,
         approved and run (with its result), failed, denied, or expired."""
         try:
-            return await anyio.to_thread.run_sync(approval, current_caller(), decision_id)
+            return await anyio.to_thread.run_sync(approval, chosen(current_caller()), decision_id)
         except RingkeeperError as error:
             raise McpToolError(scrub(str(error))) from None
 
@@ -164,7 +211,7 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
         approval link if it waits on the user, or the task_id to check later with task_status.
         The user sees the request and the task in Ringkeeper."""
         try:
-            return await ask_and_wait(current_caller(), request, ctx)
+            return await ask_and_wait(chosen(current_caller()), request, ctx)
         except RingkeeperError as error:
             raise McpToolError(scrub(str(error))) from None
 
@@ -176,7 +223,7 @@ def build_pass_server(current_caller: Callable[[], Caller]) -> FastMCP:
         """Where a task started with ask stands: running, waiting for the user's approval (with
         the link), asking the user something, done (with its result), or failed."""
         try:
-            return await anyio.to_thread.run_sync(task_status, current_caller(), task_id)
+            return await anyio.to_thread.run_sync(task_status, chosen(current_caller()), task_id)
         except RingkeeperError as error:
             raise McpToolError(scrub(str(error))) from None
 

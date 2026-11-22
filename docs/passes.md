@@ -22,6 +22,23 @@ the wrong one. Its `ringkeeper_about` tool says the same: the client, the projec
 The app never sees the connections' keys, and the pass's own key stays in Ringkeeper's vault:
 what you add to the app only starts Ringkeeper's bridge on this computer.
 
+## One pass for every client
+
+A pass can also be for every client: one entry in the AI app instead of one per project. Choose
+**Every client, one at a time** as its project. The AI then works with one client's project at
+a time:
+
+- `ringkeeper_list_clients` lists the clients and their projects, and which one is chosen.
+- `ringkeeper_use_client` chooses one, by the client's name (when it has one project) or the
+  project's name or title. Each switch is in Activity, under the pass's name.
+- Until one is chosen, every tool says to choose first, and nothing is reached.
+- Once chosen, each call is checked exactly as that project's own pass's would be: another
+  client's connection is still refused. The choice holds for every chat in the app, until the
+  AI chooses another or the app restarts.
+
+A project added later shows up in the list, but its kinds of connections (a CRM when no other
+project had one, say) need the AI app restarted to appear.
+
 ## Make a pass
 
 1. Settings > Passes > New pass. Pick the project, and give the pass a name the app will list it

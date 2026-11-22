@@ -18,7 +18,7 @@ interface AppStatus {
 
 interface PassInfo {
   name: string;
-  project: string;
+  project: string | null; // null: every client, the AI app choosing one at a time
   project_title: string;
   created_at: string;
   last_used_at: string | null;
@@ -32,6 +32,7 @@ interface PassList {
   passes: PassInfo[];
 }
 
+const EVERY = "*every*"; // the choice for a pass for every client (no project can be named so)
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Settings > Passes: an AI app on this computer using one project's connections, through
@@ -51,8 +52,8 @@ export function Passes() {
   return (
     <Section id="passes" title="Passes" summary={live ? `${live} in use` : "none yet"}>
       <p className="mb-3 text-sm text-muted">
-        A pass lets an AI app on this computer (Claude Desktop, Claude Code or Cursor) use one project&apos;s connections. Every call goes through Ringkeeper, the same as a task&apos;s: it can&apos;t reach
-        another project or another client, changes to production wait for your approval, and what it changed can be undone.
+        A pass lets an AI app on this computer (Claude Desktop, Claude Code or Cursor) use one project&apos;s connections, or every client&apos;s, one at a time. Every call goes through Ringkeeper, the same as
+        a task&apos;s: it reaches only the chosen project&apos;s connections, changes to production wait for your approval, and what it changed can be undone.
       </p>
       <NewPass onMade={list.reload} />
       <div className="mt-4 space-y-3">
@@ -70,14 +71,16 @@ function NewPass({ onMade }: { onMade: () => void }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const choices: [string, string][] = (projects.data ?? []).map((p) => [p.name, p.title || p.name]);
+  const choices: [string, string][] = [...(projects.data ?? []).map((p): [string, string] => [p.name, p.title || p.name]), [EVERY, "Every client, one at a time"]];
   const chosen = project || choices[0]?.[0] || "";
+  const every = chosen === EVERY;
+  const suggested = every ? "every-client" : `${chosen}-app`;
 
   async function make() {
     setBusy(true);
     setError(null);
     try {
-      await api("passes", { method: "POST", json: { name: name.trim() || `${chosen}-app`, project: chosen } });
+      await api("passes", { method: "POST", json: { name: name.trim() || suggested, project: every ? null : chosen } });
       setName("");
       onMade();
     } catch (err) {
@@ -87,12 +90,17 @@ function NewPass({ onMade }: { onMade: () => void }) {
     }
   }
 
-  if (!choices.length) return <p className="text-sm text-muted">Add a project first: a pass is for one project.</p>;
+  if (choices.length === 1) return <p className="text-sm text-muted">Add a project first: a pass is for a project, or for every client&apos;s.</p>;
   return (
     <Card className="space-y-3">
       <h3 className="text-sm font-semibold">New pass</h3>
       <Select label="Project" value={chosen} onChange={setProject} options={choices} />
-      <Field label="Name" value={name} onChange={setName} placeholder={`${chosen}-app`} hint="Lowercase letters, digits and dashes. The AI app lists it by this name." />
+      {every ? (
+        <p className="text-sm text-muted">
+          One entry in the AI app for every client. The AI lists them with ringkeeper_list_clients and chooses one with ringkeeper_use_client; only that client&apos;s connections answer until it chooses another, in every chat in the app. Each switch is in Activity.
+        </p>
+      ) : null}
+      <Field label="Name" value={name} onChange={setName} placeholder={suggested} hint="Lowercase letters, digits and dashes. The AI app lists it by this name." />
       {error && <Alert>{error}</Alert>}
       <Button kind="primary" onClick={make} busy={busy}>
         Make pass

@@ -9,6 +9,11 @@ publishes it as the release notes and the app shows it with the update.
   after the request that started it and before anything sent later, with its files and
   **Details ›**. The **Work** list at the end now holds only work that's running, waiting or
   went wrong.
+- **One pass for every client.** In Settings › Passes, choose **Every client, one at a time**
+  as a pass's project: the AI app gets one entry for all of them. It lists them with
+  `ringkeeper_list_clients` and chooses one with `ringkeeper_use_client`; only that client's
+  connections answer until it chooses another, and each switch is in Activity. Every call is
+  checked as that project's own pass's would be.
 - **A pass tells the AI app whose data it's for.** When Claude Desktop, Claude Code or Cursor
   connects with a pass, it's told whose connections these are ("Acme's connections, for the
   project Acme web") and to use them, and nothing else, for that client's data. Without that,
