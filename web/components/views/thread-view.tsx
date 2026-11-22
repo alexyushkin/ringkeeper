@@ -16,10 +16,12 @@ import { RememberThis, SavedToMemory } from "@/components/memory";
 import { TaskFiles } from "@/components/task-files";
 import { Waiting } from "@/components/waiting";
 import { CancelButton } from "@/components/scheduled";
-import { Alert, Badge, Button, Card, Details, Loading, clock, timeAgo } from "@/components/ui";
+import { Alert, Badge, Button, Card, Details, Loading, StatusBadge, clock, timeAgo } from "@/components/ui";
+import Link from "@/components/link";
 import { RESYNC, api, useApi, useLive } from "@/lib/client/api";
-import { threadHref } from "@/lib/client/routes";
-import { projectName } from "@/lib/client/scope";
+import { taskHref, threadHref } from "@/lib/client/routes";
+import { place, projectName } from "@/lib/client/scope";
+import { resultsAfter } from "@/lib/results";
 import { routingLine } from "@/lib/routing-wait";
 import { throttle } from "@/lib/throttle";
 
@@ -122,6 +124,10 @@ export function ThreadView({ id }: { id: string }) {
   // This conversation's questions, and the holds of its tasks.
   const mine = new Set((tasks.data ?? []).map((t) => t.id));
   const waiting = pending.data?.filter((d) => d.thread_id === id || (d.task_id !== null && mine.has(d.task_id))) ?? [];
+  // A finished task is a reply, in the conversation where it finished. Only work that's
+  // running, waiting or went wrong keeps a card under it.
+  const results = resultsAfter(thread.data?.messages ?? [], (tasks.data ?? []).filter(answered));
+  const working = (tasks.data ?? []).filter((t) => !answered(t));
 
   if (thread.error) return <Alert>{thread.error}</Alert>;
   if (!thread.data) return <Loading />;
@@ -187,16 +193,19 @@ export function ThreadView({ id }: { id: string }) {
             ) : message.role === "user" && (!message.routing || message.routing.claimed_at) && !message.route_error ? (
               <RoutingLine id={message.id} sentAt={message.created_at} onRetry={reloadAll} />
             ) : null}
+            {(results.get(message.id) ?? []).map((task) => (
+              <TaskResult key={task.id} task={task} />
+            ))}
           </li>
         ))}
       </ol>
 
 
-      {tasks.data?.length ? (
+      {working.length ? (
         <>
           <h2 className="mt-6 mb-2 text-sm font-semibold text-muted">Work</h2>
           <div className="space-y-2">
-            {tasks.data.map((task) => (
+            {working.map((task) => (
               <div key={task.id}>
                 <TaskCardView task={task} />
                 {task.files && !["queued", "running"].includes(task.status) ? (
@@ -225,6 +234,34 @@ export function ThreadView({ id }: { id: string }) {
         <Composer threadId={id} onSent={reloadAll} />
       </div>
     </>
+  );
+}
+
+/** A task that finished: its result reads as a reply. */
+function answered(task: TaskCard): boolean {
+  return task.status === "succeeded";
+}
+
+/** A finished task in the conversation: what it found or did, as Ringkeeper's reply, with its
+ * files. How it ran is a click away, on its page. */
+function TaskResult({ task }: { task: TaskCard }) {
+  const unusual = task.ended && !["done", "answered"].includes(task.ended);
+  return (
+    <Card className="mt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-medium text-muted">Ringkeeper · {place(task.client, task.project)}</p>
+        {unusual ? <StatusBadge status={task.status} ended={task.ended} /> : null}
+        <Link href={taskHref(task.id)} className="ml-auto text-xs text-accent">
+          Details ›
+        </Link>
+      </div>
+      <Markdown text={task.summary ?? task.outcome ?? ""} className="mt-1 text-sm" />
+      {task.files ? <TaskFiles id={task.id} compact /> : null}
+      <div className="mt-2 space-y-1">
+        <SavedToMemory task={task.id} />
+        {task.summary ? <RememberThis text={task.summary} projects={[task.project]} task={task.id} /> : null}
+      </div>
+    </Card>
   );
 }
 

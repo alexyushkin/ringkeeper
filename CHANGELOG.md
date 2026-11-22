@@ -5,6 +5,10 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **A finished task reads as a reply in its conversation.** Its result shows where it finished,
+  after the request that started it and before anything sent later, with its files and
+  **Details ›**. The **Work** list at the end now holds only work that's running, waiting or
+  went wrong.
 - **A task's page shows what it did, without the working.** The result, the files it made,
   and **Keep these changes** stay in view, along with anything waiting for you. Steps, cost,
   the transcript with each tool used, and the changes line by line are folded under **How it
