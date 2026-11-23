@@ -1,7 +1,8 @@
 # Other model providers: a second worker engine
 
-**Status: proposal for review. Nothing here is built.** Claude stays the default. Checked on
-2026-11-05. Anything marked *to confirm* comes from a secondary source, or needs a real test.
+**Status: Codex is built for one provider, the owner's ChatGPT plan (below). The rest is a
+proposal.** Claude stays the default. Checked on 2026-11-05; the plan part on 2026-11-23.
+Anything marked *to confirm* comes from a secondary source, or needs a real test.
 
 ## The short version
 
@@ -19,21 +20,48 @@ Three findings shape the plan:
 3. **Holds are safe, but autonomy levels aren't the same.** Ringkeeper limits Claude's tools by
    name. Codex has no such list: only a sandbox and approval modes.
 
-## The owner's ChatGPT plan
+## Built: the owner's ChatGPT plan
 
-Built so far: **Sign in with ChatGPT** (`services/chatgpt.py`, docs/chatgpt-plan.md). The
-desktop app signs in to the owner's ChatGPT plan, and the router and Help can run on a
-`chatgpt:<id>` model, through POST /v1/responses with the plan's token.
+**Sign in with ChatGPT** (`services/chatgpt.py`, docs/chatgpt-plan.md): the desktop app signs
+in to the owner's ChatGPT plan. A `chatgpt:<id>` model can run the router and Help (POST
+/v1/responses, from the backend) and tasks (on Codex). The architect stays on Claude.
 
-For workers, OpenAI documents running Codex's app-server on the plan: `codex app-server
---listen stdio://`, with a provider whose `env_key` is `ACCESS_TOKEN`, `wire_api =
-"responses"` and `requires_openai_auth = false`. The token lasts an hour, so the app refreshes
-it, restarts app-server and resumes the thread (`thread/resume`). What plan usage refuses:
-hosted MCP and connectors, `tool_search`, `previous_response_id`, background mode, and
-settings like `temperature` and `max_output_tokens`. Ringkeeper's gateway tools reach Codex
-as its own MCP client's tools, so they're not hosted MCP, but Codex's tool search must stay
-off. The worker would get the token through the gateway's model proxy, as Claude's
-credentials do today, never the token itself.
+How a task runs on Codex (`worker/ringkeeper_worker/codex.py`):
+
+- **The program:** Codex's standalone app-server, pinned in `codex.json` (a release of
+  openai/codex, Apache-2.0) with each platform's sha256, fetched by the first task into a
+  shared cache, like Claude Code in the image. It's about 100 MB.
+- **The protocol:** `codex app-server --listen stdio://`, JSON-RPC lines. `initialize`, then
+  `thread/start` (or `thread/resume` with the stored id, prefixed `codex:`), then `turn/start`.
+  `developerInstructions` carries the headless note; `approvalPolicy` is `never`, since the
+  gateway holds what needs an approval.
+- **The model:** a provider whose `base_url` is the gateway's `/model/chatgpt/v1` and whose
+  `env_key` is the task's own model token. The gateway drops it and adds the plan's access
+  token (`model_upstream._chatgpt`), refreshing it there. So the worker never holds the plan's
+  token, and no restart is needed when it's refreshed. Only `v1/responses` and `v1/models`
+  are open.
+- **The connections:** the gateway's MCP endpoints, with `bearer_token_env_var` (the shell's
+  environment excludes it). Codex names their tools `mcp__<server>__<tool>`, as Claude Code
+  does, so the task page, the setup check and the scenarios read them unchanged.
+- **ask_user and not_done:** Codex's dynamic tools, answered by the worker with inbox.py's
+  words. After a question the worker interrupts the turn, as inbox.py's hook ends Claude's.
+- **Events:** each finished item becomes the `sdk.assistant`, `sdk.user` and `sdk.result` lines
+  the manager reads. A connection's call, a command (`Bash`), a file change (`Edit`, `Write`),
+  a web search; edits feed `EDITS` for the commit. The result has `engine: "codex"` and
+  Codex's own error kind, which `chatgpt.engine_failure` reads (never the words of a tool).
+- **Autonomy:** no shell turns off `features.shell_tool` and `unified_exec`; no edits is the
+  `read-only` sandbox; web access is `web_search`. OpenAI's own connectors (`features.apps`),
+  sub-agents and memories are off. A tool switched off for the task is `disabled_tools` on its
+  MCP server.
+- **What doesn't carry over:** no per-task spending cap (the plan isn't billed by the token);
+  a session that changes engines starts a new thread or session instead of resuming.
+
+Checked against the real 0.171.0 app-server with a fake Responses API and a fake MCP
+endpoint: an answer, not_done, a question and its resume, and a connection's tool call.
+
+What plan usage refuses (developers.openai.com/siwc): hosted MCP and connectors,
+`tool_search`, `previous_response_id`, background mode, and settings like `temperature` and
+`max_output_tokens`. Codex on the plan, as configured here, sends none of them.
 
 ## What stays the same
 

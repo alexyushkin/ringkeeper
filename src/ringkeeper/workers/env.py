@@ -13,6 +13,9 @@ STATE_DIR = "/state"
 # Claude Code, fetched by the first task and kept for the next (worker/.../claude_code.py).
 CLI_CACHE_DIR = "/opt/claude-code"
 CLI_CACHE_VOLUME = "ringkeeper-claude-code"
+# Codex, for tasks on the owner's ChatGPT plan, kept the same way (worker/.../codex.py).
+CODEX_CACHE_DIR = "/opt/codex"
+CODEX_CACHE_VOLUME = "ringkeeper-codex"
 
 FIXED_ENV = {
     "LANG": "C.UTF-8",

@@ -93,11 +93,11 @@ export function ChatGptPlan({ onChanged }: { onChanged?: () => void }) {
             </Alert>
           ) : null}
           <p className="text-sm">
-            Signed in{plan.email ? ` as ${plan.email}` : ""}. Choose a ChatGPT model for Sorting requests below to use it there and in Help.
+            Signed in{plan.email ? ` as ${plan.email}` : ""}. Choose a ChatGPT model below for sorting requests (it answers in Help too) or for tasks. Tasks on it run on Codex, OpenAI&apos;s agent, with the same connections, approvals and undo.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <ManageUsage url={plan.usage_url} />
-            <ConfirmButton kind="secondary" question="Sign out of ChatGPT? Sorting requests goes back to its Claude model." confirm="Sign out" onConfirm={signOut}>
+            <ConfirmButton kind="secondary" question="Sign out of ChatGPT? Everything set to a ChatGPT model goes back to its Claude model." confirm="Sign out" onConfirm={signOut}>
               Sign out
             </ConfirmButton>
           </div>
@@ -105,7 +105,7 @@ export function ChatGptPlan({ onChanged }: { onChanged?: () => void }) {
       ) : (
         <>
           <p className="text-sm text-muted">
-            Sort requests and answer in Help on your ChatGPT plan instead of Claude. Usage comes out of your plan, and you can set a limit for Ringkeeper in ChatGPT&apos;s settings. Ringkeeper never sees your chats. Tasks still run on Claude for now.
+            Run tasks, sort requests and answer in Help on your ChatGPT plan instead of Claude. Usage comes out of your plan, and you can set a limit for Ringkeeper in ChatGPT&apos;s settings. Ringkeeper never sees your chats.
           </p>
           <Button kind="primary" busy={waiting} onClick={signIn}>
             Continue with ChatGPT

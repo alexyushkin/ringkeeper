@@ -43,6 +43,7 @@ from ringkeeper.services import (
     agents,
     architect,
     architect_loop,
+    chatgpt,
     claude_place,
     cleanup,
     connection_note,
@@ -227,6 +228,8 @@ def claude_failure(collected: Collected) -> claude_failures.Failure | None:
     result = collected.result or {}
     if result and not result.get("is_error") and collected.exit_code == 0:
         return None
+    if result.get("engine") == chatgpt.ENGINE:  # Codex on the ChatGPT plan says it its own way
+        return chatgpt.engine_failure(result.get("engine_error"))
     text = "\n".join([str(result.get("result") or ""), *map(str, result.get("errors") or [])])
     status = result.get("api_error_status")
     return claude_failures.classify(
@@ -510,6 +513,28 @@ class Manager:
                     self._active.discard(job.session_id)
                 self._wake.set()  # a slot is free
 
+    def where_it_runs(
+        self, job: Job, model: str | None, architect_role: bool
+    ) -> tuple[str | None, claude_place.Place | None]:
+        """The model, and where Claude runs it. No place: a model on the owner's ChatGPT plan,
+        which runs on Codex through the gateway's proxy for the plan. The architect stays on
+        Claude: it plans with Claude Code's own tools."""
+        if chatgpt.is_plan_model(model) and not architect_role:
+            if chatgpt.stored(self.vault) is None:
+                raise chatgpt.PlanError(chatgpt.not_signed_in())
+            return model, None
+        if chatgpt.is_plan_model(model):
+            model = None  # the architect's own default model
+        settings = self.settings
+        subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
+        # Whichever is configured now (the Settings screen's mode), not what was set
+        # when the task was queued.
+        with session_scope(commit=False) as session:
+            # Fails early when Claude isn't connected, and registers a cloud's secrets.
+            claude_place.credential(session, self.vault, settings, job.project)
+            place = claude_place.chosen(session, job.project)
+        return claude_place.model_for(place, model), place
+
     def _prepare(self, job: Job) -> tuple[WorkerSpec, str]:
         settings = self.settings
         with session_scope(commit=False) as session:
@@ -564,14 +589,8 @@ class Manager:
             # Memory is every worker's: it's pinned to the token's project.
             endpoints = sorted({"memory", *(agent_name(service) for service in served)})
         architect_role = job.role is SessionRole.ARCHITECT
-        subscription.refresh(self.vault, settings)  # the Claude Code login's newer token
-        # Whichever is configured now (the Settings screen's mode), not what was set
-        # when the task was queued.
-        with session_scope(commit=False) as session:
-            # Fails early when Claude isn't connected, and registers a cloud's secrets.
-            claude_place.credential(session, self.vault, settings, job.project)
-            place = claude_place.chosen(session, job.project)
-        model = claude_place.model_for(place, model)
+        model, place = self.where_it_runs(job, model, architect_role)
+        on_plan = place is None
         token, claims = issue_token(
             job.project,
             timedelta(seconds=job.max_runtime_s),
@@ -615,17 +634,25 @@ class Manager:
             "role": job.role.value,
             "checks": checks if job.feature and not architect_role else [],
             # On a subscription the cap is the estimated cost: Claude Code stops there too.
-            "max_budget_usd": job.budget_usd,
+            # The ChatGPT plan isn't billed by the token: there's no cost to cap.
+            "max_budget_usd": None if on_plan else job.budget_usd,
             "resume": job.sdk_session_id,
-            "model": model,
+            "model": chatgpt.bare(model) if on_plan and model else model,
             "effort": effort or session_effort(settings, job.role, job.complexity),
         }
+        if on_plan:
+            task["engine"] = chatgpt.ENGINE
         if settings.worker_stub:
             task["stub"] = json.loads(settings.worker_stub)
+        model_vars = (
+            chatgpt.worker_vars(base, model_token)
+            if place is None
+            else claude_place.worker_vars(place, base, model_token)
+        )
         spec = WorkerSpec(
             name=f"ringkeeper-worker-{job.session_id}",
             image=settings.worker_image,
-            env=worker_env(claude_place.worker_vars(place, base, model_token), task, token),
+            env=worker_env(model_vars, task, token),
             workspace=workspace,
             state_volume=job.state_volume,
             network=settings.worker_network,
@@ -721,7 +748,8 @@ class Manager:
         transient failure: tried again after a wait, a few times. A login: it says so.
         Returns the status, and the wait before trying again (once this is committed)."""
         row.error = task.error = failure.message
-        if failure.kind is claude_failures.Kind.LOGIN:
+        # The ChatGPT plan's limit isn't Claude's: nothing else waits for it, and it says when.
+        if failure.kind in (claude_failures.Kind.LOGIN, claude_failures.Kind.PLAN_LIMIT):
             return TaskStatus.FAILED, None
         tries = sum(1 for s in task.sessions if s.error == failure.message)
         if failure.kind is claude_failures.Kind.USAGE_LIMIT:

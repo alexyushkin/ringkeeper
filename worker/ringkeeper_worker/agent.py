@@ -121,7 +121,8 @@ def build_options(
         setting_sources=[],
         max_turns=config.max_turns,
         max_budget_usd=config.max_budget_usd,
-        resume=config.resume,
+        # A Codex thread (codex.py) can't go on here: the task's model changed engines.
+        resume=config.resume if not (config.resume or "").startswith("codex:") else None,
         model=config.model,
         effort=config.effort,  # pyright: ignore[reportArgumentType] (checked by the manager)
         hooks=hooks,  # pyright: ignore[reportArgumentType] (dict invariance)

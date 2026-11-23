@@ -13,8 +13,9 @@ interface Offered {
   plan_error?: string | null;
 }
 
-/** Roles that can run on your ChatGPT plan for now (services.chatgpt.ROLES). */
-const PLAN_ROLES = new Set(["model_router"]);
+/** Roles that can run on your ChatGPT plan (services.chatgpt.ROLES): not Planning features,
+ * which plans with Claude Code's own tools. */
+const PLAN_ROLES = new Set(["model_router", "model_worker", "model_low", "model_medium", "model_high"]);
 
 type Values = Record<string, unknown>;
 
