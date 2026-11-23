@@ -3,6 +3,18 @@
 Each release of the desktop app has an entry here; the release workflow
 publishes it as the release notes and the app shows it with the update.
 
+## Unreleased
+
+- **Fix: "in Supabase" found your Supabase connection.** A request that named a service, like
+  Supabase or Neon, counted only the official remote server for it, so a project with its own
+  Supabase or Neon connection was told "This project has no Supabase connection" and nothing
+  started.
+- **Fix: reading the rest of a long result.** The note under a cut-off result told the AI to
+  pass `next_offset` to read_more, which takes `offset`, so the next part was refused.
+- **Tasks save how a database's tables fit together.** What a task is told to keep in the
+  project's notes now has a database example (which table holds what, and how they join), so a
+  later task can query without looking the tables up again.
+
 ## 0.1.0-beta.49 (2026-11-22)
 
 - **A task's other actions are under More.** **Remember this**, **Run again** and **Save this

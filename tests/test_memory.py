@@ -501,6 +501,9 @@ def test_workers_are_told_what_makes_a_good_note() -> None:
     assert "never how a tool works in general (paging, limits per call)" in told
     assert "only when it blocks a kind of request" in told
     assert "named 'Bayside #N' and 'Mr. Gutter #N'. Filter by name." in told  # a good one
+    # How a database's tables fit together is a note too, not only names (a real run on beta.49
+    # answered from the tables and saved nothing, so the next run listed them again).
+    assert "orders.customer_id joins to customers.id" in told
     assert "n8n has 184 workflows" in told  # a bad one
     assert "already noted" in told
 
