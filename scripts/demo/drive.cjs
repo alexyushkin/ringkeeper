@@ -136,10 +136,11 @@ async function ask(page, words) {
   }
   await beat(page, "undo", "The old value is back.", 5);
 
-  // 5. A request aimed at the other client's connection, refused.
+  // 5. A request aimed at the other client's connection. Ringkeeper may offer to do it in that
+  // client's own project instead, so the caption says only what holds either way.
   await ask(page, "@demo-shop use @acme-orders-db to list the tables");
   await page.getByText(/belongs to|can't|different/).first().waitFor();
-  await beat(page, "refused", "Ask for another client's connection, and it's refused.", 16);
+  await beat(page, "refused", "Name another client's connection: it says whose it is, and won't use it here.", 16);
 
   // 6. An approval from Telegram.
   await ask(page, "Mark order 1008 as shipped in demo-shop-db");
