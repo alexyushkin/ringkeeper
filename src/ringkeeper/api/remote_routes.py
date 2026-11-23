@@ -35,6 +35,7 @@ from ringkeeper.services import (
     browser,
     bundles,
     catalog,
+    chatgpt,
     developer_apps,
     google_connections,
     google_oauth,
@@ -46,6 +47,7 @@ from ringkeeper.services import (
     secrets_in,
 )
 from ringkeeper.services.remote_connections import NewConnection
+from ringkeeper.vault import get_vault
 
 router = APIRouter(dependencies=[AdminDep, Depends(require_owner)])
 callback = APIRouter()
@@ -542,6 +544,21 @@ def _page(title: str, text: str, ok: bool) -> HTMLResponse:
     return HTMLResponse(body, status_code=200 if ok else 400)
 
 
+def _finish_chatgpt(state: str, code: str, client_id: str, error: str) -> HTMLResponse:
+    try:
+        found = chatgpt.take(state)
+        with session_scope() as session:
+            email = chatgpt.finish(session, get_vault(), found, code, client_id, error)
+    except chatgpt.SignInError as failed:
+        return _page("Not signed in", str(failed), False)
+    return _page(
+        "Signed in to ChatGPT",
+        f"Ringkeeper can use the ChatGPT plan of {email}. You can close this tab and go back "
+        "to Ringkeeper.",
+        True,
+    )
+
+
 @callback.get(CALLBACK_PATH, include_in_schema=False)
 def finish_signin(
     state: str = "",
@@ -549,7 +566,10 @@ def finish_signin(
     error: str = "",
     error_description: str = "",
     realmId: str = "",  # noqa: N803 (Intuit's name for it)
+    client_id: str = "",  # OpenAI: the client ID it issued, on a first sign-in
 ) -> HTMLResponse:
+    if chatgpt.pending(state):
+        return _finish_chatgpt(state, code, client_id, error)
     if google_oauth.pending(state):
         return _finish_google(state, code, error)
     if developer_apps.pending(state):

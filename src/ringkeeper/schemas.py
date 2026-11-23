@@ -58,6 +58,11 @@ ModelKey = Literal["architect", "worker", "low", "medium", "high"]
 ModelId = Annotated[
     str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z0-9][a-z0-9.\-]*$")
 ]
+# The router's model may also be one on the owner's ChatGPT plan, written chatgpt:<id>
+# (services.chatgpt). Tasks stay on Claude until they have an engine for it.
+PlanModelId = Annotated[
+    str, StringConstraints(strip_whitespace=True, pattern=r"^(?:chatgpt:)?[a-z0-9][a-z0-9.\-]*$")
+]
 # An Anthropic workspace (wrkspc_...): letters, digits, _ and - only, since it
 # goes into a request header.
 WorkspaceId = Annotated[

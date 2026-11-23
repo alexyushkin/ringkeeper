@@ -91,8 +91,10 @@ class AgentSdkModel:
     def complete(self, system: str, prompt: str, model: str) -> Completion:
         # Resolved per call, so `ringkeeper auth login` needs no restart.
         from ringkeeper.db import session_scope  # noqa: PLC0415 (cycle)
-        from ringkeeper.services import claude_place, subscription  # noqa: PLC0415 (cycle)
+        from ringkeeper.services import chatgpt, claude_place, subscription  # noqa: PLC0415 (cycle)
 
+        if chatgpt.is_plan_model(model):
+            return self.with_retries(partial(self._on_plan, system, prompt, model))
         subscription.refresh(self._vault, self._settings)
         with session_scope(commit=False) as session:
             credential = claude_place.credential(session, self._vault, self._settings)
@@ -124,6 +126,16 @@ class AgentSdkModel:
                     raise
                 self._sleep(wait)
         raise AssertionError("unreachable")
+
+    def _on_plan(self, system: str, prompt: str, model: str) -> Completion:
+        """The same call on the owner's ChatGPT plan (a `chatgpt:` model). It isn't billed by
+        the token, so there's no cost to report."""
+        from ringkeeper.services import chatgpt  # noqa: PLC0415 (cycle)
+
+        try:
+            return Completion(chatgpt.answer(self._vault, system, prompt, model))
+        except chatgpt.PlanError as failed:
+            raise ClaudeUnavailableError(failed.failure) from None
 
     def ask(self, credential: ClaudeCredential, system: str, prompt: str, model: str) -> Completion:
         """One call with this credential, whatever is saved (the live check)."""

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ringkeeper.config import Effort, SendKey, Settings, get_settings
 from ringkeeper.db import session_scope
 from ringkeeper.models import AuthMode, Setting
-from ringkeeper.schemas import Input, ModelId, WorkspaceId
+from ringkeeper.schemas import Input, ModelId, PlanModelId, WorkspaceId
 from ringkeeper.services import admin_audit
 from ringkeeper.storage import events
 from ringkeeper.storage.sql import insert
@@ -60,7 +60,7 @@ class RuntimeIn(Input):
     telegram_summary_chars: Annotated[int, Field(ge=40, le=1000)] | None = None
     telegram_question_chars: Annotated[int, Field(ge=160, le=3500)] | None = None
     telegram_confirm_minutes: Annotated[int, Field(ge=1, le=120)] | None = None
-    model_router: ModelId | None = None
+    model_router: PlanModelId | None = None  # also answers in Help
     model_architect: ModelId | None = None
     model_worker: ModelId | None = None
     model_low: ModelId | None = None

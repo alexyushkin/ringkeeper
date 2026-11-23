@@ -2,14 +2,19 @@
 
 import { useEffect, useState } from "react";
 
+import { ChatGptPlan, ManageUsage } from "@/components/chatgpt-plan";
 import { Alert, Button, Field, Select } from "@/components/ui";
 import { useApi } from "@/lib/client/api";
 
 interface Offered {
   listed: boolean;
   error: string | null;
-  models: { id: string; name: string; note: string; cost: string; recommended: boolean }[];
+  models: { id: string; name: string; note: string; cost: string; recommended: boolean; plan?: boolean }[];
+  plan_error?: string | null;
 }
+
+/** Roles that can run on your ChatGPT plan for now (services.chatgpt.ROLES). */
+const PLAN_ROLES = new Set(["model_router"]);
 
 type Values = Record<string, unknown>;
 
@@ -32,14 +37,22 @@ const EFFORTS: [string, string][] = [
 ];
 const CUSTOM = "__custom__";
 
-export function ModelSettings({ values, onChange }: { values: Values; onChange: (changes: Values) => void }) {
+export function ModelSettings({ values, onChange, onReload }: { values: Values; onChange: (changes: Values) => void; onReload?: () => void }) {
   const offered = useApi<Offered>("models");
   const models = offered.data?.models ?? [];
   return (
     <div className="space-y-4">
+      {/* Signing out moves Sorting requests back to Claude: the values change too. */}
+      <ChatGptPlan
+        onChanged={() => {
+          offered.reload();
+          onReload?.();
+        }}
+      />
       {offered.data?.error ? <Alert tone="warn">{offered.data.error} You can still pick a recommended model or type one.</Alert> : null}
+      {offered.data?.plan_error ? <Alert tone="warn">{offered.data.plan_error}</Alert> : null}
       {ROLES.map((role) => (
-        <RoleRow key={role.model} role={role} values={values} models={models} onChange={onChange} />
+        <RoleRow key={role.model} role={role} values={values} models={PLAN_ROLES.has(role.model) ? models : models.filter((m) => !m.plan)} onChange={onChange} />
       ))}
     </div>
   );
@@ -56,9 +69,10 @@ function RoleRow({ role, values, models, onChange }: { role: (typeof ROLES)[numb
   }, [current, models]);
 
   const options: [string, string][] = [
-    ...models.map((m): [string, string] => [m.id, m.recommended ? `${m.name} · ${m.cost} · ${m.note}` : m.id]),
+    ...models.map((m): [string, string] => [m.id, m.plan ? `${m.name} · ChatGPT plan` : m.recommended ? `${m.name} · ${m.cost} · ${m.note}` : m.id]),
     [CUSTOM, "Custom…"],
   ];
+  const onPlan = current.startsWith("chatgpt:");
   return (
     <div className="space-y-2 rounded-xl border border-line p-3">
       <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
@@ -69,8 +83,13 @@ function RoleRow({ role, values, models, onChange }: { role: (typeof ROLES)[numb
           options={options}
           hint={role.hint}
         />
-        {role.effort ? <Select label="Effort" value={String(values[role.effort] ?? "high")} onChange={(next) => onChange({ [role.effort!]: next })} options={EFFORTS} /> : null}
+        {role.effort && !onPlan ? <Select label="Effort" value={String(values[role.effort] ?? "high")} onChange={(next) => onChange({ [role.effort!]: next })} options={EFFORTS} /> : null}
       </div>
+      {onPlan ? (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          Using ChatGPT plan <ManageUsage />
+        </p>
+      ) : null}
       {custom ? (
         <div className="flex items-end gap-2">
           <div className="flex-1">

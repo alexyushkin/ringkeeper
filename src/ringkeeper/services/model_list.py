@@ -70,4 +70,26 @@ def offered(settings: Settings, vault: Vault) -> dict[str, Any]:
         for m in sorted(listed, key=lambda m: m["created_at"], reverse=True)
         if m["id"] not in known
     ]
-    return {"listed": bool(listed), "error": error, "models": models}
+    plan, plan_error = _on_plan(settings, vault)
+    return {
+        "listed": bool(listed), "error": error, "models": models + plan, "plan_error": plan_error,
+    }  # fmt: skip
+
+
+def _on_plan(settings: Settings, vault: Vault) -> tuple[list[dict[str, Any]], str | None]:
+    """The ChatGPT plan's models, when the desktop app is signed in to it (services.chatgpt)."""
+    from ringkeeper.services import chatgpt  # noqa: PLC0415 (it imports the database layer)
+
+    if not chatgpt.available(settings) or chatgpt.stored(vault) is None:
+        return [], None
+    try:
+        ids = chatgpt.models(vault)
+    except chatgpt.PlanError as failed:
+        return [], failed.failure.message
+    return [
+        {
+            "id": model, "name": chatgpt.bare(model), "note": "Uses your ChatGPT plan",
+            "cost": "", "recommended": False, "plan": True,
+        }
+        for model in ids
+    ], None  # fmt: skip
