@@ -70,9 +70,15 @@ class Counter:
             value = found.get(name)
             if isinstance(value, int):
                 self.tokens[key] = max(self.tokens[key], value)  # events repeat a running total
+        details = found.get("input_tokens_details")  # OpenAI's Responses API: cached input
+        if isinstance(details, dict):
+            cached = cast(dict[str, Any], details).get("cached_tokens")
+            if isinstance(cached, int):
+                self.tokens["cache_read"] = max(self.tokens["cache_read"], cached)
 
     def _event(self, event: dict[str, Any]) -> None:
-        message = cast(dict[str, Any], event.get("message") or {})
+        # Anthropic's events carry `message`; OpenAI's Responses API, `response`.
+        message = cast(dict[str, Any], event.get("message") or event.get("response") or {})
         self.model = str(message.get("model") or self.model)
         for part in (message.get("usage"), event.get("usage")):
             if isinstance(part, dict):

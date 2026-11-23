@@ -31,7 +31,7 @@ import secrets
 import threading
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import urlencode
@@ -63,9 +63,13 @@ USAGE_URL = "https://chatgpt.com/settings/usage"
 REF = "file://ringkeeper/chatgpt-plan"
 STATE_KEY = "chatgpt"  # a Setting: host and client IDs, the account. No tokens.
 PREFIX = "chatgpt:"
-# The roles that may run on the plan for now: the router's model also answers in Help. Tasks
-# need a second engine (docs/MODEL_PROVIDERS.md) and come later.
-ROLES = ("router",)
+# The roles that may run on the plan: the router (its model also answers in Help), and tasks,
+# which run on Codex (worker/ringkeeper_worker/codex.py). The architect stays on Claude: it
+# plans with Claude Code's own tools.
+ROLES = ("router", "worker", "low", "medium", "high")
+ENGINE = "codex"
+# Where the gateway's proxy for the plan is (gateway.model_proxy, services.model_upstream).
+PROXY_KIND = "chatgpt"
 PENDING_SECONDS = 600
 REFRESH_MARGIN_SECONDS = 300
 TIMEOUT = 20.0
@@ -396,6 +400,50 @@ def sign_out(session: Session, vault: Vault) -> None:
 
 
 # --- Using it ---
+
+
+def not_signed_in() -> Failure:
+    return _signed_out("This task's model is on your ChatGPT plan, and Ringkeeper isn't signed in.")
+
+
+def worker_vars(gateway: str, token: str) -> dict[str, str]:
+    """What a Codex worker gets: where the proxy for the plan is, and its own task's token for
+    it. The plan's own token never leaves the gateway. Codex keeps its threads (for resuming)
+    on the task's volume, and the program itself in a cache the next task reuses."""
+    return {
+        "RINGKEEPER_MODEL_URL": f"{gateway.rstrip('/')}/model/{PROXY_KIND}/v1",
+        "RINGKEEPER_MODEL_TOKEN": token,
+        "CODEX_HOME": "/state/codex",
+        "RINGKEEPER_CODEX_DIR": "/opt/codex",
+    }
+
+
+AGAIN = "Ringkeeper tries again shortly."
+NETWORK = Failure(Kind.NETWORK, f"Couldn't reach ChatGPT. {AGAIN}")
+# Codex's own error kinds (codexErrorInfo) on the plan, in plain words.
+ENGINE_FAILURES: dict[str, Callable[[], Failure]] = {
+    "usageLimitExceeded": lambda: KNOWN["subscription_sharing_usage_limit_exceeded"],
+    "rateLimitExceeded": lambda: Failure(Kind.RATE_LIMIT, f"ChatGPT is limiting requests. {AGAIN}"),
+    "serverOverloaded": lambda: Failure(Kind.OVERLOADED, f"ChatGPT is busy just now. {AGAIN}"),
+    "internalServerError": lambda: Failure(Kind.OVERLOADED, f"ChatGPT had an error. {AGAIN}"),
+    "unauthorized": lambda: _signed_out("OpenAI didn't accept Ringkeeper's ChatGPT sign-in."),
+    "modelNotFound": lambda: Failure(
+        Kind.LOGIN,
+        "Your ChatGPT plan doesn't offer this task's model. Choose another in Settings > Models.",
+    ),
+    "httpConnectionFailed": lambda: NETWORK,
+    "responseStreamConnectionFailed": lambda: NETWORK,
+    "responseStreamDisconnected": lambda: NETWORK,
+    "responseTooManyFailedAttempts": lambda: NETWORK,
+}
+
+
+def engine_failure(info: object) -> Failure | None:
+    """A Codex session's failure on the plan's side, from Codex's own error kind (never from
+    the words of a tool's error). None: something else went wrong, said in its errors."""
+    kind = next(iter(cast(dict[str, Any], info)), "") if isinstance(info, dict) else str(info or "")
+    make = ENGINE_FAILURES.get(kind)
+    return make() if make is not None else None
 
 
 def _signed_out(said: str) -> Failure:

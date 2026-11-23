@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ringkeeper_worker import agent, claude_code, gitguard, stub
+from ringkeeper_worker import agent, claude_code, codex, gitguard, stub
 from ringkeeper_worker.checks import run_checks
 from ringkeeper_worker.config import (
     TASK_ENV,
@@ -41,7 +41,13 @@ def _run(config: WorkerConfig) -> bool:
             EDITS.paths.update(done["paths"])
             EDITS.shell = EDITS.shell or bool(done["shell"])
             return bool(done["ok"])
-        cli = claude_code.ensure(say=lambda text: emit("ringkeeper.note", message=text))
+
+        def say(text: str) -> None:
+            emit("ringkeeper.note", message=text)
+
+        if config.engine == codex.ENGINE:  # a model on the owner's ChatGPT plan
+            return codex.run(config, codex.ensure(say=say))
+        cli = claude_code.ensure(say=say)
         return asyncio.run(agent.run(config, cli))
     except Exception as error:
         emit("ringkeeper.error", message=f"{type(error).__name__}: {error}"[:2000])

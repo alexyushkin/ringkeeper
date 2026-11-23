@@ -31,6 +31,7 @@ class WorkerConfig:
     stub: dict[str, Any] | None = None  # integration tests only: no LLM
     workspace: str = WORKSPACE
     git: bool = True  # work on the code: on a branch. False: git is left alone
+    engine: str = "claude"  # "codex": a model on the owner's ChatGPT plan (codex.py)
 
 
 def load(env: dict[str, str] | None = None) -> WorkerConfig:
@@ -59,6 +60,7 @@ def load(env: dict[str, str] | None = None) -> WorkerConfig:
             stub=data.get("stub"),
             workspace=str(data.get("workspace", WORKSPACE)),
             git=bool(data.get("git", True)),
+            engine=str(data.get("engine") or "claude"),
         )
     except (ValueError, KeyError, TypeError) as error:
         raise ConfigError(f"invalid {TASK_ENV}: {error}") from None

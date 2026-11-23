@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import IO, Any, cast
 
 from ringkeeper.errors import RingkeeperError
-from ringkeeper.workers.env import STATE_DIR, TASK_ENV
+from ringkeeper.workers.env import CODEX_CACHE_DIR, CODEX_CACHE_VOLUME, STATE_DIR, TASK_ENV
 from ringkeeper.workers.runtime import LABEL_SESSION, STATE_PREFIX, WorkerSpec
 
 logger = logging.getLogger(__name__)
@@ -192,9 +192,13 @@ class ProcessRuntime:
         if pythonpath := worker_pythonpath():
             env["PYTHONPATH"] = pythonpath
         for name, value in spec.env.items():
-            # The manager describes a container (/state, /workspace): map it here.
+            # The manager describes a container (/state, /workspace): map it here. Codex's
+            # cache is shared by every task, like the container's volume.
             inside = value.removeprefix(STATE_DIR + "/")
-            env[name] = str(state / inside) if inside != value else value
+            if value == CODEX_CACHE_DIR:
+                env[name] = str(self.state_root / CODEX_CACHE_VOLUME)
+            else:
+                env[name] = str(state / inside) if inside != value else value
         task: dict[str, Any] = json.loads(env[TASK_ENV])
         task["workspace"] = spec.workspace
         env[TASK_ENV] = json.dumps(task, separators=(",", ":"))
@@ -209,7 +213,7 @@ class ProcessRuntime:
         env = self.environment(spec)
         git = _gitguard().capture(workspace)
         state = self.state_dir(spec.state_volume)
-        for path in (state / "home", state / "tmp", state / "claude"):
+        for path in (state / "home", state / "tmp", state / "claude", state / "codex"):
             path.mkdir(parents=True, exist_ok=True)
         log = (state / f"{spec.name}.log").open("a", encoding="utf-8")
         flags: dict[str, Any] = (

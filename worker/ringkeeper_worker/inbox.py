@@ -24,6 +24,25 @@ ASKED = (
 )
 BLOCKED = "You asked the operator a question; don't use more tools. End your turn now."
 NOTED = "Noted: the task will end as not done. End your turn with a one-line note of why."
+# The tools' descriptions, for Claude Code here and for Codex (codex.py).
+ASK_DESCRIPTION = (
+    "Ask the operator a question you can't answer from the workspace or your tools "
+    "(a missing requirement, a choice only they can make). Your session ends after "
+    "asking and resumes with their answer. Ask one clear question."
+)
+NOT_DONE_DESCRIPTION = (
+    "Say you couldn't do what was asked: a tool refused it, you lack the access or "
+    "connection it needs, a file couldn't be read, or it can't be done. Call it whenever "
+    "the main thing asked for isn't in your answer, even if you did part of it or offer "
+    "ways forward. The task then ends as not done, with "
+    "your reason, instead of done. `needs`: the kind of connection that was missing, if "
+    "that's why: one of email, calendar, records, spreadsheet, files, payments, ads, meta_ads, "
+    "google_ads, google, microsoft, slack, airtable, notion, stripe, n8n, github, vercel, or "
+    "browser (a page that needs clicking, filling in a form, or a login, which reading pages "
+    "and web search can't do), or empty. `done`: what you did finish, when "
+    "part of it is done (it then shows as partly done); leave it out when nothing is. Still "
+    "end your turn with a short note for the operator."
+)
 
 
 @dataclass
@@ -32,13 +51,7 @@ class AskState:
 
 
 def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatcher]]]:
-    @tool(
-        "ask_user",
-        "Ask the operator a question you can't answer from the workspace or your tools "
-        "(a missing requirement, a choice only they can make). Your session ends after "
-        "asking and resumes with their answer. Ask one clear question.",
-        {"question": str},
-    )
+    @tool("ask_user", ASK_DESCRIPTION, {"question": str})
     async def ask_user(args: dict[str, Any]) -> dict[str, Any]:
         question = str(args.get("question", "")).strip()[:MAX_QUESTION_CHARS]
         if not question:
@@ -66,17 +79,7 @@ def build(state: AskState) -> tuple[McpSdkServerConfig, dict[str, list[HookMatch
 
     @tool(
         "not_done",
-        "Say you couldn't do what was asked: a tool refused it, you lack the access or "
-        "connection it needs, a file couldn't be read, or it can't be done. Call it whenever "
-        "the main thing asked for isn't in your answer, even if you did part of it or offer "
-        "ways forward. The task then ends as not done, with "
-        "your reason, instead of done. `needs`: the kind of connection that was missing, if "
-        "that's why: one of email, calendar, records, spreadsheet, files, payments, ads, meta_ads, "
-        "google_ads, google, microsoft, slack, airtable, notion, stripe, n8n, github, vercel, or "
-        "browser (a page that needs clicking, filling in a form, or a login, which reading pages "
-        "and web search can't do), or empty. `done`: what you did finish, when "
-        "part of it is done (it then shows as partly done); leave it out when nothing is. Still "
-        "end your turn with a short note for the operator.",
+        NOT_DONE_DESCRIPTION,
         {
             "type": "object",
             "properties": {

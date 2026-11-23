@@ -1,0 +1,31 @@
+{
+  "version": "0.171.0",
+  "release": "https://github.com/openai/codex/releases/download/rust-v0.171.0",
+  "license": "Apache-2.0",
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "asset": "codex-app-server-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "bee65e2081b5d810f9b048d231d40606ce6bc176f0b97fcc597441f5aaa97b40"
+    },
+    "aarch64-pc-windows-msvc": {
+      "asset": "codex-app-server-aarch64-pc-windows-msvc.exe.zip",
+      "sha256": "0ecb8c11a24b8e8563d35de93096d6ea8d50d721643d445e1d2f6f2c0f43338c"
+    },
+    "x86_64-apple-darwin": {
+      "asset": "codex-app-server-x86_64-apple-darwin.tar.gz",
+      "sha256": "8c47cf7ae093e0dc81be7936b6ea616d6b0c5dd62ce8918c9e858bcbc243064f"
+    },
+    "aarch64-apple-darwin": {
+      "asset": "codex-app-server-aarch64-apple-darwin.tar.gz",
+      "sha256": "75690f1cc2ebd2ba71923dd52a69c3bf8bdbe6e0bc6c4861bb949cf977378b46"
+    },
+    "x86_64-unknown-linux-musl": {
+      "asset": "codex-app-server-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "421bcd19b25b5e5b88fd851ddaba6a155c6f9adebae154a2821b73db12d03787"
+    },
+    "aarch64-unknown-linux-musl": {
+      "asset": "codex-app-server-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "565429aaa1f81c8b24d1747cb71670b9dfd1fd476094375e195d81d5c119a30a"
+    }
+  }
+}

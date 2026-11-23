@@ -177,6 +177,25 @@ def _foundry(place: Place, vault: Vault, tail: str, query: str) -> Upstream:
     return Upstream(FOUNDRY, url, {"x-api-key": key})
 
 
+CHATGPT_PATH = re.compile(r"^v1/responses$|^v1/models$")
+
+
+def _chatgpt(vault: Vault, tail: str, query: str) -> Upstream:
+    """The owner's ChatGPT plan (services.chatgpt): OpenAI's Responses API with the plan's
+    access token, refreshed here when it's close to expiring. Codex asks with the task's own
+    token, which the proxy drops."""
+    from ringkeeper.services import chatgpt  # noqa: PLC0415 (it imports the database layer)
+
+    try:
+        token = chatgpt.access_token(vault)
+    except chatgpt.PlanError as error:
+        raise UpstreamError(str(error)) from None
+    base = chatgpt.API.removesuffix("/v1")
+    return Upstream(
+        chatgpt.PROXY_KIND, f"{base}/{tail}{query}", {"Authorization": f"Bearer {token}"}
+    )
+
+
 def allowed(place: Place, kind: str, tail: str) -> bool:
     """Whether this route is open: the project's own place, and only what a model call uses.
     On Vertex that includes the project, so a token can't reach another one."""
@@ -192,6 +211,11 @@ def upstream_for(
     query: str,
 ) -> Upstream | None:  # fmt: skip
     """Where this request goes, or None if that route isn't open to this project."""
+    from ringkeeper.services import chatgpt  # noqa: PLC0415 (it imports the database layer)
+
+    if kind == chatgpt.PROXY_KIND:  # the plan isn't a place Claude runs: any project's tasks
+        open_ = chatgpt.available(settings) and CHATGPT_PATH.fullmatch(tail) is not None
+        return _chatgpt(vault, tail, query) if open_ else None
     place = claude_place.chosen(session, project)
     if not allowed(place, kind, tail):
         return None

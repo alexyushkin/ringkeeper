@@ -61,11 +61,11 @@ class RuntimeIn(Input):
     telegram_question_chars: Annotated[int, Field(ge=160, le=3500)] | None = None
     telegram_confirm_minutes: Annotated[int, Field(ge=1, le=120)] | None = None
     model_router: PlanModelId | None = None  # also answers in Help
-    model_architect: ModelId | None = None
-    model_worker: ModelId | None = None
-    model_low: ModelId | None = None
-    model_medium: ModelId | None = None
-    model_high: ModelId | None = None
+    model_architect: ModelId | None = None  # Claude only: it plans with Claude Code's tools
+    model_worker: PlanModelId | None = None  # a chatgpt: model runs the task on Codex
+    model_low: PlanModelId | None = None
+    model_medium: PlanModelId | None = None
+    model_high: PlanModelId | None = None
     effort_router: Effort | None = None
     effort_architect: Effort | None = None
     effort_worker: Effort | None = None

@@ -238,7 +238,7 @@ def test_the_router_answers_on_the_plan_without_claude(
     assert refused.value.failure.kind is claude_failures.Kind.LOGIN
 
 
-def test_the_plan_models_are_offered_and_only_the_router_may_use_one(
+def test_the_plan_models_are_offered_and_signing_out_puts_claude_back(
     openai: FakeOpenAI, owner: TestClient
 ) -> None:
     assert not any(m.get("plan") for m in owner.get("/models").json()["models"])
@@ -246,9 +246,10 @@ def test_the_plan_models_are_offered_and_only_the_router_may_use_one(
     offered = owner.get("/models").json()["models"]
     assert [m["id"] for m in offered if m.get("plan")] == ["chatgpt:gpt-5.5"]
     assert owner.patch("/settings", json={"model_router": "chatgpt:gpt-5.5"}).status_code == 200
-    assert owner.patch("/settings", json={"model_worker": "chatgpt:gpt-5.5"}).status_code == 422
-    # Signing out revokes it at OpenAI and puts the router back on its Claude model.
+    assert owner.patch("/settings", json={"model_worker": "chatgpt:gpt-5.5"}).status_code == 200
+    # Signing out revokes it at OpenAI and puts every role back on its Claude model.
     assert owner.delete("/chatgpt").json() == {"signed_in": False}
+    assert not runtime.current_settings().model_worker.startswith("chatgpt:")
     assert openai.revoked == [f"refresh-0-{'y' * 20}"]
     assert not runtime.current_settings().model_router.startswith("chatgpt:")
     assert owner.get("/chatgpt").json()["signed_in"] is False

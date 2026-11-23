@@ -13,7 +13,14 @@ from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Protocol, cast
 
 from ringkeeper.errors import RingkeeperError
-from ringkeeper.workers.env import CLI_CACHE_DIR, CLI_CACHE_VOLUME, STATE_DIR, WORKSPACE
+from ringkeeper.workers.env import (
+    CLI_CACHE_DIR,
+    CLI_CACHE_VOLUME,
+    CODEX_CACHE_DIR,
+    CODEX_CACHE_VOLUME,
+    STATE_DIR,
+    WORKSPACE,
+)
 
 LABEL = "ringkeeper.role"
 LABEL_SESSION = "ringkeeper.session"
@@ -92,6 +99,7 @@ class DockerRuntime:
             Mount(STATE_DIR, spec.state_volume, type="volume"),
             # Shared by every task; written only by the runner (root), never the agent.
             Mount(CLI_CACHE_DIR, CLI_CACHE_VOLUME, type="volume"),
+            Mount(CODEX_CACHE_DIR, CODEX_CACHE_VOLUME, type="volume"),
         ]
         try:
             container = self._client.containers.run(
