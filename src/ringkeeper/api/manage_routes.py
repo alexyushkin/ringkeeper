@@ -61,6 +61,7 @@ from ringkeeper.scrub import scrub
 from ringkeeper.services import (
     admin_audit,
     bindings,
+    chatgpt,
     claude_place,
     client_month,
     clients,
@@ -322,6 +323,59 @@ def use_claude_code_login(session: WriteSessionDep) -> dict[str, Any]:
         by=OWNER,
     )
     return {"stored": True, "verified": stored.verified, "message": stored.message}
+
+
+# --- Your ChatGPT plan (desktop only: services.chatgpt) ---
+
+
+def _desktop_only() -> None:
+    if not chatgpt.available(current_settings()):
+        raise HTTPException(
+            409,
+            detail="Your ChatGPT plan works in the desktop app only: OpenAI offers it to apps "
+            "that run on your own computer.",
+        )
+
+
+@router.get("/chatgpt")
+def chatgpt_status(session: SessionDep) -> dict[str, Any]:
+    available = chatgpt.available(current_settings())
+    found = chatgpt.status(session, get_vault()) if available else {"signed_in": False}
+    return {**found, "available": available}
+
+
+@router.post("/chatgpt/signin", dependencies=[RecentAuth])
+def chatgpt_sign_in(request: Request, session: WriteSessionDep) -> dict[str, str]:
+    """OpenAI's sign-in page to open. The browser comes back to /oauth/callback."""
+    _desktop_only()
+    # The desktop app's own address. OpenAI takes 127.0.0.1 only, never localhost.
+    base = str(request.base_url).rstrip("/").replace("://localhost:", "://127.0.0.1:", 1)
+    url = chatgpt.start(session, base + "/oauth/callback")
+    admin_audit.record(session, "chatgpt_signin", "started signing in to ChatGPT", by=OWNER)
+    return {"url": url}
+
+
+@router.post("/chatgpt/noticed")
+def chatgpt_noticed(session: WriteSessionDep) -> dict[str, bool]:
+    chatgpt.noticed(session)
+    return {"noticed": True}
+
+
+@router.delete("/chatgpt")
+def chatgpt_sign_out(session: WriteSessionDep) -> dict[str, bool]:
+    """Sign out: the sign-in is revoked at OpenAI, and roles on a ChatGPT model go back to
+    the Claude model they'd use without it."""
+    chatgpt.sign_out(session, get_vault())
+    settings = current_settings()
+    back = {
+        f"model_{role}": None
+        for role in chatgpt.ROLES
+        if chatgpt.is_plan_model(getattr(settings, f"model_{role}", None))
+    }
+    if back:
+        runtime.update(session, back, by=OWNER)
+    admin_audit.record(session, "chatgpt_signout", "signed out of ChatGPT", by=OWNER)
+    return {"signed_in": False}
 
 
 @router.put("/secrets/telegram", dependencies=[RecentAuth])

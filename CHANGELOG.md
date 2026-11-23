@@ -5,6 +5,12 @@ publishes it as the release notes and the app shows it with the update.
 
 ## Unreleased
 
+- **Your ChatGPT plan, for sorting requests and Help.** In the desktop app, **Settings ›
+  Models › Continue with ChatGPT** signs in with OpenAI's Sign in with ChatGPT. Then choose a
+  ChatGPT model for Sorting requests: it also answers in Help. It uses your plan's own limits,
+  with no API key, and you can set a limit for Ringkeeper in ChatGPT's settings (**Manage
+  usage**). At the limit, requests wait instead of moving to other billing. Tasks still run on
+  Claude for now.
 - **Fix: "in Supabase" found your Supabase connection.** A request that named a service, like
   Supabase or Neon, counted only the official remote server for it, so a project with its own
   Supabase or Neon connection was told "This project has no Supabase connection" and nothing

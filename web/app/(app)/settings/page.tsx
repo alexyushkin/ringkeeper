@@ -134,7 +134,7 @@ export default function SettingsPage() {
       label: "Models",
       content: () => (
         <Section id="models" title="Models and effort" summary={`${v.model_worker} for normal tasks`}>
-          <ModelSettings values={v} onChange={(changes) => change(changes)} />
+          <ModelSettings values={v} onChange={(changes) => change(changes)} onReload={settings.reload} />
         </Section>
       ),
     },

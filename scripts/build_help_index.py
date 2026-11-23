@@ -19,7 +19,7 @@ PAGES = (
     "from-connect",
     "client-month", "recipes",
     "notifications",
-    "where-claude-runs",
+    "where-claude-runs", "chatgpt-plan",
     "backup", "team-memory", "working-faster", "security", "self-test", "check-my-setup",
     "troubleshooting", "faq",
     "install-desktop",

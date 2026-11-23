@@ -19,6 +19,22 @@ Three findings shape the plan:
 3. **Holds are safe, but autonomy levels aren't the same.** Ringkeeper limits Claude's tools by
    name. Codex has no such list: only a sandbox and approval modes.
 
+## The owner's ChatGPT plan
+
+Built so far: **Sign in with ChatGPT** (`services/chatgpt.py`, docs/chatgpt-plan.md). The
+desktop app signs in to the owner's ChatGPT plan, and the router and Help can run on a
+`chatgpt:<id>` model, through POST /v1/responses with the plan's token.
+
+For workers, OpenAI documents running Codex's app-server on the plan: `codex app-server
+--listen stdio://`, with a provider whose `env_key` is `ACCESS_TOKEN`, `wire_api =
+"responses"` and `requires_openai_auth = false`. The token lasts an hour, so the app refreshes
+it, restarts app-server and resumes the thread (`thread/resume`). What plan usage refuses:
+hosted MCP and connectors, `tool_search`, `previous_response_id`, background mode, and
+settings like `temperature` and `max_output_tokens`. Ringkeeper's gateway tools reach Codex
+as its own MCP client's tools, so they're not hosted MCP, but Codex's tool search must stay
+off. The worker would get the token through the gateway's model proxy, as Claude's
+credentials do today, never the token itself.
+
 ## What stays the same
 
 | | How |

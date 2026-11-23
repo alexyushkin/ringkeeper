@@ -21,6 +21,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { tab: "claude", id: "claude-place", title: "Where Claude runs", words: "anthropic bedrock vertex cloud provider" },
   // Models
   { tab: "models", id: "models", title: "Models and effort", words: "model opus sonnet haiku effort thinking router" },
+  { tab: "models", id: "models", title: "Your ChatGPT plan", words: "chatgpt openai gpt sign in with chatgpt plan subscription", where: "desktop" },
   // Desktop-only tabs
   { tab: "voice", id: "voice", title: "Voice", words: "speech microphone dictation speak language transcribe", where: "desktop" },
   { tab: "scans", id: "scans", title: "Reading scans", words: "ocr scanned pdf images text recognition", where: "desktop" },

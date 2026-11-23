@@ -38,6 +38,9 @@ class Kind(enum.StrEnum):
     OVERLOADED = "overloaded"
     NETWORK = "network"
     SLOW = "slow"
+    # The owner's ChatGPT plan is at its limit (services.chatgpt). Not tried again at once,
+    # and it pauses nothing on Claude: only the work that runs on the plan waits.
+    PLAN_LIMIT = "plan_limit"
 
 
 TRANSIENT = frozenset({Kind.RATE_LIMIT, Kind.OVERLOADED, Kind.NETWORK, Kind.SLOW})
