@@ -37,7 +37,7 @@ from ringkeeper.models import (
 )
 from ringkeeper.services import inbox, tasks
 from ringkeeper.vault import Vault, get_vault
-from ringkeeper.workers.env import CLI_CACHE_DIR
+from ringkeeper.workers.env import CLI_CACHE_DIR, CODEX_CACHE_DIR
 from ringkeeper.workers.manager import Manager
 from ringkeeper.workers.runtime import LABEL_SESSION, RUNNER_CAPS, DockerRuntime, WorkerSpec
 from tests.conftest import CLAUDE_API_KEY, CLAUDE_OAUTH_TOKEN, free_port
@@ -52,7 +52,8 @@ NETWORK = "ringkeeper_test_workers"
 GATEWAY_HOST = "rk-test-gateway"
 # What a worker sees, besides the files Docker always injects.
 DOCKER_INJECTED = {"/", "/etc/hosts", "/etc/hostname", "/etc/resolv.conf"}
-EXPECTED_MOUNTS = {"/workspace", "/state", "/tmp", "/home/worker", CLI_CACHE_DIR}  # noqa: S108
+# The CLIs' caches: Claude Code's, and Codex's for tasks on the owner's ChatGPT plan.
+EXPECTED_MOUNTS = {"/workspace", "/state", "/tmp", "/home/worker", CLI_CACHE_DIR, CODEX_CACHE_DIR}  # noqa: S108
 
 
 @pytest.fixture(scope="session")
